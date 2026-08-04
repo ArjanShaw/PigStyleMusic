@@ -42,34 +42,55 @@
     const discogsOrdersModeContainer = document.getElementById('discogs-orders-mode-container');
     const refundModeContainer = document.getElementById('refund-mode-container');
 
-    // ========== Scan Location Builder Elements ==========
-    const scanGenreSelect = document.getElementById('scan-genre');
-    const scanNewGenreInput = document.getElementById('scan-new-genre-input');
-    const scanAddGenreBtn = document.getElementById('scan-add-genre-btn');
-    const scanGenreStatus = document.getElementById('scan-genre-status');
-    const scanMainLocationType = document.getElementById('scan-main-location-type');
-    const scanMainLocationNumber = document.getElementById('scan-main-location-number');
-    const scanSublocation = document.getElementById('scan-sublocation');
-    const scanCustomSublocationContainer = document.getElementById('scan-custom-sublocation-container');
-    const scanCustomSublocation = document.getElementById('scan-custom-sublocation');
-    const scanLocationPreview = document.getElementById('scan-location-preview');
-    const scanCounterDisplay = document.getElementById('scan-counter-display');
-    const scanResetCounterBtn = document.getElementById('scan-reset-counter-btn');
+    // ========== NEW: Scan Location Elements ==========
+    const scanGenreSelect = document.getElementById('scan-genre-select');
+    const scanFormatSelect = document.getElementById('scan-format-select');
+    const scanAreaSelect = document.getElementById('scan-area-select');
+    const scanSublocationSelect = document.getElementById('scan-sublocation-select');
+    const scanInput = document.getElementById('scan-input');
+    const scanSubmitBtn = document.getElementById('scan-submit-btn');
+    const scanLocationDisplay = document.getElementById('scan-location-display');
+    const scanIndexDisplay = document.getElementById('scan-index-display');
+    const recentScansList = document.getElementById('recent-scans-list');
+    const lastScanDisplay = document.getElementById('last-scan-display');
 
-    // ========== Discogs Elements ==========
+    // ========== NEW: Filter Elements ==========
+    const filterLastSeen = document.getElementById('filter-last-seen');
+    const filterGenre = document.getElementById('filter-genre');
+    const filterFormat = document.getElementById('filter-format');
+    const filterArea = document.getElementById('filter-area');
+    const filterSublocation = document.getElementById('filter-sublocation');
+    const applyFiltersBtn = document.getElementById('apply-filters-btn');
+    const clearFiltersBtn = document.getElementById('clear-filters-btn');
+
+    // ========== Domain Management Elements ==========
+    const genresList = document.getElementById('genres-list');
+    const newGenreInput = document.getElementById('new-genre');
+    const addGenreBtn = document.getElementById('add-genre-btn');
+    const formatsList = document.getElementById('formats-list');
+    const newFormatInput = document.getElementById('new-format');
+    const addFormatBtn = document.getElementById('add-format-btn');
+    const areasList = document.getElementById('areas-list');
+    const newAreaInput = document.getElementById('new-area');
+    const addAreaBtn = document.getElementById('add-area-btn');
+    const sublocationsList = document.getElementById('sublocations-list');
+    const sublocationAreaFilter = document.getElementById('sublocation-area-filter');
+    const newSublocationArea = document.getElementById('new-sublocation-area');
+    const newSublocationName = document.getElementById('new-sublocation-name');
+    const newSublocationAbbr = document.getElementById('new-sublocation-abbr');
+    const addSublocationBtn = document.getElementById('add-sublocation-btn');
+
+    // ========== Other DOM Elements ==========
     const discogsLocationSelect = document.getElementById('discogs-location-select');
     const discogsStatusMessage = document.getElementById('discogs-status-message');
     const lastSeenCutoffDateInput = document.getElementById('last-seen-cutoff-date');
     const applyLastSeenFilterBtn = document.getElementById('apply-last-seen-filter');
 
-    // ========== Delete Mode Elements ==========
     const deleteStatusFilter = document.getElementById('delete-status-filter');
 
-    // ========== Checkout Elements ==========
     const checkoutShowSelectedBtn = document.getElementById('checkout-show-selected-btn');
     const checkoutShowAllBtn = document.getElementById('checkout-show-all-btn');
 
-    // ========== Discogs Orders Elements ==========
     const discogsOrderSelect = document.getElementById('discogs-order-select');
     const discogsOrdersRefreshBtn = document.getElementById('discogs-orders-refresh-btn');
     const discogsOrdersStatus = document.getElementById('discogs-orders-status');
@@ -79,13 +100,11 @@
     const discogsOrdersDateTo = document.getElementById('discogs-orders-date-to');
     const discogsOrdersSearch = document.getElementById('discogs-orders-search');
 
-    // ========== Default Params Elements ==========
     const defaultSleeveSelect = document.getElementById('default-sleeve-condition');
     const defaultDiscSelect = document.getElementById('default-disc-condition');
     const defaultPriceInput = document.getElementById('default-price');
     const defaultConsignorSelect = document.getElementById('default-consignor');
 
-    // ========== Purchase Table Elements ==========
     const purchasesContainer = document.getElementById('purchases-container');
     const purchasesBody = document.getElementById('purchases-body');
     const metadataPanel = document.getElementById('purchase-metadata-panel');
@@ -111,6 +130,9 @@
     let consignorMap = {};
     let accounts = [];
     let genres = [];
+    let formats = [];
+    let areas = [];
+    let sublocations = [];
     let _initialized = false;
 
     let allRecords = [];
@@ -162,9 +184,18 @@
     };
     let defaultParamsActive = false;
 
+    // ========== NEW: Scan Session State ==========
+    let scanSession = {
+        genre_id: null,
+        format_id: null,
+        area_id: null,
+        sublocation_id: null,
+        location_index: 1,
+        is_ready: false
+    };
+
     let recentScans = [];
     const MAX_RECENT_SCANS = 10;
-    let scanCounter = 0;
 
     // ========== Purchase State ==========
     let selectedPurchaseId = null;
@@ -413,16 +444,6 @@
         }
     }
 
-    async function loadGenres() {
-        try {
-            var data = await apiRequest('GET', '/api/genres');
-            genres = data.genres || [];
-        } catch (e) {
-            console.warn('Could not load genres:', e);
-            genres = [];
-        }
-    }
-
     async function loadStats() {
         var total = await apiRequest('GET', '/records/count');
         document.getElementById('total-records').textContent = total.count;
@@ -446,6 +467,802 @@
 
         var commission = await apiRequest('GET', '/api/commission-rate');
         document.getElementById('commission-rate').textContent = commission.commission_rate_percent;
+    }
+
+    // ========== NEW: Domain Data Loading ==========
+
+    async function loadGenres() {
+        try {
+            var data = await apiRequest('GET', '/api/genres');
+            genres = data.genres || [];
+            console.log('✅ Loaded genres:', genres.length);
+        } catch (e) {
+            console.warn('Could not load genres:', e);
+            genres = [];
+        }
+    }
+
+    async function loadFormats() {
+        try {
+            var data = await apiRequest('GET', '/api/formats');
+            formats = data.formats || [];
+            console.log('✅ Loaded formats:', formats.length);
+        } catch (e) {
+            console.warn('Could not load formats:', e);
+            formats = [];
+        }
+    }
+
+    async function loadAreas() {
+        try {
+            var data = await apiRequest('GET', '/api/areas');
+            areas = data.areas || [];
+            console.log('✅ Loaded areas:', areas.length);
+        } catch (e) {
+            console.warn('Could not load areas:', e);
+            areas = [];
+        }
+    }
+
+    async function loadSublocations(areaId) {
+        try {
+            var url = '/api/sublocations';
+            if (areaId) {
+                url += '?area_id=' + areaId;
+            }
+            var data = await apiRequest('GET', url);
+            sublocations = data.sublocations || [];
+            console.log('✅ Loaded sublocations:', sublocations.length);
+        } catch (e) {
+            console.warn('Could not load sublocations:', e);
+            sublocations = [];
+        }
+    }
+
+    async function loadAllDomainData() {
+        await Promise.all([
+            loadGenres(),
+            loadFormats(),
+            loadAreas(),
+            loadSublocations()
+        ]);
+        populateScanDropdowns();
+        populateFilterDropdowns();
+        populateDomainManagementLists();
+    }
+
+    // ========== NEW: Scan Session Management ==========
+
+    function resetScanSession() {
+        scanSession = {
+            genre_id: null,
+            format_id: null,
+            area_id: null,
+            sublocation_id: null,
+            location_index: 1,
+            is_ready: false
+        };
+
+        if (scanGenreSelect) scanGenreSelect.value = '';
+        if (scanFormatSelect) scanFormatSelect.value = '';
+        if (scanAreaSelect) scanAreaSelect.value = '';
+        if (scanSublocationSelect) {
+            scanSublocationSelect.innerHTML = '<option value="">-- Select Sublocation --</option>';
+        }
+
+        if (scanInput) scanInput.disabled = true;
+        if (scanSubmitBtn) scanSubmitBtn.disabled = true;
+
+        updateScanPreview();
+        renderRecentScans();
+
+        showStatus('📍 Please select genre, format, area, and sublocation to start scanning', 'info');
+    }
+
+    function onScanSelectionChange() {
+        const genre_id = scanGenreSelect ? parseInt(scanGenreSelect.value) : null;
+        const format_id = scanFormatSelect ? parseInt(scanFormatSelect.value) : null;
+        const area_id = scanAreaSelect ? parseInt(scanAreaSelect.value) : null;
+        const sublocation_id = scanSublocationSelect ? parseInt(scanSublocationSelect.value) : null;
+
+        scanSession.genre_id = genre_id;
+        scanSession.format_id = format_id;
+        scanSession.area_id = area_id;
+        scanSession.sublocation_id = sublocation_id;
+
+        if (area_id) {
+            populateSublocationDropdown(area_id);
+        }
+
+        const allSelected = genre_id && format_id && area_id && sublocation_id;
+        scanSession.is_ready = allSelected;
+
+        if (scanInput) scanInput.disabled = !allSelected;
+        if (scanSubmitBtn) scanSubmitBtn.disabled = !allSelected;
+
+        if (allSelected) {
+            scanSession.location_index = 1;
+        }
+
+        updateScanPreview();
+
+        if (allSelected) {
+            showStatus('✅ Ready to scan! Location index: ' + scanSession.location_index, 'success');
+        } else {
+            showStatus('⚠️ Please select all location components', 'warning');
+        }
+    }
+
+    function updateScanPreview() {
+        if (!scanLocationDisplay || !scanIndexDisplay) return;
+
+        if (scanSession.is_ready) {
+            const genre = genres.find(g => g.id === scanSession.genre_id);
+            const format = formats.find(f => f.id === scanSession.format_id);
+            const area = areas.find(a => a.id === scanSession.area_id);
+            const sublocation = sublocations.find(s => s.id === scanSession.sublocation_id);
+
+            const locationStr = [
+                genre ? genre.name : '?',
+                format ? format.name : '?',
+                area ? area.name : '?',
+                sublocation ? sublocation.name : '?'
+            ].join(' | ');
+
+            scanLocationDisplay.textContent = locationStr;
+            scanLocationDisplay.style.color = '#28a745';
+            scanIndexDisplay.textContent = '📍 Index: ' + scanSession.location_index;
+            scanIndexDisplay.style.color = '#28a745';
+        } else {
+            scanLocationDisplay.textContent = '-- Please select all location components --';
+            scanLocationDisplay.style.color = '#dc3545';
+            scanIndexDisplay.textContent = '📍 Index: 0';
+            scanIndexDisplay.style.color = '#dc3545';
+        }
+    }
+
+    async function populateSublocationDropdown(areaId) {
+        if (!scanSublocationSelect) return;
+        
+        await loadSublocations(areaId);
+        const filtered = sublocations.filter(s => s.area_id === areaId);
+        
+        scanSublocationSelect.innerHTML = '<option value="">-- Select Sublocation --</option>';
+        filtered.forEach(function(s) {
+            var opt = document.createElement('option');
+            opt.value = s.id;
+            var label = s.name;
+            if (s.abbreviation) label += ' (' + s.abbreviation + ')';
+            opt.textContent = label;
+            scanSublocationSelect.appendChild(opt);
+        });
+    }
+
+    // ========== NEW: Scan Execution ==========
+
+    async function performScanSearch(term) {
+        if (!scanSession.is_ready) {
+            showStatus('⚠️ Please select genre, format, area, and sublocation first', 'warning');
+            return;
+        }
+
+        try {
+            var data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
+            if (!data.records || !data.records.length) {
+                playSound('error');
+                showStatus('No record found with that barcode or ID', 'error');
+                if (searchInput) searchInput.value = '';
+                return;
+            }
+
+            var records = data.records;
+
+            if (records.length === 1) {
+                var record = records[0];
+                await processScannedRecord(record);
+                return;
+            }
+
+            var record = records[0];
+            showStatus('⚠️ Multiple records found, selecting the first: ' + record.artist + ' - ' + record.title, 'warning');
+            await processScannedRecord(record);
+
+        } catch (error) {
+            playSound('error');
+            showStatus('Error scanning: ' + error.message, 'error');
+            console.error('Scan search error:', error);
+            if (searchInput) searchInput.value = '';
+        }
+    }
+
+    async function processScannedRecord(record) {
+        var existing = filteredRecords.find(function(r) { return r.id === record.id; });
+        if (existing) {
+            var today = getLocalMSTDate();
+            existing.last_seen = today;
+            if (!existing.genre_id && scanSession.genre_id) {
+                existing.genre_id = scanSession.genre_id;
+                existing.format_id = scanSession.format_id;
+                existing.area_id = scanSession.area_id;
+                existing.sublocation_id = scanSession.sublocation_id;
+                existing.location_index = scanSession.location_index;
+                try {
+                    await apiRequest('PUT', '/records/' + record.id, {
+                        genre_id: scanSession.genre_id,
+                        format_id: scanSession.format_id,
+                        area_id: scanSession.area_id,
+                        sublocation_id: scanSession.sublocation_id,
+                        location_index: scanSession.location_index,
+                        last_seen: today
+                    });
+                } catch (e) {
+                    console.warn('Could not update record location:', e);
+                }
+            }
+            renderPagination();
+            renderTablePage();
+            playSound('success');
+            showStatus('✅ Updated last_seen for #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
+            if (searchInput) searchInput.value = '';
+            addToRecentScans(record);
+            scanSession.location_index++;
+            updateScanPreview();
+            return;
+        }
+
+        record.genre_id = scanSession.genre_id;
+        record.format_id = scanSession.format_id;
+        record.area_id = scanSession.area_id;
+        record.sublocation_id = scanSession.sublocation_id;
+        record.location_index = scanSession.location_index;
+        record.last_seen = getLocalMSTDate();
+
+        try {
+            await apiRequest('PUT', '/records/' + record.id, {
+                genre_id: scanSession.genre_id,
+                format_id: scanSession.format_id,
+                area_id: scanSession.area_id,
+                sublocation_id: scanSession.sublocation_id,
+                location_index: scanSession.location_index,
+                last_seen: record.last_seen
+            });
+        } catch (e) {
+            console.warn('Could not update record location:', e);
+        }
+
+        filteredRecords.unshift(record);
+        totalRecords = filteredRecords.length;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+        playSound('success');
+        showStatus('✅ Added #' + record.id + ': ' + record.artist + ' - ' + record.title + ' at index ' + scanSession.location_index, 'success');
+        updateSelectionCount();
+        if (searchInput) searchInput.value = '';
+        addToRecentScans(record);
+        scanSession.location_index++;
+        updateScanPreview();
+    }
+
+    // ========== NEW: Recent Scans ==========
+
+    function addToRecentScans(record) {
+        const genre = genres.find(g => g.id === scanSession.genre_id);
+        const format = formats.find(f => f.id === scanSession.format_id);
+        const area = areas.find(a => a.id === scanSession.area_id);
+        const sublocation = sublocations.find(s => s.id === scanSession.sublocation_id);
+
+        const scanEntry = {
+            record_id: record.id,
+            artist: record.artist,
+            title: record.title,
+            genre: genre ? genre.name : 'Unknown',
+            format: format ? format.name : 'Unknown',
+            area: area ? area.name : 'Unknown',
+            sublocation: sublocation ? sublocation.name : 'Unknown',
+            index: record.location_index || scanSession.location_index - 1,
+            timestamp: new Date().toLocaleString()
+        };
+
+        recentScans = recentScans.filter(s => s.record_id !== record.id);
+        recentScans.unshift(scanEntry);
+        
+        if (recentScans.length > MAX_RECENT_SCANS) {
+            recentScans = recentScans.slice(0, MAX_RECENT_SCANS);
+        }
+
+        renderRecentScans();
+    }
+
+    function renderRecentScans() {
+        if (!recentScansList) return;
+
+        if (recentScans.length === 0) {
+            recentScansList.innerHTML = '<div class="no-recent-scans">No recent scans</div>';
+            if (lastScanDisplay) {
+                lastScanDisplay.textContent = 'Last: --';
+            }
+            return;
+        }
+
+        var html = '';
+        recentScans.forEach(function(s, i) {
+            var isFirst = i === 0;
+            var cls = isFirst ? 'recent-scan-item recent-scan-last' : 'recent-scan-item';
+            var locationStr = [s.genre, s.format, s.area, s.sublocation].filter(Boolean).join(' | ');
+            html += '<div class="' + cls + '">';
+            html += '<span class="scan-index-badge">#' + s.index + '</span>';
+            html += '<span class="scan-artist">' + escapeHtml(s.artist) + '</span>';
+            html += '<span class="scan-title">' + escapeHtml(s.title) + '</span>';
+            html += '<span class="scan-location">' + escapeHtml(locationStr) + '</span>';
+            html += '<span class="scan-time">' + s.timestamp + '</span>';
+            html += '</div>';
+        });
+
+        recentScansList.innerHTML = html;
+
+        if (lastScanDisplay && recentScans.length > 0) {
+            var last = recentScans[0];
+            var locStr = [last.genre, last.format, last.area, last.sublocation].filter(Boolean).join(' | ');
+            lastScanDisplay.textContent = 'Last: ' + locStr + ' #' + last.index;
+        }
+    }
+
+    // ========== NEW: Domain Management ==========
+
+    function populateDomainManagementLists() {
+        renderGenresList();
+        renderFormatsList();
+        renderAreasList();
+        renderSublocationsList();
+        populateSublocationAreaFilter();
+    }
+
+    function renderGenresList() {
+        if (!genresList) return;
+        if (genres.length === 0) {
+            genresList.innerHTML = '<div class="empty-message">No genres defined. Add one below.</div>';
+            return;
+        }
+        var html = '<table class="domain-table"><thead><tr><th>Name</th><th>In Use</th><th>Actions</th></tr></thead><tbody>';
+        genres.forEach(function(g) {
+            var count = filteredRecords.filter(r => r.genre_id === g.id).length;
+            var inUse = count > 0;
+            html += '<tr>';
+            html += '<td>' + escapeHtml(g.name) + '</td>';
+            html += '<td>' + (inUse ? '✅ ' + count + ' records' : '—') + '</td>';
+            html += '<td>';
+            html += '<button class="btn btn-sm btn-danger" onclick="window.deleteGenre(' + g.id + ')" ' + (inUse ? 'disabled' : '') + '><i class="fas fa-trash"></i></button>';
+            html += '</td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        genresList.innerHTML = html;
+    }
+
+    function renderFormatsList() {
+        if (!formatsList) return;
+        if (formats.length === 0) {
+            formatsList.innerHTML = '<div class="empty-message">No formats defined. Add one below.</div>';
+            return;
+        }
+        var html = '<table class="domain-table"><thead><tr><th>Name</th><th>In Use</th><th>Actions</th></tr></thead><tbody>';
+        formats.forEach(function(f) {
+            var count = filteredRecords.filter(r => r.format_id === f.id).length;
+            var inUse = count > 0;
+            html += '<tr>';
+            html += '<td>' + escapeHtml(f.name) + '</td>';
+            html += '<td>' + (inUse ? '✅ ' + count + ' records' : '—') + '</td>';
+            html += '<td>';
+            html += '<button class="btn btn-sm btn-danger" onclick="window.deleteFormat(' + f.id + ')" ' + (inUse ? 'disabled' : '') + '><i class="fas fa-trash"></i></button>';
+            html += '</td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        formatsList.innerHTML = html;
+    }
+
+    function renderAreasList() {
+        if (!areasList) return;
+        if (areas.length === 0) {
+            areasList.innerHTML = '<div class="empty-message">No areas defined. Add one below.</div>';
+            return;
+        }
+        var html = '<table class="domain-table"><thead><tr><th>Name</th><th>Sublocations</th><th>In Use</th><th>Actions</th></tr></thead><tbody>';
+        areas.forEach(function(a) {
+            var subCount = sublocations.filter(s => s.area_id === a.id).length;
+            var count = filteredRecords.filter(r => r.area_id === a.id).length;
+            var inUse = count > 0;
+            html += '<tr>';
+            html += '<td>' + escapeHtml(a.name) + '</td>';
+            html += '<td>' + subCount + '</td>';
+            html += '<td>' + (inUse ? '✅ ' + count + ' records' : '—') + '</td>';
+            html += '<td>';
+            html += '<button class="btn btn-sm btn-danger" onclick="window.deleteArea(' + a.id + ')" ' + (inUse || subCount > 0 ? 'disabled' : '') + '><i class="fas fa-trash"></i></button>';
+            html += '</td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        areasList.innerHTML = html;
+    }
+
+    function renderSublocationsList() {
+        if (!sublocationsList) return;
+        var filtered = sublocations;
+        var areaFilter = sublocationAreaFilter ? parseInt(sublocationAreaFilter.value) : null;
+        if (areaFilter) {
+            filtered = sublocations.filter(s => s.area_id === areaFilter);
+        }
+
+        if (filtered.length === 0) {
+            sublocationsList.innerHTML = '<div class="empty-message">No sublocations for this area. Add one below.</div>';
+            return;
+        }
+
+        var html = '<table class="domain-table"><thead><tr><th>Area</th><th>Name</th><th>Abbreviation</th><th>In Use</th><th>Actions</th></tr></thead><tbody>';
+        filtered.forEach(function(s) {
+            var area = areas.find(a => a.id === s.area_id);
+            var count = filteredRecords.filter(r => r.sublocation_id === s.id).length;
+            var inUse = count > 0;
+            html += '<tr>';
+            html += '<td>' + (area ? escapeHtml(area.name) : '?') + '</td>';
+            html += '<td>' + escapeHtml(s.name) + '</td>';
+            html += '<td>' + escapeHtml(s.abbreviation || '—') + '</td>';
+            html += '<td>' + (inUse ? '✅ ' + count + ' records' : '—') + '</td>';
+            html += '<td>';
+            html += '<button class="btn btn-sm btn-danger" onclick="window.deleteSublocation(' + s.id + ')" ' + (inUse ? 'disabled' : '') + '><i class="fas fa-trash"></i></button>';
+            html += '</td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        sublocationsList.innerHTML = html;
+    }
+
+    function populateSublocationAreaFilter() {
+        if (!sublocationAreaFilter) return;
+        var currentVal = sublocationAreaFilter.value;
+        sublocationAreaFilter.innerHTML = '<option value="">All Areas</option>';
+        areas.forEach(function(a) {
+            var opt = document.createElement('option');
+            opt.value = a.id;
+            opt.textContent = a.name;
+            sublocationAreaFilter.appendChild(opt);
+        });
+        if (currentVal) sublocationAreaFilter.value = currentVal;
+    }
+
+    // ========== NEW: Domain CRUD Functions ==========
+
+    window.addGenre = async function() {
+        if (!newGenreInput) return;
+        var name = newGenreInput.value.trim();
+        if (!name) {
+            showStatus('Please enter a genre name', 'warning');
+            return;
+        }
+        try {
+            var result = await apiRequest('POST', '/api/genres', { name: name });
+            if (result.status === 'success') {
+                newGenreInput.value = '';
+                await loadGenres();
+                populateScanDropdowns();
+                populateFilterDropdowns();
+                renderGenresList();
+                showStatus('✅ Genre "' + name + '" added', 'success');
+            } else {
+                showStatus('❌ ' + (result.error || 'Failed to add genre'), 'error');
+            }
+        } catch (e) {
+            showStatus('❌ Error: ' + e.message, 'error');
+        }
+    };
+
+    window.deleteGenre = async function(id) {
+        if (!confirm('Delete this genre? It will be removed from all records.')) return;
+        try {
+            var result = await apiRequest('DELETE', '/api/genres/' + id);
+            if (result.status === 'success') {
+                await loadGenres();
+                populateScanDropdowns();
+                populateFilterDropdowns();
+                renderGenresList();
+                showStatus('✅ Genre deleted', 'success');
+            } else {
+                showStatus('❌ ' + (result.error || 'Failed to delete genre'), 'error');
+            }
+        } catch (e) {
+            showStatus('❌ Error: ' + e.message, 'error');
+        }
+    };
+
+    window.addFormat = async function() {
+        if (!newFormatInput) return;
+        var name = newFormatInput.value.trim();
+        if (!name) {
+            showStatus('Please enter a format name', 'warning');
+            return;
+        }
+        try {
+            var result = await apiRequest('POST', '/api/formats', { name: name });
+            if (result.status === 'success') {
+                newFormatInput.value = '';
+                await loadFormats();
+                populateScanDropdowns();
+                populateFilterDropdowns();
+                renderFormatsList();
+                showStatus('✅ Format "' + name + '" added', 'success');
+            } else {
+                showStatus('❌ ' + (result.error || 'Failed to add format'), 'error');
+            }
+        } catch (e) {
+            showStatus('❌ Error: ' + e.message, 'error');
+        }
+    };
+
+    window.deleteFormat = async function(id) {
+        if (!confirm('Delete this format? It will be removed from all records.')) return;
+        try {
+            var result = await apiRequest('DELETE', '/api/formats/' + id);
+            if (result.status === 'success') {
+                await loadFormats();
+                populateScanDropdowns();
+                populateFilterDropdowns();
+                renderFormatsList();
+                showStatus('✅ Format deleted', 'success');
+            } else {
+                showStatus('❌ ' + (result.error || 'Failed to delete format'), 'error');
+            }
+        } catch (e) {
+            showStatus('❌ Error: ' + e.message, 'error');
+        }
+    };
+
+    window.addArea = async function() {
+        if (!newAreaInput) return;
+        var name = newAreaInput.value.trim();
+        if (!name) {
+            showStatus('Please enter an area name', 'warning');
+            return;
+        }
+        try {
+            var result = await apiRequest('POST', '/api/areas', { name: name });
+            if (result.status === 'success') {
+                newAreaInput.value = '';
+                await loadAreas();
+                populateScanDropdowns();
+                populateFilterDropdowns();
+                renderAreasList();
+                showStatus('✅ Area "' + name + '" added', 'success');
+            } else {
+                showStatus('❌ ' + (result.error || 'Failed to add area'), 'error');
+            }
+        } catch (e) {
+            showStatus('❌ Error: ' + e.message, 'error');
+        }
+    };
+
+    window.deleteArea = async function(id) {
+        if (!confirm('Delete this area? It will be removed from all records.')) return;
+        try {
+            var result = await apiRequest('DELETE', '/api/areas/' + id);
+            if (result.status === 'success') {
+                await loadAreas();
+                populateScanDropdowns();
+                populateFilterDropdowns();
+                renderAreasList();
+                showStatus('✅ Area deleted', 'success');
+            } else {
+                showStatus('❌ ' + (result.error || 'Failed to delete area'), 'error');
+            }
+        } catch (e) {
+            showStatus('❌ Error: ' + e.message, 'error');
+        }
+    };
+
+    window.addSublocation = async function() {
+        if (!newSublocationArea || !newSublocationName) return;
+        var area_id = parseInt(newSublocationArea.value);
+        var name = newSublocationName.value.trim();
+        var abbreviation = newSublocationAbbr ? newSublocationAbbr.value.trim() : '';
+        if (!area_id) {
+            showStatus('Please select an area', 'warning');
+            return;
+        }
+        if (!name) {
+            showStatus('Please enter a sublocation name', 'warning');
+            return;
+        }
+        try {
+            var result = await apiRequest('POST', '/api/sublocations', {
+                area_id: area_id,
+                name: name,
+                abbreviation: abbreviation
+            });
+            if (result.status === 'success') {
+                newSublocationName.value = '';
+                if (newSublocationAbbr) newSublocationAbbr.value = '';
+                await loadSublocations();
+                populateScanDropdowns();
+                populateFilterDropdowns();
+                renderSublocationsList();
+                showStatus('✅ Sublocation "' + name + '" added', 'success');
+            } else {
+                showStatus('❌ ' + (result.error || 'Failed to add sublocation'), 'error');
+            }
+        } catch (e) {
+            showStatus('❌ Error: ' + e.message, 'error');
+        }
+    };
+
+    window.deleteSublocation = async function(id) {
+        if (!confirm('Delete this sublocation? It will be removed from all records.')) return;
+        try {
+            var result = await apiRequest('DELETE', '/api/sublocations/' + id);
+            if (result.status === 'success') {
+                await loadSublocations();
+                populateScanDropdowns();
+                populateFilterDropdowns();
+                renderSublocationsList();
+                showStatus('✅ Sublocation deleted', 'success');
+            } else {
+                showStatus('❌ ' + (result.error || 'Failed to delete sublocation'), 'error');
+            }
+        } catch (e) {
+            showStatus('❌ Error: ' + e.message, 'error');
+        }
+    };
+
+    // ========== NEW: Populate Dropdowns ==========
+
+    function populateScanDropdowns() {
+        if (scanGenreSelect) {
+            var currentVal = scanGenreSelect.value;
+            scanGenreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
+            genres.forEach(function(g) {
+                var opt = document.createElement('option');
+                opt.value = g.id;
+                opt.textContent = g.name;
+                scanGenreSelect.appendChild(opt);
+            });
+            if (currentVal) scanGenreSelect.value = currentVal;
+        }
+
+        if (scanFormatSelect) {
+            var currentVal = scanFormatSelect.value;
+            scanFormatSelect.innerHTML = '<option value="">-- Select Format --</option>';
+            formats.forEach(function(f) {
+                var opt = document.createElement('option');
+                opt.value = f.id;
+                opt.textContent = f.name;
+                scanFormatSelect.appendChild(opt);
+            });
+            if (currentVal) scanFormatSelect.value = currentVal;
+        }
+
+        if (scanAreaSelect) {
+            var currentVal = scanAreaSelect.value;
+            scanAreaSelect.innerHTML = '<option value="">-- Select Area --</option>';
+            areas.forEach(function(a) {
+                var opt = document.createElement('option');
+                opt.value = a.id;
+                opt.textContent = a.name;
+                scanAreaSelect.appendChild(opt);
+            });
+            if (currentVal) scanAreaSelect.value = currentVal;
+        }
+    }
+
+    function populateFilterDropdowns() {
+        if (filterGenre) {
+            var currentVal = filterGenre.value;
+            filterGenre.innerHTML = '<option value="">All Genres</option>';
+            genres.forEach(function(g) {
+                var opt = document.createElement('option');
+                opt.value = g.id;
+                opt.textContent = g.name;
+                filterGenre.appendChild(opt);
+            });
+            if (currentVal) filterGenre.value = currentVal;
+        }
+
+        if (filterFormat) {
+            var currentVal = filterFormat.value;
+            filterFormat.innerHTML = '<option value="">All Formats</option>';
+            formats.forEach(function(f) {
+                var opt = document.createElement('option');
+                opt.value = f.id;
+                opt.textContent = f.name;
+                filterFormat.appendChild(opt);
+            });
+            if (currentVal) filterFormat.value = currentVal;
+        }
+
+        if (filterArea) {
+            var currentVal = filterArea.value;
+            filterArea.innerHTML = '<option value="">All Areas</option>';
+            areas.forEach(function(a) {
+                var opt = document.createElement('option');
+                opt.value = a.id;
+                opt.textContent = a.name;
+                filterArea.appendChild(opt);
+            });
+            if (currentVal) filterArea.value = currentVal;
+        }
+
+        if (filterSublocation) {
+            var areaId = filterArea ? parseInt(filterArea.value) : null;
+            var currentVal = filterSublocation.value;
+            filterSublocation.innerHTML = '<option value="">All Sublocations</option>';
+            var filtered = sublocations;
+            if (areaId) {
+                filtered = sublocations.filter(s => s.area_id === areaId);
+            }
+            filtered.forEach(function(s) {
+                var opt = document.createElement('option');
+                opt.value = s.id;
+                var label = s.name;
+                if (s.abbreviation) label += ' (' + s.abbreviation + ')';
+                opt.textContent = label;
+                filterSublocation.appendChild(opt);
+            });
+            if (currentVal) filterSublocation.value = currentVal;
+        }
+    }
+
+    // ========== NEW: Filter Functions ==========
+
+    async function applyFilters() {
+        var params = new URLSearchParams();
+        
+        if (filterLastSeen && filterLastSeen.value) {
+            params.append('last_seen_after', filterLastSeen.value);
+        }
+        if (filterGenre && filterGenre.value) {
+            params.append('genre_id', filterGenre.value);
+        }
+        if (filterFormat && filterFormat.value) {
+            params.append('format_id', filterFormat.value);
+        }
+        if (filterArea && filterArea.value) {
+            params.append('area_id', filterArea.value);
+        }
+        if (filterSublocation && filterSublocation.value) {
+            params.append('sublocation_id', filterSublocation.value);
+        }
+        
+        var url = '/api/records/filter?' + params.toString();
+        
+        try {
+            var response = await fetch(window.AppConfig.baseUrl + url, {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            var data = await response.json();
+            
+            if (data.status === 'success') {
+                filteredRecords = data.records || [];
+                totalRecords = filteredRecords.length;
+                currentPage = 1;
+                renderPagination();
+                renderTablePage();
+                showStatus('🔍 Found ' + totalRecords + ' records matching filters', 'info');
+            } else {
+                showStatus('❌ Error: ' + (data.error || 'Failed to apply filters'), 'error');
+            }
+        } catch (e) {
+            showStatus('❌ Error: ' + e.message, 'error');
+        }
+    }
+
+    function clearFilters() {
+        if (filterLastSeen) filterLastSeen.value = '';
+        if (filterGenre) filterGenre.value = '';
+        if (filterFormat) filterFormat.value = '';
+        if (filterArea) filterArea.value = '';
+        if (filterSublocation) filterSublocation.value = '';
+        
+        loadRecords({ mode: currentSearchMode });
+        showStatus('🧹 Filters cleared', 'info');
     }
 
     // ========== Default Parameters ==========
@@ -601,17 +1418,24 @@
 
     // ========== New Visibility Function ==========
     function setActiveMode(mode) {
-        // Hide all containers
         Object.values(modeContainers).forEach(container => {
             if (container) container.style.display = 'none';
         });
 
-        // Show the active container
         const activeContainer = modeContainers[mode];
         if (activeContainer) {
             activeContainer.style.display = 'block';
         } else {
             console.warn('No container found for mode:', mode);
+        }
+
+        if (mode === 'scan') {
+            resetScanSession();
+            loadAllDomainData();
+        }
+
+        if (mode === 'add') {
+            loadAllDomainData();
         }
     }
 
@@ -652,6 +1476,20 @@
             body.style.display = 'none';
             icon.style.transform = 'rotate(-90deg)';
         }
+    }
+
+    // ========== Purchase Functions ==========
+
+    function clearPurchaseSelection() {
+        selectedPurchaseId = null;
+        if (metadataPanel) metadataPanel.style.display = 'none';
+        loadPurchasesTable();
+        filteredRecords = [];
+        totalRecords = 0;
+        currentPurchaseRecords = [];
+        renderPagination();
+        renderTablePage();
+        showStatus('Purchase deselected.', 'info');
     }
 
     // ========== Unified Record Loader ==========
@@ -794,6 +1632,13 @@
                 await populateDiscogsPrices(records);
             }
 
+            if (currentSearchMode === 'scan' || currentSearchMode === 'add') {
+                renderGenresList();
+                renderFormatsList();
+                renderAreasList();
+                renderSublocationsList();
+            }
+
             return records;
         } catch (error) {
             console.error('❌ loadRecords error:', error);
@@ -817,7 +1662,6 @@
             const purchases = data.drafts || [];
             if (!purchasesBody) return;
 
-            // Update the badge with count
             const badge = document.getElementById('purchase-table-badge');
             if (badge) {
                 badge.textContent = '(' + purchases.length + ' total)';
@@ -831,7 +1675,6 @@
             let html = '';
             purchases.forEach(p => {
                 const isSelected = (p.draft_id == selectedPurchaseId);
-                // If a purchase is selected, only show that row (hide others)
                 const shouldHide = (selectedPurchaseId !== null && p.draft_id != selectedPurchaseId);
                 const displayStyle = shouldHide ? 'display:none;' : '';
                 html += `<tr class="${isSelected ? 'record-selected' : ''}" data-id="${p.draft_id}" onclick="selectPurchase(${p.draft_id})" style="cursor:pointer; ${displayStyle}">`;
@@ -847,7 +1690,6 @@
             });
             purchasesBody.innerHTML = html;
 
-            // Highlight selected row
             if (selectedPurchaseId) {
                 const row = purchasesBody.querySelector(`tr[data-id="${selectedPurchaseId}"]`);
                 if (row) row.classList.add('record-selected');
@@ -862,14 +1704,11 @@
         console.log('📋 selectPurchase: ' + id);
         selectedPurchaseId = id;
 
-        // Reload the table to show only the selected row
         await loadPurchasesTable();
 
-        // Show metadata panel
         if (metadataPanel) metadataPanel.style.display = 'block';
         if (purchaseIdDisplay) purchaseIdDisplay.textContent = '#' + id;
 
-        // Expand metadata by default when selecting
         metadataExpanded = true;
         const metadataBody = document.getElementById('metadata-body');
         const metadataIcon = document.getElementById('metadata-toggle-icon');
@@ -891,7 +1730,6 @@
             if (editDescription) editDescription.value = draft.description || '';
             if (editStatus) editStatus.value = draft.status || 'draft';
 
-            // Show bill preview
             const billPath = draft.bill_of_sale_path;
             if (editBillPreview) {
                 if (billPath) {
@@ -906,10 +1744,8 @@
                 }
             }
 
-            // Reset file input
             if (editBillUpload) editBillUpload.value = '';
 
-            // Show/hide Accept Draft button
             if (acceptDraftBtn) {
                 if (draft.status === 'draft' && draft.record_count > 0) {
                     acceptDraftBtn.style.display = 'inline-block';
@@ -918,12 +1754,10 @@
                 }
             }
 
-            // Enable/disable delete button
             if (deletePurchaseBtn) {
                 deletePurchaseBtn.disabled = (draft.status === 'complete');
             }
 
-            // Load records for this purchase
             await loadRecordsForPurchase(id);
 
             showStatus('Selected purchase: ' + draft.seller_name + ' (' + (draft.record_count || 0) + ' records)', 'info');
@@ -944,7 +1778,6 @@
                 bypassDateFilter: true
             });
             currentPurchaseRecords = filteredRecords.slice();
-            // Update record count in the purchase table
             await loadPurchasesTable();
         } catch (error) {
             console.error('Error loading records for purchase:', error);
@@ -1048,19 +1881,6 @@
     function deleteSelectedPurchase() {
         const id = editPurchaseId ? editPurchaseId.value : null;
         if (id) deletePurchase(parseInt(id));
-    }
-
-    function clearPurchaseSelection() {
-        selectedPurchaseId = null;
-        if (metadataPanel) metadataPanel.style.display = 'none';
-        // Reload the table to show all rows again
-        loadPurchasesTable();
-        filteredRecords = [];
-        totalRecords = 0;
-        currentPurchaseRecords = [];
-        renderPagination();
-        renderTablePage();
-        showStatus('Purchase deselected.', 'info');
     }
 
     async function createNewPurchase() {
@@ -1287,60 +2107,7 @@
         showToast('🔄 Purchases refreshed.', 'info');
     }
 
-    // ========== Toggle Functions for Sub-Panels ==========
-
-    function toggleInventorySetupPanel() {
-        console.log('📋 toggleInventorySetupPanel called');
-        var body = document.getElementById('inventory-setup-body');
-        var icon = document.getElementById('inventory-setup-toggle-icon');
-        if (!body || !icon) return;
-
-        if (body.classList.contains('expanded')) {
-            body.classList.remove('expanded');
-            body.style.display = 'none';
-            icon.classList.add('collapsed');
-        } else {
-            body.classList.add('expanded');
-            body.style.display = 'block';
-            icon.classList.remove('collapsed');
-        }
-    }
-
-    function toggleDefaultParamsSub() {
-        console.log('📋 toggleDefaultParamsSub called');
-        var body = document.getElementById('default-params-sub-body');
-        var icon = document.getElementById('default-params-sub-toggle');
-        if (!body || !icon) return;
-
-        if (body.classList.contains('expanded')) {
-            body.classList.remove('expanded');
-            body.style.display = 'none';
-            icon.classList.add('collapsed');
-        } else {
-            body.classList.add('expanded');
-            body.style.display = 'block';
-            icon.classList.remove('collapsed');
-        }
-    }
-
-    function togglePurchaseSub() {
-        console.log('📋 togglePurchaseSub called');
-        var body = document.getElementById('purchase-sub-body');
-        var icon = document.getElementById('purchase-sub-toggle');
-        if (!body || !icon) return;
-
-        if (body.classList.contains('expanded')) {
-            body.classList.remove('expanded');
-            body.style.display = 'none';
-            icon.classList.add('collapsed');
-        } else {
-            body.classList.add('expanded');
-            body.style.display = 'block';
-            icon.classList.remove('collapsed');
-        }
-    }
-
-    // ========== Discogs Locations ==========
+    // ========== DISCOGS LOCATIONS ==========
     async function loadDiscogsLocations() {
         console.log('📍 Loading discogs locations...');
         try {
@@ -2033,7 +2800,7 @@
                 }
             }
         } else if (currentSearchMode === 'scan') {
-            theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Barcode</th><th>Last Seen</th></tr>';
+            theadHtml = '<tr><th style="width:60px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Genre</th><th>Format</th><th>Area</th><th>Sublocation</th><th>Index</th><th>Price</th><th>Barcode</th><th>Last Seen</th></tr>';
         } else if (currentSearchMode === 'discogs') {
             theadHtml = '<tr><th style="width:60px;">Range</th><th>Image</th><th>ID</th><th>Artist</th><th>Title</th><th>Catalog #</th><th>Media Cond</th><th>Sleeve Cond</th><th>Store Price</th><th>Discogs Price</th><th>Markup %</th><th>Location</th><th>Post</th></tr>';
         } else if (currentSearchMode === 'delete') {
@@ -2059,7 +2826,13 @@
                     msg = 'No purchase selected. Click a row in the purchases table above.';
                 }
             }
-            if (currentSearchMode === 'scan') msg = 'Scan barcodes to add records.';
+            if (currentSearchMode === 'scan') {
+                if (!scanSession.is_ready) {
+                    msg = '⚠️ Please select genre, format, area, and sublocation to start scanning.';
+                } else {
+                    msg = 'Scan barcodes to add records. Current location index: ' + scanSession.location_index;
+                }
+            }
             if (currentSearchMode === 'discogs') msg = 'No records found. Check filters or add records in "Add Record" mode.';
             if (currentSearchMode === 'delete') msg = 'No records to delete.';
             if (currentSearchMode === 'refund') msg = 'No sold records found. Search by artist, title, or barcode to find sold records.';
@@ -2078,7 +2851,7 @@
             var colCount = currentSearchMode === 'discogs_orders' ? 10 :
                              (currentSearchMode === 'refund' ? 7 :
                              (currentSearchMode === 'add' ? (currentMode === 'search' ? 11 : (selectedPurchaseId ? 11 : 10)) :
-                             (currentSearchMode === 'scan' ? 7 :
+                             (currentSearchMode === 'scan' ? 12 :
                              (currentSearchMode === 'discogs' ? 13 :
                              (currentSearchMode === 'delete' ? 6 : 7)))));
             tbodyHtml = '<tr><td colspan="' + colCount + '" style="text-align:center;padding:40px;">' + msg + '</td></tr>';
@@ -2179,7 +2952,6 @@
                     rowHtml += '<td><span class="barcode-value">' + barcode + '</span></td>';
                     rowHtml += '<td>' + created + '</td>';
                     
-                    // Add a "Remove from Purchase" button if a purchase is selected
                     if (selectedPurchaseId) {
                         rowHtml += '<td><button class="btn btn-sm btn-danger" onclick="removeRecordFromPurchase(' + id + ')"><i class="fas fa-times"></i></button></td>';
                     } else {
@@ -2192,10 +2964,22 @@
                     var price = record.store_price ? '$' + record.store_price.toFixed(2) : 'N/A';
                     var barcode = record.barcode || record.id;
                     var lastSeen = record.last_seen ? new Date(record.last_seen).toLocaleDateString() : 'Never';
+                    
+                    var genreName = record.genre_name || '—';
+                    var formatName = record.format_name || '—';
+                    var areaName = record.area_name || '—';
+                    var sublocationName = record.sublocation_name || '—';
+                    var locationIndex = record.location_index || '—';
+                    
                     rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
                     rowHtml += '<td>' + id + '</td>';
                     rowHtml += '<td>' + escapeHtml(artist) + '</td>';
                     rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(genreName) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(formatName) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(areaName) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(sublocationName) + '</td>';
+                    rowHtml += '<td>' + locationIndex + '</td>';
                     rowHtml += '<td>' + price + '</td>';
                     rowHtml += '<td><span class="barcode-value">' + barcode + '</span></td>';
                     rowHtml += '<td>' + lastSeen + '</td>';
@@ -2331,7 +3115,6 @@
         }
         recordsTableBody.innerHTML = tbodyHtml;
 
-        // Event listeners for range buttons
         document.querySelectorAll('.btn-from').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 var index = parseInt(this.dataset.index);
@@ -2345,7 +3128,6 @@
             });
         });
 
-        // Add record from Discogs search results
         if (currentSearchMode === 'add' && currentMode === 'search' && currentResults.length > 0) {
             document.querySelectorAll('.btn-add-record-from-search').forEach(function(btn) {
                 btn.addEventListener('click', function() {
@@ -2376,7 +3158,6 @@
             }
         }
 
-        // Post single record to Discogs
         if (currentSearchMode === 'discogs') {
             document.querySelectorAll('.post-single-btn').forEach(function(btn) {
                 btn.addEventListener('click', function(e) {
@@ -2397,7 +3178,6 @@
             });
         }
 
-        // Checkout add/remove
         if (currentSearchMode === 'checkout') {
             document.querySelectorAll('.add-checkout-item').forEach(function(btn) {
                 btn.addEventListener('click', function() {
@@ -2413,7 +3193,6 @@
             });
         }
 
-        // Discogs orders pigstyle ID assignment
         if (currentSearchMode === 'discogs_orders') {
             document.querySelectorAll('.pigstyle-id-input').forEach(function(input) {
                 input.addEventListener('change', function() {
@@ -2552,165 +3331,6 @@
         }
     }
 
-    // ========== Scan Location Builder Functions ==========
-    function populateScanGenreDropdown() {
-        if (!scanGenreSelect) return;
-        var currentVal = scanGenreSelect.value;
-        scanGenreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
-        genres.forEach(function(g) {
-            var opt = document.createElement('option');
-            opt.value = g;
-            opt.textContent = g;
-            scanGenreSelect.appendChild(opt);
-        });
-        if (currentVal && genres.includes(currentVal)) {
-            scanGenreSelect.value = currentVal;
-        }
-        updateScanLocationPreview();
-    }
-
-    function updateScanLocationPreview() {
-        var genre = scanGenreSelect ? scanGenreSelect.value : '';
-        var mainType = scanMainLocationType ? scanMainLocationType.value : 'Bin';
-        var mainNumber = scanMainLocationNumber ? scanMainLocationNumber.value : '1';
-        var sublocation = scanSublocation ? scanSublocation.value : '';
-
-        var mainLocation = mainType + ' ' + mainNumber;
-        var sublocStr = '';
-        if (sublocation === 'CUSTOM') {
-            sublocStr = scanCustomSublocation ? scanCustomSublocation.value.trim() : 'Custom';
-        } else if (sublocation && sublocation !== 'NA') {
-            var names = { 'LT': 'Left Top', 'RT': 'Right Top', 'LB': 'Left Bottom', 'RB': 'Right Bottom' };
-            sublocStr = names[sublocation] || '';
-        }
-
-        var parts = [];
-        if (genre) parts.push(genre);
-        if (mainLocation) parts.push(mainLocation);
-        if (sublocStr) parts.push(sublocStr);
-
-        if (scanLocationPreview) {
-            scanLocationPreview.textContent = parts.join(' | ') || '--';
-        }
-
-        updateScanCounter();
-
-        var hasGenre = !!genre;
-        var hasSublocation = sublocation && sublocation !== '';
-        var isValid = hasGenre && hasSublocation;
-        var hasRecords = filteredRecords.length > 0;
-
-        if (completeActionBtn) {
-            completeActionBtn.disabled = !(isValid && hasRecords);
-            if (!isValid) {
-                completeActionBtn.title = 'Genre and sublocation are required';
-            } else if (!hasRecords) {
-                completeActionBtn.title = 'No records scanned yet';
-            } else {
-                completeActionBtn.title = 'Apply location to all scanned records';
-            }
-        }
-    }
-
-    function updateScanCounter() {
-        if (scanCounterDisplay) {
-            scanCounterDisplay.textContent = scanCounter || filteredRecords.length;
-        }
-    }
-
-    function resetScanCounter() {
-        scanCounter = 0;
-        updateScanCounter();
-    }
-
-    function applyScanLocation() {
-        var records = filteredRecords;
-        if (records.length === 0) {
-            showStatus('No scanned records to process.', 'warning');
-            return;
-        }
-
-        var genre = scanGenreSelect ? scanGenreSelect.value : '';
-        var mainType = scanMainLocationType ? scanMainLocationType.value : 'Bin';
-        var mainNumber = scanMainLocationNumber ? scanMainLocationNumber.value : '1';
-        var sublocation = scanSublocation ? scanSublocation.value : '';
-
-        if (!genre) {
-            showStatus('Please select or add a genre.', 'warning');
-            return;
-        }
-        if (!sublocation) {
-            showStatus('Please select a sublocation.', 'warning');
-            return;
-        }
-
-        var mainLocation = mainType + ' ' + mainNumber;
-        var sublocStr = '';
-        if (sublocation === 'CUSTOM') {
-            var custom = scanCustomSublocation ? scanCustomSublocation.value.trim() : '';
-            if (!custom) {
-                showStatus('Please enter custom sublocation text.', 'warning');
-                return;
-            }
-            sublocStr = custom;
-        } else if (sublocation !== 'NA') {
-            var names = { 'LT': 'Left Top', 'RT': 'Right Top', 'LB': 'Left Bottom', 'RB': 'Right Bottom' };
-            sublocStr = names[sublocation] || '';
-        }
-
-        var today = getLocalMSTDate();
-
-        var updated = 0;
-        for (var i = records.length - 1; i >= 0; i--) {
-            var record = records[i];
-            var counter = records.length - i;
-            var parts = [];
-            if (genre) parts.push(genre);
-            if (mainLocation) parts.push(mainLocation);
-            if (sublocStr) parts.push(sublocStr);
-            parts.push(String(counter));
-            var locationString = parts.join(' | ');
-
-            try {
-                apiRequest('PUT', '/records/' + record.id, {
-                    location: locationString,
-                    last_seen: today
-                }).then(function() {
-                    record.location = locationString;
-                    record.last_seen = today;
-                }).catch(function(e) {
-                    console.error('Failed to update record', record.id, e);
-                });
-                updated++;
-            } catch (e) {
-                console.error('Failed to update record', record.id, e);
-            }
-        }
-
-        if (updated > 0) {
-            var firstRecord = records[0];
-            var firstCounter = records.length;
-            var firstParts = [];
-            if (genre) firstParts.push(genre);
-            if (mainLocation) firstParts.push(mainLocation);
-            if (sublocStr) firstParts.push(sublocStr);
-            firstParts.push(String(firstCounter));
-            lastSubmittedLocation = firstParts.join(' | ');
-            localStorage.setItem('lastSubmittedLocation', lastSubmittedLocation);
-        }
-
-        filteredRecords = [];
-        totalRecords = 0;
-        currentPage = 1;
-        renderPagination();
-        renderTablePage();
-
-        showStatus('✅ Applied location to ' + updated + ' of ' + records.length + ' scanned records.', 'success');
-        playSound('success');
-        resetScanCounter();
-        updateScanLocationPreview();
-    }
-
     // ========== Custom Item Modal ==========
     var customItemModal = null;
 
@@ -2768,7 +3388,7 @@
         var priceInput = document.getElementById('custom-item-price');
         var statusDiv = document.getElementById('custom-item-status');
 
-        function showStatus(msg, type) {
+        function showStatusMsg(msg, type) {
             if (statusDiv) {
                 statusDiv.textContent = msg;
                 statusDiv.className = 'status-message status-' + type;
@@ -2782,11 +3402,11 @@
         var price = parseFloat(priceInput.value);
 
         if (!desc) {
-            showStatus('Please enter a description.', 'warning');
+            showStatusMsg('Please enter a description.', 'warning');
             return;
         }
         if (isNaN(price) || price <= 0) {
-            showStatus('Please enter a valid price greater than 0.', 'warning');
+            showStatusMsg('Please enter a valid price greater than 0.', 'warning');
             return;
         }
 
@@ -2800,7 +3420,7 @@
         };
 
         checkoutSelectedItems.push(customItem);
-        showStatus('Added custom item: "' + desc + '" for $' + price.toFixed(2), 'success');
+        showStatusMsg('Added custom item: "' + desc + '" for $' + price.toFixed(2), 'success');
         closeCustomItemModal();
 
         checkoutViewMode = 'list';
@@ -2880,7 +3500,6 @@
 
     // ========== Add Record from Discogs ==========
     async function addRecordFromDiscogs(row, discogsRecord) {
-        // ===== BLOCK: No purchase selected =====
         if (!selectedPurchaseId) {
             showStatus('⚠️ Please select a purchase from the table before adding records.', 'error');
             playSound('error');
@@ -2950,7 +3569,6 @@
         var result = await apiRequest('POST', '/records', recordData);
         showStatus('✅ Record #' + result.record.id + ' added successfully to purchase #' + selectedPurchaseId + '!', 'success');
         
-        // Reload records for this purchase
         await loadRecordsForPurchase(selectedPurchaseId);
         await loadPurchasesTable();
         
@@ -2969,7 +3587,6 @@
         var mode = currentSearchMode;
 
         if (mode === 'add') {
-            // ===== BLOCK: No purchase selected =====
             if (!selectedPurchaseId) {
                 showStatus('⚠️ Please select a purchase from the table before searching.', 'error');
                 playSound('error');
@@ -3064,202 +3681,7 @@
         updateSelectionCount();
     }
 
-    // ========== SCAN MODE with Duplicate Scoring ==========
-    function getArtistSortKey(artistName) {
-        if (!artistName) return '';
-        var name = artistName.trim();
-        name = name.replace(/^the\s+/i, '');
-        var numberMap = {
-            '10,000': 'ten thousand',
-            '10000': 'ten thousand',
-            '1000': 'one thousand',
-            '100': 'one hundred'
-        };
-        var numberMatch = name.match(/^(\d{1,5}(?:,\d{3})?)\s+/);
-        if (numberMatch) {
-            var numberStr = numberMatch[1];
-            if (numberMap[numberStr]) {
-                name = numberMap[numberStr] + ' ' + name.substring(numberMatch[0].length);
-            }
-        }
-        return name.charAt(0).toUpperCase();
-    }
-
-    function calculateMatchScore(record, recentScansList) {
-        if (!recentScansList || recentScansList.length === 0) return 0;
-        var recordSortKey = getArtistSortKey(record.artist);
-        var score = 0;
-        for (var i = 0; i < recentScansList.length; i++) {
-            var recent = recentScansList[i];
-            var weight = Math.pow(0.5, i);
-            if (recent.sortKey === recordSortKey) {
-                score += 100 * weight;
-            }
-            var recentArtistLower = recent.artist.toLowerCase();
-            var recordArtistLower = record.artist.toLowerCase();
-            var recentFirstWord = recentArtistLower.replace(/^the\s+/, '').split(' ')[0];
-            var recordFirstWord = recordArtistLower.replace(/^the\s+/, '').split(' ')[0];
-            if (recentFirstWord === recordFirstWord && recentFirstWord.length > 2) {
-                score += 30 * weight;
-            }
-        }
-        if (record.status_id === 2) {
-            score += 50;
-        }
-        if (record.status_id === 3) {
-            score -= 100;
-        }
-        return score;
-    }
-
-    function addToRecentScans(record, locationString) {
-        if (recentScans.length > 0 && recentScans[0].record.id === record.id) {
-            return;
-        }
-        recentScans.unshift({
-            record: record,
-            location: locationString,
-            timestamp: Date.now()
-        });
-        if (recentScans.length > MAX_RECENT_SCANS) {
-            recentScans.pop();
-        }
-        try {
-            var serialized = recentScans.map(function(s) {
-                return {
-                    recordId: s.record.id,
-                    artist: s.record.artist,
-                    location: s.location,
-                    timestamp: s.timestamp
-                };
-            });
-            localStorage.setItem('recentScans', JSON.stringify(serialized));
-        } catch (e) {}
-    }
-
-    function loadRecentScansFromStorage() {
-        try {
-            var stored = localStorage.getItem('recentScans');
-            if (stored) {
-                var parsed = JSON.parse(stored);
-                recentScans = parsed.map(function(item) {
-                    return {
-                        record: { id: item.recordId, artist: item.artist || 'Unknown' },
-                        location: item.location,
-                        timestamp: item.timestamp
-                    };
-                });
-                console.log('📋 Loaded ' + recentScans.length + ' recent scans from storage');
-            }
-        } catch (e) {
-            console.warn('Could not load recent scans from storage:', e);
-        }
-    }
-
-    async function performScanSearch(term) {
-        try {
-            var data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
-            if (!data.records || !data.records.length) {
-                playSound('error');
-                showStatus('No record found with that barcode or ID', 'error');
-                if (searchInput) searchInput.value = '';
-                return;
-            }
-
-            var records = data.records;
-
-            if (records.length === 1) {
-                var record = records[0];
-                await processScannedRecord(record);
-                return;
-            }
-
-            var recentScansList = recentScans.map(function(s) {
-                return {
-                    artist: s.record.artist,
-                    sortKey: getArtistSortKey(s.record.artist)
-                };
-            });
-
-            var scored = records.map(function(record) {
-                return {
-                    record: record,
-                    score: calculateMatchScore(record, recentScansList)
-                };
-            });
-
-            scored.sort(function(a, b) { return b.score - a.score; });
-
-            var best = scored[0];
-            var secondBest = scored.length > 1 ? scored[1] : null;
-            var bestScore = best.score;
-            var secondScore = secondBest ? secondBest.score : 0;
-
-            var HIGH_CONFIDENCE_SCORE = 100;
-            var GAP_THRESHOLD = 40;
-            var AUTO_SELECT_SCORE = 80;
-            var AUTO_SELECT_GAP = 30;
-
-            var selectedRecord = null;
-            var confidence = 'low';
-
-            if (bestScore > HIGH_CONFIDENCE_SCORE && (bestScore - secondScore) > GAP_THRESHOLD) {
-                selectedRecord = best.record;
-                confidence = 'high';
-                console.log('🎯 High confidence auto-select: ' + selectedRecord.artist + ' - ' + selectedRecord.title + ' (score ' + bestScore + ')');
-            } else if (bestScore > AUTO_SELECT_SCORE && (bestScore - secondScore) > AUTO_SELECT_GAP) {
-                selectedRecord = best.record;
-                confidence = 'medium';
-                console.log('🎯 Medium confidence auto-select: ' + selectedRecord.artist + ' - ' + selectedRecord.title + ' (score ' + bestScore + ')');
-            }
-
-            if (selectedRecord) {
-                playSound('success');
-                showStatus('🎯 Auto-selected: ' + selectedRecord.artist + ' - ' + selectedRecord.title + ' (' + confidence + ' confidence)', 'success');
-                await processScannedRecord(selectedRecord);
-                return;
-            }
-
-            playSound('error');
-            showStatus('⚠️ Multiple records (' + records.length + ') found for barcode. Confidence too low to auto-select. Please use a unique barcode or ID.', 'error');
-            if (searchInput) searchInput.value = '';
-
-        } catch (error) {
-            playSound('error');
-            showStatus('Error scanning: ' + error.message, 'error');
-            console.error('Scan search error:', error);
-            if (searchInput) searchInput.value = '';
-        }
-    }
-
-    async function processScannedRecord(record) {
-        var existing = filteredRecords.find(function(r) { return r.id === record.id; });
-        if (existing) {
-            var today = getLocalMSTDate();
-            existing.last_seen = today;
-            renderPagination();
-            renderTablePage();
-            playSound('success');
-            showStatus('✅ Updated last_seen for #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
-            if (searchInput) searchInput.value = '';
-            addToRecentScans(record, record.location || '');
-            return;
-        }
-
-        filteredRecords.unshift(record);
-        totalRecords = filteredRecords.length;
-        currentPage = 1;
-        renderPagination();
-        renderTablePage();
-        playSound('success');
-        showStatus('✅ Added #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
-        updateSelectionCount();
-        if (searchInput) searchInput.value = '';
-        addToRecentScans(record, record.location || '');
-        updateScanCounter();
-    }
-
-    // ========== Discogs search, etc. ==========
+    // ========== Discogs search ==========
     async function performDiscogsSearch(term) {
         currentMode = 'search';
         recordsTableBody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Searching Discogs...</td></tr>';
@@ -3341,6 +3763,10 @@
         showStatus('Found ' + totalRecords + ' records matching "' + term + '"', 'info');
     }
 
+    function performDeleteSearch(term) {
+        applyDeleteFilter();
+    }
+
     function clearSearch() {
         searchInput.value = '';
         if (currentSearchMode === 'add') {
@@ -3356,7 +3782,7 @@
                 renderTablePage();
             }
         } else if (currentSearchMode === 'scan') {
-            // keep list
+            // keep list - don't clear scanned records
         } else if (currentSearchMode === 'refund') {
             filteredRecords = [];
             totalRecords = 0;
@@ -4271,7 +4697,6 @@
             var recordIds = records.map(function(r) { return r.id; });
             var titles = records.map(function(r) { return r.artist + ' - ' + r.title; });
 
-            // ADD PAYMENT ENTRY FOR SQUARE
             var squareAmount = checkoutTotal;
             addPaymentEntry('Card (Square)', squareAmount);
 
@@ -4290,7 +4715,6 @@
 
             var data = await response.json();
             if (data.status !== 'success') {
-                // If Square fails, remove the payment entry we just added
                 if (checkoutPaymentEntries.length > 0) {
                     var lastEntry = checkoutPaymentEntries[checkoutPaymentEntries.length - 1];
                     if (lastEntry.method === 'Card (Square)') {
@@ -4433,7 +4857,6 @@
         var orderId = generateOrderId();
         var totalAmount = 0;
 
-        // ===== NEW: Create sale journal entry =====
         var paymentMethod = checkoutPaymentEntries.length > 0 ? checkoutPaymentEntries[0].method : 'Cash';
         var paymentMethodMap = {
             'Cash': 'cash',
@@ -4443,12 +4866,10 @@
         };
         var salePaymentMethod = paymentMethodMap[paymentMethod] || 'cash';
         
-        // Calculate total amount from all items (excluding tax for the sale entry)
         for (var i = 0; i < selected.length; i++) {
             totalAmount += (selected[i].store_price || 0);
         }
 
-        // Prepare sale items for accounting
         var saleItems = selected.map(function(item) {
             return {
                 id: item.id,
@@ -4461,7 +4882,6 @@
             };
         });
 
-        // Create the sale journal entry
         try {
             console.log('🛒 Creating sale journal entry for order:', orderId, 'total:', totalAmount);
             var saleResult = await apiRequest('POST', '/api/accounting/sale', {
@@ -4478,7 +4898,6 @@
             }
         } catch (err) {
             console.error('❌ Error creating sale journal entry:', err);
-            // Continue with checkout even if accounting fails
         }
 
         for (var i = 0; i < regularRecords.length; i++) {
@@ -4750,7 +5169,7 @@
         var modal = document.createElement('div');
         modal.id = 'checkout-payment-modal';
         modal.className = 'modal-overlay';
-        modal.innerHTML = '<div class="modal-content" style="max-width: 550px; width: 95%;"><div class="modal-header" style="background: #007bff; color: white;"><h3 class="modal-title"><i class="fas fa-shopping-cart"></i> Checkout</h3><button class="modal-close" onclick="document.getElementById(\'checkout-payment-modal\').style.display=\'none\'" style="color: white;">&times;</button></div><div class="modal-body"><p><strong>' + selected.length + '</strong> item(s) selected.</p><div style="font-size: 20px; font-weight: bold; margin: 10px 0;">Total: $' + grandTotal.toFixed(2) + '</div><div style="font-size: 16px; margin: 10px 0; color: #28a745;">Remaining: $<span id="checkout-remaining">' + grandTotal.toFixed(2) + '</span></div><div style="background: #e3f2fd; padding: 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #b8daff;"><div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;"><input type="text" id="checkout-debtor-code" placeholder="GIFT-XXXXX or debtor name" style="flex: 2; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"><button class="btn btn-sm btn-primary" onclick="lookupDebtorForCheckout()" style="padding: 6px 12px;"><i class="fas fa-search"></i> Lookup</button></div><div id="checkout-debtor-info" style="display: none; margin-top: 8px; padding: 8px; background: white; border-radius: 4px;"><div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;"><span><strong id="checkout-debtor-name">—</strong> <span id="checkout-debtor-type" style="font-size: 12px; color: #666;">(Store Credit)</span></span><span style="font-weight: bold; color: #28a745;">Balance: $<span id="checkout-debtor-balance">0.00</span></span></div><div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;"><button class="btn btn-sm btn-success" onclick="applyDebtorToCheckout()" style="padding: 6px 12px;"><i class="fas fa-check"></i> Apply Credit</button><button class="btn btn-sm btn-secondary" onclick="document.getElementById(\'checkout-debtor-info\').style.display=\'none\'"><i class="fas fa-times"></i> Cancel</button></div><div id="checkout-debtor-status" style="font-size: 13px; margin-top: 5px;"></div></div><div style="font-size: 12px; color: #666; margin-top: 6px;"><i class="fas fa-info-circle"></i> Enter a gift card code (GIFT-XXXXX) or a store credit debtor name. Click Apply to use the balance.</div></div><div style="display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0;"><input type="number" id="checkout-payment-amount" class="form-control" placeholder="Amount" step="0.01" min="0" style="flex: 1; min-width: 100px;"><select id="checkout-payment-method" class="form-control" style="flex: 1; min-width: 120px;"><option value="Cash" selected>Cash</option><option value="Card (Square)">Card (Square)</option></select><button class="btn btn-primary" id="checkout-add-payment" style="background: #007bff; color: white;"><i class="fas fa-plus"></i> Add Payment</button></div><div id="checkout-square-warning" style="display:none; padding:8px; background:#fff3cd; border-radius:4px; margin-bottom:10px;">⚠️ Square POS is not available. Card option is disabled.</div><div id="checkout-square-status" style="margin-top:10px; padding:10px; border-radius:4px; display:none; background:#f8f9fa; border:1px solid #ddd;"></div><div id="checkout-payment-entries" style="max-height: 150px; overflow-y: auto; margin: 10px 0;"></div><div id="checkout-payment-status" style="margin-top: 10px; display: none;"></div><button class="btn btn-success" id="checkout-complete-payment" style="width: 100%; margin-top: 10px;" disabled>Complete Payment</button></div><div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById(\'checkout-payment-modal\').style.display=\'none\'">Cancel</button></div></div>';
+        modal.innerHTML = '<div class="modal-content" style="max-width: 550px; width: 95%;"><div class="modal-header" style="background: #007bff; color: white;"><h3 class="modal-title"><i class="fas fa-shopping-cart"></i> Checkout</h3><button class="modal-close" onclick="document.getElementById(\'checkout-payment-modal\').style.display=\'none\'" style="color: white;">&times;</button></div><div class="modal-body"><p><strong>' + selected.length + '</strong> item(s) selected.</p><div style="font-size: 20px; font-weight: bold; margin: 10px 0;">Total: $' + grandTotal.toFixed(2) + '</div><div style="font-size: 16px; margin: 10px 0; color: #28a745;">Remaining: $<span id="checkout-remaining">' + grandTotal.toFixed(2) + '</span></div><div style="background: #e3f2fd; padding: 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #b8daff;"><div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;"><input type="text" id="checkout-debtor-code" placeholder="GIFT-XXXXX or debtor name" style="flex: 2; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"><button class="btn btn-sm btn-primary" onclick="lookupDebtorForCheckout()" style="padding: 6px 12px;"><i class="fas fa-search"></i> Lookup</button></div><div id="checkout-debtor-info" style="display: none; margin-top: 8px; padding: 8px; background: white; border-radius: 4px;"><div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;"><span><strong id="checkout-debtor-name">—</strong> <span id="checkout-debtor-type" style="font-size: 12px; color: #666;">(Store Credit)</span></span><span style="font-weight: bold; color: #28a745;">Balance: $<span id="checkout-debtor-balance">0.00</span></span></div><div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;"><button class="btn btn-sm btn-success" onclick="applyDebtorToCheckout()" style="padding: 6px 12px;"><i class="fas fa-check"></i> Apply Credit</button><button class="btn btn-sm btn-secondary" onclick="document.getElementById(\'checkout-debtor-info\').style.display=\'none\'"><i class="fas fa-times"></i> Cancel</button></div><div id="checkout-debtor-status" style="font-size: 13px; margin-top: 5px;"></div></div><div style="font-size: 12px; color: #666; margin-top: 6px;"><i class="fas fa-info-circle"></i> Enter a gift card code (GIFT-XXXXX) or a store credit debtor name. Click Apply to use the balance.</div></div><div style="display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0;"><input type="number" id="checkout-payment-amount" class="form-control" placeholder="Amount" step="0.01" min="0" style="flex: 1; min-width: 100px;"><select id="checkout-payment-method" class="form-control" style="flex: 1; min-width: 120px;"><option value="Cash" selected>Cash</option><option value="Card (Square)">Card (Square)</option></select></div><button class="btn btn-primary" id="checkout-add-payment" style="background: #007bff; color: white;"><i class="fas fa-plus"></i> Add Payment</button></div><div id="checkout-square-warning" style="display:none; padding:8px; background:#fff3cd; border-radius:4px; margin-bottom:10px;">⚠️ Square POS is not available. Card option is disabled.</div><div id="checkout-square-status" style="margin-top:10px; padding:10px; border-radius:4px; display:none; background:#f8f9fa; border:1px solid #ddd;"></div><div id="checkout-payment-entries" style="max-height: 150px; overflow-y: auto; margin: 10px 0;"></div><div id="checkout-payment-status" style="margin-top: 10px; display: none;"></div><button class="btn btn-success" id="checkout-complete-payment" style="width: 100%; margin-top: 10px;" disabled>Complete Payment</button></div><div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById(\'checkout-payment-modal\').style.display=\'none\'">Cancel</button></div></div>';
         document.body.appendChild(modal);
         console.log('🛒 Modal created and appended');
 
@@ -5041,7 +5460,6 @@
     function handleCompleteAction() {
         var mode = currentSearchMode;
         console.log('🔵 handleCompleteAction called for mode: ' + mode);
-        console.log('🔵 completeActionBtn element:', completeActionBtn);
         
         if (mode === 'add') {
             console.log('🔵 Add mode - showing info');
@@ -5051,22 +5469,17 @@
             applyScanLocation();
         } else if (mode === 'discogs') {
             console.log('🔵 Discogs mode - showing post modal');
-            console.log('🔵 handleCompleteAction: calling showDiscogsPostModal');
             showDiscogsPostModal();
         } else if (mode === 'delete') {
             console.log('🔵 Delete mode - deleting selected');
             deleteSelected();
         } else if (mode === 'checkout') {
             console.log('🔵 Checkout mode - showing checkout modal');
-            console.log('🔵 checkoutSelectedItems length: ' + checkoutSelectedItems.length);
             if (checkoutSelectedItems.length === 0) {
-                console.log('🔵 No items in checkout');
                 showStatus('No items in checkout.', 'warning');
                 return;
             }
-            console.log('🔵 Calling showCheckoutModal...');
             showCheckoutModal();
-            console.log('🔵 showCheckoutModal returned');
         } else if (mode === 'discogs_orders') {
             console.log('🔵 Discogs Orders mode - processing order');
             processDiscogsOrder();
@@ -5076,6 +5489,55 @@
         } else {
             console.log('🔵 Unknown mode: ' + mode);
             showStatus('No action available for this mode', 'warning');
+        }
+    }
+
+    // ========== NEW: Apply Scan Location ==========
+    async function applyScanLocation() {
+        var records = filteredRecords;
+        if (records.length === 0) {
+            showStatus('No scanned records to process.', 'warning');
+            return;
+        }
+
+        if (!scanSession.is_ready) {
+            showStatus('⚠️ Please select genre, format, area, and sublocation first', 'warning');
+            return;
+        }
+
+        var recordIds = records.map(function(r) { return r.id; });
+        var startIndex = scanSession.location_index - records.length;
+
+        try {
+            var result = await apiRequest('POST', '/api/scan/apply-location', {
+                record_ids: recordIds,
+                genre_id: scanSession.genre_id,
+                format_id: scanSession.format_id,
+                area_id: scanSession.area_id,
+                sublocation_id: scanSession.sublocation_id,
+                location_index_start: startIndex > 0 ? startIndex : 1
+            });
+
+            if (result.status === 'success') {
+                showStatus('✅ Applied location to ' + result.updated_count + ' records', 'success');
+                playSound('success');
+                
+                filteredRecords = [];
+                totalRecords = 0;
+                currentPage = 1;
+                renderPagination();
+                renderTablePage();
+                updateSelectionCount();
+                
+                scanSession.location_index = 1;
+                updateScanPreview();
+            } else {
+                showStatus('❌ ' + (result.error || 'Failed to apply location'), 'error');
+                playSound('error');
+            }
+        } catch (error) {
+            showStatus('❌ Error: ' + error.message, 'error');
+            playSound('error');
         }
     }
 
@@ -5147,10 +5609,7 @@
 
         if (completeActionBtn && mode !== 'add') {
             if (mode === 'scan') {
-                var genre = scanGenreSelect ? scanGenreSelect.value : '';
-                var sublocation = scanSublocation ? scanSublocation.value : '';
-                var isValid = genre && sublocation && hasRecords;
-                completeActionBtn.disabled = !isValid;
+                completeActionBtn.disabled = !(scanSession.is_ready && hasRecords);
             } else if (mode === 'discogs') {
                 completeActionBtn.disabled = !hasSelection;
             } else if (mode === 'delete') {
@@ -5287,10 +5746,8 @@
 
         cancelRangeSelection();
 
-        // ===== NEW: Set active container =====
         setActiveMode(newMode);
 
-        // ===== CLEAR PURCHASE SELECTION IF NOT IN ADD MODE =====
         if (newMode !== 'add') {
             if (selectedPurchaseId) {
                 clearPurchaseSelection();
@@ -5306,14 +5763,16 @@
             if (!selectedPurchaseId) {
                 clearPurchaseSelection();
             }
+            loadAllDomainData();
         } else if (newMode === 'scan') {
             filteredRecords = [];
             totalRecords = 0;
             currentPage = 1;
             renderPagination();
             renderTablePage();
-            showStatus('Scan mode: Scan barcodes to build the list.', 'info');
-            resetScanCounter();
+            showStatus('📍 Scan mode: Select location components, then scan barcodes.', 'info');
+            resetScanSession();
+            loadAllDomainData();
         } else if (newMode === 'discogs') {
             filteredRecords = [];
             totalRecords = 0;
@@ -5469,84 +5928,84 @@
         await loadAccounts();
         console.log('📥 Loading stats...');
         await loadStats();
-        console.log('📥 Loading genres...');
-        await loadGenres();
+        console.log('📥 Loading domain data...');
+        await loadAllDomainData();
 
         console.log('📥 Populating default param selects...');
         populateDefaultParamSelects();
 
-        if (scanGenreSelect) {
-            scanGenreSelect.addEventListener('change', updateScanLocationPreview);
-        }
-        if (scanMainLocationType) {
-            scanMainLocationType.addEventListener('change', updateScanLocationPreview);
-        }
-        if (scanMainLocationNumber) {
-            scanMainLocationNumber.addEventListener('input', updateScanLocationPreview);
-        }
-        if (scanSublocation) {
-            scanSublocation.addEventListener('change', function() {
-                var customContainer = document.getElementById('scan-custom-sublocation-container');
-                if (this.value === 'CUSTOM') {
-                    if (customContainer) customContainer.style.display = 'block';
-                } else {
-                    if (customContainer) customContainer.style.display = 'none';
-                }
-                updateScanLocationPreview();
-            });
-        }
-        if (scanCustomSublocation) {
-            scanCustomSublocation.addEventListener('input', updateScanLocationPreview);
-        }
-        if (scanAddGenreBtn) {
-            scanAddGenreBtn.addEventListener('click', function() {
-                var genreName = scanNewGenreInput ? scanNewGenreInput.value.trim() : '';
-                if (!genreName) {
-                    showScanGenreStatus('Please enter a genre name.', 'warning');
-                    return;
-                }
-                var formattedName = genreName.split(' ').map(function(word) {
-                    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-                }).join(' ');
-                
-                if (genres.includes(formattedName)) {
-                    showScanGenreStatus('Genre "' + formattedName + '" already exists.', 'warning');
-                    if (scanGenreSelect) scanGenreSelect.value = formattedName;
-                    if (scanNewGenreInput) scanNewGenreInput.value = '';
-                    updateScanLocationPreview();
-                    return;
-                }
-                
-                genres.push(formattedName);
-                genres.sort();
-                
-                if (scanGenreSelect) {
-                    var currentVal = scanGenreSelect.value;
-                    scanGenreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
-                    genres.forEach(function(g) {
-                        var opt = document.createElement('option');
-                        opt.value = g;
-                        opt.textContent = g;
-                        scanGenreSelect.appendChild(opt);
-                    });
-                    scanGenreSelect.value = formattedName;
-                }
-                if (scanNewGenreInput) scanNewGenreInput.value = '';
-                showScanGenreStatus('✅ Genre "' + formattedName + '" added.', 'success');
-                playSound('success');
-                updateScanLocationPreview();
-            });
-        }
-        if (scanNewGenreInput) {
-            scanNewGenreInput.addEventListener('keydown', function(e) {
+        // Set up scan dropdown event listeners
+        if (scanGenreSelect) scanGenreSelect.addEventListener('change', onScanSelectionChange);
+        if (scanFormatSelect) scanFormatSelect.addEventListener('change', onScanSelectionChange);
+        if (scanAreaSelect) scanAreaSelect.addEventListener('change', onScanSelectionChange);
+        if (scanSublocationSelect) scanSublocationSelect.addEventListener('change', onScanSelectionChange);
+
+        // Set up scan input
+        if (scanInput) {
+            scanInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    if (scanAddGenreBtn) scanAddGenreBtn.click();
+                    var term = this.value.trim();
+                    if (term) {
+                        performScanSearch(term);
+                    }
                 }
             });
         }
-        if (scanResetCounterBtn) {
-            scanResetCounterBtn.addEventListener('click', resetScanCounter);
+
+        if (scanSubmitBtn) {
+            scanSubmitBtn.addEventListener('click', function() {
+                var term = scanInput ? scanInput.value.trim() : '';
+                if (term) {
+                    performScanSearch(term);
+                }
+            });
+        }
+
+        // Set up filter buttons
+        if (applyFiltersBtn) {
+            applyFiltersBtn.addEventListener('click', applyFilters);
+        }
+        if (clearFiltersBtn) {
+            clearFiltersBtn.addEventListener('click', clearFilters);
+        }
+
+        // Set up domain management buttons
+        if (addGenreBtn) {
+            addGenreBtn.addEventListener('click', window.addGenre);
+        }
+        if (addFormatBtn) {
+            addFormatBtn.addEventListener('click', window.addFormat);
+        }
+        if (addAreaBtn) {
+            addAreaBtn.addEventListener('click', window.addArea);
+        }
+        if (addSublocationBtn) {
+            addSublocationBtn.addEventListener('click', window.addSublocation);
+        }
+
+        // Area filter for sublocations
+        if (sublocationAreaFilter) {
+            sublocationAreaFilter.addEventListener('change', function() {
+                renderSublocationsList();
+            });
+        }
+
+        // New sublocation area dropdown
+        if (newSublocationArea) {
+            areas.forEach(function(a) {
+                var opt = document.createElement('option');
+                opt.value = a.id;
+                opt.textContent = a.name;
+                newSublocationArea.appendChild(opt);
+            });
+        }
+
+        // Filter area change - update sublocation dropdown
+        if (filterArea) {
+            filterArea.addEventListener('change', function() {
+                populateFilterDropdowns();
+            });
         }
 
         searchModeSelect.addEventListener('change', onModeChange);
@@ -5610,7 +6069,6 @@
         completeActionBtn.addEventListener('click', handleCompleteAction);
         console.log('🔘 completeActionBtn click handler attached in init');
 
-        // Load purchases table on init
         await loadPurchasesTable();
 
         if (discogsLocationSelect) {
@@ -5685,24 +6143,11 @@
             });
         }
 
-        loadRecentScansFromStorage();
-
         currentSearchMode = searchModeSelect.value;
         onModeChange();
 
         _initialized = true;
         console.log('✅ inventory-ops.js initialized');
-    }
-
-    function showScanGenreStatus(message, type) {
-        var el = document.getElementById('scan-genre-status');
-        if (!el) return;
-        type = type || 'info';
-        var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-        el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
-        el.className = 'status-message status-' + type;
-        el.style.display = 'block';
-        setTimeout(function() { el.style.display = 'none'; }, 3000);
     }
 
     // ========== EXPOSE INIT FUNCTION FOR TABMANAGER ==========
@@ -5727,93 +6172,6 @@
             }
         }, 1000);
     }
-
-    // ========== BILL MODAL FUNCTIONS ==========
-
-    function openBillModal() {
-        var container = document.getElementById('bill-preview-container');
-        if (!container) return;
-        
-        var billPath = container.dataset.billPath || '';
-        var billType = container.dataset.billType || '';
-        
-        var modal = document.getElementById('bill-modal');
-        var modalImg = document.getElementById('bill-modal-image');
-        var modalPlaceholder = document.getElementById('bill-modal-placeholder');
-        var modalPdf = document.getElementById('bill-modal-pdf');
-        var modalPdfIframe = document.getElementById('bill-modal-pdf-iframe');
-        var modalFilename = document.getElementById('bill-modal-filename');
-        var downloadLink = document.getElementById('bill-modal-download');
-        
-        if (!modal) return;
-        
-        modalImg.style.display = 'none';
-        modalPdf.style.display = 'none';
-        modalPlaceholder.style.display = 'none';
-        downloadLink.style.display = 'none';
-        modalImg.src = '';
-        modalPdfIframe.src = '';
-        
-        if (!billPath) {
-            modalPlaceholder.style.display = 'block';
-            modalPlaceholder.innerHTML = '<i class="fas fa-receipt" style="font-size: 48px; display: block; margin-bottom: 15px;"></i>No bill of sale uploaded for this draft.';
-            modal.style.display = 'flex';
-            return;
-        }
-        
-        var filename = billPath.split('/').pop();
-        modalFilename.textContent = 'File: ' + filename;
-        
-        downloadLink.href = billPath;
-        downloadLink.download = filename;
-        downloadLink.style.display = 'inline-block';
-        
-        if (billType === 'pdf' || billPath.toLowerCase().endsWith('.pdf')) {
-            modalPdf.style.display = 'block';
-            modalPdfIframe.src = billPath;
-            modalPlaceholder.style.display = 'none';
-            modalImg.style.display = 'none';
-        } else {
-            modalImg.src = billPath;
-            modalImg.style.display = 'block';
-            modalImg.onerror = function() {
-                this.style.display = 'none';
-                modalPlaceholder.style.display = 'block';
-                modalPlaceholder.innerHTML = '<i class="fas fa-exclamation-triangle" style="font-size: 48px; display: block; margin-bottom: 15px; color: #dc3545;"></i>Could not load image. The file may be missing or corrupted.';
-            };
-            modalPdf.style.display = 'none';
-            modalPlaceholder.style.display = 'none';
-        }
-        
-        modal.style.display = 'flex';
-    }
-
-    function closeBillModal() {
-        var modal = document.getElementById('bill-modal');
-        if (modal) {
-            modal.style.display = 'none';
-            var iframe = document.getElementById('bill-modal-pdf-iframe');
-            if (iframe) {
-                iframe.src = '';
-            }
-        }
-    }
-
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            closeBillModal();
-        }
-    });
-
-    document.addEventListener('click', function(e) {
-        var modal = document.getElementById('bill-modal');
-        if (modal && e.target === modal) {
-            closeBillModal();
-        }
-    });
-
-    window.openBillModal = openBillModal;
-    window.closeBillModal = closeBillModal;
 
     // ========== Expose all globals ==========
     window.refreshDiscogsLocations = loadDiscogsLocations;
@@ -5850,7 +6208,16 @@
     window.togglePurchaseTable = togglePurchaseTable;
     window.toggleMetadataPanel = toggleMetadataPanel;
 
-    // ===== EXPOSE applyDefaultParams and clearDefaultParams =====
+    // Expose domain management functions
+    window.addGenre = addGenre;
+    window.deleteGenre = deleteGenre;
+    window.addFormat = addFormat;
+    window.deleteFormat = deleteFormat;
+    window.addArea = addArea;
+    window.deleteArea = deleteArea;
+    window.addSublocation = addSublocation;
+    window.deleteSublocation = deleteSublocation;
+
     window.applyDefaultParams = applyDefaultParams;
     window.clearDefaultParams = clearDefaultParams;
 
