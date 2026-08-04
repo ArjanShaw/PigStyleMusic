@@ -6318,219 +6318,7 @@ def accounting_get_bank_transactions():
         app.logger.error(f"Error fetching bank transactions: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
-@app.route('/api/accounting/bank/apply-multiple', methods=['POST'])
-@login_required
-@role_required(['admin'])
-def apply_multiple():
-    """
-    Apply multiple transactions to accounts.
-    Handles both unprocessed (new) and processed (update/reassign) transactions.
-    """
-    data = request.json
-    updates = data.get('updates', [])
-    if not updates:
-        return jsonify({'status': 'error', 'error': 'No updates provided'}), 400
-
-    conn = get_db()
-    cursor = conn.cursor()
-    processed = 0
-    created = 0
-    updated = 0
-    errors = []
-
-    # Pre-fetch Plaid transactions once
-    try:
-        all_plaid_tx = fetch_bank_transactions()
-    except Exception as e:
-        all_plaid_tx = []
-        app.logger.error(f"Failed to fetch Plaid transactions: {e}")
-
-    for item in updates:
-        transaction_id = item.get('transaction_id')
-        source_type = item.get('source_type', 'plaid')
-        target_account_id = item.get('target_account_id')
-        is_update = item.get('is_update', False)
-        
-        if not transaction_id or not target_account_id:
-            errors.append(f'Missing fields for {transaction_id}: transaction_id or target_account_id missing')
-            continue
-
-        # Find the transaction
-        tx = None
-        if source_type == 'plaid':
-            tx = next((t for t in all_plaid_tx if str(t['id']) == str(transaction_id)), None)
-        elif source_type in ['historic', 'bluevine']:
-            conn2 = get_db()
-            cur2 = conn2.cursor()
-            cur2.execute('SELECT id, transaction_date, amount, description FROM bank_transactions WHERE id = ?', (int(transaction_id),))
-            row = cur2.fetchone()
-            conn2.close()
-            if row:
-                tx = {
-                    'id': row['id'],
-                    'date': row['transaction_date'],
-                    'amount': row['amount'] / 100.0,
-                    'description': row['description']
-                }
-        elif source_type == 'paypal':
-            try:
-                plaid_tx = fetch_bank_transactions()
-                tx = next((t for t in plaid_tx if str(t['id']) == str(transaction_id)), None)
-                if tx:
-                    tx['amount'] = tx['amount']
-            except Exception as e:
-                errors.append(f'Failed to fetch PayPal transaction {transaction_id}: {str(e)}')
-                continue
-        elif source_type == 'square':
-            try:
-                import requests
-                access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
-                if not access_token:
-                    errors.append(f'Square access token not configured for transaction {transaction_id}')
-                    continue
-                headers = {
-                    'Authorization': f'Bearer {access_token}',
-                    'Content-Type': 'application/json',
-                    'Square-Version': '2026-01-22'
-                }
-                response = requests.get(f'https://connect.squareup.com/v2/payments/{transaction_id}', headers=headers, timeout=30)
-                if response.status_code == 200:
-                    payment = response.json().get('payment', {})
-                    amount = payment.get('amount_money', {}).get('amount', 0) / 100.0
-                    tx = {
-                        'id': transaction_id,
-                        'date': payment.get('updated_at', '').split('T')[0] if payment.get('updated_at') else datetime.now().strftime('%Y-%m-%d'),
-                        'amount': amount,
-                        'description': f"Square Payment: {transaction_id}"
-                    }
-                else:
-                    errors.append(f'Failed to fetch Square transaction {transaction_id}: {response.status_code}')
-                    continue
-            except Exception as e:
-                errors.append(f'Failed to fetch Square transaction {transaction_id}: {str(e)}')
-                continue
-        else:
-            errors.append(f'Unknown source_type: {source_type} for transaction {transaction_id}')
-            continue
-
-        if not tx:
-            errors.append(f'Transaction {transaction_id} not found in source {source_type}')
-            continue
-
-        amount = tx['amount']
-        date_raw = tx['date']
-        description = tx['description']
-
-        date_str = parse_plaid_date(date_raw) or datetime.now().date().isoformat()
-        amount_cents = int(round(abs(amount) * 100))
-        is_expense = amount < 0  # Negative = expense (Square convention)
-
-        # Get cash account for this source type
-        cash_id = get_cash_account_id(source_type)
-        if not cash_id:
-            errors.append(f'No cash account for source {source_type}, tx {transaction_id}')
-            continue
-
-        # Check if already processed
-        cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
-                       (source_type, str(transaction_id)))
-        existing = cursor.fetchone()
-
-        try:
-            if existing:
-                # If this is an update, delete the old entry first
-                if is_update:
-                    # Delete existing journal lines and entry
-                    cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
-                    cursor.execute('DELETE FROM journal_entries WHERE id = ?', (existing['id'],))
-                    
-                    # Mark bank_transaction as unprocessed if historic
-                    if source_type in ['historic', 'bluevine']:
-                        cursor.execute('UPDATE bank_transactions SET processed = 0 WHERE id = ?', (int(transaction_id),))
-                    updated += 1
-                    
-                    # Create new entry
-                    cursor.execute('''
-                        INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-                        VALUES (?, ?, ?, ?)
-                    ''', (date_str, f"Bank transaction: {description}", source_type, str(transaction_id)))
-                    entry_id = cursor.lastrowid
-                    created += 1
-                else:
-                    # Entry exists but not marked as update - just use it (clear old lines)
-                    cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
-                    entry_id = existing['id']
-                    created += 1
-            else:
-                # Create new entry
-                cursor.execute('''
-                    INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-                    VALUES (?, ?, ?, ?)
-                ''', (date_str, f"Bank transaction: {description}", source_type, str(transaction_id)))
-                entry_id = cursor.lastrowid
-                created += 1
-
-            # Insert the new lines
-            if is_expense:
-                # Expense: Debit target (expense), Credit source (cash)
-                cursor.execute('''
-                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                    VALUES (?, ?, ?, ?)
-                ''', (entry_id, target_account_id, amount_cents, 0))
-                cursor.execute('''
-                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                    VALUES (?, ?, ?, ?)
-                ''', (entry_id, cash_id, 0, amount_cents))
-            else:
-                # Revenue: Debit source (cash), Credit target (revenue)
-                cursor.execute('''
-                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                    VALUES (?, ?, ?, ?)
-                ''', (entry_id, cash_id, amount_cents, 0))
-                cursor.execute('''
-                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                    VALUES (?, ?, ?, ?)
-                ''', (entry_id, target_account_id, 0, amount_cents))
-
-            # Mark as processed in the appropriate table
-            if source_type in ['historic', 'bluevine']:
-                cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (int(transaction_id),))
-            elif source_type in ['paypal', 'square', 'plaid']:
-                # These are not stored locally, nothing to update
-                pass
-
-            conn.commit()
-            processed += 1
-
-        except Exception as e:
-            conn.rollback()
-            errors.append(f'Failed to process transaction {transaction_id}: {str(e)}')
-            app.logger.error(f"Error processing transaction {transaction_id}: {str(e)}")
-            app.logger.error(traceback.format_exc())
-            continue
-
-    conn.close()
-    
-    # Return detailed response with errors if any
-    if errors:
-        return jsonify({
-            'status': 'success',
-            'processed': processed,
-            'created': created,
-            'updated': updated,
-            'errors': errors,
-            'message': f'Processed {processed} transactions ({created} created, {updated} updated) with {len(errors)} error(s)'
-        })
-    else:
-        return jsonify({
-            'status': 'success',
-            'processed': processed,
-            'created': created,
-            'updated': updated,
-            'message': f'Processed {processed} transactions ({created} created, {updated} updated)'
-        })
-
+ 
 # ==================== DISCOGS ORDERS ENDPOINTS ====================
 
 @app.route('/api/discogs/orders', methods=['GET'])
@@ -11462,13 +11250,19 @@ def bank_paypal():
         ''', (tx['id'],))
         entry = cursor.fetchone()
         tx['processed'] = entry is not None
+        tx['account_id'] = None
         if entry:
-            # Get the account_id from journal lines
+            # Get the non-cash account (debit for expenses, credit for revenue)
             cursor.execute('''
                 SELECT jl.account_id
                 FROM journal_lines jl
                 WHERE jl.journal_entry_id = ?
-                AND jl.debit_amount > 0
+                AND (jl.debit_amount > 0 OR jl.credit_amount > 0)
+                AND jl.account_id != (
+                    SELECT id FROM accounts WHERE code IN ('1010', '1011', '1015', '1020', '1025', '1030')
+                    LIMIT 1
+                )
+                LIMIT 1
             ''', (entry['id'],))
             line = cursor.fetchone()
             if line:
@@ -11497,6 +11291,277 @@ def bank_paypal():
         'total_count': total,
         'unprocessed_count': unprocessed
     })
+
+@app.route('/api/accounting/bank/apply-multiple', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def apply_multiple():
+    """
+    Apply multiple transactions to accounts.
+    Handles both unprocessed (new) and processed (update/reassign) transactions.
+    """
+    data = request.json
+    updates = data.get('updates', [])
+    
+    # LOG: What we received
+    app.logger.info("=" * 60)
+    app.logger.info("APPLY_MULTIPLE CALLED")
+    app.logger.info(f"Updates received: {json.dumps(updates, indent=2)}")
+    app.logger.info("=" * 60)
+    
+    if not updates:
+        return jsonify({'status': 'error', 'error': 'No updates provided'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    processed = 0
+    created = 0
+    updated = 0
+    errors = []
+
+    # Pre-fetch Plaid transactions once (for FNBO)
+    try:
+        all_plaid_tx = fetch_bank_transactions()
+    except Exception as e:
+        all_plaid_tx = []
+        app.logger.error(f"Failed to fetch Plaid transactions: {e}")
+
+    for item in updates:
+        transaction_id = item.get('transaction_id')
+        source_type = item.get('source_type', 'plaid')
+        target_account_id = item.get('target_account_id')
+        is_update = item.get('is_update', False)
+        
+        # LOG: Processing this transaction
+        app.logger.info(f"Processing: tx_id={transaction_id}, source_type={source_type}, target={target_account_id}, is_update={is_update}")
+        
+        if not transaction_id or not target_account_id:
+            errors.append(f'Missing fields for {transaction_id}: transaction_id or target_account_id missing')
+            continue
+
+        # Find the transaction
+        tx = None
+        
+        if source_type == 'paypal':
+            app.logger.info(f"Handling PayPal transaction: {transaction_id}")
+            try:
+                # Get PayPal access token
+                conn2 = get_db()
+                cur2 = conn2.cursor()
+                cur2.execute("SELECT config_value FROM app_config WHERE config_key = 'plaid_paypal_access_token'")
+                row = cur2.fetchone()
+                conn2.close()
+                
+                if not row:
+                    errors.append(f'PayPal not connected for transaction {transaction_id}')
+                    continue
+                
+                access_token = row['config_value']
+                
+                # Fetch PayPal transactions using Plaid
+                client = get_plaid_client()
+                end_date = datetime.now().date()
+                start_date = end_date - timedelta(days=90)
+                
+                plaid_request = TransactionsGetRequest(
+                    access_token=access_token,
+                    start_date=start_date,
+                    end_date=end_date,
+                    options=TransactionsGetRequestOptions(count=500, offset=0)
+                )
+                
+                response = client.transactions_get(plaid_request)
+                plaid_transactions = response['transactions']
+                
+                # Find the specific transaction
+                tx_data = next((t for t in plaid_transactions if t['transaction_id'] == transaction_id), None)
+                
+                app.logger.info(f"PayPal tx found: {tx_data is not None}")
+                if tx_data:
+                    # Plaid transactions use 'name' for description
+                    tx = {
+                        'id': tx_data['transaction_id'],
+                        'date': tx_data['date'],
+                        'amount': -tx_data['amount'],  # Flip sign to match Square convention
+                        'description': tx_data.get('name', '')
+                    }
+            except Exception as e:
+                app.logger.error(f"Failed to fetch PayPal transaction {transaction_id}: {str(e)}")
+                errors.append(f'Failed to fetch PayPal transaction {transaction_id}: {str(e)}')
+                continue
+        elif source_type == 'plaid':
+            app.logger.info(f"Handling Plaid transaction: {transaction_id}")
+            tx = next((t for t in all_plaid_tx if str(t['id']) == str(transaction_id)), None)
+            app.logger.info(f"Plaid tx found: {tx is not None}")
+        elif source_type in ['historic', 'bluevine']:
+            app.logger.info(f"Handling Historic transaction: {transaction_id}")
+            conn2 = get_db()
+            cur2 = conn2.cursor()
+            cur2.execute('SELECT id, transaction_date, amount, description FROM bank_transactions WHERE id = ?', (int(transaction_id),))
+            row = cur2.fetchone()
+            conn2.close()
+            if row:
+                tx = {
+                    'id': row['id'],
+                    'date': row['transaction_date'],
+                    'amount': row['amount'] / 100.0,
+                    'description': row['description']
+                }
+            app.logger.info(f"Historic tx found: {tx is not None}")
+        elif source_type == 'square':
+            app.logger.info(f"Handling Square transaction: {transaction_id}")
+            try:
+                import requests
+                access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+                if not access_token:
+                    errors.append(f'Square access token not configured for transaction {transaction_id}')
+                    continue
+                headers = {
+                    'Authorization': f'Bearer {access_token}',
+                    'Content-Type': 'application/json',
+                    'Square-Version': '2026-01-22'
+                }
+                response = requests.get(f'https://connect.squareup.com/v2/payments/{transaction_id}', headers=headers, timeout=30)
+                if response.status_code == 200:
+                    payment = response.json().get('payment', {})
+                    amount = payment.get('amount_money', {}).get('amount', 0) / 100.0
+                    tx = {
+                        'id': transaction_id,
+                        'date': payment.get('updated_at', '').split('T')[0] if payment.get('updated_at') else datetime.now().strftime('%Y-%m-%d'),
+                        'amount': amount,
+                        'description': f"Square Payment: {transaction_id}"
+                    }
+                    app.logger.info(f"Square tx found: {tx is not None}")
+                else:
+                    app.logger.error(f"Failed to fetch Square transaction {transaction_id}: {response.status_code}")
+                    errors.append(f'Failed to fetch Square transaction {transaction_id}: {response.status_code}')
+                    continue
+            except Exception as e:
+                app.logger.error(f"Failed to fetch Square transaction {transaction_id}: {str(e)}")
+                errors.append(f'Failed to fetch Square transaction {transaction_id}: {str(e)}')
+                continue
+        else:
+            app.logger.error(f"Unknown source_type: {source_type} for transaction {transaction_id}")
+            errors.append(f'Unknown source_type: {source_type} for transaction {transaction_id}')
+            continue
+
+        if not tx:
+            app.logger.error(f"Transaction {transaction_id} not found in source {source_type}")
+            errors.append(f'Transaction {transaction_id} not found in source {source_type}')
+            continue
+
+        amount = tx['amount']
+        date_raw = tx['date']
+        description = tx['description']
+
+        date_str = parse_plaid_date(date_raw) or datetime.now().date().isoformat()
+        amount_cents = int(round(abs(amount) * 100))
+        is_expense = amount < 0  # Negative = expense (Square convention)
+
+        # Get cash account for this source type
+        cash_id = get_cash_account_id(source_type)
+        if not cash_id:
+            app.logger.error(f"No cash account for source {source_type}, tx {transaction_id}")
+            errors.append(f'No cash account for source {source_type}, tx {transaction_id}')
+            continue
+
+        # Check if already processed
+        app.logger.info(f"Checking for existing entry: source_type={source_type}, source_id={str(transaction_id)}")
+        cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
+                       (source_type, str(transaction_id)))
+        existing = cursor.fetchone()
+        app.logger.info(f"Existing entry found: {existing is not None}")
+
+        try:
+            if existing:
+                app.logger.info(f"Existing entry ID: {existing['id']}")
+                if is_update:
+                    app.logger.info(f"Updating entry {existing['id']}")
+                    cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
+                    cursor.execute('DELETE FROM journal_entries WHERE id = ?', (existing['id'],))
+                    
+                    if source_type in ['historic', 'bluevine']:
+                        cursor.execute('UPDATE bank_transactions SET processed = 0 WHERE id = ?', (int(transaction_id),))
+                    updated += 1
+                    
+                    cursor.execute('''
+                        INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+                        VALUES (?, ?, ?, ?)
+                    ''', (date_str, f"Bank transaction: {description}", source_type, str(transaction_id)))
+                    entry_id = cursor.lastrowid
+                    created += 1
+                    app.logger.info(f"Created new entry {entry_id} for update")
+                else:
+                    app.logger.info(f"Using existing entry {existing['id']}")
+                    cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (existing['id'],))
+                    entry_id = existing['id']
+                    created += 1
+            else:
+                app.logger.info(f"Creating new entry with source_type={source_type}, source_id={str(transaction_id)}")
+                cursor.execute('''
+                    INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+                    VALUES (?, ?, ?, ?)
+                ''', (date_str, f"Bank transaction: {description}", source_type, str(transaction_id)))
+                entry_id = cursor.lastrowid
+                created += 1
+                app.logger.info(f"Created new entry {entry_id}")
+
+            # Insert the new lines
+            app.logger.info(f"Inserting lines: is_expense={is_expense}, amount_cents={amount_cents}, target={target_account_id}, cash={cash_id}")
+            if is_expense:
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, target_account_id, amount_cents, 0))
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, cash_id, 0, amount_cents))
+            else:
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, cash_id, amount_cents, 0))
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, target_account_id, 0, amount_cents))
+
+            if source_type in ['historic', 'bluevine']:
+                cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (int(transaction_id),))
+
+            conn.commit()
+            processed += 1
+            app.logger.info(f"Successfully processed transaction {transaction_id}")
+
+        except Exception as e:
+            conn.rollback()
+            app.logger.error(f"Failed to process transaction {transaction_id}: {str(e)}")
+            app.logger.error(traceback.format_exc())
+            errors.append(f'Failed to process transaction {transaction_id}: {str(e)}')
+            continue
+
+    conn.close()
+    
+    app.logger.info(f"APPLY_MULTIPLE COMPLETE: processed={processed}, created={created}, updated={updated}, errors={len(errors)}")
+    
+    if errors:
+        return jsonify({
+            'status': 'success',
+            'processed': processed,
+            'created': created,
+            'updated': updated,
+            'errors': errors,
+            'message': f'Processed {processed} transactions ({created} created, {updated} updated) with {len(errors)} error(s)'
+        })
+    else:
+        return jsonify({
+            'status': 'success',
+            'processed': processed,
+            'created': created,
+            'updated': updated,
+            'message': f'Processed {processed} transactions ({created} created, {updated} updated)'
+        })
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
