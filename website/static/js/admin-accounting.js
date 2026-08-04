@@ -1,5 +1,5 @@
 // ============================================================
-// admin-accounting.js – Accounting Module
+// admin-accounting.js – Accounting Module (COMPLETE)
 // ============================================================
 
 let journalCurrentPage = 1;
@@ -113,6 +113,168 @@ function formatReconDate(dateStr) {
 }
 
 // ============================================================
+// EXTERNAL BALANCE CARDS - FIXED VERSION
+// ============================================================
+
+/**
+ * Load all external account balances and update the stats cards
+ * Fetches from Plaid (FNBO, PayPal) and Square API
+ */
+async function refreshAllBalances() {
+    console.log('[BALANCES] Refreshing all external account balances...');
+    
+    // Show loading state
+    const cardIds = ['balance-square', 'balance-fnbo', 'balance-paypal', 'balance-total-assets'];
+    cardIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = 'Loading...';
+    });
+    
+    try {
+        // Load balances in parallel with proper error handling
+        const [squareBalance, fnboBalance, paypalBalance] = await Promise.all([
+            getSquareBalance(),
+            getPlaidBalance('fnbo'),
+            getPlaidBalance('paypal')
+        ]);
+        
+        console.log('[BALANCES] Raw balances:', { squareBalance, fnboBalance, paypalBalance });
+        
+        // Update Square balance
+        const squareEl = document.getElementById('balance-square');
+        if (squareEl) {
+            const displayAmount = squareBalance !== null && squareBalance !== undefined ? squareBalance : 0;
+            squareEl.textContent = formatCurrency(displayAmount);
+            squareEl.style.color = displayAmount >= 0 ? '#28a745' : '#dc3545';
+        }
+        
+        // Update FNBO balance
+        const fnboEl = document.getElementById('balance-fnbo');
+        if (fnboEl) {
+            const displayAmount = fnboBalance !== null && fnboBalance !== undefined ? fnboBalance : 0;
+            fnboEl.textContent = formatCurrency(displayAmount);
+            fnboEl.style.color = displayAmount >= 0 ? '#28a745' : '#dc3545';
+        }
+        
+        // Update PayPal balance
+        const paypalEl = document.getElementById('balance-paypal');
+        if (paypalEl) {
+            const displayAmount = paypalBalance !== null && paypalBalance !== undefined ? paypalBalance : 0;
+            paypalEl.textContent = formatCurrency(displayAmount);
+            paypalEl.style.color = displayAmount >= 0 ? '#28a745' : '#dc3545';
+        }
+        
+        // Calculate total assets (sum of all external balances)
+        const totalAssets = (squareBalance || 0) + (fnboBalance || 0) + (paypalBalance || 0);
+        const totalEl = document.getElementById('balance-total-assets');
+        if (totalEl) {
+            totalEl.textContent = formatCurrency(totalAssets);
+            totalEl.style.color = '#6f42c1';
+        }
+        
+        console.log('[BALANCES] Updated all balance cards:', {
+            square: squareBalance,
+            fnbo: fnboBalance,
+            paypal: paypalBalance,
+            total: totalAssets
+        });
+        
+    } catch (error) {
+        console.error('[BALANCES] Error refreshing balances:', error);
+        // Show error state on cards
+        const cardIds = ['balance-square', 'balance-fnbo', 'balance-paypal', 'balance-total-assets'];
+        cardIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.textContent = '⚠️ Error';
+                el.style.color = '#dc3545';
+            }
+        });
+        showToast('Error loading external balances', 'error');
+    }
+}
+
+/**
+ * Get Square balance from Square API
+ * Returns the total of all completed payments
+ */
+async function getSquareBalance() {
+    try {
+        console.log('[BALANCES] Fetching Square balance...');
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/external/square/balance`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        
+        if (!res.ok) {
+            const errorText = await res.text();
+            console.warn('[BALANCES] Square balance API error:', res.status, errorText);
+            return 0;
+        }
+        
+        const data = await res.json();
+        console.log('[BALANCES] Square balance response:', data);
+        
+        if (data.status === 'success') {
+            return data.balance || 0;
+        }
+        return 0;
+    } catch (error) {
+        console.warn('[BALANCES] Error getting Square balance:', error);
+        return 0;
+    }
+}
+
+/**
+ * Get Plaid balance for a specific source (fnbo or paypal)
+ */
+async function getPlaidBalance(source) {
+    try {
+        console.log(`[BALANCES] Fetching ${source} balance from Plaid...`);
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/external/plaid/balance?source=${source}`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        
+        if (!res.ok) {
+            const errorText = await res.text();
+            console.warn(`[BALANCES] ${source} balance API error:`, res.status, errorText);
+            return 0;
+        }
+        
+        const data = await res.json();
+        console.log(`[BALANCES] ${source} balance response:`, data);
+        
+        if (data.status === 'success') {
+            return data.balance || 0;
+        }
+        return 0;
+    } catch (error) {
+        console.warn(`[BALANCES] Error getting ${source} balance:`, error);
+        return 0;
+    }
+}
+
+/**
+ * Format a number as currency
+ */
+function formatCurrency(amount) {
+    if (amount === undefined || amount === null || isNaN(amount)) {
+        return '$0.00';
+    }
+    const sign = amount >= 0 ? '' : '-';
+    return sign + '$' + Math.abs(amount).toFixed(2);
+}
+
+/**
+ * Load balances when the Import tab is shown
+ */
+function loadAccountBalances() {
+    console.log('[BALANCES] Loading external balances for Import tab');
+    refreshAllBalances();
+}
+
+// ============================================================
 // PAYPAL PLAID CONNECTION
 // ============================================================
 
@@ -146,6 +308,7 @@ async function connectPayPalPlaid() {
                 if (exchangeData.status === 'success') {
                     showToast('PayPal connected successfully!', 'success');
                     loadBankTransactions();
+                    refreshAllBalances();
                 } else {
                     alert('Failed to connect PayPal: ' + (exchangeData.error || 'Unknown error'));
                 }
@@ -190,6 +353,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (sub === 'import') {
                 loadBankTransactions();
+                loadAccountBalances();
             }
             else if (sub === 'accounts') {
                 loadAccountsList();
@@ -284,6 +448,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load import (bank) by default
     loadBankTransactions();
+    loadAccountBalances();
 
     // ---- Handle OAuth redirect from Plaid ----
     const urlParams = new URLSearchParams(window.location.search);
@@ -302,6 +467,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 alert('Bank connected successfully!');
                 window.history.replaceState({}, document.title, window.location.pathname);
                 loadBankTransactions();
+                loadAccountBalances();
             } else {
                 alert('Failed to connect bank: ' + (data.error || 'Unknown error'));
             }
@@ -471,7 +637,6 @@ async function loadAccountSelects() {
             console.log('[ACCOUNTS] Loaded', data.accounts.length, 'accounts');
             cachedAccounts = data.accounts;
             
-            // Populate journal account filter
             const selects = document.querySelectorAll('.manual-account, #journal-account-filter');
             selects.forEach(sel => {
                 const currentVal = sel.value;
@@ -485,7 +650,6 @@ async function loadAccountSelects() {
                 sel.value = currentVal;
             });
 
-            // Populate bulk account select
             populateBulkAccountSelect();
         }
     } catch (err) {
@@ -533,7 +697,6 @@ function populateBulkAccountSelect() {
     const accountSelect = document.getElementById('bulk-account-select');
     const selectedCheckboxes = document.querySelectorAll('#bank-body .tx-select:checked');
     
-    // Clear and hide if no selections
     if (selectedCheckboxes.length === 0) {
         accountSelect.style.display = 'none';
         accountSelect.innerHTML = '<option value="">Select Account</option>';
@@ -542,7 +705,6 @@ function populateBulkAccountSelect() {
     
     accountSelect.style.display = 'inline-block';
     
-    // Determine which account types are needed based on selected transactions
     let hasPositive = false;
     let hasNegative = false;
     let hasMixed = false;
@@ -561,11 +723,10 @@ function populateBulkAccountSelect() {
         hasMixed = true;
     }
     
-    // Build options based on account types needed
     const currentValue = accountSelect.value;
     let optionsHtml = '<option value="">Select Account</option>';
     const accountsToShow = cachedAccounts.filter(acc => {
-        if (hasMixed) return true; // Show all accounts
+        if (hasMixed) return true;
         if (hasPositive) return acc.type === 'revenue';
         if (hasNegative) return acc.type === 'expense';
         return false;
@@ -583,16 +744,12 @@ function bulkAssignAccount() {
     const accountSelect = document.getElementById('bulk-account-select');
     const selectedAccount = accountSelect.value;
     
-    console.log('[BULK] selectedAccount:', selectedAccount);
-    console.log('[BULK] cachedAccounts:', cachedAccounts);
-    
     if (!selectedAccount) {
         showToast('Please select an account to assign.', 'warning');
         return;
     }
     
     const selectedCheckboxes = document.querySelectorAll('#bank-body .tx-select:checked');
-    console.log('[BULK] selectedCheckboxes:', selectedCheckboxes.length);
     
     if (selectedCheckboxes.length === 0) {
         showToast('Please select at least one transaction.', 'warning');
@@ -608,9 +765,7 @@ function bulkAssignAccount() {
         const txId = cb.dataset.txId;
         const row = cb.closest('tr');
         const select = row ? row.querySelector('.post-select') : null;
-        console.log('[BULK] txId:', txId, 'select found:', !!select);
         if (select) {
-            console.log('[BULK] Setting select value to:', selectedAccount);
             select.value = selectedAccount;
             select.dispatchEvent(new Event('change', { bubbles: true }));
             select.classList.add('changed');
@@ -1142,10 +1297,6 @@ async function bulkPostTransactions() {
         const initialValue = select.dataset.initialAccount || '';
         const currentValue = select.value;
         
-        // Only include if:
-        // 1. A value is selected (not empty)
-        // 2. The value is different from the initial value
-        // 3. The select has the 'changed' class (user actually changed it)
         if (currentValue && currentValue !== initialValue && select.classList.contains('changed')) {
             changedCount++;
             const txId = select.dataset.txId;
@@ -1166,7 +1317,6 @@ async function bulkPostTransactions() {
         return;
     }
 
-    // Show loading state
     const statusEl = document.getElementById('post-status');
     const postBtn = document.getElementById('post-updates-btn');
     postBtn.disabled = true;
@@ -1188,17 +1338,17 @@ async function bulkPostTransactions() {
             showToast(msg, 'success');
             statusEl.textContent = msg;
             
-            // Check for errors
             if (data.errors && data.errors.length > 0) {
                 console.error('[BANK] Errors:', data.errors);
                 statusEl.textContent += ` ⚠️ ${data.errors.length} error(s)`;
                 showToast(`⚠️ ${data.errors.length} transaction(s) failed. Check console.`, 'warning');
             }
             
-            // Refresh the list after a delay
-            setTimeout(() => loadBankTransactions(), 1000);
+            setTimeout(() => {
+                loadBankTransactions();
+                refreshAllBalances();
+            }, 1000);
         } else {
-            // Show the actual error from the server
             const errorMsg = data.error || data.message || 'Unknown error';
             showToast('❌ Error: ' + errorMsg, 'error');
             statusEl.textContent = '❌ ' + errorMsg;
@@ -1268,7 +1418,6 @@ async function loadBankTransactions() {
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
         
-        // Handle PayPal needing connection
         if (res.status === 400) {
             const data = await res.json();
             if (data.needs_connection) {
@@ -1288,7 +1437,6 @@ async function loadBankTransactions() {
         if (data.status === 'success') {
             console.log('[BANK] Loaded', data.transactions.length, 'transactions');
             
-            // Ensure accounts are loaded before rendering
             if (cachedAccounts.length === 0) {
                 await loadAccountSelects();
             }
@@ -1325,36 +1473,28 @@ function renderBankTransactions(transactions) {
         const txId = t.id;
         const isProcessed = t.processed || false;
         
-        // Filter accounts based on amount sign
-        // Positive = money in = revenue accounts only
-        // Negative = money out = expense accounts only
         const filteredAccounts = cachedAccounts.filter(acc => {
             if (amount > 0) return acc.type === 'revenue';
             if (amount < 0) return acc.type === 'expense';
             return false;
         });
         
-        // Build select options with only filtered accounts
         let optionsHtml = '<option value="">Select Account</option>';
         filteredAccounts.forEach(acc => {
             optionsHtml += `<option value="${acc.id}">${acc.code} - ${acc.name}</option>`;
         });
         
-        // Preselect if already posted
         let initialAccount = '';
         if (isProcessed && t.account_id) {
             initialAccount = t.account_id;
         }
         
-        // Add data attributes for bulk posting
         const dataAttrs = `data-tx-id="${txId}" data-source-type="${sourceType}" data-processed="${isProcessed}" data-initial-account="${initialAccount}" data-amount="${amount}"`;
         
-        // Checkbox: disabled for posted transactions
         const checkboxDisabled = isProcessed ? 'disabled' : '';
-        const checkboxChecked = '';
         
         html += `<tr class="${rowClass}">
-            <td><input type="checkbox" class="tx-select" data-tx-id="${txId}" ${checkboxDisabled} ${checkboxChecked}></td>
+            <td><input type="checkbox" class="tx-select" data-tx-id="${txId}" ${checkboxDisabled}></td>
             <td>${t.date || ''}</td>
             <td>${t.description || ''}</td>
             <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
@@ -1371,14 +1511,12 @@ function renderBankTransactions(transactions) {
     });
     body.innerHTML = html;
     
-    // Set initial values after rendering
     document.querySelectorAll('#bank-body .post-select').forEach(select => {
         const initialAccount = select.dataset.initialAccount || '';
         if (initialAccount) {
             select.value = initialAccount;
         }
         
-        // Track changes - only when user manually changes the dropdown
         select.addEventListener('change', function() {
             const initial = this.dataset.initialAccount || '';
             if (this.value && this.value !== initial) {
@@ -1386,12 +1524,10 @@ function renderBankTransactions(transactions) {
             } else {
                 this.classList.remove('changed');
             }
-            // Uncheck the select-all checkbox when any individual checkbox changes
             document.getElementById('select-all-tx').checked = false;
         });
     });
     
-    // Populate bulk account select
     populateBulkAccountSelect();
 }
 
@@ -1734,8 +1870,6 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
 
         modal.classList.add('active');
         console.log('[MODAL] 6. Active class added, modal should be visible');
-        console.log('[MODAL] 7. Modal classes after add:', modal.className);
-        console.log('[MODAL] 8. Modal style.display:', modal.style.display);
 
         let url = `${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}`;
         if (accountId) {
@@ -1752,14 +1886,12 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
         })
         .then(res => {
             console.log('[MODAL] 10. Fetch response status:', res.status);
-            console.log('[MODAL] 10a. Fetch response ok:', res.ok);
             return res.json();
         })
         .then(data => {
             console.log('[MODAL] 11. Data received from API:');
             console.log('[MODAL] 11a. Data status:', data.status);
             console.log('[MODAL] 11b. Data transactions count:', data.transactions ? data.transactions.length : 0);
-            console.log('[MODAL] 11c. Full data sample (first 2):', data.transactions ? data.transactions.slice(0, 2) : 'none');
 
             if (data.status === 'success' && data.transactions) {
                 console.log('[MODAL] 12. Success! Loading', data.transactions.length, 'transactions');
@@ -1771,14 +1903,12 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
         })
         .catch(err => {
             console.error('[MODAL] ❌ Fetch error:', err);
-            console.error('[MODAL] Error stack:', err.stack);
             body.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
         });
 
         console.log('[MODAL] ===== SHOW MONTHLY TRANSACTIONS END =====');
     } catch (err) {
         console.error('[MODAL] ❌ CRITICAL ERROR in showMonthlyTransactions:', err);
-        console.error('[MODAL] Stack:', err.stack);
         showToast('Error: ' + err.message, 'error');
     }
 }
@@ -1787,17 +1917,12 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     console.log('[MODAL] ==================================================');
     console.log('[MODAL] RENDER MODAL TRANSACTIONS CALLED');
     console.log('[MODAL] Input transactions count:', transactions ? transactions.length : 0);
-    console.log('[MODAL] accountName:', accountName);
-    console.log('[MODAL] dateRange:', dateRange);
-    console.log('[MODAL] accountId:', accountId);
-    console.log('[MODAL] ==================================================');
 
     const body = document.getElementById('modal-body');
     if (!body) {
         console.error('[MODAL] ❌ Body not found for rendering!');
         return;
     }
-    console.log('[MODAL] Body element found');
 
     if (!transactions || transactions.length === 0) {
         console.log('[MODAL] No transactions to render');
@@ -1805,24 +1930,9 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
         return;
     }
 
-    console.log('[MODAL] Transaction details:');
-    transactions.forEach((tx, idx) => {
-        console.log(`[MODAL]   ${idx}:`, {
-            journal_entry_id: tx.journal_entry_id,
-            date: tx.transaction_date,
-            description: tx.description,
-            account: tx.account_name,
-            debit: tx.debit_amount,
-            credit: tx.credit_amount,
-            source_id: tx.source_id,
-            source_type: tx.source_type
-        });
-    });
-
     const grouped = {};
     transactions.forEach(tx => {
         const key = tx.journal_entry_id || tx.source_id || tx.id;
-        console.log('[MODAL] Grouping tx with key:', key, 'journal_entry_id:', tx.journal_entry_id);
         if (!grouped[key]) {
             grouped[key] = {
                 transaction_date: tx.transaction_date,
@@ -1839,13 +1949,11 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     });
 
     const groupedList = Object.values(grouped);
-    console.log('[MODAL] Grouped into', groupedList.length, 'entries');
 
     const isRevenueAccount = accountName &&
         (accountName.toLowerCase().includes('revenue') ||
          accountName.toLowerCase().includes('sales') ||
          accountName.toLowerCase().includes('income'));
-    console.log('[MODAL] isRevenueAccount:', isRevenueAccount);
 
     let total = 0;
     groupedList.forEach(g => {
@@ -1853,7 +1961,6 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     });
 
     let displayTotal = isRevenueAccount ? -total : total;
-    console.log('[MODAL] Total net amount:', total, 'displayTotal:', displayTotal);
 
     let html = `<div class="modal-summary">
         <div class="summary-item"><strong>Account:</strong> ${accountName || 'All Accounts'}${accountId ? ` (ID: ${accountId})` : ''}</div>
@@ -1872,10 +1979,7 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
         </tr></thead>
         <tbody>`;
 
-    let rowCount = 0;
     groupedList.forEach(g => {
-        rowCount++;
-
         let displayAmount = g.net;
         if (isRevenueAccount) {
             displayAmount = -g.net;
@@ -1886,7 +1990,6 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
         const sign = displayAmount > 0 ? '+' : (displayAmount < 0 ? '-' : '');
 
         const entryId = g.journal_entry_id || g.source_id;
-        console.log('[MODAL] Row entryId:', entryId, 'journal_entry_id:', g.journal_entry_id, 'source_id:', g.source_id);
 
         html += `<tr>
             <td style="white-space:nowrap;">${g.transaction_date}</td>
@@ -1897,8 +2000,6 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
         </tr>`;
     });
 
-    console.log('[MODAL] Rendered', rowCount, 'rows in the table');
-
     html += `<tr class="total-row">
         <td colspan="3"><strong>Total</strong></td>
         <td style="text-align:right; font-weight:bold;color:${displayTotal >= 0 ? '#28a745' : '#dc3545'};">${displayTotal >= 0 ? '+' : ''}${displayTotal !== 0 ? '$' + displayTotal.toFixed(2) : ''}</td>
@@ -1906,8 +2007,6 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     </tr>`;
     html += '</tbody></table>';
     body.innerHTML = html;
-    console.log('[MODAL] Render complete - HTML length:', html.length);
-    console.log('[MODAL] ==================================================');
 }
 
 async function unpostTransaction(entryId) {
@@ -2194,7 +2293,6 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         });
 
         const monthData = chartData.account_breakdown[month] || {};
-        console.log('[BREAKDOWN] 6. Month data:', monthData);
 
         const netLabel = Object.keys(monthData).find(name =>
             name === 'Net' || name === 'Net Income' || name === 'Net Cash'
@@ -2210,7 +2308,6 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         if (netLabel) labels.push(netLabel);
 
         const values = labels.map(k => monthData[k] || 0);
-        console.log('[BREAKDOWN] 7. Labels:', labels.length, 'Values:', values.length);
 
         const labelsWithIds = labels.map((label, i) => {
             const trimmed = label.trim();
@@ -2224,8 +2321,6 @@ function showMonthBreakdownModal(month, chartData, chartType) {
 
             const isCOGS = label === 'COGS' || label === 'Cost of Goods Sold';
 
-            console.log('[BREAKDOWN] Mapping label:', label, '-> accountId:', accountId, 'isCOGS:', isCOGS);
-
             return {
                 label: label,
                 value: values[i] || 0,
@@ -2237,8 +2332,6 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         const filtered = labelsWithIds.filter(item =>
             Math.abs(item.value) > 0.01 || item.isCOGS || item.label === netLabel
         );
-        console.log('[BREAKDOWN] 8. Filtered to', filtered.length, 'items');
-        console.log('[BREAKDOWN] Filtered items:', filtered.map(f => ({ label: f.label, accountId: f.accountId, isCOGS: f.isCOGS, value: f.value })));
 
         if (filtered.length === 0) {
             document.getElementById('breakdown-chart-container').innerHTML = '<p style="text-align:center; padding:40px; color:#333;">No data for this month.</p>';
@@ -2246,7 +2339,6 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         }
 
         const canvas = document.getElementById('breakdown-chart-canvas');
-        console.log('[BREAKDOWN] 9. Canvas element:', canvas);
 
         if (!canvas) {
             console.error('[BREAKDOWN] ❌ Canvas not found!');
@@ -2280,8 +2372,6 @@ function showMonthBreakdownModal(month, chartData, chartType) {
             return item.value >= 0 ? '#28a745' : '#dc3545';
         });
 
-        console.log('[BREAKDOWN] 10. Creating bar chart with', filtered.length, 'bars');
-
         const chart = new Chart(ctx, {
             type: 'bar',
             data: {
@@ -2305,9 +2395,7 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                                 const val = ctx.raw;
                                 return (val >= 0 ? '+' : '-') + '$' + Math.abs(val).toFixed(2);
                             }
-                        },
-                        titleFont: { size: 14, weight: 'bold' },
-                        bodyFont: { size: 13 }
+                        }
                     }
                 },
                 scales: {
@@ -2316,43 +2404,28 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                         ticks: {
                             callback: function(value) {
                                 return '$' + value;
-                            },
-                            font: { size: 13, weight: 'bold' }
-                        },
-                        grid: {
-                            color: 'rgba(0,0,0,0.08)'
+                            }
                         }
                     },
                     x: {
                         ticks: {
                             maxRotation: 45,
-                            minRotation: 45,
-                            font: { size: 13, weight: 'bold' }
-                        },
-                        grid: {
-                            display: false
+                            minRotation: 45
                         }
                     }
                 },
                 onClick: function(e, elements) {
-                    console.log('[BREAKDOWN] Bar chart click, elements:', elements.length);
                     if (elements.length === 0) return;
 
                     const element = elements[0];
                     const index = element.index;
                     const item = filtered[index];
 
-                    console.log('[BREAKDOWN] Bar clicked:', item.label, 'value:', item.value, 'accountId:', item.accountId, 'isCOGS:', item.isCOGS);
-
-                    if (Math.abs(item.value) < 0.01) {
-                        console.log('[BREAKDOWN] Value too small, ignoring');
-                        return;
-                    }
+                    if (Math.abs(item.value) < 0.01) return;
 
                     document.getElementById('monthly-tx-modal')?.classList.remove('active');
 
                     if (item.isCOGS) {
-                        console.log('[BREAKDOWN] COGS bar clicked - showing COGS calculation');
                         showCOGSCalculation(month);
                         return;
                     }
@@ -2360,17 +2433,14 @@ function showMonthBreakdownModal(month, chartData, chartType) {
                     const excludeOrders = chartType === 'pl';
 
                     if (item.accountId) {
-                        console.log('[BREAKDOWN] Using account ID:', item.accountId);
                         showMonthlyTransactions(month, item.accountId, item.label, excludeOrders);
                     } else {
                         const trimmed = item.label.trim();
                         const norm = trimmed.toLowerCase();
                         const accountId = accountNameToId[norm] || accountNameToId[trimmed];
                         if (accountId) {
-                            console.log('[BREAKDOWN] Found account ID by name:', accountId);
                             showMonthlyTransactions(month, accountId, item.label, excludeOrders);
                         } else {
-                            console.log('[BREAKDOWN] No account ID found - showing all transactions');
                             showMonthlyTransactions(month, null, item.label, excludeOrders);
                         }
                     }
@@ -2379,15 +2449,11 @@ function showMonthBreakdownModal(month, chartData, chartType) {
         });
 
         window._breakdownChart = chart;
-        console.log('[BREAKDOWN] 11. Chart created successfully');
 
         modal.classList.add('active');
-        console.log('[BREAKDOWN] 12. Modal activated');
-        console.log('[BREAKDOWN] ===== SHOW MONTH BREAKDOWN END =====');
 
     } catch (err) {
         console.error('[BREAKDOWN] ❌ CRITICAL ERROR:', err);
-        console.error('[BREAKDOWN] Stack:', err.stack);
         showToast('Error: ' + err.message, 'error');
     }
 }
@@ -2397,44 +2463,32 @@ function showMonthBreakdownModal(month, chartData, chartType) {
 // ============================================================
 
 function renderLineChart(canvasId, data, options = {}) {
-    console.log('[CHART] ==================================================');
     console.log('[CHART] RENDER LINE CHART START');
     console.log('[CHART] Canvas ID:', canvasId);
-    console.log('[CHART] Options:', options);
-    console.log('[CHART] Data status:', data.status);
-    console.log('[CHART] Months count:', data.months ? data.months.length : 0);
-    console.log('[CHART] Account breakdown keys:', data.account_breakdown ? Object.keys(data.account_breakdown).length : 0);
 
     const canvas = document.getElementById(canvasId);
     if (!canvas) {
         console.error('[CHART] ❌ Canvas not found:', canvasId);
         return null;
     }
-    console.log('[CHART] Canvas element found');
 
     const ctx = canvas.getContext('2d');
     const { months, account_breakdown } = data;
-    console.log('[CHART] Months:', months ? months.length : 0);
-    console.log('[CHART] Account breakdown keys:', account_breakdown ? Object.keys(account_breakdown).length : 0);
 
     if (!months || months.length === 0) {
         console.log('[CHART] No data to display');
         return null;
     }
 
-    console.log('[CHART] Months list:', months);
-
     const allAccountNames = new Set();
     months.forEach(m => {
         const monthData = account_breakdown[m] || {};
         Object.keys(monthData).forEach(acc => allAccountNames.add(acc));
     });
-    console.log('[CHART] All account names in data:', Array.from(allAccountNames).sort());
 
     let chartInstance = null;
     
     if (window[canvasId + 'Instance']) {
-        console.log('[CHART] Destroying existing chart instance');
         window[canvasId + 'Instance'].destroy();
         window[canvasId + 'Instance'] = null;
     }
@@ -2444,16 +2498,12 @@ function renderLineChart(canvasId, data, options = {}) {
         const [year, month] = m.split('-');
         return `${monthNames[parseInt(month) - 1]} ${year}`;
     });
-    console.log('[CHART] Labels:', labels);
 
     const accountNames = Array.from(allAccountNames).sort();
-    console.log('[CHART] All accounts (sorted):', accountNames);
 
     const netLabel = accountNames.find(name => name === 'Net' || name === 'Net Income' || name === 'Net Cash');
-    console.log('[CHART] Net label:', netLabel);
 
     const regularAccounts = accountNames.filter(name => name !== netLabel);
-    console.log('[CHART] Regular accounts (non-Net):', regularAccounts);
 
     const revenueKeywords = ['revenue', 'sales', 'income', 'shipping', 'fees', 'gift'];
     const expenseKeywords = ['cogs', 'expense', 'cost', 'postage', 'rent', 'utilities', 'payroll', 'amortization', 'insurance', 'supplies'];
@@ -2472,7 +2522,6 @@ function renderLineChart(canvasId, data, options = {}) {
         if (!aIsExpense && bIsExpense) return -1;
         return a.localeCompare(b);
     });
-    console.log('[CHART] Sorted accounts (revenue first, then expenses):', sortedAccounts);
 
     const datasets = [];
     let revenueCount = 0;
@@ -2484,17 +2533,10 @@ function renderLineChart(canvasId, data, options = {}) {
     const otherColors = ['#007bff', '#17a2b8', '#6f42c1', '#fd7e14', '#e83e8c', '#6c757d', '#0dcaf0', '#d63384'];
 
     const lineDashStyles = [
-        [],           // solid
-        [5, 5],       // dashed
-        [2, 4],       // dotted
-        [10, 5, 2, 5], // dash-dot
-        [8, 4, 2, 4], // dash-dot-dot
-        [3, 3],       // short dash
+        [], [5, 5], [2, 4], [10, 5, 2, 5], [8, 4, 2, 4], [3, 3]
     ];
 
     const pointStyles = ['circle', 'rect', 'triangle', 'diamond', 'cross', 'crossRot', 'star', 'line', 'dash'];
-
-    console.log('[CHART] Building datasets for', sortedAccounts.length, 'accounts');
 
     sortedAccounts.forEach((accountName, idx) => {
         const values = months.map(m => {
@@ -2502,19 +2544,13 @@ function renderLineChart(canvasId, data, options = {}) {
             return monthData[accountName] || 0;
         });
 
-        console.log(`[CHART] Account "${accountName}" values:`, values);
-
         if (values.every(v => Math.abs(v) < 0.01)) {
-            console.log(`[CHART] Skipping zero account: "${accountName}" (all values < 0.01)`);
             return;
         }
-
-        console.log(`[CHART] Processing account with values: "${accountName}" ->`, values);
 
         const aLower = accountName.toLowerCase();
         const isRevenue = revenueKeywords.some(k => aLower.includes(k));
         const isExpense = expenseKeywords.some(k => aLower.includes(k));
-        console.log(`[CHART] Account "${accountName}" - isRevenue: ${isRevenue}, isExpense: ${isExpense}`);
 
         let borderColor, backgroundColor, borderDash, borderWidth, pointStyle, pointRadius;
 
@@ -2531,7 +2567,6 @@ function renderLineChart(canvasId, data, options = {}) {
             pointStyle = pointStyles[styleIdx % pointStyles.length];
             pointRadius = 5;
             revenueCount++;
-            console.log(`[CHART] Account "${accountName}" classified as REVENUE, color: ${borderColor}`);
         } else if (isExpense) {
             borderColor = expenseColors[colorIdx];
             backgroundColor = borderColor + '40';
@@ -2540,7 +2575,6 @@ function renderLineChart(canvasId, data, options = {}) {
             pointStyle = pointStyles[(styleIdx + 3) % pointStyles.length];
             pointRadius = 5;
             expenseCount++;
-            console.log(`[CHART] Account "${accountName}" classified as EXPENSE, color: ${borderColor}`);
         } else {
             borderColor = otherColors[colorIdx % otherColors.length];
             backgroundColor = borderColor + '40';
@@ -2549,7 +2583,6 @@ function renderLineChart(canvasId, data, options = {}) {
             pointStyle = pointStyles[(styleIdx + 5) % pointStyles.length];
             pointRadius = 5;
             otherCount++;
-            console.log(`[CHART] Account "${accountName}" classified as OTHER, color: ${borderColor}`);
         }
 
         datasets.push({
@@ -2574,7 +2607,6 @@ function renderLineChart(canvasId, data, options = {}) {
             const monthData = account_breakdown[m] || {};
             return monthData[netLabel] || 0;
         });
-        console.log(`[CHART] Net "${netLabel}" values:`, netValues);
 
         if (!netValues.every(v => Math.abs(v) < 0.01)) {
             datasets.push({
@@ -2594,7 +2626,6 @@ function renderLineChart(canvasId, data, options = {}) {
                 tension: 0,
                 hidden: false
             });
-            console.log(`[CHART] Added Net dataset: "${netLabel}"`);
         }
     }
 
@@ -2602,8 +2633,6 @@ function renderLineChart(canvasId, data, options = {}) {
         console.log('[CHART] No data to display after filtering');
         return null;
     }
-    console.log('[CHART] Total datasets built:', datasets.length);
-    console.log('[CHART] Dataset labels:', datasets.map(d => d.label));
 
     let maxVal = 0;
     datasets.forEach(ds => {
@@ -2612,29 +2641,20 @@ function renderLineChart(canvasId, data, options = {}) {
         });
     });
     const yMax = Math.ceil((maxVal * 1.25) / 100) * 100 || 100;
-    console.log('[CHART] Y-axis max:', yMax);
-
-    const isPL = options.type === 'pl';
-    console.log('[CHART] Chart type:', isPL ? 'P&L' : (options.type === 'balancesheet' ? 'Balance Sheet' : 'Cash Flow'));
 
     if (canvasId === 'pl-chart') {
         plChartData = data;
         plMonths = months;
         allPLData = data;
-        console.log('[CHART] Stored plChartData');
     } else if (canvasId === 'cash-flow-chart') {
         cashFlowChartData = data;
         cashFlowMonths = months;
         allCashFlowData = data;
-        console.log('[CHART] Stored cashFlowChartData');
     } else if (canvasId === 'bs-chart') {
         bsChartData = data;
         bsMonths = months;
         allBSData = data;
-        console.log('[CHART] Stored bsChartData');
     }
-
-    console.log('[CHART] Creating Chart.js instance...');
 
     const chart = new Chart(ctx, {
         type: 'line',
@@ -2672,9 +2692,7 @@ function renderLineChart(canvasId, data, options = {}) {
                             const dashInfo = ds.borderDash && ds.borderDash.length > 0 ? ' [dashed]' : '';
                             return `${label}${dashInfo}: ${sign}$${Math.abs(val).toFixed(2)}`;
                         }
-                    },
-                    titleFont: { size: 14, weight: 'bold' },
-                    bodyFont: { size: 13 }
+                    }
                 }
             },
             scales: {
@@ -2710,67 +2728,43 @@ function renderLineChart(canvasId, data, options = {}) {
             }
         }
     });
-    console.log('[CHART] Chart.js instance created');
-    console.log('[CHART] Chart data datasets:', chart.data.datasets.length);
 
     window[canvasId + 'Instance'] = chart;
 
     if (canvasId === 'pl-chart') {
         plChartInstance = chart;
-        console.log('[CHART] Set plChartInstance');
     } else if (canvasId === 'cash-flow-chart') {
         cashFlowChartInstance = chart;
-        console.log('[CHART] Set cashFlowChartInstance');
     } else if (canvasId === 'bs-chart') {
         bsChartInstance = chart;
-        console.log('[CHART] Set bsChartInstance');
     }
 
-    console.log('[CHART] Adding x-axis click handler');
-
+    // Add x-axis click handler
     canvas.addEventListener('click', function(e) {
-        console.log('[CHART-X] Canvas click detected');
         try {
             const rect = canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
 
             const chartInstance = window[canvasId + 'Instance'] || Chart.getChart(canvas);
-            if (!chartInstance) {
-                console.log('[CHART-X] No chart instance found');
-                return;
-            }
+            if (!chartInstance) return;
 
             const chartArea = chartInstance.chartArea;
-            if (!chartArea) {
-                console.log('[CHART-X] No chart area found');
-                return;
-            }
+            if (!chartArea) return;
 
             const chartHeight = chartArea.bottom - chartArea.top;
             const yPos = (y - chartArea.top) / chartHeight;
 
-            if (yPos < 0.8 || yPos > 1.1) {
-                console.log('[CHART-X] Click not on x-axis (yPos:', yPos, ')');
-                return;
-            }
-
-            console.log('[CHART-X] Click on x-axis!');
+            if (yPos < 0.8 || yPos > 1.1) return;
 
             const xScale = chartInstance.scales.x;
-            if (!xScale) {
-                console.log('[CHART-X] No x scale found');
-                return;
-            }
+            if (!xScale) return;
 
             const pixelsPerTick = (xScale.right - xScale.left) / (months.length || 1);
             const clickedIndex = Math.round((x - xScale.left) / pixelsPerTick);
 
-            console.log('[CHART-X] Clicked index:', clickedIndex, 'months length:', months.length);
-
             if (clickedIndex >= 0 && clickedIndex < months.length) {
                 const month = months[clickedIndex];
-                console.log('[CHART-X] ✅ Month detected:', month);
 
                 document.getElementById('monthly-tx-modal')?.classList.remove('active');
 
@@ -2778,32 +2772,22 @@ function renderLineChart(canvasId, data, options = {}) {
                                  canvasId === 'cash-flow-chart' ? cashFlowChartData :
                                  bsChartData;
                 if (dataToUse) {
-                    console.log('[CHART-X] Showing breakdown for month:', month);
                     showMonthBreakdownModal(month, dataToUse, options.type || 'pl');
-                } else {
-                    console.warn('[CHART-X] No chart data available for breakdown');
-                    showToast('No data available for this month', 'warning');
                 }
-            } else {
-                console.log('[CHART-X] Index out of range:', clickedIndex);
             }
         } catch (err) {
             console.error('[CHART-X] Error in click handler:', err);
         }
     });
-    console.log('[CHART-X] Click handler attached');
 
+    // Double-click to expand for cash flow
     if (canvasId === 'cash-flow-chart') {
         canvas.addEventListener('dblclick', function(e) {
             e.stopPropagation();
-            console.log('[CHART] Double-click detected, expanding');
             expandChart(canvasId);
         });
-        console.log('[CHART] Double-click expand attached for cash flow');
     }
 
-    console.log('[CHART] ==================================================');
-    console.log('[CHART] RENDER LINE CHART END');
     return chart;
 }
 
@@ -2812,10 +2796,7 @@ function renderLineChart(canvasId, data, options = {}) {
 // ============================================================
 
 function expandChart(canvasId) {
-    console.log('[EXPAND] Expanding chart:', canvasId);
-
     if (canvasId !== 'cash-flow-chart') {
-        console.log('[EXPAND] Only Cash Flow chart can be expanded');
         return;
     }
 
@@ -2825,16 +2806,10 @@ function expandChart(canvasId) {
     }
 
     const canvas = document.getElementById(canvasId);
-    if (!canvas) {
-        console.error('[EXPAND] Canvas not found:', canvasId);
-        return;
-    }
+    if (!canvas) return;
 
     const chart = window[canvasId + 'Instance'] || Chart.getChart(canvas);
-    if (!chart) {
-        console.error('[EXPAND] Chart not found for canvas:', canvasId);
-        return;
-    }
+    if (!chart) return;
 
     isExpanded = true;
 
@@ -2878,20 +2853,6 @@ function expandChart(canvasId) {
                         boxWidth: 18,
                         boxHeight: 18
                     }
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            const val = context.raw;
-                            const label = context.dataset.label || '';
-                            const sign = val >= 0 ? '+' : '';
-                            const ds = context.dataset;
-                            const dashInfo = ds.borderDash && ds.borderDash.length > 0 ? ' [dashed]' : '';
-                            return `${label}${dashInfo}: ${sign}$${Math.abs(val).toFixed(2)}`;
-                        }
-                    },
-                    titleFont: { size: 16, weight: 'bold' },
-                    bodyFont: { size: 15 }
                 }
             },
             scales: {
@@ -2933,12 +2894,9 @@ function expandChart(canvasId) {
         resizeObserver.observe(chartBody);
     }
     window._expandedResizeObserver = resizeObserver;
-
-    console.log('[EXPAND] Chart expanded');
 }
 
 function collapseChart() {
-    console.log('[EXPAND] Collapsing chart');
     isExpanded = false;
 
     if (window._expandedChart) {
@@ -2959,8 +2917,6 @@ function collapseChart() {
     if (cashFlowChartInstance) {
         try { cashFlowChartInstance.resize(); } catch(e) {}
     }
-
-    console.log('[EXPAND] Chart collapsed');
 }
 
 // ============================================================
@@ -2968,14 +2924,12 @@ function collapseChart() {
 // ============================================================
 
 async function loadCashFlow() {
-    console.log('[CASHFLOW] ===== LOAD CASH FLOW START =====');
+    console.log('[CASHFLOW] LOAD CASH FLOW START');
 
     const startInput = document.getElementById('cash-flow-start');
     const endInput = document.getElementById('cash-flow-end');
     const start = startInput.value;
     const end = endInput.value;
-    console.log('[CASHFLOW] Start month:', start);
-    console.log('[CASHFLOW] End month:', end);
 
     if (!start || !end) {
         alert('Please select both start and end months.');
@@ -2983,7 +2937,6 @@ async function loadCashFlow() {
     }
 
     if (bankAccounts.length === 0) {
-        console.log('[CASHFLOW] Loading bank accounts');
         await loadBankAccountsForRowDropdowns();
     }
 
@@ -2994,18 +2947,14 @@ async function loadCashFlow() {
         const startStr = startDate.toISOString().slice(0, 10);
         const endStr = lastDay.toISOString().slice(0, 10);
 
-        console.log('[CASHFLOW] Fetching data from API with start:', startStr, 'end:', endStr);
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/cash-flow-detail?start=${startStr}&end=${endStr}`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
         if (!res.ok) throw new Error('Failed to fetch cash flow data');
         const data = await res.json();
-        console.log('[CASHFLOW] API response:', data);
 
         if (data.status === 'success') {
-            console.log('[CASHFLOW] Data loaded, months:', data.months ? data.months.length : 0);
-
             allCashFlowData = data;
             cashFlowMonths = data.months || [];
 
@@ -3029,7 +2978,6 @@ async function loadCashFlow() {
         console.error('[CASHFLOW] Error:', err);
         document.getElementById('cash-flow-chart-container').innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
     }
-    console.log('[CASHFLOW] ===== LOAD CASH FLOW END =====');
 }
 
 // ============================================================
@@ -3037,90 +2985,41 @@ async function loadCashFlow() {
 // ============================================================
 
 async function loadMonthlyPL() {
-    console.log('[MONTHLY-PL] ==================================================');
     console.log('[MONTHLY-PL] LOAD MONTHLY P&L START');
-    console.log('[MONTHLY-PL] Timestamp:', new Date().toISOString());
 
     const startInput = document.getElementById('pl-start');
     const endInput = document.getElementById('pl-end');
-
-    console.log('[MONTHLY-PL] Start input element:', startInput);
-    console.log('[MONTHLY-PL] End input element:', endInput);
-    console.log('[MONTHLY-PL] Start input value:', startInput ? startInput.value : 'NULL');
-    console.log('[MONTHLY-PL] End input value:', endInput ? endInput.value : 'NULL');
-
     const start = startInput ? startInput.value : '';
     const end = endInput ? endInput.value : '';
 
-    console.log('[MONTHLY-PL] Start month:', start);
-    console.log('[MONTHLY-PL] End month:', end);
-
     if (!start || !end) {
-        console.log('[MONTHLY-PL] ❌ Missing start or end month. Start:', start, 'End:', end);
         alert('Please select both start and end months.');
         return;
     }
 
     if (bankAccounts.length === 0) {
-        console.log('[MONTHLY-PL] Loading bank accounts');
         await loadBankAccountsForRowDropdowns();
-        console.log('[MONTHLY-PL] Bank accounts loaded, count:', bankAccounts.length);
     }
 
     try {
-        console.log('[MONTHLY-PL] Converting months to dates...');
         const startDate = new Date(start + '-01');
         const endDate = new Date(end + '-01');
         const lastDay = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
-
-        console.log('[MONTHLY-PL] startDate:', startDate.toISOString());
-        console.log('[MONTHLY-PL] endDate:', endDate.toISOString());
-        console.log('[MONTHLY-PL] lastDay:', lastDay.toISOString());
-
         const startStr = startDate.toISOString().slice(0, 10);
         const endStr = lastDay.toISOString().slice(0, 10);
 
-        console.log('[MONTHLY-PL] ✅ Calculated start date:', startStr);
-        console.log('[MONTHLY-PL] ✅ Calculated end date:', endStr);
-
-        const url = `${AppConfig.baseUrl}/api/accounting/monthly-pl?start=${startStr}&end=${endStr}`;
-        console.log('[MONTHLY-PL] 🔗 Fetching URL:', url);
-
-        const res = await fetch(url, {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/monthly-pl?start=${startStr}&end=${endStr}`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
 
-        console.log('[MONTHLY-PL] 📡 Fetch response status:', res.status);
-        console.log('[MONTHLY-PL] 📡 Fetch response ok:', res.ok);
-
-        if (!res.ok) {
-            console.error('[MONTHLY-PL] ❌ Fetch failed with status:', res.status);
-            throw new Error('Failed to fetch P&L data');
-        }
+        if (!res.ok) throw new Error('Failed to fetch P&L data');
 
         const data = await res.json();
-        console.log('[MONTHLY-PL] 📦 Data received:');
-        console.log('[MONTHLY-PL]   - status:', data.status);
-        console.log('[MONTHLY-PL]   - months count:', data.months ? data.months.length : 0);
-        console.log('[MONTHLY-PL]   - months:', data.months ? JSON.stringify(data.months) : 'none');
-        console.log('[MONTHLY-PL]   - account_breakdown keys:', data.account_breakdown ? Object.keys(data.account_breakdown) : 'none');
-
-        if (data.account_breakdown && data.account_breakdown['2026-07']) {
-            console.log('[MONTHLY-PL] ✅ July 2026 data found:');
-            console.log('[MONTHLY-PL]   - July accounts:', Object.keys(data.account_breakdown['2026-07']));
-            console.log('[MONTHLY-PL]   - July values:', JSON.stringify(data.account_breakdown['2026-07'], null, 2));
-        } else {
-            console.log('[MONTHLY-PL] ❌ July 2026 data NOT FOUND in API response');
-            console.log('[MONTHLY-PL] Available months:', data.months ? data.months.join(', ') : 'none');
-        }
 
         if (data.status === 'success') {
-            console.log('[MONTHLY-PL] ✅ Data loaded successfully');
-
             allPLData = data;
             plMonths = data.months || [];
-            console.log('[MONTHLY-PL] Stored plMonths:', plMonths);
 
             const dateRangeEl = document.getElementById('pl-date-range');
             if (dateRangeEl && plMonths.length > 0) {
@@ -3129,29 +3028,19 @@ async function loadMonthlyPL() {
                     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                     return `${monthNames[parseInt(month) - 1]} ${year}`;
                 };
-                const displayText = `Showing ${formatMonth(plMonths[0])} to ${formatMonth(plMonths[plMonths.length - 1])}`;
-                dateRangeEl.textContent = displayText;
+                dateRangeEl.textContent = `Showing ${formatMonth(plMonths[0])} to ${formatMonth(plMonths[plMonths.length - 1])}`;
                 dateRangeEl.style.display = 'block';
-                console.log('[MONTHLY-PL] Date range label set to:', displayText);
-            } else {
-                console.log('[MONTHLY-PL] ⚠️ No months to display in date range label');
             }
 
-            console.log('[MONTHLY-PL] 📊 Calling renderLineChart with data');
-            console.log('[MONTHLY-PL] Data months count:', data.months ? data.months.length : 0);
             renderLineChart('pl-chart', data, { type: 'pl' });
-            console.log('[MONTHLY-PL] renderLineChart called successfully');
-
         } else {
-            console.error('[MONTHLY-PL] ❌ API returned error status:', data.error);
+            console.error('[MONTHLY-PL] Error:', data.error);
             document.getElementById('pl-chart-container').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
         }
     } catch (err) {
-        console.error('[MONTHLY-PL] ❌ CRITICAL ERROR:', err);
-        console.error('[MONTHLY-PL] Error stack:', err.stack);
+        console.error('[MONTHLY-PL] Error:', err);
         document.getElementById('pl-chart-container').innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
     }
-    console.log('[MONTHLY-PL] ===== LOAD MONTHLY P&L END =====');
 }
 
 // ============================================================
@@ -3159,90 +3048,41 @@ async function loadMonthlyPL() {
 // ============================================================
 
 async function loadBalanceSheet() {
-    console.log('[BALANCE-SHEET] ==================================================');
     console.log('[BALANCE-SHEET] LOAD BALANCE SHEET START');
-    console.log('[BALANCE-SHEET] Timestamp:', new Date().toISOString());
 
     const startInput = document.getElementById('bs-start');
     const endInput = document.getElementById('bs-end');
-
-    console.log('[BALANCE-SHEET] Start input element:', startInput);
-    console.log('[BALANCE-SHEET] End input element:', endInput);
-    console.log('[BALANCE-SHEET] Start input value:', startInput ? startInput.value : 'NULL');
-    console.log('[BALANCE-SHEET] End input value:', endInput ? endInput.value : 'NULL');
-
     const start = startInput ? startInput.value : '';
     const end = endInput ? endInput.value : '';
 
-    console.log('[BALANCE-SHEET] Start month:', start);
-    console.log('[BALANCE-SHEET] End month:', end);
-
     if (!start || !end) {
-        console.log('[BALANCE-SHEET] ❌ Missing start or end month. Start:', start, 'End:', end);
         alert('Please select both start and end months.');
         return;
     }
 
     if (bankAccounts.length === 0) {
-        console.log('[BALANCE-SHEET] Loading bank accounts');
         await loadBankAccountsForRowDropdowns();
-        console.log('[BALANCE-SHEET] Bank accounts loaded, count:', bankAccounts.length);
     }
 
     try {
-        console.log('[BALANCE-SHEET] Converting months to dates...');
         const startDate = new Date(start + '-01');
         const endDate = new Date(end + '-01');
         const lastDay = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
-
-        console.log('[BALANCE-SHEET] startDate:', startDate.toISOString());
-        console.log('[BALANCE-SHEET] endDate:', endDate.toISOString());
-        console.log('[BALANCE-SHEET] lastDay:', lastDay.toISOString());
-
         const startStr = startDate.toISOString().slice(0, 10);
         const endStr = lastDay.toISOString().slice(0, 10);
 
-        console.log('[BALANCE-SHEET] ✅ Calculated start date:', startStr);
-        console.log('[BALANCE-SHEET] ✅ Calculated end date:', endStr);
-
-        const url = `${AppConfig.baseUrl}/api/accounting/balance-sheet?start=${startStr}&end=${endStr}`;
-        console.log('[BALANCE-SHEET] 🔗 Fetching URL:', url);
-
-        const res = await fetch(url, {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/balance-sheet?start=${startStr}&end=${endStr}`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
 
-        console.log('[BALANCE-SHEET] 📡 Fetch response status:', res.status);
-        console.log('[BALANCE-SHEET] 📡 Fetch response ok:', res.ok);
-
-        if (!res.ok) {
-            console.error('[BALANCE-SHEET] ❌ Fetch failed with status:', res.status);
-            throw new Error('Failed to fetch Balance Sheet data');
-        }
+        if (!res.ok) throw new Error('Failed to fetch Balance Sheet data');
 
         const data = await res.json();
-        console.log('[BALANCE-SHEET] 📦 Data received:');
-        console.log('[BALANCE-SHEET]   - status:', data.status);
-        console.log('[BALANCE-SHEET]   - months count:', data.months ? data.months.length : 0);
-        console.log('[BALANCE-SHEET]   - months:', data.months ? JSON.stringify(data.months) : 'none');
-        console.log('[BALANCE-SHEET]   - account_breakdown keys:', data.account_breakdown ? Object.keys(data.account_breakdown) : 'none');
-
-        if (data.account_breakdown && data.account_breakdown['2026-07']) {
-            console.log('[BALANCE-SHEET] ✅ July 2026 data found:');
-            console.log('[BALANCE-SHEET]   - July accounts:', Object.keys(data.account_breakdown['2026-07']));
-            console.log('[BALANCE-SHEET]   - July values:', JSON.stringify(data.account_breakdown['2026-07'], null, 2));
-        } else {
-            console.log('[BALANCE-SHEET] ❌ July 2026 data NOT FOUND in API response');
-            console.log('[BALANCE-SHEET] Available months:', data.months ? data.months.join(', ') : 'none');
-        }
 
         if (data.status === 'success') {
-            console.log('[BALANCE-SHEET] ✅ Data loaded successfully');
-
             allBSData = data;
             bsMonths = data.months || [];
-            console.log('[BALANCE-SHEET] Stored bsMonths:', bsMonths);
 
             const dateRangeEl = document.getElementById('bs-date-range');
             if (dateRangeEl && bsMonths.length > 0) {
@@ -3251,29 +3091,19 @@ async function loadBalanceSheet() {
                     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                     return `${monthNames[parseInt(month) - 1]} ${year}`;
                 };
-                const displayText = `Showing ${formatMonth(bsMonths[0])} to ${formatMonth(bsMonths[bsMonths.length - 1])}`;
-                dateRangeEl.textContent = displayText;
+                dateRangeEl.textContent = `Showing ${formatMonth(bsMonths[0])} to ${formatMonth(bsMonths[bsMonths.length - 1])}`;
                 dateRangeEl.style.display = 'block';
-                console.log('[BALANCE-SHEET] Date range label set to:', displayText);
-            } else {
-                console.log('[BALANCE-SHEET] ⚠️ No months to display in date range label');
             }
 
-            console.log('[BALANCE-SHEET] 📊 Calling renderLineChart with data');
-            console.log('[BALANCE-SHEET] Data months count:', data.months ? data.months.length : 0);
             renderLineChart('bs-chart', data, { type: 'balancesheet' });
-            console.log('[BALANCE-SHEET] renderLineChart called successfully');
-
         } else {
-            console.error('[BALANCE-SHEET] ❌ API returned error status:', data.error);
+            console.error('[BALANCE-SHEET] Error:', data.error);
             document.getElementById('bs-chart-container').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
         }
     } catch (err) {
-        console.error('[BALANCE-SHEET] ❌ CRITICAL ERROR:', err);
-        console.error('[BALANCE-SHEET] Error stack:', err.stack);
+        console.error('[BALANCE-SHEET] Error:', err);
         document.getElementById('bs-chart-container').innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
     }
-    console.log('[BALANCE-SHEET] ===== LOAD BALANCE SHEET END =====');
 }
 
 // ============================================================

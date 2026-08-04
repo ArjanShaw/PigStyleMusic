@@ -11563,5 +11563,110 @@ def apply_multiple():
             'message': f'Processed {processed} transactions ({created} created, {updated} updated)'
         })
 
+# ============================================================
+# EXTERNAL BALANCE ENDPOINTS
+# ============================================================
+
+@app.route('/api/accounting/external/square/balance', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_square_balance():
+    """Get current Square balance from Square API"""
+    try:
+        access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+        if not access_token:
+            return jsonify({'status': 'error', 'error': 'SQUARE_ACCESS_TOKEN not configured'}), 500
+        
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'Square-Version': '2026-01-22'
+        }
+        
+        # Get all payments and sum completed ones
+        response = requests.get(
+            'https://connect.squareup.com/v2/payments',
+            headers=headers,
+            params={'limit': 100},
+            timeout=30
+        )
+        
+        if response.status_code != 200:
+            return jsonify({'status': 'error', 'error': f'Square API error: {response.status_code}'}), 500
+        
+        data = response.json()
+        payments = data.get('payments', [])
+        
+        total_balance = 0
+        for payment in payments:
+            if payment.get('status') == 'COMPLETED':
+                amount = payment.get('amount_money', {}).get('amount', 0)
+                total_balance += amount / 100.0
+        
+        return jsonify({
+            'status': 'success',
+            'balance': total_balance
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting Square balance: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/accounting/external/plaid/balance', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_plaid_balance():
+    """Get current balance from Plaid for FNBO or PayPal"""
+    try:
+        source = request.args.get('source', 'fnbo')
+        
+        # Get the appropriate access token
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        if source == 'paypal':
+            cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'plaid_paypal_access_token'")
+        else:  # fnbo
+            cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'plaid_access_token'")
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
+            return jsonify({
+                'status': 'error',
+                'error': f'{source.capitalize()} not connected via Plaid'
+            }), 400
+        
+        access_token = row['config_value']
+        
+        # Get balance from Plaid
+        client = get_plaid_client()
+        
+        request = plaid.model.accounts_balance_get_request.AccountsBalanceGetRequest(
+            access_token=access_token
+        )
+        
+        response = client.accounts_balance_get(request)
+        accounts = response['accounts']
+        
+        total_balance = 0
+        for account in accounts:
+            # Sum all account balances (checking, savings, etc.)
+            balances = account.get('balances', {})
+            current = balances.get('current', 0)
+            if current:
+                total_balance += current
+        
+        return jsonify({
+            'status': 'success',
+            'balance': total_balance
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting {source} balance: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
