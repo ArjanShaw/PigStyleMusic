@@ -1,456 +1,506 @@
 // ============================================================================
-// custom-labels.js - Independent Custom Labels Module
-// ALL function names are prefixed with "customLabels" to avoid conflicts
-// Does NOT share any variables or functions with price-tags.js
+// custom-labels.js - Custom Labels Module with Barcode Generation
+// Reuses existing label printing infrastructure for consistent sizing
 // ============================================================================
 
-// Module namespace - completely isolated
-window.CustomLabelsModule = window.CustomLabelsModule || {};
+(function() {
+    'use strict';
 
-// Private state variables (using unique names)
-let customLabels_list = [];
-let customLabels_startRow = 1;
-let customLabels_startCol = 1;
-
-// ============================================================================
-// Helper Functions (unique names)
-// ============================================================================
-
-function customLabelsEscapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function customLabelsShowStatus(message, type = 'info') {
-    let statusEl = document.getElementById('custom-labels-status-message');
-    if (!statusEl) {
-        statusEl = document.createElement('div');
-        statusEl.id = 'custom-labels-status-message';
-        statusEl.className = 'status-message';
-        const tabContent = document.getElementById('custom-labels-tab');
-        if (tabContent) {
-            tabContent.insertBefore(statusEl, tabContent.firstChild);
-        }
-    }
-    
-    const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-    statusEl.innerHTML = `${icons[type] || 'ℹ️'} ${customLabelsEscapeHtml(message)}`;
-    statusEl.className = `status-message status-${type}`;
-    statusEl.style.display = 'block';
-    
-    setTimeout(() => {
-        if (statusEl) statusEl.style.display = 'none';
-    }, 5000);
-}
-
-function customLabelsShowLoading(show) {
-    let loadingEl = document.getElementById('custom-labels-loading');
-    if (!loadingEl && show) {
-        loadingEl = document.createElement('div');
-        loadingEl.id = 'custom-labels-loading';
-        loadingEl.className = 'loading';
-        loadingEl.innerHTML = '<div class="loading-spinner"></div><p>Generating PDF...</p>';
-        loadingEl.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10000; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);';
-        document.body.appendChild(loadingEl);
-    }
-    
-    if (loadingEl) {
-        loadingEl.style.display = show ? 'flex' : 'none';
-    }
-}
-
-// ============================================================================
-// Configuration Loading
-// ============================================================================
-
-async function customLabelsGetConfigValue(configKey) {
-    try {
-        const response = await fetch(`${AppConfig.baseUrl}/config/${configKey}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            return data.config_value;
-        }
-    } catch (error) {
-        console.error(`Error loading config ${configKey}:`, error);
-    }
-    
-    const defaults = {
-        'LABEL_WIDTH_MM': '101.6',
-        'LABEL_HEIGHT_MM': '50.8',
-        'LEFT_MARGIN_MM': '12.7',
-        'GUTTER_SPACING_MM': '3.175',
-        'TOP_MARGIN_MM': '12.7',
-        'PRINT_BORDERS': 'true',
-        'BARCODE_HEIGHT': '10'
-    };
-    
-    return defaults[configKey] || null;
-}
-
-// ============================================================================
-// Calculate Optimal Font Size
-// ============================================================================
-
-function customLabelsCalculateFontSize(text, maxWidthPt, maxHeightPt, lineCount, doc) {
-    // Start with a large font size
-    let fontSize = Math.min(72, maxHeightPt / (lineCount * 1.2));
-    let minFontSize = 8;
-    
-    doc.setFont('helvetica', 'bold');
-    
-    // Binary search for the largest font that fits
-    let bestSize = minFontSize;
-    let low = minFontSize;
-    let high = fontSize;
-    
-    for (let attempt = 0; attempt < 15; attempt++) {
-        if (low > high) break;
-        
-        const testSize = (low + high) / 2;
-        doc.setFontSize(testSize);
-        
-        // Check if all lines fit
-        let allLinesFit = true;
-        for (const line of text) {
-            const lineWidth = doc.getTextWidth(line);
-            if (lineWidth > maxWidthPt) {
-                allLinesFit = false;
-                break;
-            }
-        }
-        
-        const totalHeight = testSize * 1.2 * lineCount;
-        if (allLinesFit && totalHeight <= maxHeightPt) {
-            bestSize = testSize;
-            low = testSize + 0.5;
-        } else {
-            high = testSize - 0.5;
-        }
-    }
-    
-    return Math.max(minFontSize, Math.min(72, bestSize));
-}
-
-// ============================================================================
-// Start Position Management
-// ============================================================================
-
-function customLabelsUpdateStartPosition() {
-    const rowInput = document.getElementById('custom-label-start-row');
-    const colInput = document.getElementById('custom-label-start-col');
-    
-    if (rowInput) {
-        let newRow = parseInt(rowInput.value);
-        if (isNaN(newRow)) newRow = 1;
-        newRow = Math.max(1, Math.min(15, newRow));
-        customLabels_startRow = newRow;
-        rowInput.value = newRow;
-    }
-    
-    if (colInput) {
-        let newCol = parseInt(colInput.value);
-        if (isNaN(newCol)) newCol = 1;
-        newCol = Math.max(1, Math.min(4, newCol));
-        customLabels_startCol = newCol;
-        colInput.value = newCol;
-    }
-    
-    const displayEl = document.getElementById('custom-label-start-display');
-    if (displayEl) {
-        displayEl.textContent = `${customLabels_startRow}, ${customLabels_startCol}`;
-    }
-    
-    customLabelsShowStatus(`Labels will start at position (${customLabels_startRow}, ${customLabels_startCol})`, 'info');
-}
-
-// ============================================================================
-// Label Processing
-// ============================================================================
-
-function customLabelsParseInput() {
-    const textarea = document.getElementById('custom-label-text');
-    if (!textarea) return [];
-    
-    const rawText = textarea.value;
-    const lines = rawText.split(/\r?\n/);
-    
-    const labels = [];
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed === '') continue;
-        
-        const linesArray = trimmed.split('|').map(l => l.trim()).filter(l => l !== '');
-        
-        labels.push({
-            raw: trimmed,
-            lines: linesArray,
-            lineCount: linesArray.length
-        });
-    }
-    
-    return labels;
-}
-
-function customLabelsUpdatePreview() {
-    const labels = customLabelsParseInput();
-    const previewDiv = document.getElementById('custom-label-preview');
-    const countSpan = document.getElementById('custom-label-preview-count');
-    
-    if (countSpan) {
-        countSpan.textContent = `${labels.length} label${labels.length !== 1 ? 's' : ''}`;
-    }
-    
-    if (!previewDiv) return;
-    
-    if (labels.length === 0) {
-        previewDiv.innerHTML = '<p style="color: #666; text-align: center;">Enter labels above to see preview</p>';
-        return;
-    }
-    
-    let previewHtml = '<div style="display: flex; flex-wrap: wrap; gap: 15px;">';
-    
-    labels.forEach((label, idx) => {
-        previewHtml += `
-            <div style="background: white; border: 1px solid #ddd; border-radius: 4px; padding: 10px; width: 200px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                <div style="font-size: 11px; color: #999; margin-bottom: 5px;">Label #${idx + 1}</div>
-                <div style="text-align: center;">
-                    ${label.lines.map(line => `<div style="font-size: 12px; padding: 2px 0;">${customLabelsEscapeHtml(line)}</div>`).join('')}
-                </div>
-            </div>
-        `;
-    });
-    
-    previewHtml += '</div>';
-    previewDiv.innerHTML = previewHtml;
-}
-
-// ============================================================================
-// PDF Generation with Dynamic Font Sizing
-// ============================================================================
-
-async function customLabelsGeneratePDF() {
-    const labels = customLabelsParseInput();
-    
-    if (labels.length === 0) {
-        customLabelsShowStatus('Please enter at least one label', 'error');
-        return;
-    }
-    
-    customLabelsShowLoading(true);
-    
-    try {
-        const labelWidthMM = await customLabelsGetConfigValue('LABEL_WIDTH_MM');
-        const labelHeightMM = await customLabelsGetConfigValue('LABEL_HEIGHT_MM');
-        const leftMarginMM = await customLabelsGetConfigValue('LEFT_MARGIN_MM');
-        const gutterSpacingMM = await customLabelsGetConfigValue('GUTTER_SPACING_MM');
-        const topMarginMM = await customLabelsGetConfigValue('TOP_MARGIN_MM');
-        const printBorders = await customLabelsGetConfigValue('PRINT_BORDERS');
-        
-        const { jsPDF } = window.jspdf;
-        
-        const mmToPt = 2.83465;
-        const labelWidthPt = parseFloat(labelWidthMM) * mmToPt;
-        const labelHeightPt = parseFloat(labelHeightMM) * mmToPt;
-        const leftMarginPt = parseFloat(leftMarginMM) * mmToPt;
-        const gutterSpacingPt = parseFloat(gutterSpacingMM) * mmToPt;
-        const topMarginPt = parseFloat(topMarginMM) * mmToPt;
-        
-        const doc = new jsPDF({
-            orientation: 'portrait',
-            unit: 'pt',
-            format: 'letter'
-        });
-        
-        const rows = 15;
-        const cols = 4;
-        const labelsPerPage = rows * cols;
-        
-        const startIndex = ((customLabels_startRow - 1) * cols) + (customLabels_startCol - 1);
-        let currentLabelIndex = 0;
-        let pageNumber = 0;
-        
-        // Available area for text (with 10pt padding on each side)
-        const textMaxWidth = labelWidthPt - 20;
-        const textMaxHeight = labelHeightPt - 20;
-        
-        console.log(`📄 Custom Labels PDF Generation with Dynamic Font Sizing`);
-        console.log(`📍 Starting at position: Row ${customLabels_startRow}, Col ${customLabels_startCol}`);
-        console.log(`📊 Total labels: ${labels.length}`);
-        console.log(`📏 Label size: ${labelWidthPt}pt x ${labelHeightPt}pt`);
-        console.log(`📏 Text area: ${textMaxWidth}pt x ${textMaxHeight}pt`);
-        
-        for (let i = 0; i < labels.length; i++) {
-            const label = labels[i];
-            
-            const absoluteIndex = startIndex + currentLabelIndex;
-            const pageIndex = absoluteIndex % labelsPerPage;
-            const pageNum = Math.floor(absoluteIndex / labelsPerPage);
-            
-            if (pageNum > pageNumber) {
-                doc.addPage();
-                pageNumber = pageNum;
-            }
-            
-            const row = Math.floor(pageIndex / cols);
-            const col = pageIndex % cols;
-            
-            const x = leftMarginPt + (col * (labelWidthPt + gutterSpacingPt));
-            const y = topMarginPt + (row * labelHeightPt);
-            
-            if (printBorders === 'true' || printBorders === true) {
-                doc.setDrawColor(0);
-                doc.setLineWidth(0.5);
-                doc.rect(x, y, labelWidthPt, labelHeightPt);
-            }
-            
-            // Calculate optimal font size for this label
-            const optimalFontSize = customLabelsCalculateFontSize(
-                label.lines, 
-                textMaxWidth, 
-                textMaxHeight, 
-                label.lineCount, 
-                doc
-            );
-            
-            doc.setFontSize(optimalFontSize);
-            doc.setFont('helvetica', 'bold');
-            
-            const lineHeight = optimalFontSize * 1.2;
-            const totalTextHeight = label.lineCount * lineHeight;
-            const startY = y + (labelHeightPt - totalTextHeight) / 2 + (lineHeight * 0.8);
-            
-            // Draw each line centered
-            for (let lineIdx = 0; lineIdx < label.lines.length; lineIdx++) {
-                const line = label.lines[lineIdx];
-                const lineY = startY + (lineIdx * lineHeight);
-                
-                const textWidth = doc.getTextWidth(line);
-                const textX = x + (labelWidthPt - textWidth) / 2;
-                
-                doc.text(line, textX, lineY);
-            }
-            
-            console.log(`  Label ${i+1}: "${label.lines[0]}${label.lines.length > 1 ? '...' : ''}" - Font size: ${optimalFontSize.toFixed(1)}pt`);
-            
-            currentLabelIndex++;
-        }
-        
-        console.log(`✅ Generated ${currentLabelIndex} custom labels`);
-        
-        const pdfBlob = doc.output('blob');
-        const url = URL.createObjectURL(pdfBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `custom_labels_${new Date().toISOString().slice(0, 10)}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        customLabelsShowStatus(`PDF generated with ${currentLabelIndex} labels (dynamic font sizing)`, 'success');
-        
-    } catch (error) {
-        console.error('Custom labels PDF generation failed:', error);
-        customLabelsShowStatus(`PDF generation failed: ${error.message}`, 'error');
-    } finally {
-        customLabelsShowLoading(false);
-    }
-}
-
-// ============================================================================
-// UI Actions
-// ============================================================================
-
-function customLabelsClearText() {
-    const textarea = document.getElementById('custom-label-text');
-    if (textarea) {
-        textarea.value = '';
-        customLabelsUpdatePreview();
-        customLabelsShowStatus('All labels cleared', 'info');
-    }
-}
-
-function customLabelsLoadSample() {
-    const textarea = document.getElementById('custom-label-text');
-    if (textarea) {
-        textarea.value = `SUMMER SALE!
-50% OFF ALL RECORDS
-
-NEW ARRIVALS
-VINYL & CDS
-
-STORE CREDIT
-AVAILABLE HERE
-
-BUY ONE GET ONE FREE
-LIMITED TIME
-
-CLEARANCE
-ALL SALES FINAL
-
-STAFF PICK
-RECOMMENDED
-
-GIFT CARDS
-AVAILABLE
-
-FREE SHIPPING
-ON ORDERS OVER $50
-
-RECORD STORE DAY
-EXCLUSIVE RELEASES
-
-TRADE-INS WELCOME
-BRING YOUR RECORDS`;
-        customLabelsUpdatePreview();
-        customLabelsShowStatus('Sample labels loaded', 'success');
-    }
-}
-
-// ============================================================================
-// Event Listeners
-// ============================================================================
-
-function customLabelsInit() {
     console.log('🎨 Custom Labels Module Initialized');
-    
-    const textarea = document.getElementById('custom-label-text');
-    if (textarea) {
-        textarea.addEventListener('input', customLabelsUpdatePreview);
-    }
-    
-    customLabelsUpdateStartPosition();
-    customLabelsUpdatePreview();
-}
 
-// ============================================================================
-// Tab Activation Handler
-// ============================================================================
+    // ========== DOM Elements ==========
+    const customLabelText = document.getElementById('custom-label-text');
+    const customLabelPreview = document.getElementById('custom-label-preview');
+    const customLabelPreviewCount = document.getElementById('custom-label-preview-count');
+    const customLabelStartRow = document.getElementById('custom-label-start-row');
+    const customLabelStartCol = document.getElementById('custom-label-start-col');
+    const customLabelStartDisplay = document.getElementById('custom-label-start-display');
 
-document.addEventListener('tabChanged', function(e) {
-    if (e.detail && e.detail.tabName === 'custom-labels') {
+    // ========== State ==========
+    let currentLabels = [];
+    let startRow = 1;
+    let startCol = 1;
+
+    // ========== Initialize ==========
+    function init() {
         console.log('🎨 Custom labels tab activated');
-        setTimeout(customLabelsInit, 100);
+
+        // Load saved start position from localStorage
+        try {
+            const savedRow = localStorage.getItem('customLabelStartRow');
+            const savedCol = localStorage.getItem('customLabelStartCol');
+            if (savedRow) startRow = parseInt(savedRow);
+            if (savedCol) startCol = parseInt(savedCol);
+            if (customLabelStartRow) customLabelStartRow.value = startRow;
+            if (customLabelStartCol) customLabelStartCol.value = startCol;
+            if (customLabelStartDisplay) {
+                customLabelStartDisplay.textContent = startRow + ', ' + startCol;
+            }
+        } catch (e) {
+            console.warn('Could not load start position:', e);
+        }
+
+        // Load labels from localStorage
+        try {
+            const savedLabels = localStorage.getItem('customLabels');
+            if (savedLabels) {
+                currentLabels = JSON.parse(savedLabels);
+                if (customLabelText) {
+                    customLabelText.value = currentLabels.join('\n');
+                }
+                updatePreview();
+            }
+        } catch (e) {
+            console.warn('Could not load custom labels:', e);
+        }
+
+        // Set up event listeners
+        if (customLabelText) {
+            customLabelText.addEventListener('input', function() {
+                updatePreview();
+                saveLabels();
+            });
+        }
+
+        if (customLabelStartRow) {
+            customLabelStartRow.addEventListener('change', function() {
+                startRow = parseInt(this.value) || 1;
+                localStorage.setItem('customLabelStartRow', startRow);
+                if (customLabelStartDisplay) {
+                    customLabelStartDisplay.textContent = startRow + ', ' + startCol;
+                }
+            });
+        }
+
+        if (customLabelStartCol) {
+            customLabelStartCol.addEventListener('change', function() {
+                startCol = parseInt(this.value) || 1;
+                localStorage.setItem('customLabelStartCol', startCol);
+                if (customLabelStartDisplay) {
+                    customLabelStartDisplay.textContent = startRow + ', ' + startCol;
+                }
+            });
+        }
     }
-});
 
-document.addEventListener('DOMContentLoaded', function() {
-    const customLabelsTab = document.querySelector('.tab[data-tab="custom-labels"]');
-    if (customLabelsTab && customLabelsTab.classList.contains('active')) {
-        setTimeout(customLabelsInit, 200);
+    // ========== Update Preview ==========
+    function updatePreview() {
+        if (!customLabelText || !customLabelPreview || !customLabelPreviewCount) return;
+
+        const text = customLabelText.value;
+        const lines = text.split('\n').filter(line => line.trim() !== '');
+        currentLabels = lines;
+
+        // Update count
+        customLabelPreviewCount.textContent = lines.length + ' labels';
+
+        if (lines.length === 0) {
+            customLabelPreview.innerHTML = '<p style="color: #666; text-align: center;">Enter labels above to see preview</p>';
+            return;
+        }
+
+        let html = '';
+        const maxLines = 5;
+        const showCount = Math.min(lines.length, maxLines);
+
+        for (let i = 0; i < showCount; i++) {
+            const label = lines[i];
+            const parts = label.split('|').map(p => p.trim());
+            html += '<div style="display: inline-block; margin: 5px; padding: 15px; background: white; border: 1px solid #ddd; border-radius: 4px; min-width: 150px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">';
+            parts.forEach(part => {
+                html += '<div style="font-size: 14px; font-weight: 500; color: #333; margin: 2px 0;">' + escapeHtml(part) + '</div>';
+            });
+            html += '</div>';
+        }
+
+        if (lines.length > maxLines) {
+            html += '<div style="display: inline-block; margin: 5px; padding: 15px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; min-width: 150px; text-align: center; color: #999;">+ ' + (lines.length - maxLines) + ' more</div>';
+        }
+
+        customLabelPreview.innerHTML = html;
     }
-});
 
-// Export functions for use in HTML
-window.customLabelsUpdateStartPosition = customLabelsUpdateStartPosition;
-window.customLabelsGeneratePDF = customLabelsGeneratePDF;
-window.customLabelsClearText = customLabelsClearText;
-window.customLabelsLoadSample = customLabelsLoadSample;
+    // ========== Save Labels ==========
+    function saveLabels() {
+        try {
+            localStorage.setItem('customLabels', JSON.stringify(currentLabels));
+        } catch (e) {
+            console.warn('Could not save custom labels:', e);
+        }
+    }
 
-console.log('✅ custom-labels.js loaded - Dynamic font sizing enabled');
+    // ========== Generate Custom Labels PDF (Reuses Price Tag Logic) ==========
+    function customLabelsGeneratePDF() {
+        const text = customLabelText ? customLabelText.value : '';
+        const lines = text.split('\n').filter(line => line.trim() !== '');
+
+        if (lines.length === 0) {
+            alert('Please enter at least one label.');
+            return;
+        }
+
+        // Reuse the same PDF generation as price tags
+        generateLabelPDF(lines, 'custom');
+    }
+
+    // ========== Generate Barcodes PDF (Reuses Price Tag Logic) ==========
+    function generateBarcodes() {
+        console.log('🔢 generateBarcodes called');
+
+        var countInput = document.getElementById('barcode-count');
+        var formatSelect = document.getElementById('barcode-format');
+        var statusEl = document.getElementById('barcode-status');
+
+        if (!countInput || !formatSelect || !statusEl) {
+            console.error('❌ Barcode elements not found in DOM');
+            alert('Please refresh the page and try again.');
+            return;
+        }
+
+        var count = parseInt(countInput.value) || 10;
+        var format = formatSelect.value || 'avery5160';
+
+        statusEl.style.display = 'block';
+        statusEl.style.background = 'rgba(255,255,255,0.2)';
+        statusEl.textContent = '⏳ Generating barcodes...';
+
+        // Call the API to generate codes
+        fetch(window.AppConfig.baseUrl + '/api/gift-card/print', {
+            method: 'POST',
+            credentials: 'include',
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ count: count })
+        })
+        .then(function(response) {
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+            return response.json();
+        })
+        .then(function(data) {
+            if (data.status === 'success') {
+                statusEl.style.background = 'rgba(40,167,69,0.3)';
+                statusEl.textContent = '✅ Generated ' + data.codes.length + ' barcodes. Generating PDF...';
+                // Reuse the same label generation with barcode mode
+                generateLabelPDF(data.codes, 'barcode');
+                statusEl.textContent = '✅ ' + data.codes.length + ' barcodes printed successfully! No database records created.';
+            } else {
+                statusEl.style.background = 'rgba(255,0,0,0.2)';
+                statusEl.textContent = '❌ Error: ' + (data.error || 'Failed to generate barcodes');
+            }
+        })
+        .catch(function(error) {
+            console.error('❌ Barcode generation error:', error);
+            statusEl.style.background = 'rgba(255,0,0,0.2)';
+            statusEl.textContent = '❌ Error: ' + error.message;
+        });
+    }
+
+    // ========== Core Label Generation (Reused by both custom labels and barcodes) ==========
+    function generateLabelPDF(items, mode) {
+        console.log('📄 generateLabelPDF: ' + items.length + ' items, mode: ' + mode);
+
+        // Make sure jsPDF is loaded
+        if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
+            console.error('❌ jsPDF not loaded');
+            alert('Error: jsPDF library not loaded. Please refresh the page.');
+            return;
+        }
+
+        // Get label configuration from API (same as price tags)
+        Promise.all([
+            getConfigValue('LABEL_WIDTH_MM'),
+            getConfigValue('LABEL_HEIGHT_MM'),
+            getConfigValue('LEFT_MARGIN_MM'),
+            getConfigValue('GUTTER_SPACING_MM'),
+            getConfigValue('TOP_MARGIN_MM'),
+            getConfigValue('PRICE_FONT_SIZE'),
+            getConfigValue('TEXT_FONT_SIZE'),
+            getConfigValue('BARCODE_HEIGHT'),
+            getConfigValue('PRINT_BORDERS'),
+            getConfigValue('PRICE_Y_POS'),
+            getConfigValue('BARCODE_Y_POS'),
+            getConfigValue('INFO_Y_POS')
+        ]).then(function(values) {
+            var [
+                labelWidthMM, labelHeightMM, leftMarginMM, gutterSpacingMM, topMarginMM,
+                priceFontSize, textFontSize, barcodeHeightMM, printBorders,
+                priceYPosMM, barcodeYPosMM, infoYPosMM
+            ] = values;
+
+            // Use defaults if config not available
+            labelWidthMM = parseFloat(labelWidthMM) || 63.5;
+            labelHeightMM = parseFloat(labelHeightMM) || 33.9;
+            leftMarginMM = parseFloat(leftMarginMM) || 11.1;
+            gutterSpacingMM = parseFloat(gutterSpacingMM) || 3.0;
+            topMarginMM = parseFloat(topMarginMM) || 13.4;
+            priceFontSize = parseInt(priceFontSize) || 24;
+            textFontSize = parseInt(textFontSize) || 12;
+            barcodeHeightMM = parseFloat(barcodeHeightMM) || 15.0;
+            printBorders = printBorders === 'true';
+            priceYPosMM = parseFloat(priceYPosMM) || 20.0;
+            barcodeYPosMM = parseFloat(barcodeYPosMM) || 10.0;
+            infoYPosMM = parseFloat(infoYPosMM) || 25.0;
+
+            var mmToPt = 2.83465;
+            var labelWidthPt = labelWidthMM * mmToPt;
+            var labelHeightPt = labelHeightMM * mmToPt;
+            var leftMarginPt = leftMarginMM * mmToPt;
+            var gutterSpacingPt = gutterSpacingMM * mmToPt;
+            var topMarginPt = topMarginMM * mmToPt;
+            var barcodeHeightPt = barcodeHeightMM * mmToPt;
+
+            var jsPDF = window.jspdf.jsPDF;
+            var doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+
+            var rows = 15;
+            var cols = 4;
+            var labelsPerPage = rows * cols;
+            var currentLabel = 0;
+            var pageNumber = 0;
+
+            // Get start position
+            var startRowVal = parseInt(customLabelStartRow ? customLabelStartRow.value : 1) || 1;
+            var startColVal = parseInt(customLabelStartCol ? customLabelStartCol.value : 1) || 1;
+            var startIndex = ((startRowVal - 1) * cols) + (startColVal - 1);
+            if (startIndex < 0) startIndex = 0;
+
+            for (var i = 0; i < items.length; i++) {
+                var globalIndex = startIndex + i;
+                var pageIndex = globalIndex % labelsPerPage;
+                var pageNum = Math.floor(globalIndex / labelsPerPage);
+
+                if (pageNum > pageNumber) {
+                    doc.addPage();
+                    pageNumber = pageNum;
+                }
+
+                var row = Math.floor(pageIndex / cols);
+                var col = pageIndex % cols;
+                var x = leftMarginPt + col * (labelWidthPt + gutterSpacingPt);
+                var y = topMarginPt + row * labelHeightPt;
+
+                // Draw border (if enabled)
+                if (printBorders) {
+                    doc.setDrawColor(200);
+                    doc.setLineWidth(0.5);
+                    doc.rect(x, y, labelWidthPt, labelHeightPt);
+                }
+
+                if (mode === 'barcode') {
+                    // BARCODE MODE - uses same layout as price tags
+                    var code = items[i];
+
+                    // Draw barcode
+                    try {
+                        if (typeof JsBarcode !== 'undefined') {
+                            var canvas = document.createElement('canvas');
+                            canvas.width = 400;
+                            canvas.height = 120;
+
+                            JsBarcode(canvas, code, {
+                                format: 'CODE128',
+                                displayValue: true,
+                                font: 'monospace',
+                                fontSize: 20,
+                                textAlign: 'center',
+                                textPosition: 'bottom',
+                                textMargin: 5,
+                                margin: 5,
+                                width: 2,
+                                height: 70
+                            });
+
+                            var barcodeData = canvas.toDataURL('image/png');
+                            var barcodeWidth = labelWidthPt - 20;
+                            var barcodeHeight = barcodeWidth * (120 / 400);
+                            var barcodeX = x + (labelWidthPt - barcodeWidth) / 2;
+                            var barcodeY = y + (labelHeightPt - barcodeHeight) / 2 - 5;
+
+                            doc.addImage(barcodeData, 'PNG', barcodeX, barcodeY, barcodeWidth, barcodeHeight);
+                        } else {
+                            // Fallback: just show the code as text
+                            doc.setFontSize(18);
+                            doc.setFont('helvetica', 'bold');
+                            doc.setTextColor(0);
+                            doc.text(code, x + labelWidthPt / 2, y + labelHeightPt / 2, { align: 'center' });
+                        }
+                    } catch (e) {
+                        console.warn('Barcode generation failed for ' + code + ':', e);
+                        // Fallback text
+                        doc.setFontSize(18);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setTextColor(0);
+                        doc.text(code, x + labelWidthPt / 2, y + labelHeightPt / 2, { align: 'center' });
+                    }
+
+                } else {
+                    // CUSTOM LABEL MODE - multi-line text
+                    var labelText = items[i];
+                    var parts = labelText.split('|').map(function(p) { return p.trim(); });
+
+                    if (parts.length === 1) {
+                        // Single line - centered
+                        doc.setFontSize(textFontSize);
+                        doc.setFont('helvetica', 'normal');
+                        doc.setTextColor(0);
+                        var textWidth = doc.getTextWidth(parts[0]);
+                        var textX = x + (labelWidthPt - textWidth) / 2;
+                        doc.text(parts[0], textX, y + labelHeightPt / 2 + 4);
+                    } else {
+                        // Multiple lines - centered vertically and horizontally
+                        var lineHeight = 18;
+                        var totalLines = parts.length;
+                        var startY = y + (labelHeightPt - (totalLines * lineHeight)) / 2 + 14;
+
+                        doc.setFontSize(textFontSize);
+                        doc.setFont('helvetica', 'normal');
+                        doc.setTextColor(0);
+
+                        for (var j = 0; j < parts.length; j++) {
+                            var lineText = parts[j];
+                            var textWidth2 = doc.getTextWidth(lineText);
+                            var textX2 = x + (labelWidthPt - textWidth2) / 2;
+                            var textY2 = startY + (j * lineHeight);
+                            doc.text(lineText, textX2, textY2);
+                        }
+                    }
+                }
+
+                currentLabel++;
+            }
+
+            // Open PDF
+            var pdfBlob = doc.output('blob');
+            var pdfUrl = URL.createObjectURL(pdfBlob);
+            window.open(pdfUrl, '_blank');
+
+            console.log('📄 PDF generated with ' + items.length + ' labels');
+        }).catch(function(error) {
+            console.error('Error generating PDF:', error);
+            alert('Error generating PDF: ' + error.message);
+        });
+    }
+
+    // ========== Get Config Value from API ==========
+    function getConfigValue(key) {
+        return new Promise(function(resolve) {
+            // First check if it's already loaded
+            if (window.dbConfigValues && window.dbConfigValues[key]) {
+                resolve(window.dbConfigValues[key].value);
+                return;
+            }
+
+            // Check localStorage
+            try {
+                var stored = localStorage.getItem('dbConfigValues');
+                if (stored) {
+                    var configs = JSON.parse(stored);
+                    if (configs[key]) {
+                        resolve(configs[key].value);
+                        return;
+                    }
+                }
+            } catch (e) {}
+
+            // Fetch from API
+            fetch(window.AppConfig.baseUrl + '/config/' + key, {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            })
+            .then(function(response) {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.json();
+            })
+            .then(function(data) {
+                resolve(data.config_value);
+            })
+            .catch(function() {
+                resolve(null);
+            });
+        });
+    }
+
+    // ========== Clear Text ==========
+    function customLabelsClearText() {
+        if (customLabelText) {
+            customLabelText.value = '';
+            currentLabels = [];
+            updatePreview();
+            saveLabels();
+        }
+    }
+
+    // ========== Load Sample ==========
+    function customLabelsLoadSample() {
+        const sample = [
+            'Summer Sale 50% Off',
+            'New Arrivals|Vinyl Records',
+            'Store Credit Available',
+            'Buy One Get One Free|Limited Time',
+            'Clearance|All Sales Final',
+            'Gift Cards Available',
+            'Trade-Ins Welcome|Ask Inside',
+            'Limited Edition|Signed Copy',
+            'Staff Pick|Recommended',
+            'New Arrivals|Limited Stock'
+        ];
+        if (customLabelText) {
+            customLabelText.value = sample.join('\n');
+            currentLabels = sample;
+            updatePreview();
+            saveLabels();
+        }
+    }
+
+    // ========== Update Start Position ==========
+    function customLabelsUpdateStartPosition() {
+        const row = parseInt(customLabelStartRow ? customLabelStartRow.value : 1) || 1;
+        const col = parseInt(customLabelStartCol ? customLabelStartCol.value : 1) || 1;
+        startRow = row;
+        startCol = col;
+        localStorage.setItem('customLabelStartRow', row);
+        localStorage.setItem('customLabelStartCol', col);
+        if (customLabelStartDisplay) {
+            customLabelStartDisplay.textContent = row + ', ' + col;
+        }
+        console.log('📐 Start position updated to: Row ' + row + ', Column ' + col);
+    }
+
+    // ========== Helper: Escape HTML ==========
+    function escapeHtml(text) {
+        if (!text) return '';
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // ========== Expose functions ==========
+    window.customLabelsGeneratePDF = customLabelsGeneratePDF;
+    window.customLabelsClearText = customLabelsClearText;
+    window.customLabelsLoadSample = customLabelsLoadSample;
+    window.customLabelsUpdateStartPosition = customLabelsUpdateStartPosition;
+    window.generateBarcodes = generateBarcodes;
+
+    // ========== Initialize ==========
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        init();
+    } else {
+        document.addEventListener('DOMContentLoaded', init);
+    }
+
+    // Listen for tab activation to re-initialize
+    document.addEventListener('tabChanged', function(e) {
+        if (e.detail && e.detail.tab === 'custom-labels') {
+            console.log('🎨 Custom labels tab activated');
+            if (customLabelText && customLabelText.value) {
+                updatePreview();
+            }
+        }
+    });
+
+    console.log('🎨 Custom Labels Module Loaded - generateBarcodes exposed');
+
+})();

@@ -1,5 +1,6 @@
 // ============================================================================
 // inventory-ops.js - Unified Inventory Operations
+// Modes: Add Record, Scan/Locate, Post to Discogs, Delete, Checkout, Discogs Orders, Refund
 // Uses one-container-per-mode visibility
 // ============================================================================
 
@@ -33,78 +34,7 @@
     const printBtn = document.getElementById('print-btn');
     const cancelRangeBtn = document.getElementById('cancel-range-btn');
 
-    // ========== Mode containers ==========
-    const addModeContainer = document.getElementById('add-mode-container');
-    const scanModeContainer = document.getElementById('scan-mode-container');
-    const discogsModeContainer = document.getElementById('discogs-mode-container');
-    const deleteModeContainer = document.getElementById('delete-mode-container');
-    const checkoutModeContainer = document.getElementById('checkout-mode-container');
-    const discogsOrdersModeContainer = document.getElementById('discogs-orders-mode-container');
-    const refundModeContainer = document.getElementById('refund-mode-container');
-
-    // ========== NEW: Scan Location Elements ==========
-    const scanGenreSelect = document.getElementById('scan-genre-select');
-    const scanFormatSelect = document.getElementById('scan-format-select');
-    const scanAreaSelect = document.getElementById('scan-area-select');
-    const scanSublocationSelect = document.getElementById('scan-sublocation-select');
-    const scanInput = document.getElementById('scan-input');
-    const scanSubmitBtn = document.getElementById('scan-submit-btn');
-    const scanLocationDisplay = document.getElementById('scan-location-display');
-    const scanIndexDisplay = document.getElementById('scan-index-display');
-    const recentScansList = document.getElementById('recent-scans-list');
-    const lastScanDisplay = document.getElementById('last-scan-display');
-
-    // ========== NEW: Filter Elements ==========
-    const filterLastSeen = document.getElementById('filter-last-seen');
-    const filterGenre = document.getElementById('filter-genre');
-    const filterFormat = document.getElementById('filter-format');
-    const filterArea = document.getElementById('filter-area');
-    const filterSublocation = document.getElementById('filter-sublocation');
-    const applyFiltersBtn = document.getElementById('apply-filters-btn');
-    const clearFiltersBtn = document.getElementById('clear-filters-btn');
-
-    // ========== Domain Management Elements ==========
-    const genresList = document.getElementById('genres-list');
-    const newGenreInput = document.getElementById('new-genre');
-    const addGenreBtn = document.getElementById('add-genre-btn');
-    const formatsList = document.getElementById('formats-list');
-    const newFormatInput = document.getElementById('new-format');
-    const addFormatBtn = document.getElementById('add-format-btn');
-    const areasList = document.getElementById('areas-list');
-    const newAreaInput = document.getElementById('new-area');
-    const addAreaBtn = document.getElementById('add-area-btn');
-    const sublocationsList = document.getElementById('sublocations-list');
-    const sublocationAreaFilter = document.getElementById('sublocation-area-filter');
-    const newSublocationArea = document.getElementById('new-sublocation-area');
-    const newSublocationName = document.getElementById('new-sublocation-name');
-    const newSublocationAbbr = document.getElementById('new-sublocation-abbr');
-    const addSublocationBtn = document.getElementById('add-sublocation-btn');
-
-    // ========== Other DOM Elements ==========
-    const discogsLocationSelect = document.getElementById('discogs-location-select');
-    const discogsStatusMessage = document.getElementById('discogs-status-message');
-    const lastSeenCutoffDateInput = document.getElementById('last-seen-cutoff-date');
-    const applyLastSeenFilterBtn = document.getElementById('apply-last-seen-filter');
-
-    const deleteStatusFilter = document.getElementById('delete-status-filter');
-
-    const checkoutShowSelectedBtn = document.getElementById('checkout-show-selected-btn');
-    const checkoutShowAllBtn = document.getElementById('checkout-show-all-btn');
-
-    const discogsOrderSelect = document.getElementById('discogs-order-select');
-    const discogsOrdersRefreshBtn = document.getElementById('discogs-orders-refresh-btn');
-    const discogsOrdersStatus = document.getElementById('discogs-orders-status');
-    const discogsOrdersStatusFilter = document.getElementById('discogs-orders-status-filter');
-    const discogsOrdersApplyFiltersBtn = document.getElementById('discogs-orders-apply-filters-btn');
-    const discogsOrdersDateFrom = document.getElementById('discogs-orders-date-from');
-    const discogsOrdersDateTo = document.getElementById('discogs-orders-date-to');
-    const discogsOrdersSearch = document.getElementById('discogs-orders-search');
-
-    const defaultSleeveSelect = document.getElementById('default-sleeve-condition');
-    const defaultDiscSelect = document.getElementById('default-disc-condition');
-    const defaultPriceInput = document.getElementById('default-price');
-    const defaultConsignorSelect = document.getElementById('default-consignor');
-
+    // ========== Purchase Table Elements ==========
     const purchasesContainer = document.getElementById('purchases-container');
     const purchasesBody = document.getElementById('purchases-body');
     const metadataPanel = document.getElementById('purchase-metadata-panel');
@@ -118,6 +48,47 @@
     const purchaseIdDisplay = document.getElementById('purchase-id-display');
     const deletePurchaseBtn = document.getElementById('delete-purchase-btn');
     const acceptDraftBtn = document.getElementById('accept-draft-btn');
+
+    // ========== Scan Location Builder Elements ==========
+    const scanGenreSelect = document.getElementById('scan-genre-select');
+    const scanFormatSelect = document.getElementById('scan-format-select');
+    const scanAreaSelect = document.getElementById('scan-area-select');
+    const scanSublocationSelect = document.getElementById('scan-sublocation-select');
+    const scanInput = document.getElementById('scan-input');
+    const scanSubmitBtn = document.getElementById('scan-submit-btn');
+    const scanLocationDisplay = document.getElementById('scan-location-display');
+    const scanIndexDisplay = document.getElementById('scan-index-display');
+    const recentScansList = document.getElementById('recent-scans-list');
+    const lastScanDisplay = document.getElementById('last-scan-display');
+
+    // ========== Discogs Elements ==========
+    const discogsLocationSelect = document.getElementById('discogs-location-select');
+    const discogsStatusMessage = document.getElementById('discogs-status-message');
+    const lastSeenCutoffDateInput = document.getElementById('last-seen-cutoff-date');
+    const applyLastSeenFilterBtn = document.getElementById('apply-last-seen-filter');
+
+    // ========== Delete Mode Elements ==========
+    const deleteStatusFilter = document.getElementById('delete-status-filter');
+
+    // ========== Checkout Elements ==========
+    const checkoutShowSelectedBtn = document.getElementById('checkout-show-selected-btn');
+    const checkoutShowAllBtn = document.getElementById('checkout-show-all-btn');
+
+    // ========== Discogs Orders Elements ==========
+    const discogsOrderSelect = document.getElementById('discogs-order-select');
+    const discogsOrdersRefreshBtn = document.getElementById('discogs-orders-refresh-btn');
+    const discogsOrdersStatus = document.getElementById('discogs-orders-status');
+    const discogsOrdersStatusFilter = document.getElementById('discogs-orders-status-filter');
+    const discogsOrdersApplyFiltersBtn = document.getElementById('discogs-orders-apply-filters-btn');
+    const discogsOrdersDateFrom = document.getElementById('discogs-orders-date-from');
+    const discogsOrdersDateTo = document.getElementById('discogs-orders-date-to');
+    const discogsOrdersSearch = document.getElementById('discogs-orders-search');
+
+    // ========== Default Params Elements ==========
+    const defaultSleeveSelect = document.getElementById('default-sleeve-condition');
+    const defaultDiscSelect = document.getElementById('default-disc-condition');
+    const defaultPriceInput = document.getElementById('default-price');
+    const defaultConsignorSelect = document.getElementById('default-consignor');
 
     // ========== State ==========
     let currentSearchMode = 'add';
@@ -184,16 +155,6 @@
     };
     let defaultParamsActive = false;
 
-    // ========== NEW: Scan Session State ==========
-    let scanSession = {
-        genre_id: null,
-        format_id: null,
-        area_id: null,
-        sublocation_id: null,
-        location_index: 1,
-        is_ready: false
-    };
-
     let recentScans = [];
     const MAX_RECENT_SCANS = 10;
 
@@ -204,15 +165,16 @@
     // ========== Audio ==========
     let audioContext = null;
 
-    // ========== Mode Container Mapping ==========
-    const modeContainers = {
-        'add': addModeContainer,
-        'scan': scanModeContainer,
-        'discogs': discogsModeContainer,
-        'delete': deleteModeContainer,
-        'checkout': checkoutModeContainer,
-        'discogs_orders': discogsOrdersModeContainer,
-        'refund': refundModeContainer
+    // ========== MODE CONTAINER MAPPING ==========
+    // Each mode has ONE container that contains ALL its content
+    const MODE_CONTAINERS = {
+        'add': 'mode-container-add',
+        'scan': 'mode-container-scan',
+        'discogs': 'mode-container-discogs',
+        'delete': 'mode-container-delete',
+        'checkout': 'mode-container-checkout',
+        'discogs_orders': 'mode-container-discogs_orders',
+        'refund': 'mode-container-refund'
     };
 
     // ========== Helper Functions ==========
@@ -444,6 +406,50 @@
         }
     }
 
+    async function loadGenres() {
+        try {
+            var data = await apiRequest('GET', '/api/genres');
+            genres = data.genres || [];
+        } catch (e) {
+            console.warn('Could not load genres:', e);
+            genres = [];
+        }
+    }
+
+    async function loadFormats() {
+        try {
+            var data = await apiRequest('GET', '/api/formats');
+            formats = data.formats || [];
+        } catch (e) {
+            console.warn('Could not load formats:', e);
+            formats = [];
+        }
+    }
+
+    async function loadAreas() {
+        try {
+            var data = await apiRequest('GET', '/api/areas');
+            areas = data.areas || [];
+        } catch (e) {
+            console.warn('Could not load areas:', e);
+            areas = [];
+        }
+    }
+
+    async function loadSublocations(areaId) {
+        try {
+            var url = '/api/sublocations';
+            if (areaId) {
+                url += '?area_id=' + areaId;
+            }
+            var data = await apiRequest('GET', url);
+            sublocations = data.sublocations || [];
+        } catch (e) {
+            console.warn('Could not load sublocations:', e);
+            sublocations = [];
+        }
+    }
+
     async function loadStats() {
         var total = await apiRequest('GET', '/records/count');
         document.getElementById('total-records').textContent = total.count;
@@ -467,802 +473,6 @@
 
         var commission = await apiRequest('GET', '/api/commission-rate');
         document.getElementById('commission-rate').textContent = commission.commission_rate_percent;
-    }
-
-    // ========== NEW: Domain Data Loading ==========
-
-    async function loadGenres() {
-        try {
-            var data = await apiRequest('GET', '/api/genres');
-            genres = data.genres || [];
-            console.log('✅ Loaded genres:', genres.length);
-        } catch (e) {
-            console.warn('Could not load genres:', e);
-            genres = [];
-        }
-    }
-
-    async function loadFormats() {
-        try {
-            var data = await apiRequest('GET', '/api/formats');
-            formats = data.formats || [];
-            console.log('✅ Loaded formats:', formats.length);
-        } catch (e) {
-            console.warn('Could not load formats:', e);
-            formats = [];
-        }
-    }
-
-    async function loadAreas() {
-        try {
-            var data = await apiRequest('GET', '/api/areas');
-            areas = data.areas || [];
-            console.log('✅ Loaded areas:', areas.length);
-        } catch (e) {
-            console.warn('Could not load areas:', e);
-            areas = [];
-        }
-    }
-
-    async function loadSublocations(areaId) {
-        try {
-            var url = '/api/sublocations';
-            if (areaId) {
-                url += '?area_id=' + areaId;
-            }
-            var data = await apiRequest('GET', url);
-            sublocations = data.sublocations || [];
-            console.log('✅ Loaded sublocations:', sublocations.length);
-        } catch (e) {
-            console.warn('Could not load sublocations:', e);
-            sublocations = [];
-        }
-    }
-
-    async function loadAllDomainData() {
-        await Promise.all([
-            loadGenres(),
-            loadFormats(),
-            loadAreas(),
-            loadSublocations()
-        ]);
-        populateScanDropdowns();
-        populateFilterDropdowns();
-        populateDomainManagementLists();
-    }
-
-    // ========== NEW: Scan Session Management ==========
-
-    function resetScanSession() {
-        scanSession = {
-            genre_id: null,
-            format_id: null,
-            area_id: null,
-            sublocation_id: null,
-            location_index: 1,
-            is_ready: false
-        };
-
-        if (scanGenreSelect) scanGenreSelect.value = '';
-        if (scanFormatSelect) scanFormatSelect.value = '';
-        if (scanAreaSelect) scanAreaSelect.value = '';
-        if (scanSublocationSelect) {
-            scanSublocationSelect.innerHTML = '<option value="">-- Select Sublocation --</option>';
-        }
-
-        if (scanInput) scanInput.disabled = true;
-        if (scanSubmitBtn) scanSubmitBtn.disabled = true;
-
-        updateScanPreview();
-        renderRecentScans();
-
-        showStatus('📍 Please select genre, format, area, and sublocation to start scanning', 'info');
-    }
-
-    function onScanSelectionChange() {
-        const genre_id = scanGenreSelect ? parseInt(scanGenreSelect.value) : null;
-        const format_id = scanFormatSelect ? parseInt(scanFormatSelect.value) : null;
-        const area_id = scanAreaSelect ? parseInt(scanAreaSelect.value) : null;
-        const sublocation_id = scanSublocationSelect ? parseInt(scanSublocationSelect.value) : null;
-
-        scanSession.genre_id = genre_id;
-        scanSession.format_id = format_id;
-        scanSession.area_id = area_id;
-        scanSession.sublocation_id = sublocation_id;
-
-        if (area_id) {
-            populateSublocationDropdown(area_id);
-        }
-
-        const allSelected = genre_id && format_id && area_id && sublocation_id;
-        scanSession.is_ready = allSelected;
-
-        if (scanInput) scanInput.disabled = !allSelected;
-        if (scanSubmitBtn) scanSubmitBtn.disabled = !allSelected;
-
-        if (allSelected) {
-            scanSession.location_index = 1;
-        }
-
-        updateScanPreview();
-
-        if (allSelected) {
-            showStatus('✅ Ready to scan! Location index: ' + scanSession.location_index, 'success');
-        } else {
-            showStatus('⚠️ Please select all location components', 'warning');
-        }
-    }
-
-    function updateScanPreview() {
-        if (!scanLocationDisplay || !scanIndexDisplay) return;
-
-        if (scanSession.is_ready) {
-            const genre = genres.find(g => g.id === scanSession.genre_id);
-            const format = formats.find(f => f.id === scanSession.format_id);
-            const area = areas.find(a => a.id === scanSession.area_id);
-            const sublocation = sublocations.find(s => s.id === scanSession.sublocation_id);
-
-            const locationStr = [
-                genre ? genre.name : '?',
-                format ? format.name : '?',
-                area ? area.name : '?',
-                sublocation ? sublocation.name : '?'
-            ].join(' | ');
-
-            scanLocationDisplay.textContent = locationStr;
-            scanLocationDisplay.style.color = '#28a745';
-            scanIndexDisplay.textContent = '📍 Index: ' + scanSession.location_index;
-            scanIndexDisplay.style.color = '#28a745';
-        } else {
-            scanLocationDisplay.textContent = '-- Please select all location components --';
-            scanLocationDisplay.style.color = '#dc3545';
-            scanIndexDisplay.textContent = '📍 Index: 0';
-            scanIndexDisplay.style.color = '#dc3545';
-        }
-    }
-
-    async function populateSublocationDropdown(areaId) {
-        if (!scanSublocationSelect) return;
-        
-        await loadSublocations(areaId);
-        const filtered = sublocations.filter(s => s.area_id === areaId);
-        
-        scanSublocationSelect.innerHTML = '<option value="">-- Select Sublocation --</option>';
-        filtered.forEach(function(s) {
-            var opt = document.createElement('option');
-            opt.value = s.id;
-            var label = s.name;
-            if (s.abbreviation) label += ' (' + s.abbreviation + ')';
-            opt.textContent = label;
-            scanSublocationSelect.appendChild(opt);
-        });
-    }
-
-    // ========== NEW: Scan Execution ==========
-
-    async function performScanSearch(term) {
-        if (!scanSession.is_ready) {
-            showStatus('⚠️ Please select genre, format, area, and sublocation first', 'warning');
-            return;
-        }
-
-        try {
-            var data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
-            if (!data.records || !data.records.length) {
-                playSound('error');
-                showStatus('No record found with that barcode or ID', 'error');
-                if (searchInput) searchInput.value = '';
-                return;
-            }
-
-            var records = data.records;
-
-            if (records.length === 1) {
-                var record = records[0];
-                await processScannedRecord(record);
-                return;
-            }
-
-            var record = records[0];
-            showStatus('⚠️ Multiple records found, selecting the first: ' + record.artist + ' - ' + record.title, 'warning');
-            await processScannedRecord(record);
-
-        } catch (error) {
-            playSound('error');
-            showStatus('Error scanning: ' + error.message, 'error');
-            console.error('Scan search error:', error);
-            if (searchInput) searchInput.value = '';
-        }
-    }
-
-    async function processScannedRecord(record) {
-        var existing = filteredRecords.find(function(r) { return r.id === record.id; });
-        if (existing) {
-            var today = getLocalMSTDate();
-            existing.last_seen = today;
-            if (!existing.genre_id && scanSession.genre_id) {
-                existing.genre_id = scanSession.genre_id;
-                existing.format_id = scanSession.format_id;
-                existing.area_id = scanSession.area_id;
-                existing.sublocation_id = scanSession.sublocation_id;
-                existing.location_index = scanSession.location_index;
-                try {
-                    await apiRequest('PUT', '/records/' + record.id, {
-                        genre_id: scanSession.genre_id,
-                        format_id: scanSession.format_id,
-                        area_id: scanSession.area_id,
-                        sublocation_id: scanSession.sublocation_id,
-                        location_index: scanSession.location_index,
-                        last_seen: today
-                    });
-                } catch (e) {
-                    console.warn('Could not update record location:', e);
-                }
-            }
-            renderPagination();
-            renderTablePage();
-            playSound('success');
-            showStatus('✅ Updated last_seen for #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
-            if (searchInput) searchInput.value = '';
-            addToRecentScans(record);
-            scanSession.location_index++;
-            updateScanPreview();
-            return;
-        }
-
-        record.genre_id = scanSession.genre_id;
-        record.format_id = scanSession.format_id;
-        record.area_id = scanSession.area_id;
-        record.sublocation_id = scanSession.sublocation_id;
-        record.location_index = scanSession.location_index;
-        record.last_seen = getLocalMSTDate();
-
-        try {
-            await apiRequest('PUT', '/records/' + record.id, {
-                genre_id: scanSession.genre_id,
-                format_id: scanSession.format_id,
-                area_id: scanSession.area_id,
-                sublocation_id: scanSession.sublocation_id,
-                location_index: scanSession.location_index,
-                last_seen: record.last_seen
-            });
-        } catch (e) {
-            console.warn('Could not update record location:', e);
-        }
-
-        filteredRecords.unshift(record);
-        totalRecords = filteredRecords.length;
-        currentPage = 1;
-        renderPagination();
-        renderTablePage();
-        playSound('success');
-        showStatus('✅ Added #' + record.id + ': ' + record.artist + ' - ' + record.title + ' at index ' + scanSession.location_index, 'success');
-        updateSelectionCount();
-        if (searchInput) searchInput.value = '';
-        addToRecentScans(record);
-        scanSession.location_index++;
-        updateScanPreview();
-    }
-
-    // ========== NEW: Recent Scans ==========
-
-    function addToRecentScans(record) {
-        const genre = genres.find(g => g.id === scanSession.genre_id);
-        const format = formats.find(f => f.id === scanSession.format_id);
-        const area = areas.find(a => a.id === scanSession.area_id);
-        const sublocation = sublocations.find(s => s.id === scanSession.sublocation_id);
-
-        const scanEntry = {
-            record_id: record.id,
-            artist: record.artist,
-            title: record.title,
-            genre: genre ? genre.name : 'Unknown',
-            format: format ? format.name : 'Unknown',
-            area: area ? area.name : 'Unknown',
-            sublocation: sublocation ? sublocation.name : 'Unknown',
-            index: record.location_index || scanSession.location_index - 1,
-            timestamp: new Date().toLocaleString()
-        };
-
-        recentScans = recentScans.filter(s => s.record_id !== record.id);
-        recentScans.unshift(scanEntry);
-        
-        if (recentScans.length > MAX_RECENT_SCANS) {
-            recentScans = recentScans.slice(0, MAX_RECENT_SCANS);
-        }
-
-        renderRecentScans();
-    }
-
-    function renderRecentScans() {
-        if (!recentScansList) return;
-
-        if (recentScans.length === 0) {
-            recentScansList.innerHTML = '<div class="no-recent-scans">No recent scans</div>';
-            if (lastScanDisplay) {
-                lastScanDisplay.textContent = 'Last: --';
-            }
-            return;
-        }
-
-        var html = '';
-        recentScans.forEach(function(s, i) {
-            var isFirst = i === 0;
-            var cls = isFirst ? 'recent-scan-item recent-scan-last' : 'recent-scan-item';
-            var locationStr = [s.genre, s.format, s.area, s.sublocation].filter(Boolean).join(' | ');
-            html += '<div class="' + cls + '">';
-            html += '<span class="scan-index-badge">#' + s.index + '</span>';
-            html += '<span class="scan-artist">' + escapeHtml(s.artist) + '</span>';
-            html += '<span class="scan-title">' + escapeHtml(s.title) + '</span>';
-            html += '<span class="scan-location">' + escapeHtml(locationStr) + '</span>';
-            html += '<span class="scan-time">' + s.timestamp + '</span>';
-            html += '</div>';
-        });
-
-        recentScansList.innerHTML = html;
-
-        if (lastScanDisplay && recentScans.length > 0) {
-            var last = recentScans[0];
-            var locStr = [last.genre, last.format, last.area, last.sublocation].filter(Boolean).join(' | ');
-            lastScanDisplay.textContent = 'Last: ' + locStr + ' #' + last.index;
-        }
-    }
-
-    // ========== NEW: Domain Management ==========
-
-    function populateDomainManagementLists() {
-        renderGenresList();
-        renderFormatsList();
-        renderAreasList();
-        renderSublocationsList();
-        populateSublocationAreaFilter();
-    }
-
-    function renderGenresList() {
-        if (!genresList) return;
-        if (genres.length === 0) {
-            genresList.innerHTML = '<div class="empty-message">No genres defined. Add one below.</div>';
-            return;
-        }
-        var html = '<table class="domain-table"><thead><tr><th>Name</th><th>In Use</th><th>Actions</th></tr></thead><tbody>';
-        genres.forEach(function(g) {
-            var count = filteredRecords.filter(r => r.genre_id === g.id).length;
-            var inUse = count > 0;
-            html += '<tr>';
-            html += '<td>' + escapeHtml(g.name) + '</td>';
-            html += '<td>' + (inUse ? '✅ ' + count + ' records' : '—') + '</td>';
-            html += '<td>';
-            html += '<button class="btn btn-sm btn-danger" onclick="window.deleteGenre(' + g.id + ')" ' + (inUse ? 'disabled' : '') + '><i class="fas fa-trash"></i></button>';
-            html += '</td>';
-            html += '</tr>';
-        });
-        html += '</tbody></table>';
-        genresList.innerHTML = html;
-    }
-
-    function renderFormatsList() {
-        if (!formatsList) return;
-        if (formats.length === 0) {
-            formatsList.innerHTML = '<div class="empty-message">No formats defined. Add one below.</div>';
-            return;
-        }
-        var html = '<table class="domain-table"><thead><tr><th>Name</th><th>In Use</th><th>Actions</th></tr></thead><tbody>';
-        formats.forEach(function(f) {
-            var count = filteredRecords.filter(r => r.format_id === f.id).length;
-            var inUse = count > 0;
-            html += '<tr>';
-            html += '<td>' + escapeHtml(f.name) + '</td>';
-            html += '<td>' + (inUse ? '✅ ' + count + ' records' : '—') + '</td>';
-            html += '<td>';
-            html += '<button class="btn btn-sm btn-danger" onclick="window.deleteFormat(' + f.id + ')" ' + (inUse ? 'disabled' : '') + '><i class="fas fa-trash"></i></button>';
-            html += '</td>';
-            html += '</tr>';
-        });
-        html += '</tbody></table>';
-        formatsList.innerHTML = html;
-    }
-
-    function renderAreasList() {
-        if (!areasList) return;
-        if (areas.length === 0) {
-            areasList.innerHTML = '<div class="empty-message">No areas defined. Add one below.</div>';
-            return;
-        }
-        var html = '<table class="domain-table"><thead><tr><th>Name</th><th>Sublocations</th><th>In Use</th><th>Actions</th></tr></thead><tbody>';
-        areas.forEach(function(a) {
-            var subCount = sublocations.filter(s => s.area_id === a.id).length;
-            var count = filteredRecords.filter(r => r.area_id === a.id).length;
-            var inUse = count > 0;
-            html += '<tr>';
-            html += '<td>' + escapeHtml(a.name) + '</td>';
-            html += '<td>' + subCount + '</td>';
-            html += '<td>' + (inUse ? '✅ ' + count + ' records' : '—') + '</td>';
-            html += '<td>';
-            html += '<button class="btn btn-sm btn-danger" onclick="window.deleteArea(' + a.id + ')" ' + (inUse || subCount > 0 ? 'disabled' : '') + '><i class="fas fa-trash"></i></button>';
-            html += '</td>';
-            html += '</tr>';
-        });
-        html += '</tbody></table>';
-        areasList.innerHTML = html;
-    }
-
-    function renderSublocationsList() {
-        if (!sublocationsList) return;
-        var filtered = sublocations;
-        var areaFilter = sublocationAreaFilter ? parseInt(sublocationAreaFilter.value) : null;
-        if (areaFilter) {
-            filtered = sublocations.filter(s => s.area_id === areaFilter);
-        }
-
-        if (filtered.length === 0) {
-            sublocationsList.innerHTML = '<div class="empty-message">No sublocations for this area. Add one below.</div>';
-            return;
-        }
-
-        var html = '<table class="domain-table"><thead><tr><th>Area</th><th>Name</th><th>Abbreviation</th><th>In Use</th><th>Actions</th></tr></thead><tbody>';
-        filtered.forEach(function(s) {
-            var area = areas.find(a => a.id === s.area_id);
-            var count = filteredRecords.filter(r => r.sublocation_id === s.id).length;
-            var inUse = count > 0;
-            html += '<tr>';
-            html += '<td>' + (area ? escapeHtml(area.name) : '?') + '</td>';
-            html += '<td>' + escapeHtml(s.name) + '</td>';
-            html += '<td>' + escapeHtml(s.abbreviation || '—') + '</td>';
-            html += '<td>' + (inUse ? '✅ ' + count + ' records' : '—') + '</td>';
-            html += '<td>';
-            html += '<button class="btn btn-sm btn-danger" onclick="window.deleteSublocation(' + s.id + ')" ' + (inUse ? 'disabled' : '') + '><i class="fas fa-trash"></i></button>';
-            html += '</td>';
-            html += '</tr>';
-        });
-        html += '</tbody></table>';
-        sublocationsList.innerHTML = html;
-    }
-
-    function populateSublocationAreaFilter() {
-        if (!sublocationAreaFilter) return;
-        var currentVal = sublocationAreaFilter.value;
-        sublocationAreaFilter.innerHTML = '<option value="">All Areas</option>';
-        areas.forEach(function(a) {
-            var opt = document.createElement('option');
-            opt.value = a.id;
-            opt.textContent = a.name;
-            sublocationAreaFilter.appendChild(opt);
-        });
-        if (currentVal) sublocationAreaFilter.value = currentVal;
-    }
-
-    // ========== NEW: Domain CRUD Functions ==========
-
-    window.addGenre = async function() {
-        if (!newGenreInput) return;
-        var name = newGenreInput.value.trim();
-        if (!name) {
-            showStatus('Please enter a genre name', 'warning');
-            return;
-        }
-        try {
-            var result = await apiRequest('POST', '/api/genres', { name: name });
-            if (result.status === 'success') {
-                newGenreInput.value = '';
-                await loadGenres();
-                populateScanDropdowns();
-                populateFilterDropdowns();
-                renderGenresList();
-                showStatus('✅ Genre "' + name + '" added', 'success');
-            } else {
-                showStatus('❌ ' + (result.error || 'Failed to add genre'), 'error');
-            }
-        } catch (e) {
-            showStatus('❌ Error: ' + e.message, 'error');
-        }
-    };
-
-    window.deleteGenre = async function(id) {
-        if (!confirm('Delete this genre? It will be removed from all records.')) return;
-        try {
-            var result = await apiRequest('DELETE', '/api/genres/' + id);
-            if (result.status === 'success') {
-                await loadGenres();
-                populateScanDropdowns();
-                populateFilterDropdowns();
-                renderGenresList();
-                showStatus('✅ Genre deleted', 'success');
-            } else {
-                showStatus('❌ ' + (result.error || 'Failed to delete genre'), 'error');
-            }
-        } catch (e) {
-            showStatus('❌ Error: ' + e.message, 'error');
-        }
-    };
-
-    window.addFormat = async function() {
-        if (!newFormatInput) return;
-        var name = newFormatInput.value.trim();
-        if (!name) {
-            showStatus('Please enter a format name', 'warning');
-            return;
-        }
-        try {
-            var result = await apiRequest('POST', '/api/formats', { name: name });
-            if (result.status === 'success') {
-                newFormatInput.value = '';
-                await loadFormats();
-                populateScanDropdowns();
-                populateFilterDropdowns();
-                renderFormatsList();
-                showStatus('✅ Format "' + name + '" added', 'success');
-            } else {
-                showStatus('❌ ' + (result.error || 'Failed to add format'), 'error');
-            }
-        } catch (e) {
-            showStatus('❌ Error: ' + e.message, 'error');
-        }
-    };
-
-    window.deleteFormat = async function(id) {
-        if (!confirm('Delete this format? It will be removed from all records.')) return;
-        try {
-            var result = await apiRequest('DELETE', '/api/formats/' + id);
-            if (result.status === 'success') {
-                await loadFormats();
-                populateScanDropdowns();
-                populateFilterDropdowns();
-                renderFormatsList();
-                showStatus('✅ Format deleted', 'success');
-            } else {
-                showStatus('❌ ' + (result.error || 'Failed to delete format'), 'error');
-            }
-        } catch (e) {
-            showStatus('❌ Error: ' + e.message, 'error');
-        }
-    };
-
-    window.addArea = async function() {
-        if (!newAreaInput) return;
-        var name = newAreaInput.value.trim();
-        if (!name) {
-            showStatus('Please enter an area name', 'warning');
-            return;
-        }
-        try {
-            var result = await apiRequest('POST', '/api/areas', { name: name });
-            if (result.status === 'success') {
-                newAreaInput.value = '';
-                await loadAreas();
-                populateScanDropdowns();
-                populateFilterDropdowns();
-                renderAreasList();
-                showStatus('✅ Area "' + name + '" added', 'success');
-            } else {
-                showStatus('❌ ' + (result.error || 'Failed to add area'), 'error');
-            }
-        } catch (e) {
-            showStatus('❌ Error: ' + e.message, 'error');
-        }
-    };
-
-    window.deleteArea = async function(id) {
-        if (!confirm('Delete this area? It will be removed from all records.')) return;
-        try {
-            var result = await apiRequest('DELETE', '/api/areas/' + id);
-            if (result.status === 'success') {
-                await loadAreas();
-                populateScanDropdowns();
-                populateFilterDropdowns();
-                renderAreasList();
-                showStatus('✅ Area deleted', 'success');
-            } else {
-                showStatus('❌ ' + (result.error || 'Failed to delete area'), 'error');
-            }
-        } catch (e) {
-            showStatus('❌ Error: ' + e.message, 'error');
-        }
-    };
-
-    window.addSublocation = async function() {
-        if (!newSublocationArea || !newSublocationName) return;
-        var area_id = parseInt(newSublocationArea.value);
-        var name = newSublocationName.value.trim();
-        var abbreviation = newSublocationAbbr ? newSublocationAbbr.value.trim() : '';
-        if (!area_id) {
-            showStatus('Please select an area', 'warning');
-            return;
-        }
-        if (!name) {
-            showStatus('Please enter a sublocation name', 'warning');
-            return;
-        }
-        try {
-            var result = await apiRequest('POST', '/api/sublocations', {
-                area_id: area_id,
-                name: name,
-                abbreviation: abbreviation
-            });
-            if (result.status === 'success') {
-                newSublocationName.value = '';
-                if (newSublocationAbbr) newSublocationAbbr.value = '';
-                await loadSublocations();
-                populateScanDropdowns();
-                populateFilterDropdowns();
-                renderSublocationsList();
-                showStatus('✅ Sublocation "' + name + '" added', 'success');
-            } else {
-                showStatus('❌ ' + (result.error || 'Failed to add sublocation'), 'error');
-            }
-        } catch (e) {
-            showStatus('❌ Error: ' + e.message, 'error');
-        }
-    };
-
-    window.deleteSublocation = async function(id) {
-        if (!confirm('Delete this sublocation? It will be removed from all records.')) return;
-        try {
-            var result = await apiRequest('DELETE', '/api/sublocations/' + id);
-            if (result.status === 'success') {
-                await loadSublocations();
-                populateScanDropdowns();
-                populateFilterDropdowns();
-                renderSublocationsList();
-                showStatus('✅ Sublocation deleted', 'success');
-            } else {
-                showStatus('❌ ' + (result.error || 'Failed to delete sublocation'), 'error');
-            }
-        } catch (e) {
-            showStatus('❌ Error: ' + e.message, 'error');
-        }
-    };
-
-    // ========== NEW: Populate Dropdowns ==========
-
-    function populateScanDropdowns() {
-        if (scanGenreSelect) {
-            var currentVal = scanGenreSelect.value;
-            scanGenreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
-            genres.forEach(function(g) {
-                var opt = document.createElement('option');
-                opt.value = g.id;
-                opt.textContent = g.name;
-                scanGenreSelect.appendChild(opt);
-            });
-            if (currentVal) scanGenreSelect.value = currentVal;
-        }
-
-        if (scanFormatSelect) {
-            var currentVal = scanFormatSelect.value;
-            scanFormatSelect.innerHTML = '<option value="">-- Select Format --</option>';
-            formats.forEach(function(f) {
-                var opt = document.createElement('option');
-                opt.value = f.id;
-                opt.textContent = f.name;
-                scanFormatSelect.appendChild(opt);
-            });
-            if (currentVal) scanFormatSelect.value = currentVal;
-        }
-
-        if (scanAreaSelect) {
-            var currentVal = scanAreaSelect.value;
-            scanAreaSelect.innerHTML = '<option value="">-- Select Area --</option>';
-            areas.forEach(function(a) {
-                var opt = document.createElement('option');
-                opt.value = a.id;
-                opt.textContent = a.name;
-                scanAreaSelect.appendChild(opt);
-            });
-            if (currentVal) scanAreaSelect.value = currentVal;
-        }
-    }
-
-    function populateFilterDropdowns() {
-        if (filterGenre) {
-            var currentVal = filterGenre.value;
-            filterGenre.innerHTML = '<option value="">All Genres</option>';
-            genres.forEach(function(g) {
-                var opt = document.createElement('option');
-                opt.value = g.id;
-                opt.textContent = g.name;
-                filterGenre.appendChild(opt);
-            });
-            if (currentVal) filterGenre.value = currentVal;
-        }
-
-        if (filterFormat) {
-            var currentVal = filterFormat.value;
-            filterFormat.innerHTML = '<option value="">All Formats</option>';
-            formats.forEach(function(f) {
-                var opt = document.createElement('option');
-                opt.value = f.id;
-                opt.textContent = f.name;
-                filterFormat.appendChild(opt);
-            });
-            if (currentVal) filterFormat.value = currentVal;
-        }
-
-        if (filterArea) {
-            var currentVal = filterArea.value;
-            filterArea.innerHTML = '<option value="">All Areas</option>';
-            areas.forEach(function(a) {
-                var opt = document.createElement('option');
-                opt.value = a.id;
-                opt.textContent = a.name;
-                filterArea.appendChild(opt);
-            });
-            if (currentVal) filterArea.value = currentVal;
-        }
-
-        if (filterSublocation) {
-            var areaId = filterArea ? parseInt(filterArea.value) : null;
-            var currentVal = filterSublocation.value;
-            filterSublocation.innerHTML = '<option value="">All Sublocations</option>';
-            var filtered = sublocations;
-            if (areaId) {
-                filtered = sublocations.filter(s => s.area_id === areaId);
-            }
-            filtered.forEach(function(s) {
-                var opt = document.createElement('option');
-                opt.value = s.id;
-                var label = s.name;
-                if (s.abbreviation) label += ' (' + s.abbreviation + ')';
-                opt.textContent = label;
-                filterSublocation.appendChild(opt);
-            });
-            if (currentVal) filterSublocation.value = currentVal;
-        }
-    }
-
-    // ========== NEW: Filter Functions ==========
-
-    async function applyFilters() {
-        var params = new URLSearchParams();
-        
-        if (filterLastSeen && filterLastSeen.value) {
-            params.append('last_seen_after', filterLastSeen.value);
-        }
-        if (filterGenre && filterGenre.value) {
-            params.append('genre_id', filterGenre.value);
-        }
-        if (filterFormat && filterFormat.value) {
-            params.append('format_id', filterFormat.value);
-        }
-        if (filterArea && filterArea.value) {
-            params.append('area_id', filterArea.value);
-        }
-        if (filterSublocation && filterSublocation.value) {
-            params.append('sublocation_id', filterSublocation.value);
-        }
-        
-        var url = '/api/records/filter?' + params.toString();
-        
-        try {
-            var response = await fetch(window.AppConfig.baseUrl + url, {
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            var data = await response.json();
-            
-            if (data.status === 'success') {
-                filteredRecords = data.records || [];
-                totalRecords = filteredRecords.length;
-                currentPage = 1;
-                renderPagination();
-                renderTablePage();
-                showStatus('🔍 Found ' + totalRecords + ' records matching filters', 'info');
-            } else {
-                showStatus('❌ Error: ' + (data.error || 'Failed to apply filters'), 'error');
-            }
-        } catch (e) {
-            showStatus('❌ Error: ' + e.message, 'error');
-        }
-    }
-
-    function clearFilters() {
-        if (filterLastSeen) filterLastSeen.value = '';
-        if (filterGenre) filterGenre.value = '';
-        if (filterFormat) filterFormat.value = '';
-        if (filterArea) filterArea.value = '';
-        if (filterSublocation) filterSublocation.value = '';
-        
-        loadRecords({ mode: currentSearchMode });
-        showStatus('🧹 Filters cleared', 'info');
     }
 
     // ========== Default Parameters ==========
@@ -1416,80 +626,458 @@
         }
     }
 
-    // ========== New Visibility Function ==========
-    function setActiveMode(mode) {
-        Object.values(modeContainers).forEach(container => {
-            if (container) container.style.display = 'none';
-        });
-
-        const activeContainer = modeContainers[mode];
-        if (activeContainer) {
-            activeContainer.style.display = 'block';
-        } else {
-            console.warn('No container found for mode:', mode);
+    // ========== Populate Scan Dropdowns ==========
+    function populateScanDropdowns() {
+        if (scanGenreSelect) {
+            var currentVal = scanGenreSelect.value;
+            scanGenreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
+            genres.forEach(function(g) {
+                var opt = document.createElement('option');
+                opt.value = g.id;
+                opt.textContent = g.name;
+                scanGenreSelect.appendChild(opt);
+            });
+            if (currentVal) scanGenreSelect.value = currentVal;
         }
 
+        if (scanFormatSelect) {
+            var currentVal = scanFormatSelect.value;
+            scanFormatSelect.innerHTML = '<option value="">-- Select Format --</option>';
+            formats.forEach(function(f) {
+                var opt = document.createElement('option');
+                opt.value = f.id;
+                opt.textContent = f.name;
+                scanFormatSelect.appendChild(opt);
+            });
+            if (currentVal) scanFormatSelect.value = currentVal;
+        }
+
+        if (scanAreaSelect) {
+            var currentVal = scanAreaSelect.value;
+            scanAreaSelect.innerHTML = '<option value="">-- Select Area --</option>';
+            areas.forEach(function(a) {
+                var opt = document.createElement('option');
+                opt.value = a.id;
+                opt.textContent = a.name;
+                scanAreaSelect.appendChild(opt);
+            });
+            if (currentVal) scanAreaSelect.value = currentVal;
+        }
+
+        if (scanSublocationSelect) {
+            var currentVal = scanSublocationSelect.value;
+            scanSublocationSelect.innerHTML = '<option value="">-- Select Sublocation --</option>';
+            sublocations.forEach(function(s) {
+                var opt = document.createElement('option');
+                opt.value = s.id;
+                var label = s.name;
+                if (s.abbreviation) label += ' (' + s.abbreviation + ')';
+                opt.textContent = label;
+                scanSublocationSelect.appendChild(opt);
+            });
+            if (currentVal) scanSublocationSelect.value = currentVal;
+        }
+    }
+
+    // ========== Populate Filter Dropdowns ==========
+    function populateFilterDropdowns() {
+        // This is now handled by the HTML - no dynamic population needed
+        // But we keep the function for compatibility
+    }
+
+    // ========== SHOW MODE CONTAINER ==========
+    function showModeContainer(mode) {
+        console.log('📐 showModeContainer called with mode: ' + mode);
+
+        // Hide all mode containers
+        var containerIds = Object.values(MODE_CONTAINERS);
+        containerIds.forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.style.display = 'none';
+            }
+        });
+
+        // Show the selected mode container
+        var containerId = MODE_CONTAINERS[mode];
+        if (containerId) {
+            var el = document.getElementById(containerId);
+            if (el) {
+                el.style.display = 'block';
+                console.log('📐 Showing container: ' + containerId);
+            } else {
+                console.warn('📐 Container not found: ' + containerId);
+            }
+        } else {
+            console.warn('📐 No container for mode: ' + mode);
+        }
+
+        // Set search placeholder
+        if (searchInput) {
+            var placeholders = {
+                'add': 'Search Discogs...',
+                'scan': 'Scan barcode here...',
+                'discogs': 'Search within records...',
+                'delete': 'Search records...',
+                'checkout': 'Search records...',
+                'discogs_orders': 'Search orders...',
+                'refund': 'Search sold records by artist, title, or barcode...'
+            };
+            searchInput.placeholder = placeholders[mode] || 'Search...';
+        }
+
+        // Scan mode specific initialization
         if (mode === 'scan') {
             resetScanSession();
             loadAllDomainData();
         }
 
+        // Add mode specific initialization
         if (mode === 'add') {
             loadAllDomainData();
         }
+
+        updateCompleteButton(mode);
+        updateSelectionCount();
     }
 
-    // ========== Toggle Functions for Purchase Table and Metadata ==========
+    function updateCompleteButton(mode) {
+        console.log('🔘 updateCompleteButton called with mode: ' + mode);
+        if (!completeActionBtn) return;
 
-    let purchaseTableExpanded = true;
-    let metadataExpanded = true;
-
-    function togglePurchaseTable() {
-        const body = document.getElementById('purchase-table-body');
-        const icon = document.getElementById('purchase-table-toggle-icon');
-        if (!body || !icon) return;
-
-        purchaseTableExpanded = !purchaseTableExpanded;
-        if (purchaseTableExpanded) {
-            body.classList.add('expanded');
-            body.style.display = 'block';
-            icon.classList.remove('collapsed');
-            icon.style.transform = 'rotate(0deg)';
+        if (mode === 'add') {
+            completeActionBtn.style.display = 'none';
+        } else if (mode === 'refund') {
+            completeActionBtn.style.display = '';
+            completeActionBtn.textContent = '💰 Process Refund';
+        } else if (mode === 'scan') {
+            completeActionBtn.style.display = '';
+            completeActionBtn.textContent = '📍 Apply Location';
+        } else if (mode === 'discogs') {
+            completeActionBtn.style.display = '';
+            completeActionBtn.textContent = '📤 Post to Discogs';
+        } else if (mode === 'delete') {
+            completeActionBtn.style.display = '';
+            completeActionBtn.textContent = '🗑️ Delete Selected';
+        } else if (mode === 'checkout') {
+            completeActionBtn.style.display = '';
+            completeActionBtn.textContent = '🛒 Checkout';
+            completeActionBtn.disabled = false;
+        } else if (mode === 'discogs_orders') {
+            completeActionBtn.style.display = '';
+            completeActionBtn.textContent = '📦 Mark Sold';
         } else {
-            body.classList.remove('expanded');
-            body.style.display = 'none';
-            icon.classList.add('collapsed');
-            icon.style.transform = 'rotate(-90deg)';
+            completeActionBtn.style.display = 'none';
         }
     }
 
-    function toggleMetadataPanel() {
-        const body = document.getElementById('metadata-body');
-        const icon = document.getElementById('metadata-toggle-icon');
-        if (!body || !icon) return;
+    // ========== Scan Session Management ==========
 
-        metadataExpanded = !metadataExpanded;
-        if (metadataExpanded) {
-            body.style.display = 'block';
-            icon.style.transform = 'rotate(0deg)';
+    function resetScanSession() {
+        scanSession = {
+            genre_id: null,
+            format_id: null,
+            area_id: null,
+            sublocation_id: null,
+            location_index: 1,
+            is_ready: false
+        };
+
+        if (scanGenreSelect) scanGenreSelect.value = '';
+        if (scanFormatSelect) scanFormatSelect.value = '';
+        if (scanAreaSelect) scanAreaSelect.value = '';
+        if (scanSublocationSelect) {
+            scanSublocationSelect.innerHTML = '<option value="">-- Select Sublocation --</option>';
+        }
+
+        if (scanInput) scanInput.disabled = true;
+        if (scanSubmitBtn) scanSubmitBtn.disabled = true;
+
+        updateScanPreview();
+        renderRecentScans();
+
+        showStatus('📍 Please select genre, format, area, and sublocation to start scanning', 'info');
+    }
+
+    let scanSession = {
+        genre_id: null,
+        format_id: null,
+        area_id: null,
+        sublocation_id: null,
+        location_index: 1,
+        is_ready: false
+    };
+
+    function onScanSelectionChange() {
+        const genre_id = scanGenreSelect ? parseInt(scanGenreSelect.value) : null;
+        const format_id = scanFormatSelect ? parseInt(scanFormatSelect.value) : null;
+        const area_id = scanAreaSelect ? parseInt(scanAreaSelect.value) : null;
+        const sublocation_id = scanSublocationSelect ? parseInt(scanSublocationSelect.value) : null;
+
+        scanSession.genre_id = genre_id;
+        scanSession.format_id = format_id;
+        scanSession.area_id = area_id;
+        scanSession.sublocation_id = sublocation_id;
+
+        if (area_id) {
+            populateSublocationDropdown(area_id);
+        }
+
+        const allSelected = genre_id && format_id && area_id && sublocation_id;
+        scanSession.is_ready = allSelected;
+
+        if (scanInput) scanInput.disabled = !allSelected;
+        if (scanSubmitBtn) scanSubmitBtn.disabled = !allSelected;
+
+        if (allSelected) {
+            scanSession.location_index = 1;
+        }
+
+        updateScanPreview();
+
+        if (allSelected) {
+            showStatus('✅ Ready to scan! Location index: ' + scanSession.location_index, 'success');
         } else {
-            body.style.display = 'none';
-            icon.style.transform = 'rotate(-90deg)';
+            showStatus('⚠️ Please select all location components', 'warning');
         }
     }
 
-    // ========== Purchase Functions ==========
+    function updateScanPreview() {
+        if (!scanLocationDisplay || !scanIndexDisplay) return;
 
-    function clearPurchaseSelection() {
-        selectedPurchaseId = null;
-        if (metadataPanel) metadataPanel.style.display = 'none';
-        loadPurchasesTable();
-        filteredRecords = [];
-        totalRecords = 0;
-        currentPurchaseRecords = [];
+        if (scanSession.is_ready) {
+            const genre = genres.find(g => g.id === scanSession.genre_id);
+            const format = formats.find(f => f.id === scanSession.format_id);
+            const area = areas.find(a => a.id === scanSession.area_id);
+            const sublocation = sublocations.find(s => s.id === scanSession.sublocation_id);
+
+            const locationStr = [
+                genre ? genre.name : '?',
+                format ? format.name : '?',
+                area ? area.name : '?',
+                sublocation ? sublocation.name : '?'
+            ].join(' | ');
+
+            scanLocationDisplay.textContent = locationStr;
+            scanLocationDisplay.style.color = '#28a745';
+            scanIndexDisplay.textContent = '📍 Index: ' + scanSession.location_index;
+            scanIndexDisplay.style.color = '#28a745';
+        } else {
+            scanLocationDisplay.textContent = '-- Please select all location components --';
+            scanLocationDisplay.style.color = '#dc3545';
+            scanIndexDisplay.textContent = '📍 Index: 0';
+            scanIndexDisplay.style.color = '#dc3545';
+        }
+    }
+
+    async function populateSublocationDropdown(areaId) {
+        if (!scanSublocationSelect) return;
+        
+        await loadSublocations(areaId);
+        const filtered = sublocations.filter(s => s.area_id === areaId);
+        
+        scanSublocationSelect.innerHTML = '<option value="">-- Select Sublocation --</option>';
+        filtered.forEach(function(s) {
+            var opt = document.createElement('option');
+            opt.value = s.id;
+            var label = s.name;
+            if (s.abbreviation) label += ' (' + s.abbreviation + ')';
+            opt.textContent = label;
+            scanSublocationSelect.appendChild(opt);
+        });
+    }
+
+    // ========== Load All Domain Data ==========
+    async function loadAllDomainData() {
+        await Promise.all([
+            loadGenres(),
+            loadFormats(),
+            loadAreas(),
+            loadSublocations()
+        ]);
+        populateScanDropdowns();
+        populateFilterDropdowns();
+    }
+
+    // ========== Render Recent Scans ==========
+    function renderRecentScans() {
+        if (!recentScansList) return;
+
+        if (recentScans.length === 0) {
+            recentScansList.innerHTML = '<div class="no-recent-scans">No recent scans</div>';
+            if (lastScanDisplay) {
+                lastScanDisplay.textContent = 'Last: --';
+            }
+            return;
+        }
+
+        var html = '';
+        recentScans.forEach(function(s, i) {
+            var isFirst = i === 0;
+            var cls = isFirst ? 'recent-scan-item recent-scan-last' : 'recent-scan-item';
+            html += '<div class="' + cls + '">';
+            html += '<span class="scan-index-badge">#' + s.index + '</span>';
+            html += '<span class="scan-artist">' + escapeHtml(s.artist) + '</span>';
+            html += '<span class="scan-title">' + escapeHtml(s.title) + '</span>';
+            html += '<span class="scan-location">' + escapeHtml(s.location || '') + '</span>';
+            html += '<span class="scan-time">' + s.timestamp + '</span>';
+            html += '</div>';
+        });
+
+        recentScansList.innerHTML = html;
+
+        if (lastScanDisplay && recentScans.length > 0) {
+            var last = recentScans[0];
+            lastScanDisplay.textContent = 'Last: ' + (last.location || '');
+        }
+    }
+
+    // ========== Scan Execution ==========
+
+    async function performScanSearch(term) {
+        if (!scanSession.is_ready) {
+            showStatus('⚠️ Please select genre, format, area, and sublocation first', 'warning');
+            return;
+        }
+
+        try {
+            var data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
+            if (!data.records || !data.records.length) {
+                playSound('error');
+                showStatus('No record found with that barcode or ID', 'error');
+                if (searchInput) searchInput.value = '';
+                return;
+            }
+
+            var records = data.records;
+
+            if (records.length === 1) {
+                var record = records[0];
+                await processScannedRecord(record);
+                return;
+            }
+
+            var record = records[0];
+            showStatus('⚠️ Multiple records found, selecting the first: ' + record.artist + ' - ' + record.title, 'warning');
+            await processScannedRecord(record);
+
+        } catch (error) {
+            playSound('error');
+            showStatus('Error scanning: ' + error.message, 'error');
+            console.error('Scan search error:', error);
+            if (searchInput) searchInput.value = '';
+        }
+    }
+
+    async function processScannedRecord(record) {
+        var existing = filteredRecords.find(function(r) { return r.id === record.id; });
+        if (existing) {
+            var today = getLocalMSTDate();
+            existing.last_seen = today;
+            renderPagination();
+            renderTablePage();
+            playSound('success');
+            showStatus('✅ Updated last_seen for #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
+            if (searchInput) searchInput.value = '';
+            addToRecentScans(record);
+            scanSession.location_index++;
+            updateScanPreview();
+            return;
+        }
+
+        filteredRecords.unshift(record);
+        totalRecords = filteredRecords.length;
+        currentPage = 1;
         renderPagination();
         renderTablePage();
-        showStatus('Purchase deselected.', 'info');
+        playSound('success');
+        showStatus('✅ Added #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
+        updateSelectionCount();
+        if (searchInput) searchInput.value = '';
+        addToRecentScans(record);
+        scanSession.location_index++;
+        updateScanPreview();
+    }
+
+    function addToRecentScans(record) {
+        const genre = genres.find(g => g.id === scanSession.genre_id);
+        const format = formats.find(f => f.id === scanSession.format_id);
+        const area = areas.find(a => a.id === scanSession.area_id);
+        const sublocation = sublocations.find(s => s.id === scanSession.sublocation_id);
+
+        const locationStr = [
+            genre ? genre.name : 'Unknown',
+            format ? format.name : 'Unknown',
+            area ? area.name : 'Unknown',
+            sublocation ? sublocation.name : 'Unknown'
+        ].join(' | ');
+
+        const scanEntry = {
+            record_id: record.id,
+            artist: record.artist,
+            title: record.title,
+            location: locationStr,
+            index: scanSession.location_index,
+            timestamp: new Date().toLocaleString()
+        };
+
+        recentScans = recentScans.filter(s => s.record_id !== record.id);
+        recentScans.unshift(scanEntry);
+        
+        if (recentScans.length > MAX_RECENT_SCANS) {
+            recentScans = recentScans.slice(0, MAX_RECENT_SCANS);
+        }
+
+        renderRecentScans();
+    }
+
+    // ========== Apply Scan Location ==========
+    async function applyScanLocation() {
+        var records = filteredRecords;
+        if (records.length === 0) {
+            showStatus('No scanned records to process.', 'warning');
+            return;
+        }
+
+        if (!scanSession.is_ready) {
+            showStatus('⚠️ Please select genre, format, area, and sublocation first', 'warning');
+            return;
+        }
+
+        var recordIds = records.map(function(r) { return r.id; });
+        var startIndex = scanSession.location_index - records.length;
+
+        try {
+            var result = await apiRequest('POST', '/api/scan/apply-location', {
+                record_ids: recordIds,
+                genre_id: scanSession.genre_id,
+                format_id: scanSession.format_id,
+                area_id: scanSession.area_id,
+                sublocation_id: scanSession.sublocation_id,
+                location_index_start: startIndex > 0 ? startIndex : 1
+            });
+
+            if (result.status === 'success') {
+                showStatus('✅ Applied location to ' + result.updated_count + ' records', 'success');
+                playSound('success');
+                
+                filteredRecords = [];
+                totalRecords = 0;
+                currentPage = 1;
+                renderPagination();
+                renderTablePage();
+                updateSelectionCount();
+                
+                scanSession.location_index = 1;
+                updateScanPreview();
+            } else {
+                showStatus('❌ ' + (result.error || 'Failed to apply location'), 'error');
+                playSound('error');
+            }
+        } catch (error) {
+            showStatus('❌ Error: ' + error.message, 'error');
+            playSound('error');
+        }
     }
 
     // ========== Unified Record Loader ==========
@@ -1632,13 +1220,6 @@
                 await populateDiscogsPrices(records);
             }
 
-            if (currentSearchMode === 'scan' || currentSearchMode === 'add') {
-                renderGenresList();
-                renderFormatsList();
-                renderAreasList();
-                renderSublocationsList();
-            }
-
             return records;
         } catch (error) {
             console.error('❌ loadRecords error:', error);
@@ -1662,11 +1243,6 @@
             const purchases = data.drafts || [];
             if (!purchasesBody) return;
 
-            const badge = document.getElementById('purchase-table-badge');
-            if (badge) {
-                badge.textContent = '(' + purchases.length + ' total)';
-            }
-
             if (purchases.length === 0) {
                 purchasesBody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#999;">No purchases found. Click "New" to create one.</td></tr>';
                 return;
@@ -1675,21 +1251,21 @@
             let html = '';
             purchases.forEach(p => {
                 const isSelected = (p.draft_id == selectedPurchaseId);
-                const shouldHide = (selectedPurchaseId !== null && p.draft_id != selectedPurchaseId);
-                const displayStyle = shouldHide ? 'display:none;' : '';
-                html += `<tr class="${isSelected ? 'record-selected' : ''}" data-id="${p.draft_id}" onclick="selectPurchase(${p.draft_id})" style="cursor:pointer; ${displayStyle}">`;
+                const hasBill = p.bill_of_sale_path && p.bill_of_sale_path.length > 0;
+                html += `<tr class="${isSelected ? 'record-selected' : ''}" data-id="${p.draft_id}" onclick="selectPurchase(${p.draft_id})" style="cursor:pointer;">`;
                 html += `<td>${p.draft_id}</td>`;
                 html += `<td>${escapeHtml(p.seller_name)}</td>`;
                 html += `<td><span class="status-badge ${p.status === 'complete' ? 'paid' : 'draft'}">${p.status}</span></td>`;
                 html += `<td>${p.record_count || 0}</td>`;
                 html += `<td>${p.offer_amount ? '$' + p.offer_amount.toFixed(2) : '—'}</td>`;
                 html += `<td>${p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td>`;
-                html += `<td>${p.bill_of_sale_path ? '<i class="fas fa-file-pdf" style="color:#28a745;"></i>' : '<i class="fas fa-times" style="color:#999;"></i>'}</td>`;
+                html += `<td>${hasBill ? '<i class="fas fa-file-pdf" style="color:#28a745;"></i>' : '<i class="fas fa-times" style="color:#999;"></i>'}</td>`;
                 html += `<td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(${p.draft_id})"><i class="fas fa-trash"></i></button></td>`;
                 html += `</tr>`;
             });
             purchasesBody.innerHTML = html;
 
+            // Highlight selected row
             if (selectedPurchaseId) {
                 const row = purchasesBody.querySelector(`tr[data-id="${selectedPurchaseId}"]`);
                 if (row) row.classList.add('record-selected');
@@ -1704,16 +1280,15 @@
         console.log('📋 selectPurchase: ' + id);
         selectedPurchaseId = id;
 
-        await loadPurchasesTable();
+        // Highlight row
+        const rows = purchasesBody.querySelectorAll('tr');
+        rows.forEach(row => row.classList.remove('record-selected'));
+        const selectedRow = purchasesBody.querySelector(`tr[data-id="${id}"]`);
+        if (selectedRow) selectedRow.classList.add('record-selected');
 
+        // Show metadata panel
         if (metadataPanel) metadataPanel.style.display = 'block';
         if (purchaseIdDisplay) purchaseIdDisplay.textContent = '#' + id;
-
-        metadataExpanded = true;
-        const metadataBody = document.getElementById('metadata-body');
-        const metadataIcon = document.getElementById('metadata-toggle-icon');
-        if (metadataBody) metadataBody.style.display = 'block';
-        if (metadataIcon) metadataIcon.style.transform = 'rotate(0deg)';
 
         try {
             const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + id, {
@@ -1730,6 +1305,7 @@
             if (editDescription) editDescription.value = draft.description || '';
             if (editStatus) editStatus.value = draft.status || 'draft';
 
+            // Show bill preview
             const billPath = draft.bill_of_sale_path;
             if (editBillPreview) {
                 if (billPath) {
@@ -1744,8 +1320,10 @@
                 }
             }
 
+            // Reset file input
             if (editBillUpload) editBillUpload.value = '';
 
+            // Show/hide Accept Draft button
             if (acceptDraftBtn) {
                 if (draft.status === 'draft' && draft.record_count > 0) {
                     acceptDraftBtn.style.display = 'inline-block';
@@ -1754,10 +1332,12 @@
                 }
             }
 
+            // Enable/disable delete button
             if (deletePurchaseBtn) {
                 deletePurchaseBtn.disabled = (draft.status === 'complete');
             }
 
+            // Load records for this purchase
             await loadRecordsForPurchase(id);
 
             showStatus('Selected purchase: ' + draft.seller_name + ' (' + (draft.record_count || 0) + ' records)', 'info');
@@ -1778,7 +1358,12 @@
                 bypassDateFilter: true
             });
             currentPurchaseRecords = filteredRecords.slice();
-            await loadPurchasesTable();
+            // Update record count in the purchase table
+            const row = purchasesBody.querySelector(`tr[data-id="${purchaseId}"]`);
+            if (row) {
+                const countCell = row.cells[3];
+                if (countCell) countCell.textContent = filteredRecords.length;
+            }
         } catch (error) {
             console.error('Error loading records for purchase:', error);
             filteredRecords = [];
@@ -1881,6 +1466,19 @@
     function deleteSelectedPurchase() {
         const id = editPurchaseId ? editPurchaseId.value : null;
         if (id) deletePurchase(parseInt(id));
+    }
+
+    function clearPurchaseSelection() {
+        selectedPurchaseId = null;
+        if (metadataPanel) metadataPanel.style.display = 'none';
+        const rows = purchasesBody.querySelectorAll('tr');
+        rows.forEach(row => row.classList.remove('record-selected'));
+        filteredRecords = [];
+        totalRecords = 0;
+        currentPurchaseRecords = [];
+        renderPagination();
+        renderTablePage();
+        showStatus('Purchase deselected.', 'info');
     }
 
     async function createNewPurchase() {
@@ -2107,7 +1705,75 @@
         showToast('🔄 Purchases refreshed.', 'info');
     }
 
-    // ========== DISCOGS LOCATIONS ==========
+    // ========== Toggle Functions for Sub-Panels ==========
+
+    function toggleInventorySetupPanel() {
+        console.log('📋 toggleInventorySetupPanel called');
+        var body = document.getElementById('inventory-setup-body');
+        var icon = document.getElementById('inventory-setup-toggle-icon');
+        if (!body || !icon) return;
+
+        if (body.classList.contains('expanded')) {
+            body.classList.remove('expanded');
+            body.style.display = 'none';
+            icon.classList.add('collapsed');
+        } else {
+            body.classList.add('expanded');
+            body.style.display = 'block';
+            icon.classList.remove('collapsed');
+        }
+    }
+
+    function toggleDefaultParamsSub() {
+        console.log('📋 toggleDefaultParamsSub called');
+        var body = document.getElementById('default-params-sub-body');
+        var icon = document.getElementById('default-params-sub-toggle');
+        if (!body || !icon) return;
+
+        if (body.classList.contains('expanded')) {
+            body.classList.remove('expanded');
+            body.style.display = 'none';
+            icon.classList.add('collapsed');
+        } else {
+            body.classList.add('expanded');
+            body.style.display = 'block';
+            icon.classList.remove('collapsed');
+        }
+    }
+
+    function togglePurchaseTable() {
+        const body = document.getElementById('purchase-table-body');
+        const icon = document.getElementById('purchase-table-toggle-icon');
+        if (!body || !icon) return;
+
+        if (body.classList.contains('expanded')) {
+            body.classList.remove('expanded');
+            body.style.display = 'none';
+            icon.classList.add('collapsed');
+        } else {
+            body.classList.add('expanded');
+            body.style.display = 'block';
+            icon.classList.remove('collapsed');
+        }
+    }
+
+    function toggleMetadataPanel() {
+        const body = document.getElementById('metadata-body');
+        const icon = document.getElementById('metadata-toggle-icon');
+        if (!body || !icon) return;
+
+        if (body.classList.contains('expanded')) {
+            body.classList.remove('expanded');
+            body.style.display = 'none';
+            icon.classList.add('collapsed');
+        } else {
+            body.classList.add('expanded');
+            body.style.display = 'block';
+            icon.classList.remove('collapsed');
+        }
+    }
+
+    // ========== Discogs Locations ==========
     async function loadDiscogsLocations() {
         console.log('📍 Loading discogs locations...');
         try {
@@ -2767,6 +2433,351 @@
         el.style.display = 'block';
     }
 
+    function showGiftCardModal() {
+        console.log('💳 [GIFT CARD] showGiftCardModal() called');
+        
+        // ===== REMOVE EXISTING MODAL (like Custom Item modal) =====
+        var existingModal = document.getElementById('gift-card-modal');
+        if (existingModal) {
+            console.log('💳 [GIFT CARD] Removing existing modal');
+            existingModal.remove();
+            existingModal = null;
+        }
+
+        // ===== CREATE NEW MODAL (like Custom Item modal) =====
+        console.log('💳 [GIFT CARD] Creating new modal...');
+        
+        var modal = document.createElement('div');
+        modal.id = 'gift-card-modal';
+        modal.className = 'modal-overlay';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 500px; width: 95%;">
+                <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
+                    <h3 class="modal-title"><i class="fas fa-gift"></i> Gift Card</h3>
+                    <button class="modal-close" style="color: white; font-size: 28px; background: none; border: none; cursor: pointer;">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div style="margin-bottom: 15px;">
+                        <label for="gift-card-code" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Barcode / Code *</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="gift-card-code" placeholder="Scan or enter code (e.g., GC-A7F3K9M2)" style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; text-transform: uppercase;">
+                            <button class="btn btn-primary" style="padding: 10px 20px;"><i class="fas fa-qrcode"></i> Scan</button>
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="gift-card-value" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Card Value ($) *</label>
+                        <input type="number" id="gift-card-value" step="0.01" min="0.01" placeholder="0.00" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="gift-card-charge" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Charge Amount ($)</label>
+                        <input type="number" id="gift-card-charge" step="0.01" min="0" placeholder="0.00" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px;">
+                        <p style="font-size: 12px; color: #666; margin-top: 5px;"><i class="fas fa-info-circle"></i> Set to $0 for free cards, or enter any amount</p>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="gift-card-recipient" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Recipient Name *</label>
+                        <input type="text" id="gift-card-recipient" placeholder="Enter recipient name" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="gift-card-notes" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Reason / Notes (optional)</label>
+                        <input type="text" id="gift-card-notes" placeholder="e.g., Birthday gift, Trade-in, etc." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                    </div>
+                    <div id="gift-card-status" style="margin-top: 10px; display: none;"></div>
+                </div>
+                <div class="modal-footer" style="display: flex; gap: 10px; justify-content: flex-end; padding: 15px 20px; border-top: 1px solid #ddd;">
+                    <button class="btn btn-secondary" style="padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: #6c757d; color: white;">Cancel</button>
+                    <button class="btn btn-success" id="gift-card-add-btn" style="padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: #28a745; color: white;"><i class="fas fa-gift"></i> Add to Cart</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        console.log('💳 [GIFT CARD] Modal created and appended to body');
+
+        // ===== ADD EVENT LISTENERS (like Custom Item modal) =====
+        console.log('💳 [GIFT CARD] Adding event listeners...');
+
+        // Add to Cart button
+        var addBtn = document.getElementById('gift-card-add-btn');
+        if (addBtn) {
+            addBtn.addEventListener('click', function() {
+                console.log('💳 [GIFT CARD] Add to Cart button clicked');
+                addGiftCardToCart();
+            });
+            console.log('💳 [GIFT CARD] Add button listener attached');
+        }
+
+        // Close button (×)
+        var closeBtn = modal.querySelector('.modal-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function() {
+                console.log('💳 [GIFT CARD] Close button clicked');
+                closeGiftCardModal();
+            });
+            console.log('💳 [GIFT CARD] Close button listener attached');
+        }
+
+        // Scan button
+        var scanBtn = modal.querySelector('.btn-primary');
+        if (scanBtn) {
+            scanBtn.addEventListener('click', function() {
+                console.log('💳 [GIFT CARD] Scan button clicked');
+                scanGiftCard();
+            });
+            console.log('💳 [GIFT CARD] Scan button listener attached');
+        }
+
+        // Cancel button
+        var cancelBtn = modal.querySelector('.btn-secondary');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function() {
+                console.log('💳 [GIFT CARD] Cancel button clicked');
+                closeGiftCardModal();
+            });
+            console.log('💳 [GIFT CARD] Cancel button listener attached');
+        }
+
+        // ===== KEYBOARD SHORTCUTS (like Custom Item modal) =====
+        var codeInput = document.getElementById('gift-card-code');
+        if (codeInput) {
+            codeInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    var btn = document.getElementById('gift-card-add-btn');
+                    if (btn) btn.click();
+                }
+            });
+            console.log('💳 [GIFT CARD] Code input listener attached');
+        }
+
+        var valueInput = document.getElementById('gift-card-value');
+        if (valueInput) {
+            valueInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    var chargeInput = document.getElementById('gift-card-charge');
+                    if (chargeInput) chargeInput.focus();
+                }
+            });
+            console.log('💳 [GIFT CARD] Value input listener attached');
+        }
+
+        var chargeInput = document.getElementById('gift-card-charge');
+        if (chargeInput) {
+            chargeInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    var recipientInput = document.getElementById('gift-card-recipient');
+                    if (recipientInput) recipientInput.focus();
+                }
+            });
+            console.log('💳 [GIFT CARD] Charge input listener attached');
+        }
+
+        var recipientInput = document.getElementById('gift-card-recipient');
+        if (recipientInput) {
+            recipientInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    var btn = document.getElementById('gift-card-add-btn');
+                    if (btn) btn.click();
+                }
+            });
+            console.log('💳 [GIFT CARD] Recipient input listener attached');
+        }
+
+        // ===== CLICK OUTSIDE TO CLOSE (like Custom Item modal) =====
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                console.log('💳 [GIFT CARD] Clicked outside modal, closing');
+                closeGiftCardModal();
+            }
+        });
+        console.log('💳 [GIFT CARD] Click-outside listener attached');
+
+        // ===== FOCUS FIRST INPUT (like Custom Item modal) =====
+        setTimeout(function() {
+            var codeInput2 = document.getElementById('gift-card-code');
+            if (codeInput2) {
+                codeInput2.focus();
+                console.log('💳 [GIFT CARD] Code input focused');
+            }
+        }, 100);
+
+        console.log('💳 [GIFT CARD] showGiftCardModal() completed');
+    }
+
+
+    function closeGiftCardModal() {
+        var modal = document.getElementById('gift-card-modal');
+        if (modal) {
+            modal.remove();
+        }
+    }
+
+    function scanGiftCard() {
+        var input = document.getElementById('gift-card-code');
+        if (!input) return;
+        
+        if ('BarcodeDetector' in window) {
+            var barcodeDetector = new BarcodeDetector({ formats: ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e'] });
+            
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then(function(stream) {
+                    var video = document.createElement('video');
+                    video.srcObject = stream;
+                    video.setAttribute('playsinline', '');
+                    video.style.width = '100%';
+                    video.style.maxHeight = '300px';
+                    video.style.borderRadius = '8px';
+                    video.style.background = '#000';
+                    
+                    var parent = input.parentNode;
+                    var scanBtn = document.querySelector('#gift-card-modal .btn-primary');
+                    
+                    var videoContainer = document.createElement('div');
+                    videoContainer.id = 'gift-card-video-container';
+                    videoContainer.style.position = 'relative';
+                    videoContainer.style.marginBottom = '10px';
+                    videoContainer.appendChild(video);
+                    
+                    var closeVideoBtn = document.createElement('button');
+                    closeVideoBtn.textContent = '✕';
+                    closeVideoBtn.style.position = 'absolute';
+                    closeVideoBtn.style.top = '5px';
+                    closeVideoBtn.style.right = '5px';
+                    closeVideoBtn.style.background = 'rgba(0,0,0,0.7)';
+                    closeVideoBtn.style.color = 'white';
+                    closeVideoBtn.style.border = 'none';
+                    closeVideoBtn.style.borderRadius = '50%';
+                    closeVideoBtn.style.width = '30px';
+                    closeVideoBtn.style.height = '30px';
+                    closeVideoBtn.style.fontSize = '16px';
+                    closeVideoBtn.style.cursor = 'pointer';
+                    closeVideoBtn.addEventListener('click', function() {
+                        stream.getTracks().forEach(function(track) { track.stop(); });
+                        videoContainer.remove();
+                    });
+                    videoContainer.appendChild(closeVideoBtn);
+                    
+                    parent.insertBefore(videoContainer, scanBtn);
+                    
+                    video.play();
+                    
+                    var detectInterval = setInterval(function() {
+                        barcodeDetector.detect(video)
+                            .then(function(barcodes) {
+                                if (barcodes.length > 0) {
+                                    var code = barcodes[0].rawValue;
+                                    if (code) {
+                                        input.value = code.toUpperCase().trim();
+                                        stream.getTracks().forEach(function(track) { track.stop(); });
+                                        clearInterval(detectInterval);
+                                        videoContainer.remove();
+                                        document.getElementById('gift-card-add-btn').click();
+                                    }
+                                }
+                            })
+                            .catch(function(err) {
+                                console.warn('Barcode detection error:', err);
+                            });
+                    }, 200);
+                    
+                    setTimeout(function() {
+                        if (videoContainer.parentNode) {
+                            stream.getTracks().forEach(function(track) { track.stop(); });
+                            clearInterval(detectInterval);
+                            videoContainer.remove();
+                            showGiftCardStatus('Scan timed out. Please enter code manually.', 'warning');
+                        }
+                    }, 15000);
+                })
+                .catch(function(err) {
+                    console.warn('Camera access error:', err);
+                    showGiftCardStatus('Could not access camera. Please enter code manually.', 'warning');
+                });
+        } else {
+            showGiftCardStatus('Barcode scanner not supported. Please enter code manually.', 'warning');
+        }
+    }
+
+    function showGiftCardStatus(message, type) {
+        var el = document.getElementById('gift-card-status');
+        if (!el) return;
+        type = type || 'info';
+        var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+        el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
+        el.className = 'status-message status-' + type;
+        el.style.display = 'block';
+        setTimeout(function() {
+            if (el) el.style.display = 'none';
+        }, 5000);
+    }
+
+    function addGiftCardToCart() {
+        var codeInput = document.getElementById('gift-card-code');
+        var valueInput = document.getElementById('gift-card-value');
+        var chargeInput = document.getElementById('gift-card-charge');
+        var recipientInput = document.getElementById('gift-card-recipient');
+        var notesInput = document.getElementById('gift-card-notes');
+
+        var code = codeInput ? codeInput.value.trim().toUpperCase() : '';
+        var cardValue = valueInput ? parseFloat(valueInput.value) : 0;
+        var chargeAmount = chargeInput ? parseFloat(chargeInput.value) : 0;
+        var recipientName = recipientInput ? recipientInput.value.trim() : '';
+        var notes = notesInput ? notesInput.value.trim() : '';
+
+        if (!code) {
+            showGiftCardStatus('Please enter or scan a barcode code.', 'warning');
+            return;
+        }
+
+        if (isNaN(cardValue) || cardValue <= 0) {
+            showGiftCardStatus('Please enter a valid card value greater than 0.', 'warning');
+            return;
+        }
+
+        if (isNaN(chargeAmount) || chargeAmount < 0) {
+            showGiftCardStatus('Please enter a valid charge amount (0 or greater).', 'warning');
+            return;
+        }
+
+        if (!recipientName) {
+            showGiftCardStatus('Please enter a recipient name.', 'warning');
+            return;
+        }
+
+        var giftCardItem = {
+            type: 'gift_card',
+            code: code,
+            card_value: cardValue,
+            charge_amount: chargeAmount,
+            recipient_name: recipientName,
+            notes: notes,
+            store_price: chargeAmount,
+            title: 'Gift Card - ' + recipientName,
+            artist: 'Gift Card',
+            barcode: code,
+            isCustom: true
+        };
+
+        checkoutSelectedItems.push(giftCardItem);
+        showGiftCardStatus('✅ Gift card added to cart: $' + cardValue.toFixed(2) + ' (Charge: $' + chargeAmount.toFixed(2) + ')', 'success');
+        
+        closeGiftCardModal();
+
+        checkoutViewMode = 'list';
+        filteredRecords = checkoutSelectedItems.slice();
+        totalRecords = filteredRecords.length;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+        updateSelectionCount();
+        
+        if (checkoutShowSelectedBtn) {
+            checkoutShowSelectedBtn.textContent = 'Checkout List (' + checkoutSelectedItems.length + ')';
+        }
+    }
+
     // ========== RENDER TABLE PAGE ==========
     function renderTablePage() {
         console.log('🔄 renderTablePage() – mode: ' + currentSearchMode + ', records: ' + filteredRecords.length);
@@ -2800,7 +2811,7 @@
                 }
             }
         } else if (currentSearchMode === 'scan') {
-            theadHtml = '<tr><th style="width:60px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Genre</th><th>Format</th><th>Area</th><th>Sublocation</th><th>Index</th><th>Price</th><th>Barcode</th><th>Last Seen</th></tr>';
+            theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Barcode</th><th>Last Seen</th></tr>';
         } else if (currentSearchMode === 'discogs') {
             theadHtml = '<tr><th style="width:60px;">Range</th><th>Image</th><th>ID</th><th>Artist</th><th>Title</th><th>Catalog #</th><th>Media Cond</th><th>Sleeve Cond</th><th>Store Price</th><th>Discogs Price</th><th>Markup %</th><th>Location</th><th>Post</th></tr>';
         } else if (currentSearchMode === 'delete') {
@@ -2826,13 +2837,7 @@
                     msg = 'No purchase selected. Click a row in the purchases table above.';
                 }
             }
-            if (currentSearchMode === 'scan') {
-                if (!scanSession.is_ready) {
-                    msg = '⚠️ Please select genre, format, area, and sublocation to start scanning.';
-                } else {
-                    msg = 'Scan barcodes to add records. Current location index: ' + scanSession.location_index;
-                }
-            }
+            if (currentSearchMode === 'scan') msg = 'Scan barcodes to add records.';
             if (currentSearchMode === 'discogs') msg = 'No records found. Check filters or add records in "Add Record" mode.';
             if (currentSearchMode === 'delete') msg = 'No records to delete.';
             if (currentSearchMode === 'refund') msg = 'No sold records found. Search by artist, title, or barcode to find sold records.';
@@ -2851,7 +2856,7 @@
             var colCount = currentSearchMode === 'discogs_orders' ? 10 :
                              (currentSearchMode === 'refund' ? 7 :
                              (currentSearchMode === 'add' ? (currentMode === 'search' ? 11 : (selectedPurchaseId ? 11 : 10)) :
-                             (currentSearchMode === 'scan' ? 12 :
+                             (currentSearchMode === 'scan' ? 7 :
                              (currentSearchMode === 'discogs' ? 13 :
                              (currentSearchMode === 'delete' ? 6 : 7)))));
             tbodyHtml = '<tr><td colspan="' + colCount + '" style="text-align:center;padding:40px;">' + msg + '</td></tr>';
@@ -2952,6 +2957,7 @@
                     rowHtml += '<td><span class="barcode-value">' + barcode + '</span></td>';
                     rowHtml += '<td>' + created + '</td>';
                     
+                    // Add a "Remove from Purchase" button if a purchase is selected
                     if (selectedPurchaseId) {
                         rowHtml += '<td><button class="btn btn-sm btn-danger" onclick="removeRecordFromPurchase(' + id + ')"><i class="fas fa-times"></i></button></td>';
                     } else {
@@ -2964,22 +2970,10 @@
                     var price = record.store_price ? '$' + record.store_price.toFixed(2) : 'N/A';
                     var barcode = record.barcode || record.id;
                     var lastSeen = record.last_seen ? new Date(record.last_seen).toLocaleDateString() : 'Never';
-                    
-                    var genreName = record.genre_name || '—';
-                    var formatName = record.format_name || '—';
-                    var areaName = record.area_name || '—';
-                    var sublocationName = record.sublocation_name || '—';
-                    var locationIndex = record.location_index || '—';
-                    
                     rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
                     rowHtml += '<td>' + id + '</td>';
                     rowHtml += '<td>' + escapeHtml(artist) + '</td>';
                     rowHtml += '<td>' + escapeHtml(title) + '</td>';
-                    rowHtml += '<td>' + escapeHtml(genreName) + '</td>';
-                    rowHtml += '<td>' + escapeHtml(formatName) + '</td>';
-                    rowHtml += '<td>' + escapeHtml(areaName) + '</td>';
-                    rowHtml += '<td>' + escapeHtml(sublocationName) + '</td>';
-                    rowHtml += '<td>' + locationIndex + '</td>';
                     rowHtml += '<td>' + price + '</td>';
                     rowHtml += '<td><span class="barcode-value">' + barcode + '</span></td>';
                     rowHtml += '<td>' + lastSeen + '</td>';
@@ -3115,6 +3109,7 @@
         }
         recordsTableBody.innerHTML = tbodyHtml;
 
+        // Event listeners for range buttons
         document.querySelectorAll('.btn-from').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 var index = parseInt(this.dataset.index);
@@ -3128,6 +3123,7 @@
             });
         });
 
+        // Add record from Discogs search results
         if (currentSearchMode === 'add' && currentMode === 'search' && currentResults.length > 0) {
             document.querySelectorAll('.btn-add-record-from-search').forEach(function(btn) {
                 btn.addEventListener('click', function() {
@@ -3158,6 +3154,7 @@
             }
         }
 
+        // Post single record to Discogs
         if (currentSearchMode === 'discogs') {
             document.querySelectorAll('.post-single-btn').forEach(function(btn) {
                 btn.addEventListener('click', function(e) {
@@ -3178,6 +3175,7 @@
             });
         }
 
+        // Checkout add/remove
         if (currentSearchMode === 'checkout') {
             document.querySelectorAll('.add-checkout-item').forEach(function(btn) {
                 btn.addEventListener('click', function() {
@@ -3193,6 +3191,7 @@
             });
         }
 
+        // Discogs orders pigstyle ID assignment
         if (currentSearchMode === 'discogs_orders') {
             document.querySelectorAll('.pigstyle-id-input').forEach(function(input) {
                 input.addEventListener('change', function() {
@@ -3376,6 +3375,9 @@
         });
     }
 
+    
+
+
     function closeCustomItemModal() {
         if (customItemModal) {
             customItemModal.remove();
@@ -3388,7 +3390,7 @@
         var priceInput = document.getElementById('custom-item-price');
         var statusDiv = document.getElementById('custom-item-status');
 
-        function showStatusMsg(msg, type) {
+        function showStatus(msg, type) {
             if (statusDiv) {
                 statusDiv.textContent = msg;
                 statusDiv.className = 'status-message status-' + type;
@@ -3402,11 +3404,11 @@
         var price = parseFloat(priceInput.value);
 
         if (!desc) {
-            showStatusMsg('Please enter a description.', 'warning');
+            showStatus('Please enter a description.', 'warning');
             return;
         }
         if (isNaN(price) || price <= 0) {
-            showStatusMsg('Please enter a valid price greater than 0.', 'warning');
+            showStatus('Please enter a valid price greater than 0.', 'warning');
             return;
         }
 
@@ -3420,7 +3422,7 @@
         };
 
         checkoutSelectedItems.push(customItem);
-        showStatusMsg('Added custom item: "' + desc + '" for $' + price.toFixed(2), 'success');
+        showStatus('Added custom item: "' + desc + '" for $' + price.toFixed(2), 'success');
         closeCustomItemModal();
 
         checkoutViewMode = 'list';
@@ -3500,6 +3502,7 @@
 
     // ========== Add Record from Discogs ==========
     async function addRecordFromDiscogs(row, discogsRecord) {
+        // ===== BLOCK: No purchase selected =====
         if (!selectedPurchaseId) {
             showStatus('⚠️ Please select a purchase from the table before adding records.', 'error');
             playSound('error');
@@ -3569,6 +3572,7 @@
         var result = await apiRequest('POST', '/records', recordData);
         showStatus('✅ Record #' + result.record.id + ' added successfully to purchase #' + selectedPurchaseId + '!', 'success');
         
+        // Reload records for this purchase
         await loadRecordsForPurchase(selectedPurchaseId);
         await loadPurchasesTable();
         
@@ -3587,11 +3591,6 @@
         var mode = currentSearchMode;
 
         if (mode === 'add') {
-            if (!selectedPurchaseId) {
-                showStatus('⚠️ Please select a purchase from the table before searching.', 'error');
-                playSound('error');
-                return;
-            }
             performDiscogsSearch(term);
             return;
         } else if (mode === 'scan') {
@@ -3681,7 +3680,7 @@
         updateSelectionCount();
     }
 
-    // ========== Discogs search ==========
+    // ========== Discogs search, etc. ==========
     async function performDiscogsSearch(term) {
         currentMode = 'search';
         recordsTableBody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Searching Discogs...</td></tr>';
@@ -3763,10 +3762,6 @@
         showStatus('Found ' + totalRecords + ' records matching "' + term + '"', 'info');
     }
 
-    function performDeleteSearch(term) {
-        applyDeleteFilter();
-    }
-
     function clearSearch() {
         searchInput.value = '';
         if (currentSearchMode === 'add') {
@@ -3782,7 +3777,7 @@
                 renderTablePage();
             }
         } else if (currentSearchMode === 'scan') {
-            // keep list - don't clear scanned records
+            // keep list
         } else if (currentSearchMode === 'refund') {
             filteredRecords = [];
             totalRecords = 0;
@@ -5492,55 +5487,6 @@
         }
     }
 
-    // ========== NEW: Apply Scan Location ==========
-    async function applyScanLocation() {
-        var records = filteredRecords;
-        if (records.length === 0) {
-            showStatus('No scanned records to process.', 'warning');
-            return;
-        }
-
-        if (!scanSession.is_ready) {
-            showStatus('⚠️ Please select genre, format, area, and sublocation first', 'warning');
-            return;
-        }
-
-        var recordIds = records.map(function(r) { return r.id; });
-        var startIndex = scanSession.location_index - records.length;
-
-        try {
-            var result = await apiRequest('POST', '/api/scan/apply-location', {
-                record_ids: recordIds,
-                genre_id: scanSession.genre_id,
-                format_id: scanSession.format_id,
-                area_id: scanSession.area_id,
-                sublocation_id: scanSession.sublocation_id,
-                location_index_start: startIndex > 0 ? startIndex : 1
-            });
-
-            if (result.status === 'success') {
-                showStatus('✅ Applied location to ' + result.updated_count + ' records', 'success');
-                playSound('success');
-                
-                filteredRecords = [];
-                totalRecords = 0;
-                currentPage = 1;
-                renderPagination();
-                renderTablePage();
-                updateSelectionCount();
-                
-                scanSession.location_index = 1;
-                updateScanPreview();
-            } else {
-                showStatus('❌ ' + (result.error || 'Failed to apply location'), 'error');
-                playSound('error');
-            }
-        } catch (error) {
-            showStatus('❌ Error: ' + error.message, 'error');
-            playSound('error');
-        }
-    }
-
     // ========== Pagination ==========
     function renderPagination() {
         var paginationEl = document.querySelector('.pagination');
@@ -5630,20 +5576,8 @@
     }
 
     function applyFilters() {
-        if (currentSearchMode === 'scan' || currentSearchMode === 'discogs' || currentSearchMode === 'delete' || currentSearchMode === 'checkout' || currentSearchMode === 'discogs_orders' || currentSearchMode === 'refund') {
-            return;
-        }
-        if (currentMode === 'search') {
-            filteredRecords = currentResults.slice();
-        } else {
-            filteredRecords = allRecords.slice();
-        }
-        totalRecords = filteredRecords.length;
-        var totalPages = Math.ceil(totalRecords / pageSize) || 1;
-        if (currentPage > totalPages) currentPage = totalPages;
-        if (currentPage < 1) currentPage = 1;
-        renderPagination();
-        renderTablePage();
+        // This is now handled by the mode containers
+        // The filter section is shown/hidden based on mode
     }
 
     // ========== PDF Generation ==========
@@ -5746,8 +5680,7 @@
 
         cancelRangeSelection();
 
-        setActiveMode(newMode);
-
+        // ===== CLEAR PURCHASE SELECTION IF NOT IN ADD MODE =====
         if (newMode !== 'add') {
             if (selectedPurchaseId) {
                 clearPurchaseSelection();
@@ -5755,6 +5688,10 @@
             if (metadataPanel) metadataPanel.style.display = 'none';
         }
 
+        // Show the appropriate mode container
+        showModeContainer(newMode);
+
+        // Load data based on mode
         if (newMode === 'add') {
             currentMode = 'inventory';
             currentResults = [];
@@ -5763,16 +5700,14 @@
             if (!selectedPurchaseId) {
                 clearPurchaseSelection();
             }
-            loadAllDomainData();
         } else if (newMode === 'scan') {
             filteredRecords = [];
             totalRecords = 0;
             currentPage = 1;
             renderPagination();
             renderTablePage();
-            showStatus('📍 Scan mode: Select location components, then scan barcodes.', 'info');
-            resetScanSession();
-            loadAllDomainData();
+            showStatus('Scan mode: Scan barcodes to build the list.', 'info');
+            resetScanCounter();
         } else if (newMode === 'discogs') {
             filteredRecords = [];
             totalRecords = 0;
@@ -5907,6 +5842,13 @@
         }
     }
 
+    function resetScanCounter() {
+        scanCounter = 0;
+        if (scanCounterDisplay) {
+            scanCounterDisplay.textContent = '0';
+        }
+    }
+
     // ========== Init ==========
     async function init() {
         console.log('🔄 inventory-ops: Initializing...');
@@ -5928,8 +5870,6 @@
         await loadAccounts();
         console.log('📥 Loading stats...');
         await loadStats();
-        console.log('📥 Loading domain data...');
-        await loadAllDomainData();
 
         console.log('📥 Populating default param selects...');
         populateDefaultParamSelects();
@@ -5959,52 +5899,6 @@
                 if (term) {
                     performScanSearch(term);
                 }
-            });
-        }
-
-        // Set up filter buttons
-        if (applyFiltersBtn) {
-            applyFiltersBtn.addEventListener('click', applyFilters);
-        }
-        if (clearFiltersBtn) {
-            clearFiltersBtn.addEventListener('click', clearFilters);
-        }
-
-        // Set up domain management buttons
-        if (addGenreBtn) {
-            addGenreBtn.addEventListener('click', window.addGenre);
-        }
-        if (addFormatBtn) {
-            addFormatBtn.addEventListener('click', window.addFormat);
-        }
-        if (addAreaBtn) {
-            addAreaBtn.addEventListener('click', window.addArea);
-        }
-        if (addSublocationBtn) {
-            addSublocationBtn.addEventListener('click', window.addSublocation);
-        }
-
-        // Area filter for sublocations
-        if (sublocationAreaFilter) {
-            sublocationAreaFilter.addEventListener('change', function() {
-                renderSublocationsList();
-            });
-        }
-
-        // New sublocation area dropdown
-        if (newSublocationArea) {
-            areas.forEach(function(a) {
-                var opt = document.createElement('option');
-                opt.value = a.id;
-                opt.textContent = a.name;
-                newSublocationArea.appendChild(opt);
-            });
-        }
-
-        // Filter area change - update sublocation dropdown
-        if (filterArea) {
-            filterArea.addEventListener('change', function() {
-                populateFilterDropdowns();
             });
         }
 
@@ -6045,7 +5939,8 @@
         pageSizeSelect.addEventListener('change', function() {
             pageSize = parseInt(this.value);
             currentPage = 1;
-            applyFilters();
+            renderPagination();
+            renderTablePage();
         });
         currentPageInput.addEventListener('change', function() {
             var page = parseInt(this.value);
@@ -6063,12 +5958,10 @@
 
         printBtn.addEventListener('click', printPriceTags);
 
-        var oldGlobalBtn = document.getElementById('global-set-active-btn');
-        if (oldGlobalBtn) oldGlobalBtn.remove();
-
         completeActionBtn.addEventListener('click', handleCompleteAction);
         console.log('🔘 completeActionBtn click handler attached in init');
 
+        // Load purchases table on init
         await loadPurchasesTable();
 
         if (discogsLocationSelect) {
@@ -6173,6 +6066,93 @@
         }, 1000);
     }
 
+    // ========== BILL MODAL FUNCTIONS ==========
+
+    function openBillModal() {
+        var container = document.getElementById('bill-preview-container');
+        if (!container) return;
+        
+        var billPath = container.dataset.billPath || '';
+        var billType = container.dataset.billType || '';
+        
+        var modal = document.getElementById('bill-modal');
+        var modalImg = document.getElementById('bill-modal-image');
+        var modalPlaceholder = document.getElementById('bill-modal-placeholder');
+        var modalPdf = document.getElementById('bill-modal-pdf');
+        var modalPdfIframe = document.getElementById('bill-modal-pdf-iframe');
+        var modalFilename = document.getElementById('bill-modal-filename');
+        var downloadLink = document.getElementById('bill-modal-download');
+        
+        if (!modal) return;
+        
+        modalImg.style.display = 'none';
+        modalPdf.style.display = 'none';
+        modalPlaceholder.style.display = 'none';
+        downloadLink.style.display = 'none';
+        modalImg.src = '';
+        modalPdfIframe.src = '';
+        
+        if (!billPath) {
+            modalPlaceholder.style.display = 'block';
+            modalPlaceholder.innerHTML = '<i class="fas fa-receipt" style="font-size: 48px; display: block; margin-bottom: 15px;"></i>No bill of sale uploaded for this draft.';
+            modal.style.display = 'flex';
+            return;
+        }
+        
+        var filename = billPath.split('/').pop();
+        modalFilename.textContent = 'File: ' + filename;
+        
+        downloadLink.href = billPath;
+        downloadLink.download = filename;
+        downloadLink.style.display = 'inline-block';
+        
+        if (billType === 'pdf' || billPath.toLowerCase().endsWith('.pdf')) {
+            modalPdf.style.display = 'block';
+            modalPdfIframe.src = billPath;
+            modalPlaceholder.style.display = 'none';
+            modalImg.style.display = 'none';
+        } else {
+            modalImg.src = billPath;
+            modalImg.style.display = 'block';
+            modalImg.onerror = function() {
+                this.style.display = 'none';
+                modalPlaceholder.style.display = 'block';
+                modalPlaceholder.innerHTML = '<i class="fas fa-exclamation-triangle" style="font-size: 48px; display: block; margin-bottom: 15px; color: #dc3545;"></i>Could not load image. The file may be missing or corrupted.';
+            };
+            modalPdf.style.display = 'none';
+            modalPlaceholder.style.display = 'none';
+        }
+        
+        modal.style.display = 'flex';
+    }
+
+    function closeBillModal() {
+        var modal = document.getElementById('bill-modal');
+        if (modal) {
+            modal.style.display = 'none';
+            var iframe = document.getElementById('bill-modal-pdf-iframe');
+            if (iframe) {
+                iframe.src = '';
+            }
+        }
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeBillModal();
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        var modal = document.getElementById('bill-modal');
+        if (modal && e.target === modal) {
+            closeBillModal();
+        }
+    });
+
+    window.openBillModal = openBillModal;
+    window.closeBillModal = closeBillModal;
+
     // ========== Expose all globals ==========
     window.refreshDiscogsLocations = loadDiscogsLocations;
     window.closeDiscogsPostModal = closeDiscogsPostModal;
@@ -6188,6 +6168,9 @@
     window.checkSquareAvailability = checkSquareAvailability;
     window.processSquarePayment = processSquarePayment;
     window.showCustomItemModal = showCustomItemModal;
+    window.showGiftCardModal = showGiftCardModal;
+
+    
     window.closeCustomItemModal = closeCustomItemModal;
     window.addBernieItem = addBernieItem;
     window.toggleInventorySetupPanel = toggleInventorySetupPanel;
@@ -6205,23 +6188,19 @@
     window.loadPurchasesTable = loadPurchasesTable;
     window.showCheckoutModal = showCheckoutModal;
     window.removeRecordFromPurchase = removeRecordFromPurchase;
-    window.togglePurchaseTable = togglePurchaseTable;
-    window.toggleMetadataPanel = toggleMetadataPanel;
 
-    // Expose domain management functions
-    window.addGenre = addGenre;
-    window.deleteGenre = deleteGenre;
-    window.addFormat = addFormat;
-    window.deleteFormat = deleteFormat;
-    window.addArea = addArea;
-    window.deleteArea = deleteArea;
-    window.addSublocation = addSublocation;
-    window.deleteSublocation = deleteSublocation;
+    // ===== GIFT CARD FUNCTIONS - EXPOSE TO WINDOW =====
+    window.closeGiftCardModal = closeGiftCardModal;
+    window.scanGiftCard = scanGiftCard;
+    window.addGiftCardToCart = addGiftCardToCart;
 
+    // ===== EXPOSE applyDefaultParams and clearDefaultParams =====
     window.applyDefaultParams = applyDefaultParams;
     window.clearDefaultParams = clearDefaultParams;
+    window.showGiftCardModal = showGiftCardModal;
 
     console.log('✅ All functions exposed to window');
     console.log('✅ applyDefaultParams and clearDefaultParams are now globally available.');
+    console.log('✅ showGiftCardModal is now globally available.');
 
 })();

@@ -189,11 +189,15 @@ function setGiftCardAmount(type) {
         amountInput.value = (giftCardData.balance / 2).toFixed(2);
     }
 }
-
 function closeGiftCardModal() {
-    const modal = document.getElementById('giftcard-modal');
-    if (modal) modal.style.display = 'none';
+    console.log('💳 [GIFT CARD] closeGiftCardModal() called');
+    var modal = document.getElementById('gift-card-modal');
+    if (modal) {
+        modal.remove();
+        console.log('💳 [GIFT CARD] Modal removed');
+    }
 }
+ 
 
 // ============================================================
 // CREATE GIFT CARD (Admin Only - In Store)
