@@ -1264,7 +1264,7 @@
         }
 
         .starting-position-section {
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            background: linear-gradient(135deg, #fd7e14 0%, #ffc107 100%);
             padding: 15px 20px;
             border-radius: 8px;
             margin-bottom: 20px;
@@ -1941,7 +1941,185 @@
             box-shadow: 0 0 0 2px rgba(0,123,255,0.1);
         }
     </style>
-</head>
+<style>
+    @keyframes slideIn {
+        from {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+    
+    @keyframes slideOut {
+        from {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        to {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+    }
+    
+    .order-notification {
+        transition: all 0.3s ease;
+    }
+</style><style id="toast-styles">
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style><style>
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .user-greeting {
+            color: white;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .dropdown-toggle {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            min-width: 40px;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        
+        .dropdown-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .dropdown-menu {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background: white;
+            min-width: 200px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border-radius: 4px;
+            z-index: 1000;
+            margin-top: 5px;
+            animation: fadeIn 0.2s ease;
+            border: 1px solid #ddd;
+        }
+        
+        .dropdown-menu.show {
+            display: block;
+        }
+        
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 15px;
+            color: #333 !important;
+            text-decoration: none;
+            border-bottom: 1px solid #eee;
+            transition: background 0.2s;
+            font-size: 14px;
+        }
+        
+        .dropdown-item:hover {
+            background: #f5f5f5;
+            color: #000;
+        }
+        
+        .dropdown-item i {
+            margin-right: 10px;
+            width: 16px;
+            text-align: center;
+            color: #666;
+        }
+        
+        .dropdown-divider {
+            height: 1px;
+            background: #eee;
+            margin: 5px 0;
+        }
+        
+        .nav-link {
+            color: white;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            padding: 6px 12px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            transition: background 0.2s;
+        }
+        
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        /* Role badges */
+        .role-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .role-badge.admin { background: #dc3545; color: white; }
+        .role-badge.consignor { background: #28a745; color: white; }
+        .role-badge.youtube_linker { background: #ffc107; color: #333; }
+        
+        /* Fix for small screens */
+        @media (max-width: 768px) {
+            .user-greeting {
+                display: none;
+            }
+            
+            .dropdown-menu {
+                position: fixed;
+                top: 60px;
+                right: 20px;
+                left: auto;
+                min-width: 180px;
+            }
+        }
+    </style></head>
 <body>
     <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
         <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
@@ -1951,7 +2129,36 @@
             <a href="/browse" style="color: white; text-decoration: none;">Browse</a>
             <a href="/misc" style="color: white; text-decoration: none;">Misc</a>
             <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
-            <div id="auth-section"></div>
+            <div id="auth-section">
+                <div class="user-menu">
+                    <span class="user-greeting">Hi, admin</span>
+                    <div class="dropdown">
+                        <button class="dropdown-toggle" id="dropdown-toggle-button" aria-label="User menu">
+                            <i class="fas fa-user"></i>
+                            <i class="fas fa-caret-down"></i>
+                        </button>
+                        <div class="dropdown-menu" id="dropdown-menu">
+                            
+                            <a href="/dashboard" class="dropdown-item">
+                                <i class="fas fa-tachometer-alt"></i> Dashboard
+                            </a>
+                            
+                            
+                            <a href="/admin" class="dropdown-item">
+                                <i class="fas fa-cog"></i> Admin Panel
+                            </a>
+                            <a href="/admin/accounting" class="dropdown-item">
+                                <i class="fas fa-calculator"></i> Accounting
+                            </a>
+                            
+                            <div class="dropdown-divider"></div>
+                            <a href="#" id="logout-button" class="dropdown-item">
+                                <i class="fas fa-sign-out-alt"></i> Logout
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </nav>
 
@@ -1977,7 +2184,7 @@
                 <!-- Stats Row -->
                 <div class="stats-row">
                     <div class="stat-card">
-                        <div class="stat-value" id="total-records">0</div>
+                        <div class="stat-value" id="total-records">11899</div>
                         <div class="stat-label">Total Records</div>
                     </div>
                     <div class="stat-card" style="background: #fff3cd; border-left: 4px solid #ffc107;">
@@ -1985,11 +2192,11 @@
                         <div class="stat-label">📋 New Records (status_id=1)</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value" id="last-added-record" style="font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">None</div>
+                        <div class="stat-value" id="last-added-record" style="font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">The Lumineers - Cleopatra - $22.99</div>
                         <div class="stat-label">📥 Last Added</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-value" id="commission-rate">N/A</div>
+                        <div class="stat-value" id="commission-rate">28.0%</div>
                         <div class="stat-label">Commission Rate</div>
                     </div>
                 </div>
@@ -2000,7 +2207,7 @@
                         <div class="search-field-select">
                             <label for="searchMode"><i class="fas fa-cog"></i> Mode:</label>
                             <select id="searchMode">
-                                <option value="add">Add Record</option>
+                                <option value="add" selected>Add Record</option>
                                 <option value="scan">Scan / Locate</option>
                                 <option value="discogs">Post to Discogs</option>
                                 <option value="delete">Delete</option>
@@ -2012,8 +2219,11 @@
                     </div>
                 </div>
 
-                <!-- ========== ADD MODE CONTAINER ========== -->
-                <div id="add-mode-container">
+                <!-- ========== MODE CONTAINERS ========== -->
+                <!-- Each mode has ONE container that contains ALL its content -->
+                
+                <!-- ADD MODE CONTAINER -->
+                <div id="mode-container-add" style="display: block;">
                     <!-- Inventory Setup Panel -->
                     <div id="inventory-setup-panel" class="params-purchase-panel">
                         <div class="panel-header" onclick="toggleInventorySetupPanel()">
@@ -2031,15 +2241,11 @@
                                     <div class="params-grid">
                                         <div>
                                             <label for="default-sleeve-condition">Default Sleeve Condition</label>
-                                            <select id="default-sleeve-condition" class="form-control">
-                                                <option value="">Select...</option>
-                                            </select>
+                                            <select id="default-sleeve-condition" class="form-control"><option value="">Select...</option><option value="1">Mint (M)</option><option value="2">Near Mint (NM or M-)</option><option value="3">Very Good Plus (VG+)</option><option value="4">Very Good (VG)</option><option value="5">Good Plus (G+)</option><option value="6">Good (G)</option><option value="7">Fair (F)</option><option value="8">Poor (P)</option></select>
                                         </div>
                                         <div>
                                             <label for="default-disc-condition">Default Disc Condition</label>
-                                            <select id="default-disc-condition" class="form-control">
-                                                <option value="">Select...</option>
-                                            </select>
+                                            <select id="default-disc-condition" class="form-control"><option value="">Select...</option><option value="1">Mint (M)</option><option value="2">Near Mint (NM or M-)</option><option value="3">Very Good Plus (VG+)</option><option value="4">Very Good (VG)</option><option value="5">Good Plus (G+)</option><option value="6">Good (G)</option><option value="7">Fair (F)</option><option value="8">Poor (P)</option></select>
                                         </div>
                                         <div>
                                             <label for="default-price">Default Price ($)</label>
@@ -2047,9 +2253,7 @@
                                         </div>
                                         <div>
                                             <label for="default-consignor">Default Consignor</label>
-                                            <select id="default-consignor" class="form-control">
-                                                <option value="">None</option>
-                                            </select>
+                                            <select id="default-consignor" class="form-control"><option value="">None</option><option value="5">AndersonMuth (AndersonMuth)</option><option value="6">GeoffCowles (Geoff Cowles)</option><option value="9">johnsmidt (John Smith)</option></select>
                                         </div>
                                     </div>
                                     <div class="params-actions">
@@ -2094,9 +2298,7 @@
                                                 <th style="width:40px;">Del</th>
                                             </tr>
                                         </thead>
-                                        <tbody id="purchases-body">
-                                            <tr><td colspan="8" style="text-align:center;padding:20px;">Loading purchases...</td></tr>
-                                        </tbody>
+                                        <tbody id="purchases-body"><tr class="" data-id="1590" onclick="selectPurchase(1590)" style="cursor:pointer;"><td>1590</td><td>Dylan</td><td><span class="status-badge draft">draft</span></td><td>2</td><td>—</td><td>8/1/2026</td><td><i class="fas fa-times" style="color:#999;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1590)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1589" onclick="selectPurchase(1589)" style="cursor:pointer;"><td>1589</td><td>Carma Hilliard</td><td><span class="status-badge paid">complete</span></td><td>16</td><td>$45.00</td><td>8/1/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1589)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1588" onclick="selectPurchase(1588)" style="cursor:pointer;"><td>1588</td><td>Judy Smith</td><td><span class="status-badge draft">draft</span></td><td>0</td><td>—</td><td>8/1/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1588)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1587" onclick="selectPurchase(1587)" style="cursor:pointer;"><td>1587</td><td>Grace Gasner</td><td><span class="status-badge draft">draft</span></td><td>0</td><td>—</td><td>8/1/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1587)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1584" onclick="selectPurchase(1584)" style="cursor:pointer;"><td>1584</td><td>Dylan</td><td><span class="status-badge paid">complete</span></td><td>7</td><td>$55.00</td><td>7/30/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1584)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1581" onclick="selectPurchase(1581)" style="cursor:pointer;"><td>1581</td><td>Ted Turner</td><td><span class="status-badge draft">draft</span></td><td>9</td><td>—</td><td>7/30/2026</td><td><i class="fas fa-times" style="color:#999;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1581)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1580" onclick="selectPurchase(1580)" style="cursor:pointer;"><td>1580</td><td>BJ Clark</td><td><span class="status-badge draft">draft</span></td><td>140</td><td>—</td><td>7/30/2026</td><td><i class="fas fa-times" style="color:#999;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1580)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1567" onclick="selectPurchase(1567)" style="cursor:pointer;"><td>1567</td><td>McKenny Bryant</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$45.00</td><td>7/22/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1567)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1569" onclick="selectPurchase(1569)" style="cursor:pointer;"><td>1569</td><td>Nicole Gregg</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$60.00</td><td>7/18/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1569)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1568" onclick="selectPurchase(1568)" style="cursor:pointer;"><td>1568</td><td>Nicolle Gregg</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$30.00</td><td>7/18/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1568)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1390" onclick="selectPurchase(1390)" style="cursor:pointer;"><td>1390</td><td>Geoff Powel</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$180.00</td><td>7/11/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1390)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1388" onclick="selectPurchase(1388)" style="cursor:pointer;"><td>1388</td><td>Judy Brunk</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$125.00</td><td>7/11/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1388)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1382" onclick="selectPurchase(1382)" style="cursor:pointer;"><td>1382</td><td>Abigail Alm</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$25.00</td><td>7/3/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1382)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1368" onclick="selectPurchase(1368)" style="cursor:pointer;"><td>1368</td><td>Unknown</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$15.00</td><td>7/1/2026</td><td><i class="fas fa-times" style="color:#999;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1368)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1499" onclick="selectPurchase(1499)" style="cursor:pointer;"><td>1499</td><td>Steven White</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$35.00</td><td>6/25/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1499)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1488" onclick="selectPurchase(1488)" style="cursor:pointer;"><td>1488</td><td>Rick Koenig - Rock band mirrors</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$80.00</td><td>6/19/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1488)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1487" onclick="selectPurchase(1487)" style="cursor:pointer;"><td>1487</td><td>Unknown</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$150.00</td><td>6/12/2026</td><td><i class="fas fa-times" style="color:#999;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1487)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1485" onclick="selectPurchase(1485)" style="cursor:pointer;"><td>1485</td><td>Tessa Hayes - 5 vinyl records</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$75.00</td><td>6/5/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1485)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1486" onclick="selectPurchase(1486)" style="cursor:pointer;"><td>1486</td><td>John Lyttle - Several boxes</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$508.47</td><td>5/31/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1486)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1497" onclick="selectPurchase(1497)" style="cursor:pointer;"><td>1497</td><td>May  Fide - 1 box</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$50.00</td><td>4/11/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1497)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1498" onclick="selectPurchase(1498)" style="cursor:pointer;"><td>1498</td><td>Jaeger - Large collection</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$1035.00</td><td>4/4/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1498)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1496" onclick="selectPurchase(1496)" style="cursor:pointer;"><td>1496</td><td>Mark Whitaker - 150 331/3 + 200 45s</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$100.00</td><td>4/2/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1496)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1495" onclick="selectPurchase(1495)" style="cursor:pointer;"><td>1495</td><td>Susan LindQuist</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$215.97</td><td>3/25/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1495)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1494" onclick="selectPurchase(1494)" style="cursor:pointer;"><td>1494</td><td>Kaltren Pieters</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$17.50</td><td>3/24/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1494)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1493" onclick="selectPurchase(1493)" style="cursor:pointer;"><td>1493</td><td>Indos - 12 boxes??</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$100.00</td><td>3/20/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1493)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1492" onclick="selectPurchase(1492)" style="cursor:pointer;"><td>1492</td><td>Unknown</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$350.00</td><td>3/17/2026</td><td><i class="fas fa-times" style="color:#999;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1492)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1489" onclick="selectPurchase(1489)" style="cursor:pointer;"><td>1489</td><td>Susan Gieser</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$60.00</td><td>3/14/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1489)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1491" onclick="selectPurchase(1491)" style="cursor:pointer;"><td>1491</td><td>Sarah Horst</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$50.00</td><td>2/28/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1491)"><i class="fas fa-trash"></i></button></td></tr><tr class="" data-id="1490" onclick="selectPurchase(1490)" style="cursor:pointer;"><td>1490</td><td>Christina Whitaker - 40 vinyl records</td><td><span class="status-badge paid">complete</span></td><td>0</td><td>$561.96</td><td>2/28/2026</td><td><i class="fas fa-file-pdf" style="color:#28a745;"></i></td><td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(1490)"><i class="fas fa-trash"></i></button></td></tr></tbody>
                                     </table>
                                 </div>
                             </div>
@@ -2152,8 +2354,8 @@
                 </div>
                 <!-- ========== END ADD MODE CONTAINER ========== -->
 
-                <!-- ========== SCAN MODE CONTAINER (REDESIGNED) ========== -->
-                <div id="scan-mode-container" style="display:none;">
+                <!-- SCAN MODE CONTAINER -->
+                <div id="mode-container-scan" style="display: none;">
                     <!-- Location Builder -->
                     <div class="scan-location-builder">
                         <h3><i class="fas fa-map-pin"></i> Location Setup</h3>
@@ -2195,8 +2397,8 @@
                         </div>
                         
                         <div class="scan-input-area">
-                            <input type="text" id="scan-input" placeholder="Scan barcode or search..." disabled>
-                            <button class="btn" id="scan-submit-btn" disabled><i class="fas fa-search"></i> Scan</button>
+                            <input type="text" id="scan-input" placeholder="Scan barcode or search..." disabled="">
+                            <button class="btn" id="scan-submit-btn" disabled=""><i class="fas fa-search"></i> Scan</button>
                         </div>
                     </div>
                     
@@ -2213,51 +2415,11 @@
                 </div>
                 <!-- ========== END SCAN MODE CONTAINER ========== -->
 
-                <!-- ========== FILTER SECTION ========== -->
-                <div class="filter-section" id="filter-section">
-                    <h4><i class="fas fa-filter"></i> Filter Records</h4>
-                    <div class="filter-grid">
-                        <div class="filter-group">
-                            <label>Last Seen After</label>
-                            <input type="date" id="filter-last-seen">
-                        </div>
-                        <div class="filter-group">
-                            <label>Genre</label>
-                            <select id="filter-genre">
-                                <option value="">All Genres</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label>Format</label>
-                            <select id="filter-format">
-                                <option value="">All Formats</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label>Area</label>
-                            <select id="filter-area">
-                                <option value="">All Areas</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label>Sublocation</label>
-                            <select id="filter-sublocation">
-                                <option value="">All Sublocations</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="filter-actions">
-                        <button class="btn btn-primary" id="apply-filters-btn"><i class="fas fa-search"></i> Apply Filters</button>
-                        <button class="btn btn-secondary" id="clear-filters-btn"><i class="fas fa-times"></i> Clear</button>
-                    </div>
-                </div>
-                <!-- ========== END FILTER SECTION ========== -->
-
-                <!-- ========== DISCOGS MODE CONTAINER ========== -->
-                <div id="discogs-mode-container" style="display:none;">
+                <!-- DISCOGS MODE CONTAINER -->
+                <div id="mode-container-discogs" style="display: none;">
                     <!-- Discogs-specific filters -->
-                    <div id="filter-group" style="padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
-                        <div id="discogs-filters">
+                    <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
+                        <div>
                             <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
                                 <div><i class="fas fa-calendar-alt" style="font-size: 20px;"></i><strong style="margin-left: 8px;">Last Seen Filter:</strong></div>
                                 <div>
@@ -2280,7 +2442,7 @@
                         </div>
 
                         <!-- Discogs markup UI -->
-                        <div id="discogs-markup-ui" style="margin-top: 15px;">
+                        <div style="margin-top: 15px;">
                             <div style="margin-bottom: 15px; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
                                 <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 10px 15px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;" onclick="toggleMarkupRules()">
                                     <span><i class="fas fa-chart-line"></i> Markup Rules (based on record age)</span>
@@ -2331,15 +2493,15 @@
                 </div>
                 <!-- ========== END DISCOGS MODE CONTAINER ========== -->
 
-                <!-- ========== DELETE MODE CONTAINER ========== -->
-                <div id="delete-mode-container" style="display:none;">
-                    <div id="filter-group" style="padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
-                        <div id="delete-filters">
+                <!-- DELETE MODE CONTAINER -->
+                <div id="mode-container-delete" style="display: none;">
+                    <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
+                        <div>
                             <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                                 <div>
                                     <label for="delete-status-filter" style="font-weight:500;">Status:</label>
                                     <select id="delete-status-filter" class="filter-select" style="padding:6px 12px; border:1px solid #ddd; border-radius:4px;">
-                                        <option value="1,2">New & Active</option>
+                                        <option value="1,2">New &amp; Active</option>
                                         <option value="1">New</option>
                                         <option value="2">Active</option>
                                     </select>
@@ -2350,10 +2512,10 @@
                 </div>
                 <!-- ========== END DELETE MODE CONTAINER ========== -->
 
-                <!-- ========== CHECKOUT MODE CONTAINER ========== -->
-                <div id="checkout-mode-container" style="display:none;">
-                    <div id="filter-group" style="padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
-                        <div id="checkout-filters">
+                <!-- CHECKOUT MODE CONTAINER -->
+                <div id="mode-container-checkout" style="display: none;">
+                    <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
+                        <div>
                             <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                                 <div>
                                     <label for="checkout-status-filter" style="font-weight:500;">Status:</label>
@@ -2368,7 +2530,9 @@
                             </div>
                         </div>
                     </div>
-                    <div id="checkout-mode-controls" class="search-section" style="background: #e3f2fd; border-left: 4px solid #007bff; padding: 15px; margin-bottom: 15px;">
+                    
+                    <!-- Checkout Actions Controls -->
+                    <div class="search-section" style="background: #e3f2fd; border-left: 4px solid #007bff; padding: 15px; margin-bottom: 15px;">
                         <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
                             <span style="font-weight: 600; color: #004085;"><i class="fas fa-shopping-cart"></i> Checkout Actions:</span>
                             <button class="btn btn-info" onclick="window.showCustomItemModal()">
@@ -2377,18 +2541,22 @@
                             <button class="btn btn-primary" onclick="window.addBernieItem()">
                                 <i class="fas fa-donate"></i> Bernie ($0.99)
                             </button>
+                            
+                            <button class="btn btn-success" onclick="window.showGiftCardModal()" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+                                <i class="fas fa-gift"></i> Gift Card
+                            </button>
                             <span style="font-size: 12px; color: #666; margin-left: 10px;">
-                                <i class="fas fa-info-circle"></i> Add custom items or Bernie donations to the checkout cart
+                                <i class="fas fa-info-circle"></i> Add custom items, Bernie donations, or activate gift cards
                             </span>
                         </div>
                     </div>
                 </div>
                 <!-- ========== END CHECKOUT MODE CONTAINER ========== -->
 
-                <!-- ========== DISCOGS ORDERS MODE CONTAINER ========== -->
-                <div id="discogs-orders-mode-container" style="display:none;">
-                    <div id="filter-group" style="padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
-                        <div id="discogs-orders-filters">
+                <!-- DISCOGS ORDERS MODE CONTAINER -->
+                <div id="mode-container-discogs_orders" style="display: none;">
+                    <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
+                        <div>
                             <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                                 <div>
                                     <label for="discogs-orders-status-filter"><i class="fas fa-filter"></i> Status:</label>
@@ -2418,9 +2586,9 @@
                 </div>
                 <!-- ========== END DISCOGS ORDERS MODE CONTAINER ========== -->
 
-                <!-- ========== REFUND MODE CONTAINER ========== -->
-                <div id="refund-mode-container" style="display:none;">
-                    <div id="filter-group" style="padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
+                <!-- REFUND MODE CONTAINER -->
+                <div id="mode-container-refund" style="display: none;">
+                    <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
                         <p style="color: #666; margin: 0;"><i class="fas fa-info-circle"></i> Use the search bar above to find sold records for refund.</p>
                     </div>
                 </div>
@@ -2439,8 +2607,8 @@
                             </select>
                         </div>
                         <form class="search-form" id="searchForm" action="javascript:void(0);">
-                            <input type="text" class="search-input" id="searchInput" placeholder="Search...">
-                            <button type="button" class="btn btn-secondary" id="clearSearch"><i class="fas fa-times"></i> Clear</button>
+                            <input type="text" class="search-input" id="searchInput" placeholder="Search records...">
+                            <button id="searchButton" type="button" class="btn btn-primary" style="margin-left: 8px;"><i class="fas fa-search"></i> Search</button><button type="button" class="btn btn-secondary" id="clearSearch"><i class="fas fa-times"></i> Clear</button>
                         </form>
                     </div>
                 </div>
@@ -2450,31 +2618,29 @@
                     <div class="table-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
                         <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
                             <span><strong>Selected:</strong> <span id="selected-count">0</span></span>
-                            <button class="btn btn-success" id="print-btn" style="display: none;" disabled><i class="fas fa-print"></i> Print</button>
-                            <button class="btn btn-primary" id="complete-action-btn" disabled><i class="fas fa-check"></i> Complete</button>
+                            <button class="btn btn-success" id="print-btn" style="display: none;" disabled="">🖨️ Print (all)</button>
+                            <button class="btn btn-primary" id="complete-action-btn" disabled="" style="">🛒 Checkout</button>
                             <button class="btn btn-secondary" id="cancel-range-btn" style="display: none;"><i class="fas fa-times"></i> Cancel Selection</button>
                         </div>
                     </div>
 
                     <div class="records-table-container" style="overflow-x:auto;">
                         <table class="records-table" style="width:100%; border-collapse:collapse;">
-                            <thead id="records-table-head"></thead>
-                            <tbody id="records-table-body">
-                                <tr><td colspan="13" style="text-align:center; padding:40px;">Loading records...</td></tr>
-                            </tbody>
+                            <thead id="records-table-head"><tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Barcode</th><th>Action</th></tr></thead>
+                            <tbody id="records-table-body"><tr><td colspan="7" style="text-align:center;padding:40px;">No records in checkout. Search to add records.</td></tr></tbody>
                         </table>
                     </div>
 
                     <div class="pagination" style="display:flex; justify-content:space-between; align-items:center; margin-top:15px; flex-wrap:wrap; gap:10px;">
                         <div class="pagination-info">
-                            Showing <span id="record-showing-start">0</span>-<span id="record-showing-end">0</span> of <span id="record-total-filtered">0</span> records
+                            Showing <span id="record-showing-start">1</span>-<span id="record-showing-end">0</span> of <span id="record-total-filtered">0</span> records
                         </div>
                         <div style="display:flex; gap:8px; align-items:center;">
-                            <button id="record-first-page" class="pagination-btn" disabled>&lt;&lt;</button>
-                            <button id="record-prev-page" class="pagination-btn" disabled>&lt;</button>
+                            <button id="record-first-page" class="pagination-btn" disabled="">&lt;&lt;</button>
+                            <button id="record-prev-page" class="pagination-btn" disabled="">&lt;</button>
                             <span>Page <input type="number" id="record-current-page" value="1" min="1" style="width:50px; padding:4px; text-align:center;"> of <span id="record-total-pages">1</span></span>
-                            <button id="record-next-page" class="pagination-btn" disabled>&gt;</button>
-                            <button id="record-last-page" class="pagination-btn" disabled>&gt;&gt;</button>
+                            <button id="record-next-page" class="pagination-btn" disabled="">&gt;</button>
+                            <button id="record-last-page" class="pagination-btn" disabled="">&gt;&gt;</button>
                             <select id="record-page-size" style="padding:4px; border:1px solid #ddd; border-radius:4px;">
                                 <option value="50">50</option>
                                 <option value="100">100</option>
@@ -2485,7 +2651,7 @@
                     </div>
                 </div>
 
-                <div id="status-message" class="status-message" style="display:none;"></div>
+                <div id="status-message" class="status-message status-info" style="display: none;">Showing 9002 records with status_id=2</div>
             </div>
         </div>
         <!-- ========== END ADD RECORDS TAB ========== -->
@@ -2603,15 +2769,15 @@
             <div class="stats-grid" style="margin-bottom: 20px; margin-top: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
                 <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
                     <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Total Accessories</h3>
-                    <p class="stat-number" id="total-accessories" style="font-size: 28px; font-weight: bold; color: #007bff; margin: 0;">0</p>
+                    <p class="stat-number" id="total-accessories" style="font-size: 28px; font-weight: bold; color: #007bff; margin: 0;">4</p>
                 </div>
                 <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
                     <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Active Items</h3>
-                    <p class="stat-number" id="active-accessories" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">0</p>
+                    <p class="stat-number" id="active-accessories" style="font-size: 28px; font-weight: bold; color: #28a745; margin: 0;">4</p>
                 </div>
                 <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
                     <h3 style="margin: 0 0 5px 0; font-size: 14px; color: #666;">Avg. Price</h3>
-                    <p class="stat-number" id="avg-accessory-price" style="font-size: 28px; font-weight: bold; color: #ffc107; margin: 0;">$0.00</p>
+                    <p class="stat-number" id="avg-accessory-price" style="font-size: 28px; font-weight: bold; color: #ffc107; margin: 0;">$17.98</p>
                 </div>
             </div>
             
@@ -2629,8 +2795,132 @@
             
             <div class="records-table-container">
                 <table class="records-table" id="accessories-table">
-                    <thead><tr><th>ID</th><th>Image</th><th>Title</th><th>Description</th><th>Price</th><th>Barcode</th><th>Status</th><th>Actions</th></thead>
-                    <tbody id="accessories-body"><td colspan="8" style="text-align:center; padding:40px;">Loading accessories...</td></tbody>
+                    <thead><tr><th>ID</th><th>Image</th><th>Title</th><th>Description</th><th>Price</th><th>Barcode</th><th>Status</th><th>Actions</th></tr></thead>
+                    <tbody id="accessories-body">
+        <tr>
+            <td>10</td>
+            <td>
+                <img src="/static/images/misc/c6b33a4b21714ebd8c45e7828240d9b7_Screenshot_from_2026-04-17_13-46-50.png" alt="Vinyl cleaning kit" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px; display: none;" onerror="this.style.display='none'">
+            </td>
+            <td style="max-width: 200px;">
+                <strong>Vinyl cleaning kit</strong>
+            </td>
+            <td style="max-width: 300px;">—</td>
+            <td><strong style="color: #28a745;">$39.99</strong></td>
+            <td><code class="barcode-value">ACC9MY7B0</code></td>
+            <td>
+                <span class="status-badge active">
+                    Active
+                </span>
+            </td>
+            <td>
+                <div class="table-actions">
+                    <button class="table-action-btn" onclick="editAccessory(10)" title="Edit">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="table-action-btn" onclick="regenerateAccessoryBarcode(10)" title="Regenerate Barcode">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button class="table-action-btn delete-btn" onclick="deleteAccessory(10)" title="Delete">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    
+        <tr>
+            <td>9</td>
+            <td>
+                <img src="/static/images/misc/9735dde0ed25419b8be08c09a7b90380_sticker.png" alt="PigStyle sticker (free in store)" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px; display: none;" onerror="this.style.display='none'">
+            </td>
+            <td style="max-width: 200px;">
+                <strong>PigStyle sticker (free in store)</strong>
+            </td>
+            <td style="max-width: 300px;">—</td>
+            <td><strong style="color: #28a745;">$1.95</strong></td>
+            <td><code class="barcode-value">ACCUFFCK3</code></td>
+            <td>
+                <span class="status-badge active">
+                    Active
+                </span>
+            </td>
+            <td>
+                <div class="table-actions">
+                    <button class="table-action-btn" onclick="editAccessory(9)" title="Edit">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="table-action-btn" onclick="regenerateAccessoryBarcode(9)" title="Regenerate Barcode">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button class="table-action-btn delete-btn" onclick="deleteAccessory(9)" title="Delete">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    
+        <tr>
+            <td>8</td>
+            <td>
+                <img src="/static/images/misc/473ebc0b90964368b49a23d08dff937d_tee-yellow.png" alt="PigStyle Tee - yellow" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px; display: none;" onerror="this.style.display='none'">
+            </td>
+            <td style="max-width: 200px;">
+                <strong>PigStyle Tee - yellow</strong>
+            </td>
+            <td style="max-width: 300px;">—</td>
+            <td><strong style="color: #28a745;">$14.99</strong></td>
+            <td><code class="barcode-value">ACC0FWK87</code></td>
+            <td>
+                <span class="status-badge active">
+                    Active
+                </span>
+            </td>
+            <td>
+                <div class="table-actions">
+                    <button class="table-action-btn" onclick="editAccessory(8)" title="Edit">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="table-action-btn" onclick="regenerateAccessoryBarcode(8)" title="Regenerate Barcode">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button class="table-action-btn delete-btn" onclick="deleteAccessory(8)" title="Delete">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    
+        <tr>
+            <td>7</td>
+            <td>
+                <img src="/static/images/misc/ff5ae69d5a5b4f7589c2d4973b4d5d06_tee-black.png" alt="PigStyle Tee - black" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px; display: none;" onerror="this.style.display='none'">
+            </td>
+            <td style="max-width: 200px;">
+                <strong>PigStyle Tee - black</strong>
+            </td>
+            <td style="max-width: 300px;">—</td>
+            <td><strong style="color: #28a745;">$14.99</strong></td>
+            <td><code class="barcode-value">ACCDZ5SZ8</code></td>
+            <td>
+                <span class="status-badge active">
+                    Active
+                </span>
+            </td>
+            <td>
+                <div class="table-actions">
+                    <button class="table-action-btn" onclick="editAccessory(7)" title="Edit">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="table-action-btn" onclick="regenerateAccessoryBarcode(7)" title="Regenerate Barcode">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button class="table-action-btn delete-btn" onclick="deleteAccessory(7)" title="Delete">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    </tbody>
                 </table>
             </div>
             <div class="loading" id="accessories-loading" style="display: none;"><div class="loading-spinner"></div><p>Loading...</p></div>
@@ -2692,7 +2982,7 @@
             
             <div class="records-table-container">
                 <table class="records-table" id="users-table">
-                    <thead><tr><th>ID</th><th>Username</th><th>Email</th><th>Full Name</th><th>Initials</th><th>Role</th><th>Flag</th><th>Owed</th><th>Records Sold</th><th>Actions</th></thead>
+                    <thead><tr><th>ID</th><th>Username</th><th>Email</th><th>Full Name</th><th>Initials</th><th>Role</th><th>Flag</th><th>Owed</th><th>Records Sold</th><th>Actions</th></tr></thead>
                     <tbody id="users-body"><tr><td colspan="10" style="text-align:center; padding:20px;">Loading users...</td></tr></tbody>
                 </table>
             </div>
@@ -2701,7 +2991,7 @@
                 <div class="modal-content" style="max-width:400px;">
                     <div class="modal-header">
                         <h3 class="modal-title">Pay Consignor</h3>
-                        <button class="modal-close" onclick="closePaymentModal()">&times;</button>
+                        <button class="modal-close" onclick="closePaymentModal()">×</button>
                     </div>
                     <div class="modal-body">
                         <p>User: <strong id="payment-user-name"></strong></p>
@@ -2733,7 +3023,7 @@
                             </div>
                             <div class="input-field">
                                 <label>&nbsp;</label>
-                                <button class="btn btn-success" onclick="createGiftCard()" style="width: 100%;"><i class="fas fa-plus"></i> Create & Print</button>
+                                <button class="btn btn-success" onclick="createGiftCard()" style="width: 100%;"><i class="fas fa-plus"></i> Create &amp; Print</button>
                             </div>
                         </div>
                         <div class="gift-card-preset">
@@ -2765,7 +3055,7 @@
                 <p>Configuration values related to price tag printing.</p>
                 <div class="records-table-container">
                     <table class="records-table" id="print-config-table">
-                        <thead><tr><th>Configuration Key</th><th>Value</th><th>Description</th><th>Actions</th></thead>
+                        <thead><tr><th>Configuration Key</th><th>Value</th><th>Description</th><th>Actions</th></tr></thead>
                         <tbody id="print-config-body"></tbody>
                     </table>
                 </div>
@@ -2776,7 +3066,7 @@
                 <p>Other system configuration values.</p>
                 <div class="records-table-container">
                     <table class="records-table" id="general-config-table">
-                        <thead><tr><th>Configuration Key</th><th>Value</th><th>Description</th><th>Actions</th></thead>
+                        <thead><tr><th>Configuration Key</th><th>Value</th><th>Description</th><th>Actions</th></tr></thead>
                         <tbody id="general-config-body"></tbody>
                     </table>
                 </div>
@@ -2810,75 +3100,115 @@
         </div>
 
         <!-- ==================== CUSTOM LABELS TAB ==================== -->
-        <div id="custom-labels-tab" class="tab-content">
-            <h2><i class="fas fa-tag"></i> Custom Labels</h2>
-            
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px; margin-bottom: 25px; color: white;">
-                <h3 style="margin: 0 0 10px 0;"><i class="fas fa-info-circle"></i> How to Use Custom Labels</h3>
-                <p style="margin: 0;">Enter one label per line. Each line will be printed on a separate label using the same dimensions as price tags. Supports multiple lines per label by using the format: <code>Line 1|Line 2|Line 3</code> (use pipe | to separate lines).</p>
+<div id="custom-labels-tab" class="tab-content">
+    <h2><i class="fas fa-tag"></i> Custom Labels</h2>
+    
+    <!-- Existing Custom Labels UI -->
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px; margin-bottom: 25px; color: white;">
+        <h3 style="margin: 0 0 10px 0;"><i class="fas fa-info-circle"></i> How to Use Custom Labels</h3>
+        <p style="margin: 0;">Enter one label per line. Each line will be printed on a separate label using the same dimensions as price tags. Supports multiple lines per label by using the format: <code>Line 1|Line 2|Line 3</code> (use pipe | to separate lines).</p>
+    </div>
+
+    <!-- ===== NEW: PRINT BARCODES SECTION ===== -->
+    <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); padding: 20px; border-radius: 12px; margin-bottom: 25px; color: white;">
+        <h3 style="margin: 0 0 10px 0;"><i class="fas fa-barcode"></i> Print Gift Card Barcodes</h3>
+        <p style="margin: 0 0 15px 0; opacity: 0.9;">Generate and print barcodes for gift cards. These are blank cards with no balance - they will be activated when scanned at checkout.</p>
+        
+        <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; background: rgba(255,255,255,0.15); padding: 15px; border-radius: 8px;">
+            <div class="form-group" style="flex: 1; min-width: 150px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 13px; opacity: 0.9;">Number of Barcodes</label>
+                <select id="barcode-count" style="width: 100%; padding: 10px; border: none; border-radius: 6px; background: white; color: #333; font-size: 14px;">
+                    <option value="5">5</option>
+                    <option value="10" selected="">10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
             </div>
-            
-            <div class="starting-position-section" style="background: linear-gradient(135deg, #fd7e14 0%, #ffc107 100%);">
-                <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <i class="fas fa-flag-checkered" style="font-size: 24px;"></i>
-                        <span style="font-weight: bold;">Start Printing At:</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <label style="font-weight: 500;">Row:</label>
-                        <input type="number" id="custom-label-start-row" min="1" max="15" value="1" style="width: 70px; padding: 5px; border-radius: 4px; border: none; text-align: center;">
-                        <label style="font-weight: 500;">Column:</label>
-                        <input type="number" id="custom-label-start-col" min="1" max="4" value="1" style="width: 70px; padding: 5px; border-radius: 4px; border: none; text-align: center;">
-                        <button class="btn btn-light btn-small" onclick="customLabelsUpdateStartPosition()" style="background: white; color: #fd7e14;"><i class="fas fa-sync-alt"></i> Update</button>
-                    </div>
-                    <div style="font-size: 12px; opacity: 0.9;"><i class="fas fa-info-circle"></i> Labels will start at position <strong id="custom-label-start-display">1, 1</strong> on the sheet</div>
-                </div>
+            <div class="form-group" style="flex: 1; min-width: 150px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 13px; opacity: 0.9;">Label Format</label>
+                <select id="barcode-format" style="width: 100%; padding: 10px; border: none; border-radius: 6px; background: white; color: #333; font-size: 14px;">
+                    <option value="avery5160">Avery 5160 (30 per sheet)</option>
+                    <option value="avery8160">Avery 8160 (30 per sheet)</option>
+                    <option value="avery5163">Avery 5163 (10 per sheet)</option>
+                    <option value="custom">Custom (4 columns x 15 rows)</option>
+                </select>
             </div>
-            
-            <div class="user-form-section" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin-top: 20px;">
-                <h3 style="margin-bottom: 20px;"><i class="fas fa-pencil-alt"></i> Enter Custom Labels</h3>
-                <div class="user-form-grid">
-                    <div class="user-form-group" style="grid-column: 1/-1;">
-                        <label for="custom-label-text"><i class="fas fa-font"></i> Labels (one per line):</label>
-                        <textarea id="custom-label-text" rows="10" class="search-input" placeholder="Enter one label per line...
+            <button class="btn btn-light" onclick="generateBarcodes()" style="padding: 10px 30px; background: white; color: #28a745; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                <i class="fas fa-print"></i> Generate &amp; Print
+            </button>
+        </div>
+        
+        <div id="barcode-status" style="margin-top: 10px; display: none; padding: 10px; background: rgba(255,255,255,0.2); border-radius: 6px;"></div>
+    </div>
+
+    <!-- Existing Starting Position Section -->
+    <div class="starting-position-section" style="background: linear-gradient(135deg, #fd7e14 0%, #ffc107 100%);">
+        <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-flag-checkered" style="font-size: 24px;"></i>
+                <span style="font-weight: bold;">Start Printing At:</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <label style="font-weight: 500;">Row:</label>
+                <input type="number" id="custom-label-start-row" min="1" max="15" value="1" style="width: 70px; padding: 5px; border-radius: 4px; border: none; text-align: center;">
+                <label style="font-weight: 500;">Column:</label>
+                <input type="number" id="custom-label-start-col" min="1" max="4" value="1" style="width: 70px; padding: 5px; border-radius: 4px; border: none; text-align: center;">
+                <button class="btn btn-light btn-small" onclick="customLabelsUpdateStartPosition()" style="background: white; color: #fd7e14;"><i class="fas fa-sync-alt"></i> Update</button>
+            </div>
+            <div style="font-size: 12px; opacity: 0.9;"><i class="fas fa-info-circle"></i> Labels will start at position <strong id="custom-label-start-display">1, 1</strong> on the sheet</div>
+        </div>
+    </div>
+    
+    <!-- Existing Label Text Entry -->
+    <div class="user-form-section" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin-top: 20px;">
+        <h3 style="margin-bottom: 20px;"><i class="fas fa-pencil-alt"></i> Enter Custom Labels</h3>
+        <div class="user-form-grid">
+            <div class="user-form-group" style="grid-column: 1/-1;">
+                <label for="custom-label-text"><i class="fas fa-font"></i> Labels (one per line):</label>
+                <textarea id="custom-label-text" rows="10" class="search-input" placeholder="Enter one label per line...
 Examples:
 Summer Sale 50% Off
 New Arrivals|Vinyl Records
 Store Credit Available
 Buy One Get One Free|Limited Time
 Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
-                        <p style="font-size: 12px; color: rgba(255,255,255,0.8); margin-top: 8px;"><i class="fas fa-info-circle"></i> Use <strong>|</strong> (pipe) to create multiple lines on a single label. Each line will be centered separately.</p>
-                    </div>
-                </div>
-                <div class="action-buttons" style="justify-content: flex-start; gap: 15px;">
-                    <button class="btn btn-success" onclick="customLabelsGeneratePDF()"><i class="fas fa-print"></i> Generate PDF</button>
-                    <button class="btn btn-secondary" onclick="customLabelsClearText()"><i class="fas fa-trash"></i> Clear All</button>
-                    <button class="btn btn-info" onclick="customLabelsLoadSample()"><i class="fas fa-tasks"></i> Load Sample</button>
-                </div>
-            </div>
-            
-            <div class="stats-table-container" style="margin-top: 20px;">
-                <div class="table-header">
-                    <h4><i class="fas fa-eye"></i> Preview</h4>
-                    <span class="table-count" id="custom-label-preview-count">0 labels</span>
-                </div>
-                <div id="custom-label-preview" style="background: #f8f9fa; border-radius: 8px; padding: 15px; max-height: 300px; overflow-y: auto;">
-                    <p style="color: #666; text-align: center;">Enter labels above to see preview</p>
-                </div>
-            </div>
-            
-            <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 13px; color: #666;">
-                <h4><i class="fas fa-info-circle"></i> Label Printing Information:</h4>
-                <ul style="margin: 10px 0 0 20px;">
-                    <li>Uses the SAME label dimensions as price tags (configured in Admin Config)</li>
-                    <li>Each line of text is centered on the label</li>
-                    <li>Use <strong>|</strong> (pipe) to create multi-line labels (up to 5 lines)</li>
-                    <li>Starting position (Row, Column) determines where on the sheet printing begins</li>
-                    <li>Labels are arranged left-to-right, top-to-bottom on the sheet</li>
-                    <li>Sheet layout: 4 columns × 15 rows = 60 labels per page</li>
-                </ul>
+                <p style="font-size: 12px; color: rgba(255,255,255,0.8); margin-top: 8px;"><i class="fas fa-info-circle"></i> Use <strong>|</strong> (pipe) to create multiple lines on a single label. Each line will be centered separately.</p>
             </div>
         </div>
+        <div class="action-buttons" style="justify-content: flex-start; gap: 15px;">
+            <button class="btn btn-success" onclick="customLabelsGeneratePDF()"><i class="fas fa-print"></i> Generate PDF</button>
+            <button class="btn btn-secondary" onclick="customLabelsClearText()"><i class="fas fa-trash"></i> Clear All</button>
+            <button class="btn btn-info" onclick="customLabelsLoadSample()"><i class="fas fa-tasks"></i> Load Sample</button>
+        </div>
+    </div>
+    
+    <!-- Preview -->
+    <div class="stats-table-container" style="margin-top: 20px;">
+        <div class="table-header">
+            <h4><i class="fas fa-eye"></i> Preview</h4>
+            <span class="table-count" id="custom-label-preview-count">0 labels</span>
+        </div>
+        <div id="custom-label-preview" style="background: #f8f9fa; border-radius: 8px; padding: 15px; max-height: 300px; overflow-y: auto;">
+            <p style="color: #666; text-align: center;">Enter labels above to see preview</p>
+        </div>
+    </div>
+    
+    <!-- Info Section -->
+    <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 13px; color: #666;">
+        <h4><i class="fas fa-info-circle"></i> Label Printing Information:</h4>
+        <ul style="margin: 10px 0 0 20px;">
+            <li>Uses the SAME label dimensions as price tags (configured in Admin Config)</li>
+            <li>Each line of text is centered on the label</li>
+            <li>Use <strong>|</strong> (pipe) to create multi-line labels (up to 5 lines)</li>
+            <li>Starting position (Row, Column) determines where on the sheet printing begins</li>
+            <li>Labels are arranged left-to-right, top-to-bottom on the sheet</li>
+            <li>Sheet layout: 4 columns × 15 rows = 60 labels per page</li>
+        </ul>
+    </div>
+</div>
+
+
 
         <!-- ==================== DB QUERY TAB ==================== -->
         <div id="db-query-tab" class="tab-content">
@@ -2907,7 +3237,8 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                                 <button class="btn btn-primary btn-small" onclick="executeQuery()" id="execute-query-btn"><i class="fas fa-play"></i> Execute (Ctrl+Enter)</button>
                             </div>
                         </div>
-                        <textarea id="sql-query" class="db-query-textarea" placeholder="Enter your SQL query here...&#10;Example: SELECT * FROM records LIMIT 10;" onkeydown="handleQueryKeydown(event)"></textarea>
+                        <textarea id="sql-query" class="db-query-textarea" placeholder="Enter your SQL query here...
+Example: SELECT * FROM records LIMIT 10;" onkeydown="handleQueryKeydown(event)"></textarea>
                         <div class="db-query-info">
                             <span><i class="fas fa-table"></i> Supports: SELECT, INSERT, UPDATE, DELETE</span>
                             <span><i class="fas fa-history"></i> Query history: <span id="query-history-count">0</span></span>
@@ -2980,8 +3311,8 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
             
             <div class="records-table-container">
                 <table class="records-table" id="sticky-notes-table">
-                    <thead><tr><th>ID</th><th>Note Text</th><th>Position</th><th>Status</th><th>Created</th><th>Updated</th><th>Actions</th></thead>
-                    <tbody id="sticky-notes-body"><td colspan="7" style="text-align:center; padding:40px;"><i class="fas fa-sticky-note" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i>Loading sticky notes...</td></tbody>
+                    <thead><tr><th>ID</th><th>Note Text</th><th>Position</th><th>Status</th><th>Created</th><th>Updated</th><th>Actions</th></tr></thead>
+                    <tbody id="sticky-notes-body"><tr><td colspan="7" style="text-align:center; padding:40px;"><i class="fas fa-sticky-note" style="font-size: 48px; margin-bottom: 20px; color: #ccc; display: block;"></i>Loading sticky notes...</td></tr></tbody>
                 </table>
             </div>
             
@@ -3011,13 +3342,13 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                     <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
                         <select id="artistsPerPage" style="padding: 3px; font-size: 12px;">
                             <option value="25">25 per page</option>
-                            <option value="50" selected>50 per page</option>
+                            <option value="50" selected="">50 per page</option>
                             <option value="100">100 per page</option>
                         </select>
                         <div>
-                            <button id="prevPageBtn" style="padding: 3px 8px; margin-right: 5px;" disabled>Previous</button>
+                            <button id="prevPageBtn" style="padding: 3px 8px; margin-right: 5px;" disabled="">Previous</button>
                             <span id="pageInfo" style="font-size: 12px;">Page 1</span>
-                            <button id="nextPageBtn" style="padding: 3px 8px; margin-left: 5px;" disabled>Next</button>
+                            <button id="nextPageBtn" style="padding: 3px 8px; margin-left: 5px;" disabled="">Next</button>
                         </div>
                     </div>
                 </div>
@@ -3204,7 +3535,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
         <div class="modal-content" style="max-width: 600px;">
             <div class="modal-header">
                 <h3 class="modal-title"><i class="fas fa-edit"></i> Edit Purchase</h3>
-                <button class="modal-close" onclick="window.closeEditModal()">&times;</button>
+                <button class="modal-close" onclick="window.closeEditModal()">×</button>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="edit-purchase-id">
@@ -3245,7 +3576,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
         <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">
                 <h3 class="modal-title"><i class="fas fa-map-marker-alt"></i> Set Location for Records</h3>
-                <button class="modal-close" onclick="closeDiscogsLocationModal()">&times;</button>
+                <button class="modal-close" onclick="closeDiscogsLocationModal()">×</button>
             </div>
             <div class="modal-body">
                 <p style="margin-bottom: 15px;">You are about to submit <strong id="modal-selected-count">0</strong> records to Discogs.</p>
@@ -3270,7 +3601,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
         <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">
                 <h3 class="modal-title" id="sticky-modal-title"><i class="fas fa-sticky-note"></i> Add Sticky Note</h3>
-                <button class="modal-close" onclick="closeStickyNoteModal()">&times;</button>
+                <button class="modal-close" onclick="closeStickyNoteModal()">×</button>
             </div>
             <div class="modal-body">
                 <input type="hidden" id="sticky-note-id">
@@ -3286,7 +3617,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                 </div>
                 <div style="margin-bottom: 15px;">
                     <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                        <input type="checkbox" id="sticky-note-active" checked>
+                        <input type="checkbox" id="sticky-note-active" checked="">
                         <span>Active</span>
                     </label>
                 </div>
@@ -3306,7 +3637,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
         <div class="modal-content" style="max-width: 600px;">
             <div class="modal-header">
                 <h3 class="modal-title"><i class="fas fa-exclamation-triangle"></i> Multiple Records Found</h3>
-                <button class="modal-close" type="button" onclick="closeDuplicateRecordModal(true)">&times;</button>
+                <button class="modal-close" type="button" onclick="closeDuplicateRecordModal(true)">×</button>
             </div>
             <div class="modal-body">
                 <div id="duplicate-record-info" style="margin-bottom: 15px; padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
@@ -3329,14 +3660,14 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
             <h3 style="text-align: center; margin-bottom: 20px;"><i class="fas fa-money-bill-wave"></i> Cash Payment</h3>
             <div style="text-align: center; margin-bottom: 10px;">Total Due:</div>
             <div class="tender-amount" id="tender-total-due">$0.00</div>
-            <input type="number" id="tender-amount" class="tender-input" placeholder="Enter amount received" min="0" step="0.01" autofocus>
+            <input type="number" id="tender-amount" class="tender-input" placeholder="Enter amount received" min="0" step="0.01" autofocus="">
             <div id="change-display-container" style="display: none;">
                 <div style="text-align: center; margin-bottom: 5px;">Change:</div>
                 <div class="change-display" id="change-amount">$0.00</div>
             </div>
             <div class="action-buttons" style="justify-content: center; margin-top: 20px;">
                 <button class="btn btn-secondary" onclick="closeTenderModal()">Cancel</button>
-                <button class="btn btn-success" onclick="processCashPayment()" id="complete-payment-btn" disabled><i class="fas fa-check"></i> Complete Payment</button>
+                <button class="btn btn-success" onclick="processCashPayment()" id="complete-payment-btn" disabled=""><i class="fas fa-check"></i> Complete Payment</button>
             </div>
         </div>
     </div>
@@ -3345,7 +3676,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
         <div class="modal-content" style="max-width: 400px;">
             <div class="modal-header">
                 <h3 class="modal-title"><i class="fas fa-gift"></i> Pay with Gift Card</h3>
-                <button class="modal-close" onclick="closeGiftCardModal()">&times;</button>
+                <button class="modal-close" onclick="closeGiftCardModal()">×</button>
             </div>
             <div class="modal-body">
                 <div style="text-align: center; margin-bottom: 20px;">
@@ -3354,7 +3685,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                 </div>
                 <div style="margin-bottom: 20px;">
                     <label for="giftcard-code" style="display: block; margin-bottom: 8px; font-weight: 500;"><i class="fas fa-barcode"></i> Scan or Enter Gift Card Code:</label>
-                    <input type="text" id="giftcard-code" class="search-input" placeholder="e.g., GC_ABC123" style="width: 100%; font-size: 16px; text-align: center;" autofocus>
+                    <input type="text" id="giftcard-code" class="search-input" placeholder="e.g., GC_ABC123" style="width: 100%; font-size: 16px; text-align: center;" autofocus="">
                     <button class="btn btn-primary" onclick="checkGiftCardForPayment()" style="margin-top: 10px; width: 100%;"><i class="fas fa-search"></i> Check Card</button>
                 </div>
                 <div id="giftcard-info" style="display: none; background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
@@ -3384,7 +3715,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
         <div class="modal-content" style="max-width: 450px;">
             <div class="modal-header">
                 <h3 class="modal-title"><i class="fas fa-square"></i> Square Payment</h3>
-                <button class="modal-close" onclick="closeSquarePaymentModal()">&times;</button>
+                <button class="modal-close" onclick="closeSquarePaymentModal()">×</button>
             </div>
             <div class="modal-body">
                 <div id="square-payment-status" style="text-align: center; padding: 20px 0;">
@@ -3414,7 +3745,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
         <div class="modal-content" style="max-width: 800px; width: 95%;">
             <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
                 <h3 class="modal-title"><i class="fas fa-receipt"></i> Bill of Sale</h3>
-                <button class="modal-close" onclick="closeBillModal()" style="color: white; font-size: 28px; background: none; border: none; cursor: pointer;">&times;</button>
+                <button class="modal-close" onclick="closeBillModal()" style="color: white; font-size: 28px; background: none; border: none; cursor: pointer;">×</button>
             </div>
             <div class="modal-body" style="text-align: center; padding: 20px;">
                 <div id="bill-modal-content" style="display: flex; justify-content: center; align-items: center; min-height: 200px;">
@@ -3433,9 +3764,50 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
             </div>
             <div class="modal-footer" style="display: flex; gap: 10px; justify-content: flex-end; padding: 15px 20px; border-top: 1px solid #ddd;">
                 <button class="btn btn-secondary" onclick="closeBillModal()" style="padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: #6c757d; color: white;">Close</button>
-                <a id="bill-modal-download" href="#" download style="padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: #007bff; color: white; text-decoration: none; display: none;">
+                <a id="bill-modal-download" href="#" download="" style="padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: #007bff; color: white; text-decoration: none; display: none;">
                     <i class="fas fa-download"></i> Download
                 </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== GIFT CARD MODAL ==================== -->
+    <div id="gift-card-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 500px; width: 95%;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
+                <h3 class="modal-title"><i class="fas fa-gift"></i> Gift Card</h3>
+                <button class="modal-close" onclick="closeGiftCardModal()" style="color: white; font-size: 28px; background: none; border: none; cursor: pointer;">×</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 15px;">
+                    <label for="gift-card-code" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Barcode / Code *</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="gift-card-code" placeholder="Scan or enter code (e.g., GC-A7F3K9M2)" style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; text-transform: uppercase;">
+                        <button class="btn btn-primary" onclick="scanGiftCard()" style="padding: 10px 20px;"><i class="fas fa-qrcode"></i> Scan</button>
+                    </div>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label for="gift-card-value" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Card Value ($) *</label>
+                    <input type="number" id="gift-card-value" step="0.01" min="0.01" placeholder="0.00" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px;">
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label for="gift-card-charge" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Charge Amount ($)</label>
+                    <input type="number" id="gift-card-charge" step="0.01" min="0" placeholder="0.00" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px;">
+                    <p style="font-size: 12px; color: #666; margin-top: 5px;"><i class="fas fa-info-circle"></i> Set to $0 for free cards, or enter any amount</p>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label for="gift-card-recipient" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Recipient Name *</label>
+                    <input type="text" id="gift-card-recipient" placeholder="Enter recipient name" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label for="gift-card-notes" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Reason / Notes (optional)</label>
+                    <input type="text" id="gift-card-notes" placeholder="e.g., Birthday gift, Trade-in, etc." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                </div>
+                <div id="gift-card-status" style="margin-top: 10px; display: none;"></div>
+            </div>
+            <div class="modal-footer" style="display: flex; gap: 10px; justify-content: flex-end; padding: 15px 20px; border-top: 1px solid #ddd;">
+                <button class="btn btn-secondary" onclick="closeGiftCardModal()" style="padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: #6c757d; color: white;">Cancel</button>
+                <button class="btn btn-success" id="gift-card-add-btn" style="padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: #28a745; color: white;"><i class="fas fa-gift"></i> Add to Cart</button>
             </div>
         </div>
     </div>
@@ -3604,5 +3976,5 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
         }, 1000);
     });
     </script>
-</body>
-</html>
+
+</body></html>
