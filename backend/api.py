@@ -11924,7 +11924,7 @@ def get_plaid_balance():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 # ==================== GENRES ====================
-
+ 
 @app.route('/api/genres', methods=['POST'])
 @login_required
 @role_required(['admin'])
