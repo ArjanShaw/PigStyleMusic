@@ -6389,7 +6389,10 @@
     window.toggleMetadataPanel = toggleMetadataPanel;
     window.onScanSelectionChange = onScanSelectionChange;
 
-    // ========== Expose Domain Management Delete Functions ==========
+    window.loadDomainGenres = loadDomainGenres;
+    window.loadDomainFormats = loadDomainFormats;
+    window.loadDomainAreas = loadDomainAreas;
+    window.loadDomainSublocations = loadDomainSublocations;
     window.deleteDomainGenre = deleteDomainGenre;
     window.deleteDomainFormat = deleteDomainFormat;
     window.deleteDomainArea = deleteDomainArea;
