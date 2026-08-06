@@ -11925,28 +11925,49 @@ def get_plaid_balance():
 
 # ==================== GENRES ====================
 
-
 @app.route('/api/genres', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def create_genre():
-    """Create a new genre"""
     data = request.json
     name = data.get('name', '').strip()
+ 
     if not name:
         return jsonify({'status': 'error', 'error': 'Name is required'}), 400
     
     conn = get_db()
     cursor = conn.cursor()
+    
+    # Check if it already exists (case-insensitive)
+    cursor.execute('SELECT id FROM genres WHERE LOWER(name) = LOWER(?)', (name,))
+    existing = cursor.fetchone()
+    
+    if existing:
+        conn.close()
+        return jsonify({
+            'status': 'success', 
+            'id': existing['id'], 
+            'name': name,
+            'already_exists': True,
+            'message': 'Genre already exists'
+        })
+    
     try:
         cursor.execute('INSERT INTO genres (name) VALUES (?)', (name,))
         genre_id = cursor.lastrowid
         conn.commit()
         conn.close()
-        return jsonify({'status': 'success', 'id': genre_id, 'name': name})
-    except sqlite3.IntegrityError:
+        return jsonify({
+            'status': 'success', 
+            'id': genre_id, 
+            'name': name,
+            'already_exists': False
+        })
+    except Exception as e:
         conn.close()
-        return jsonify({'status': 'error', 'error': 'Genre already exists'}), 400
+        app.logger.error(f"Error creating genre: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 400
+
 
 @app.route('/api/genres/<int:genre_id>', methods=['PUT'])
 @login_required
