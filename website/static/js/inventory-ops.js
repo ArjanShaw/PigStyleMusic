@@ -1,7 +1,5 @@
 // ============================================================================
 // inventory-ops.js - Unified Inventory Operations
-// Modes: Add Record, Scan/Locate, Post to Discogs, Delete, Checkout, Discogs Orders, Refund
-// Uses one-container-per-mode visibility
 // ============================================================================
 
 (function() {
@@ -34,20 +32,14 @@
     const printBtn = document.getElementById('print-btn');
     const cancelRangeBtn = document.getElementById('cancel-range-btn');
 
-    // ========== Purchase Table Elements ==========
-    const purchasesContainer = document.getElementById('purchases-container');
-    const purchasesBody = document.getElementById('purchases-body');
-    const metadataPanel = document.getElementById('purchase-metadata-panel');
-    const editPurchaseId = document.getElementById('edit-purchase-id');
-    const editSellerName = document.getElementById('edit-seller-name');
-    const editSellerContact = document.getElementById('edit-seller-contact');
-    const editDescription = document.getElementById('edit-description');
-    const editStatus = document.getElementById('edit-status');
-    const editBillUpload = document.getElementById('edit-bill-upload');
-    const editBillPreview = document.getElementById('edit-bill-preview');
-    const purchaseIdDisplay = document.getElementById('purchase-id-display');
-    const deletePurchaseBtn = document.getElementById('delete-purchase-btn');
-    const acceptDraftBtn = document.getElementById('accept-draft-btn');
+    // ========== Mode containers ==========
+    const addModeContainer = document.getElementById('mode-container-add');
+    const scanModeContainer = document.getElementById('mode-container-scan');
+    const discogsModeContainer = document.getElementById('mode-container-discogs');
+    const deleteModeContainer = document.getElementById('mode-container-delete');
+    const checkoutModeContainer = document.getElementById('mode-container-checkout');
+    const discogsOrdersModeContainer = document.getElementById('mode-container-discogs_orders');
+    const refundModeContainer = document.getElementById('mode-container-refund');
 
     // ========== Scan Location Builder Elements ==========
     const scanGenreSelect = document.getElementById('scan-genre-select');
@@ -89,6 +81,21 @@
     const defaultDiscSelect = document.getElementById('default-disc-condition');
     const defaultPriceInput = document.getElementById('default-price');
     const defaultConsignorSelect = document.getElementById('default-consignor');
+
+    // ========== Purchase Table Elements ==========
+    const purchasesContainer = document.getElementById('purchases-container');
+    const purchasesBody = document.getElementById('purchases-body');
+    const metadataPanel = document.getElementById('purchase-metadata-panel');
+    const editPurchaseId = document.getElementById('edit-purchase-id');
+    const editSellerName = document.getElementById('edit-seller-name');
+    const editSellerContact = document.getElementById('edit-seller-contact');
+    const editDescription = document.getElementById('edit-description');
+    const editStatus = document.getElementById('edit-status');
+    const editBillUpload = document.getElementById('edit-bill-upload');
+    const editBillPreview = document.getElementById('edit-bill-preview');
+    const purchaseIdDisplay = document.getElementById('purchase-id-display');
+    const deletePurchaseBtn = document.getElementById('delete-purchase-btn');
+    const acceptDraftBtn = document.getElementById('accept-draft-btn');
 
     // ========== State ==========
     let currentSearchMode = 'add';
@@ -157,6 +164,8 @@
 
     let recentScans = [];
     const MAX_RECENT_SCANS = 10;
+    let scanCounter = 0;
+    let scanIndex = 0;
 
     // ========== Purchase State ==========
     let selectedPurchaseId = null;
@@ -165,16 +174,15 @@
     // ========== Audio ==========
     let audioContext = null;
 
-    // ========== MODE CONTAINER MAPPING ==========
-    // Each mode has ONE container that contains ALL its content
-    const MODE_CONTAINERS = {
-        'add': 'mode-container-add',
-        'scan': 'mode-container-scan',
-        'discogs': 'mode-container-discogs',
-        'delete': 'mode-container-delete',
-        'checkout': 'mode-container-checkout',
-        'discogs_orders': 'mode-container-discogs_orders',
-        'refund': 'mode-container-refund'
+    // ========== Mode Container Mapping ==========
+    const modeContainers = {
+        'add': addModeContainer,
+        'scan': scanModeContainer,
+        'discogs': discogsModeContainer,
+        'delete': deleteModeContainer,
+        'checkout': checkoutModeContainer,
+        'discogs_orders': discogsOrdersModeContainer,
+        'refund': refundModeContainer
     };
 
     // ========== Helper Functions ==========
@@ -268,29 +276,6 @@
             return lastSeenDate >= cutoffDate;
         } catch (e) {
             return false;
-        }
-    }
-
-    function formatLastSeen(lastSeen) {
-        if (!lastSeen) return '<span style="color: #dc3545;">Never</span>';
-        try {
-            var lastSeenDate = new Date(lastSeen);
-            var today = new Date();
-            var daysSince = Math.floor((today - lastSeenDate) / (1000 * 60 * 60 * 24));
-            var cutoffDate = getLastSeenCutoffDate();
-            if (cutoffDate) {
-                var cutoffDateObj = new Date(cutoffDate);
-                if (lastSeenDate < cutoffDateObj) {
-                    return '<span style="color: #dc3545;" title="Before cutoff date">' + daysSince + ' days ago (⚠️)</span>';
-                }
-            }
-            if (daysSince === 0) return '<span style="color: #28a745;">Today</span>';
-            if (daysSince === 1) return '<span style="color: #28a745;">Yesterday</span>';
-            if (daysSince <= 7) return '<span style="color: #ffc107;">' + daysSince + ' days ago</span>';
-            if (daysSince <= 30) return '<span style="color: #fd7e14;">' + daysSince + ' days ago</span>';
-            return '<span style="color: #dc3545;">' + daysSince + ' days ago</span>';
-        } catch (e) {
-            return lastSeen;
         }
     }
 
@@ -407,9 +392,11 @@
     }
 
     async function loadGenres() {
+        console.log('📥 loadGenres: Fetching genres from server...');
         try {
             var data = await apiRequest('GET', '/api/genres');
             genres = data.genres || [];
+            console.log('✅ Loaded ' + genres.length + ' genres from server:', genres);
         } catch (e) {
             console.warn('Could not load genres:', e);
             genres = [];
@@ -417,9 +404,11 @@
     }
 
     async function loadFormats() {
+        console.log('📥 loadFormats: Fetching formats from server...');
         try {
             var data = await apiRequest('GET', '/api/formats');
             formats = data.formats || [];
+            console.log('✅ Loaded ' + formats.length + ' formats from server:', formats);
         } catch (e) {
             console.warn('Could not load formats:', e);
             formats = [];
@@ -427,23 +416,23 @@
     }
 
     async function loadAreas() {
+        console.log('📥 loadAreas: Fetching areas from server...');
         try {
             var data = await apiRequest('GET', '/api/areas');
             areas = data.areas || [];
+            console.log('✅ Loaded ' + areas.length + ' areas from server:', areas);
         } catch (e) {
             console.warn('Could not load areas:', e);
             areas = [];
         }
     }
 
-    async function loadSublocations(areaId) {
+    async function loadSublocations() {
+        console.log('📥 loadSublocations: Fetching sublocations from server...');
         try {
-            var url = '/api/sublocations';
-            if (areaId) {
-                url += '?area_id=' + areaId;
-            }
-            var data = await apiRequest('GET', url);
+            var data = await apiRequest('GET', '/api/sublocations');
             sublocations = data.sublocations || [];
+            console.log('✅ Loaded ' + sublocations.length + ' sublocations from server:', sublocations);
         } catch (e) {
             console.warn('Could not load sublocations:', e);
             sublocations = [];
@@ -626,457 +615,56 @@
         }
     }
 
-    // ========== Populate Scan Dropdowns ==========
-    function populateScanDropdowns() {
-        if (scanGenreSelect) {
-            var currentVal = scanGenreSelect.value;
-            scanGenreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
-            genres.forEach(function(g) {
-                var opt = document.createElement('option');
-                opt.value = g.id;
-                opt.textContent = g.name;
-                scanGenreSelect.appendChild(opt);
-            });
-            if (currentVal) scanGenreSelect.value = currentVal;
-        }
-
-        if (scanFormatSelect) {
-            var currentVal = scanFormatSelect.value;
-            scanFormatSelect.innerHTML = '<option value="">-- Select Format --</option>';
-            formats.forEach(function(f) {
-                var opt = document.createElement('option');
-                opt.value = f.id;
-                opt.textContent = f.name;
-                scanFormatSelect.appendChild(opt);
-            });
-            if (currentVal) scanFormatSelect.value = currentVal;
-        }
-
-        if (scanAreaSelect) {
-            var currentVal = scanAreaSelect.value;
-            scanAreaSelect.innerHTML = '<option value="">-- Select Area --</option>';
-            areas.forEach(function(a) {
-                var opt = document.createElement('option');
-                opt.value = a.id;
-                opt.textContent = a.name;
-                scanAreaSelect.appendChild(opt);
-            });
-            if (currentVal) scanAreaSelect.value = currentVal;
-        }
-
-        if (scanSublocationSelect) {
-            var currentVal = scanSublocationSelect.value;
-            scanSublocationSelect.innerHTML = '<option value="">-- Select Sublocation --</option>';
-            sublocations.forEach(function(s) {
-                var opt = document.createElement('option');
-                opt.value = s.id;
-                var label = s.name;
-                if (s.abbreviation) label += ' (' + s.abbreviation + ')';
-                opt.textContent = label;
-                scanSublocationSelect.appendChild(opt);
-            });
-            if (currentVal) scanSublocationSelect.value = currentVal;
-        }
-    }
-
-    // ========== Populate Filter Dropdowns ==========
-    function populateFilterDropdowns() {
-        // This is now handled by the HTML - no dynamic population needed
-        // But we keep the function for compatibility
-    }
-
-    // ========== SHOW MODE CONTAINER ==========
-    function showModeContainer(mode) {
-        console.log('📐 showModeContainer called with mode: ' + mode);
-
-        // Hide all mode containers
-        var containerIds = Object.values(MODE_CONTAINERS);
-        containerIds.forEach(function(id) {
-            var el = document.getElementById(id);
-            if (el) {
-                el.style.display = 'none';
-            }
+    // ========== New Visibility Function ==========
+    function setActiveMode(mode) {
+        Object.values(modeContainers).forEach(container => {
+            if (container) container.style.display = 'none';
         });
 
-        // Show the selected mode container
-        var containerId = MODE_CONTAINERS[mode];
-        if (containerId) {
-            var el = document.getElementById(containerId);
-            if (el) {
-                el.style.display = 'block';
-                console.log('📐 Showing container: ' + containerId);
-            } else {
-                console.warn('📐 Container not found: ' + containerId);
-            }
+        const activeContainer = modeContainers[mode];
+        if (activeContainer) {
+            activeContainer.style.display = 'block';
         } else {
-            console.warn('📐 No container for mode: ' + mode);
+            console.warn('No container found for mode:', mode);
         }
-
-        // Set search placeholder
-        if (searchInput) {
-            var placeholders = {
-                'add': 'Search Discogs...',
-                'scan': 'Scan barcode here...',
-                'discogs': 'Search within records...',
-                'delete': 'Search records...',
-                'checkout': 'Search records...',
-                'discogs_orders': 'Search orders...',
-                'refund': 'Search sold records by artist, title, or barcode...'
-            };
-            searchInput.placeholder = placeholders[mode] || 'Search...';
-        }
-
-        // Scan mode specific initialization
-        if (mode === 'scan') {
-            resetScanSession();
-            loadAllDomainData();
-        }
-
-        // Add mode specific initialization
-        if (mode === 'add') {
-            loadAllDomainData();
-        }
-
-        updateCompleteButton(mode);
-        updateSelectionCount();
     }
 
-    function updateCompleteButton(mode) {
-        console.log('🔘 updateCompleteButton called with mode: ' + mode);
-        if (!completeActionBtn) return;
+    // ========== Toggle Functions for Purchase Table and Metadata ==========
 
-        if (mode === 'add') {
-            completeActionBtn.style.display = 'none';
-        } else if (mode === 'refund') {
-            completeActionBtn.style.display = '';
-            completeActionBtn.textContent = '💰 Process Refund';
-        } else if (mode === 'scan') {
-            completeActionBtn.style.display = '';
-            completeActionBtn.textContent = '📍 Apply Location';
-        } else if (mode === 'discogs') {
-            completeActionBtn.style.display = '';
-            completeActionBtn.textContent = '📤 Post to Discogs';
-        } else if (mode === 'delete') {
-            completeActionBtn.style.display = '';
-            completeActionBtn.textContent = '🗑️ Delete Selected';
-        } else if (mode === 'checkout') {
-            completeActionBtn.style.display = '';
-            completeActionBtn.textContent = '🛒 Checkout';
-            completeActionBtn.disabled = false;
-        } else if (mode === 'discogs_orders') {
-            completeActionBtn.style.display = '';
-            completeActionBtn.textContent = '📦 Mark Sold';
+    let purchaseTableExpanded = true;
+    let metadataExpanded = true;
+
+    function togglePurchaseTable() {
+        const body = document.getElementById('purchase-table-body');
+        const icon = document.getElementById('purchase-table-toggle-icon');
+        if (!body || !icon) return;
+
+        purchaseTableExpanded = !purchaseTableExpanded;
+        if (purchaseTableExpanded) {
+            body.classList.add('expanded');
+            body.style.display = 'block';
+            icon.classList.remove('collapsed');
+            icon.style.transform = 'rotate(0deg)';
         } else {
-            completeActionBtn.style.display = 'none';
+            body.classList.remove('expanded');
+            body.style.display = 'none';
+            icon.classList.add('collapsed');
+            icon.style.transform = 'rotate(-90deg)';
         }
     }
 
-    // ========== Scan Session Management ==========
+    function toggleMetadataPanel() {
+        const body = document.getElementById('metadata-body');
+        const icon = document.getElementById('metadata-toggle-icon');
+        if (!body || !icon) return;
 
-    function resetScanSession() {
-        scanSession = {
-            genre_id: null,
-            format_id: null,
-            area_id: null,
-            sublocation_id: null,
-            location_index: 1,
-            is_ready: false
-        };
-
-        if (scanGenreSelect) scanGenreSelect.value = '';
-        if (scanFormatSelect) scanFormatSelect.value = '';
-        if (scanAreaSelect) scanAreaSelect.value = '';
-        if (scanSublocationSelect) {
-            scanSublocationSelect.innerHTML = '<option value="">-- Select Sublocation --</option>';
-        }
-
-        if (scanInput) scanInput.disabled = true;
-        if (scanSubmitBtn) scanSubmitBtn.disabled = true;
-
-        updateScanPreview();
-        renderRecentScans();
-
-        showStatus('📍 Please select genre, format, area, and sublocation to start scanning', 'info');
-    }
-
-    let scanSession = {
-        genre_id: null,
-        format_id: null,
-        area_id: null,
-        sublocation_id: null,
-        location_index: 1,
-        is_ready: false
-    };
-
-    function onScanSelectionChange() {
-        const genre_id = scanGenreSelect ? parseInt(scanGenreSelect.value) : null;
-        const format_id = scanFormatSelect ? parseInt(scanFormatSelect.value) : null;
-        const area_id = scanAreaSelect ? parseInt(scanAreaSelect.value) : null;
-        const sublocation_id = scanSublocationSelect ? parseInt(scanSublocationSelect.value) : null;
-
-        scanSession.genre_id = genre_id;
-        scanSession.format_id = format_id;
-        scanSession.area_id = area_id;
-        scanSession.sublocation_id = sublocation_id;
-
-        if (area_id) {
-            populateSublocationDropdown(area_id);
-        }
-
-        const allSelected = genre_id && format_id && area_id && sublocation_id;
-        scanSession.is_ready = allSelected;
-
-        if (scanInput) scanInput.disabled = !allSelected;
-        if (scanSubmitBtn) scanSubmitBtn.disabled = !allSelected;
-
-        if (allSelected) {
-            scanSession.location_index = 1;
-        }
-
-        updateScanPreview();
-
-        if (allSelected) {
-            showStatus('✅ Ready to scan! Location index: ' + scanSession.location_index, 'success');
+        metadataExpanded = !metadataExpanded;
+        if (metadataExpanded) {
+            body.style.display = 'block';
+            icon.style.transform = 'rotate(0deg)';
         } else {
-            showStatus('⚠️ Please select all location components', 'warning');
-        }
-    }
-
-    function updateScanPreview() {
-        if (!scanLocationDisplay || !scanIndexDisplay) return;
-
-        if (scanSession.is_ready) {
-            const genre = genres.find(g => g.id === scanSession.genre_id);
-            const format = formats.find(f => f.id === scanSession.format_id);
-            const area = areas.find(a => a.id === scanSession.area_id);
-            const sublocation = sublocations.find(s => s.id === scanSession.sublocation_id);
-
-            const locationStr = [
-                genre ? genre.name : '?',
-                format ? format.name : '?',
-                area ? area.name : '?',
-                sublocation ? sublocation.name : '?'
-            ].join(' | ');
-
-            scanLocationDisplay.textContent = locationStr;
-            scanLocationDisplay.style.color = '#28a745';
-            scanIndexDisplay.textContent = '📍 Index: ' + scanSession.location_index;
-            scanIndexDisplay.style.color = '#28a745';
-        } else {
-            scanLocationDisplay.textContent = '-- Please select all location components --';
-            scanLocationDisplay.style.color = '#dc3545';
-            scanIndexDisplay.textContent = '📍 Index: 0';
-            scanIndexDisplay.style.color = '#dc3545';
-        }
-    }
-
-    async function populateSublocationDropdown(areaId) {
-        if (!scanSublocationSelect) return;
-        
-        await loadSublocations(areaId);
-        const filtered = sublocations.filter(s => s.area_id === areaId);
-        
-        scanSublocationSelect.innerHTML = '<option value="">-- Select Sublocation --</option>';
-        filtered.forEach(function(s) {
-            var opt = document.createElement('option');
-            opt.value = s.id;
-            var label = s.name;
-            if (s.abbreviation) label += ' (' + s.abbreviation + ')';
-            opt.textContent = label;
-            scanSublocationSelect.appendChild(opt);
-        });
-    }
-
-    // ========== Load All Domain Data ==========
-    async function loadAllDomainData() {
-        await Promise.all([
-            loadGenres(),
-            loadFormats(),
-            loadAreas(),
-            loadSublocations()
-        ]);
-        populateScanDropdowns();
-        populateFilterDropdowns();
-    }
-
-    // ========== Render Recent Scans ==========
-    function renderRecentScans() {
-        if (!recentScansList) return;
-
-        if (recentScans.length === 0) {
-            recentScansList.innerHTML = '<div class="no-recent-scans">No recent scans</div>';
-            if (lastScanDisplay) {
-                lastScanDisplay.textContent = 'Last: --';
-            }
-            return;
-        }
-
-        var html = '';
-        recentScans.forEach(function(s, i) {
-            var isFirst = i === 0;
-            var cls = isFirst ? 'recent-scan-item recent-scan-last' : 'recent-scan-item';
-            html += '<div class="' + cls + '">';
-            html += '<span class="scan-index-badge">#' + s.index + '</span>';
-            html += '<span class="scan-artist">' + escapeHtml(s.artist) + '</span>';
-            html += '<span class="scan-title">' + escapeHtml(s.title) + '</span>';
-            html += '<span class="scan-location">' + escapeHtml(s.location || '') + '</span>';
-            html += '<span class="scan-time">' + s.timestamp + '</span>';
-            html += '</div>';
-        });
-
-        recentScansList.innerHTML = html;
-
-        if (lastScanDisplay && recentScans.length > 0) {
-            var last = recentScans[0];
-            lastScanDisplay.textContent = 'Last: ' + (last.location || '');
-        }
-    }
-
-    // ========== Scan Execution ==========
-
-    async function performScanSearch(term) {
-        if (!scanSession.is_ready) {
-            showStatus('⚠️ Please select genre, format, area, and sublocation first', 'warning');
-            return;
-        }
-
-        try {
-            var data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
-            if (!data.records || !data.records.length) {
-                playSound('error');
-                showStatus('No record found with that barcode or ID', 'error');
-                if (searchInput) searchInput.value = '';
-                return;
-            }
-
-            var records = data.records;
-
-            if (records.length === 1) {
-                var record = records[0];
-                await processScannedRecord(record);
-                return;
-            }
-
-            var record = records[0];
-            showStatus('⚠️ Multiple records found, selecting the first: ' + record.artist + ' - ' + record.title, 'warning');
-            await processScannedRecord(record);
-
-        } catch (error) {
-            playSound('error');
-            showStatus('Error scanning: ' + error.message, 'error');
-            console.error('Scan search error:', error);
-            if (searchInput) searchInput.value = '';
-        }
-    }
-
-    async function processScannedRecord(record) {
-        var existing = filteredRecords.find(function(r) { return r.id === record.id; });
-        if (existing) {
-            var today = getLocalMSTDate();
-            existing.last_seen = today;
-            renderPagination();
-            renderTablePage();
-            playSound('success');
-            showStatus('✅ Updated last_seen for #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
-            if (searchInput) searchInput.value = '';
-            addToRecentScans(record);
-            scanSession.location_index++;
-            updateScanPreview();
-            return;
-        }
-
-        filteredRecords.unshift(record);
-        totalRecords = filteredRecords.length;
-        currentPage = 1;
-        renderPagination();
-        renderTablePage();
-        playSound('success');
-        showStatus('✅ Added #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
-        updateSelectionCount();
-        if (searchInput) searchInput.value = '';
-        addToRecentScans(record);
-        scanSession.location_index++;
-        updateScanPreview();
-    }
-
-    function addToRecentScans(record) {
-        const genre = genres.find(g => g.id === scanSession.genre_id);
-        const format = formats.find(f => f.id === scanSession.format_id);
-        const area = areas.find(a => a.id === scanSession.area_id);
-        const sublocation = sublocations.find(s => s.id === scanSession.sublocation_id);
-
-        const locationStr = [
-            genre ? genre.name : 'Unknown',
-            format ? format.name : 'Unknown',
-            area ? area.name : 'Unknown',
-            sublocation ? sublocation.name : 'Unknown'
-        ].join(' | ');
-
-        const scanEntry = {
-            record_id: record.id,
-            artist: record.artist,
-            title: record.title,
-            location: locationStr,
-            index: scanSession.location_index,
-            timestamp: new Date().toLocaleString()
-        };
-
-        recentScans = recentScans.filter(s => s.record_id !== record.id);
-        recentScans.unshift(scanEntry);
-        
-        if (recentScans.length > MAX_RECENT_SCANS) {
-            recentScans = recentScans.slice(0, MAX_RECENT_SCANS);
-        }
-
-        renderRecentScans();
-    }
-
-    // ========== Apply Scan Location ==========
-    async function applyScanLocation() {
-        var records = filteredRecords;
-        if (records.length === 0) {
-            showStatus('No scanned records to process.', 'warning');
-            return;
-        }
-
-        if (!scanSession.is_ready) {
-            showStatus('⚠️ Please select genre, format, area, and sublocation first', 'warning');
-            return;
-        }
-
-        var recordIds = records.map(function(r) { return r.id; });
-        var startIndex = scanSession.location_index - records.length;
-
-        try {
-            var result = await apiRequest('POST', '/api/scan/apply-location', {
-                record_ids: recordIds,
-                genre_id: scanSession.genre_id,
-                format_id: scanSession.format_id,
-                area_id: scanSession.area_id,
-                sublocation_id: scanSession.sublocation_id,
-                location_index_start: startIndex > 0 ? startIndex : 1
-            });
-
-            if (result.status === 'success') {
-                showStatus('✅ Applied location to ' + result.updated_count + ' records', 'success');
-                playSound('success');
-                
-                filteredRecords = [];
-                totalRecords = 0;
-                currentPage = 1;
-                renderPagination();
-                renderTablePage();
-                updateSelectionCount();
-                
-                scanSession.location_index = 1;
-                updateScanPreview();
-            } else {
-                showStatus('❌ ' + (result.error || 'Failed to apply location'), 'error');
-                playSound('error');
-            }
-        } catch (error) {
-            showStatus('❌ Error: ' + error.message, 'error');
-            playSound('error');
+            body.style.display = 'none';
+            icon.style.transform = 'rotate(-90deg)';
         }
     }
 
@@ -1243,6 +831,11 @@
             const purchases = data.drafts || [];
             if (!purchasesBody) return;
 
+            const badge = document.getElementById('purchase-table-badge');
+            if (badge) {
+                badge.textContent = '(' + purchases.length + ' total)';
+            }
+
             if (purchases.length === 0) {
                 purchasesBody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#999;">No purchases found. Click "New" to create one.</td></tr>';
                 return;
@@ -1251,21 +844,21 @@
             let html = '';
             purchases.forEach(p => {
                 const isSelected = (p.draft_id == selectedPurchaseId);
-                const hasBill = p.bill_of_sale_path && p.bill_of_sale_path.length > 0;
-                html += `<tr class="${isSelected ? 'record-selected' : ''}" data-id="${p.draft_id}" onclick="selectPurchase(${p.draft_id})" style="cursor:pointer;">`;
+                const shouldHide = (selectedPurchaseId !== null && p.draft_id != selectedPurchaseId);
+                const displayStyle = shouldHide ? 'display:none;' : '';
+                html += `<tr class="${isSelected ? 'record-selected' : ''}" data-id="${p.draft_id}" onclick="selectPurchase(${p.draft_id})" style="cursor:pointer; ${displayStyle}">`;
                 html += `<td>${p.draft_id}</td>`;
                 html += `<td>${escapeHtml(p.seller_name)}</td>`;
                 html += `<td><span class="status-badge ${p.status === 'complete' ? 'paid' : 'draft'}">${p.status}</span></td>`;
                 html += `<td>${p.record_count || 0}</td>`;
                 html += `<td>${p.offer_amount ? '$' + p.offer_amount.toFixed(2) : '—'}</td>`;
                 html += `<td>${p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td>`;
-                html += `<td>${hasBill ? '<i class="fas fa-file-pdf" style="color:#28a745;"></i>' : '<i class="fas fa-times" style="color:#999;"></i>'}</td>`;
+                html += `<td>${p.bill_of_sale_path ? '<i class="fas fa-file-pdf" style="color:#28a745;"></i>' : '<i class="fas fa-times" style="color:#999;"></i>'}</td>`;
                 html += `<td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(${p.draft_id})"><i class="fas fa-trash"></i></button></td>`;
                 html += `</tr>`;
             });
             purchasesBody.innerHTML = html;
 
-            // Highlight selected row
             if (selectedPurchaseId) {
                 const row = purchasesBody.querySelector(`tr[data-id="${selectedPurchaseId}"]`);
                 if (row) row.classList.add('record-selected');
@@ -1280,15 +873,16 @@
         console.log('📋 selectPurchase: ' + id);
         selectedPurchaseId = id;
 
-        // Highlight row
-        const rows = purchasesBody.querySelectorAll('tr');
-        rows.forEach(row => row.classList.remove('record-selected'));
-        const selectedRow = purchasesBody.querySelector(`tr[data-id="${id}"]`);
-        if (selectedRow) selectedRow.classList.add('record-selected');
+        await loadPurchasesTable();
 
-        // Show metadata panel
         if (metadataPanel) metadataPanel.style.display = 'block';
         if (purchaseIdDisplay) purchaseIdDisplay.textContent = '#' + id;
+
+        metadataExpanded = true;
+        const metadataBody = document.getElementById('metadata-body');
+        const metadataIcon = document.getElementById('metadata-toggle-icon');
+        if (metadataBody) metadataBody.style.display = 'block';
+        if (metadataIcon) metadataIcon.style.transform = 'rotate(0deg)';
 
         try {
             const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + id, {
@@ -1305,7 +899,6 @@
             if (editDescription) editDescription.value = draft.description || '';
             if (editStatus) editStatus.value = draft.status || 'draft';
 
-            // Show bill preview
             const billPath = draft.bill_of_sale_path;
             if (editBillPreview) {
                 if (billPath) {
@@ -1320,10 +913,8 @@
                 }
             }
 
-            // Reset file input
             if (editBillUpload) editBillUpload.value = '';
 
-            // Show/hide Accept Draft button
             if (acceptDraftBtn) {
                 if (draft.status === 'draft' && draft.record_count > 0) {
                     acceptDraftBtn.style.display = 'inline-block';
@@ -1332,12 +923,10 @@
                 }
             }
 
-            // Enable/disable delete button
             if (deletePurchaseBtn) {
                 deletePurchaseBtn.disabled = (draft.status === 'complete');
             }
 
-            // Load records for this purchase
             await loadRecordsForPurchase(id);
 
             showStatus('Selected purchase: ' + draft.seller_name + ' (' + (draft.record_count || 0) + ' records)', 'info');
@@ -1358,12 +947,7 @@
                 bypassDateFilter: true
             });
             currentPurchaseRecords = filteredRecords.slice();
-            // Update record count in the purchase table
-            const row = purchasesBody.querySelector(`tr[data-id="${purchaseId}"]`);
-            if (row) {
-                const countCell = row.cells[3];
-                if (countCell) countCell.textContent = filteredRecords.length;
-            }
+            await loadPurchasesTable();
         } catch (error) {
             console.error('Error loading records for purchase:', error);
             filteredRecords = [];
@@ -1471,8 +1055,7 @@
     function clearPurchaseSelection() {
         selectedPurchaseId = null;
         if (metadataPanel) metadataPanel.style.display = 'none';
-        const rows = purchasesBody.querySelectorAll('tr');
-        rows.forEach(row => row.classList.remove('record-selected'));
+        loadPurchasesTable();
         filteredRecords = [];
         totalRecords = 0;
         currentPurchaseRecords = [];
@@ -1741,25 +1324,10 @@
         }
     }
 
-    function togglePurchaseTable() {
-        const body = document.getElementById('purchase-table-body');
-        const icon = document.getElementById('purchase-table-toggle-icon');
-        if (!body || !icon) return;
-
-        if (body.classList.contains('expanded')) {
-            body.classList.remove('expanded');
-            body.style.display = 'none';
-            icon.classList.add('collapsed');
-        } else {
-            body.classList.add('expanded');
-            body.style.display = 'block';
-            icon.classList.remove('collapsed');
-        }
-    }
-
-    function toggleMetadataPanel() {
-        const body = document.getElementById('metadata-body');
-        const icon = document.getElementById('metadata-toggle-icon');
+    function togglePurchaseSub() {
+        console.log('📋 togglePurchaseSub called');
+        var body = document.getElementById('purchase-sub-body');
+        var icon = document.getElementById('purchase-sub-toggle');
         if (!body || !icon) return;
 
         if (body.classList.contains('expanded')) {
@@ -2433,351 +2001,6 @@
         el.style.display = 'block';
     }
 
-    function showGiftCardModal() {
-        console.log('💳 [GIFT CARD] showGiftCardModal() called');
-        
-        // ===== REMOVE EXISTING MODAL (like Custom Item modal) =====
-        var existingModal = document.getElementById('gift-card-modal');
-        if (existingModal) {
-            console.log('💳 [GIFT CARD] Removing existing modal');
-            existingModal.remove();
-            existingModal = null;
-        }
-
-        // ===== CREATE NEW MODAL (like Custom Item modal) =====
-        console.log('💳 [GIFT CARD] Creating new modal...');
-        
-        var modal = document.createElement('div');
-        modal.id = 'gift-card-modal';
-        modal.className = 'modal-overlay';
-        modal.style.display = 'flex';
-        modal.innerHTML = `
-            <div class="modal-content" style="max-width: 500px; width: 95%;">
-                <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
-                    <h3 class="modal-title"><i class="fas fa-gift"></i> Gift Card</h3>
-                    <button class="modal-close" style="color: white; font-size: 28px; background: none; border: none; cursor: pointer;">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div style="margin-bottom: 15px;">
-                        <label for="gift-card-code" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Barcode / Code *</label>
-                        <div style="display: flex; gap: 10px;">
-                            <input type="text" id="gift-card-code" placeholder="Scan or enter code (e.g., GC-A7F3K9M2)" style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; text-transform: uppercase;">
-                            <button class="btn btn-primary" style="padding: 10px 20px;"><i class="fas fa-qrcode"></i> Scan</button>
-                        </div>
-                    </div>
-                    <div style="margin-bottom: 15px;">
-                        <label for="gift-card-value" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Card Value ($) *</label>
-                        <input type="number" id="gift-card-value" step="0.01" min="0.01" placeholder="0.00" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px;">
-                    </div>
-                    <div style="margin-bottom: 15px;">
-                        <label for="gift-card-charge" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Charge Amount ($)</label>
-                        <input type="number" id="gift-card-charge" step="0.01" min="0" placeholder="0.00" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px;">
-                        <p style="font-size: 12px; color: #666; margin-top: 5px;"><i class="fas fa-info-circle"></i> Set to $0 for free cards, or enter any amount</p>
-                    </div>
-                    <div style="margin-bottom: 15px;">
-                        <label for="gift-card-recipient" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Recipient Name *</label>
-                        <input type="text" id="gift-card-recipient" placeholder="Enter recipient name" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
-                    </div>
-                    <div style="margin-bottom: 15px;">
-                        <label for="gift-card-notes" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Reason / Notes (optional)</label>
-                        <input type="text" id="gift-card-notes" placeholder="e.g., Birthday gift, Trade-in, etc." style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
-                    </div>
-                    <div id="gift-card-status" style="margin-top: 10px; display: none;"></div>
-                </div>
-                <div class="modal-footer" style="display: flex; gap: 10px; justify-content: flex-end; padding: 15px 20px; border-top: 1px solid #ddd;">
-                    <button class="btn btn-secondary" style="padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: #6c757d; color: white;">Cancel</button>
-                    <button class="btn btn-success" id="gift-card-add-btn" style="padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: #28a745; color: white;"><i class="fas fa-gift"></i> Add to Cart</button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-        console.log('💳 [GIFT CARD] Modal created and appended to body');
-
-        // ===== ADD EVENT LISTENERS (like Custom Item modal) =====
-        console.log('💳 [GIFT CARD] Adding event listeners...');
-
-        // Add to Cart button
-        var addBtn = document.getElementById('gift-card-add-btn');
-        if (addBtn) {
-            addBtn.addEventListener('click', function() {
-                console.log('💳 [GIFT CARD] Add to Cart button clicked');
-                addGiftCardToCart();
-            });
-            console.log('💳 [GIFT CARD] Add button listener attached');
-        }
-
-        // Close button (×)
-        var closeBtn = modal.querySelector('.modal-close');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', function() {
-                console.log('💳 [GIFT CARD] Close button clicked');
-                closeGiftCardModal();
-            });
-            console.log('💳 [GIFT CARD] Close button listener attached');
-        }
-
-        // Scan button
-        var scanBtn = modal.querySelector('.btn-primary');
-        if (scanBtn) {
-            scanBtn.addEventListener('click', function() {
-                console.log('💳 [GIFT CARD] Scan button clicked');
-                scanGiftCard();
-            });
-            console.log('💳 [GIFT CARD] Scan button listener attached');
-        }
-
-        // Cancel button
-        var cancelBtn = modal.querySelector('.btn-secondary');
-        if (cancelBtn) {
-            cancelBtn.addEventListener('click', function() {
-                console.log('💳 [GIFT CARD] Cancel button clicked');
-                closeGiftCardModal();
-            });
-            console.log('💳 [GIFT CARD] Cancel button listener attached');
-        }
-
-        // ===== KEYBOARD SHORTCUTS (like Custom Item modal) =====
-        var codeInput = document.getElementById('gift-card-code');
-        if (codeInput) {
-            codeInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    var btn = document.getElementById('gift-card-add-btn');
-                    if (btn) btn.click();
-                }
-            });
-            console.log('💳 [GIFT CARD] Code input listener attached');
-        }
-
-        var valueInput = document.getElementById('gift-card-value');
-        if (valueInput) {
-            valueInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    var chargeInput = document.getElementById('gift-card-charge');
-                    if (chargeInput) chargeInput.focus();
-                }
-            });
-            console.log('💳 [GIFT CARD] Value input listener attached');
-        }
-
-        var chargeInput = document.getElementById('gift-card-charge');
-        if (chargeInput) {
-            chargeInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    var recipientInput = document.getElementById('gift-card-recipient');
-                    if (recipientInput) recipientInput.focus();
-                }
-            });
-            console.log('💳 [GIFT CARD] Charge input listener attached');
-        }
-
-        var recipientInput = document.getElementById('gift-card-recipient');
-        if (recipientInput) {
-            recipientInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    var btn = document.getElementById('gift-card-add-btn');
-                    if (btn) btn.click();
-                }
-            });
-            console.log('💳 [GIFT CARD] Recipient input listener attached');
-        }
-
-        // ===== CLICK OUTSIDE TO CLOSE (like Custom Item modal) =====
-        modal.addEventListener('click', function(e) {
-            if (e.target === modal) {
-                console.log('💳 [GIFT CARD] Clicked outside modal, closing');
-                closeGiftCardModal();
-            }
-        });
-        console.log('💳 [GIFT CARD] Click-outside listener attached');
-
-        // ===== FOCUS FIRST INPUT (like Custom Item modal) =====
-        setTimeout(function() {
-            var codeInput2 = document.getElementById('gift-card-code');
-            if (codeInput2) {
-                codeInput2.focus();
-                console.log('💳 [GIFT CARD] Code input focused');
-            }
-        }, 100);
-
-        console.log('💳 [GIFT CARD] showGiftCardModal() completed');
-    }
-
-
-    function closeGiftCardModal() {
-        var modal = document.getElementById('gift-card-modal');
-        if (modal) {
-            modal.remove();
-        }
-    }
-
-    function scanGiftCard() {
-        var input = document.getElementById('gift-card-code');
-        if (!input) return;
-        
-        if ('BarcodeDetector' in window) {
-            var barcodeDetector = new BarcodeDetector({ formats: ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e'] });
-            
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-                .then(function(stream) {
-                    var video = document.createElement('video');
-                    video.srcObject = stream;
-                    video.setAttribute('playsinline', '');
-                    video.style.width = '100%';
-                    video.style.maxHeight = '300px';
-                    video.style.borderRadius = '8px';
-                    video.style.background = '#000';
-                    
-                    var parent = input.parentNode;
-                    var scanBtn = document.querySelector('#gift-card-modal .btn-primary');
-                    
-                    var videoContainer = document.createElement('div');
-                    videoContainer.id = 'gift-card-video-container';
-                    videoContainer.style.position = 'relative';
-                    videoContainer.style.marginBottom = '10px';
-                    videoContainer.appendChild(video);
-                    
-                    var closeVideoBtn = document.createElement('button');
-                    closeVideoBtn.textContent = '✕';
-                    closeVideoBtn.style.position = 'absolute';
-                    closeVideoBtn.style.top = '5px';
-                    closeVideoBtn.style.right = '5px';
-                    closeVideoBtn.style.background = 'rgba(0,0,0,0.7)';
-                    closeVideoBtn.style.color = 'white';
-                    closeVideoBtn.style.border = 'none';
-                    closeVideoBtn.style.borderRadius = '50%';
-                    closeVideoBtn.style.width = '30px';
-                    closeVideoBtn.style.height = '30px';
-                    closeVideoBtn.style.fontSize = '16px';
-                    closeVideoBtn.style.cursor = 'pointer';
-                    closeVideoBtn.addEventListener('click', function() {
-                        stream.getTracks().forEach(function(track) { track.stop(); });
-                        videoContainer.remove();
-                    });
-                    videoContainer.appendChild(closeVideoBtn);
-                    
-                    parent.insertBefore(videoContainer, scanBtn);
-                    
-                    video.play();
-                    
-                    var detectInterval = setInterval(function() {
-                        barcodeDetector.detect(video)
-                            .then(function(barcodes) {
-                                if (barcodes.length > 0) {
-                                    var code = barcodes[0].rawValue;
-                                    if (code) {
-                                        input.value = code.toUpperCase().trim();
-                                        stream.getTracks().forEach(function(track) { track.stop(); });
-                                        clearInterval(detectInterval);
-                                        videoContainer.remove();
-                                        document.getElementById('gift-card-add-btn').click();
-                                    }
-                                }
-                            })
-                            .catch(function(err) {
-                                console.warn('Barcode detection error:', err);
-                            });
-                    }, 200);
-                    
-                    setTimeout(function() {
-                        if (videoContainer.parentNode) {
-                            stream.getTracks().forEach(function(track) { track.stop(); });
-                            clearInterval(detectInterval);
-                            videoContainer.remove();
-                            showGiftCardStatus('Scan timed out. Please enter code manually.', 'warning');
-                        }
-                    }, 15000);
-                })
-                .catch(function(err) {
-                    console.warn('Camera access error:', err);
-                    showGiftCardStatus('Could not access camera. Please enter code manually.', 'warning');
-                });
-        } else {
-            showGiftCardStatus('Barcode scanner not supported. Please enter code manually.', 'warning');
-        }
-    }
-
-    function showGiftCardStatus(message, type) {
-        var el = document.getElementById('gift-card-status');
-        if (!el) return;
-        type = type || 'info';
-        var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-        el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
-        el.className = 'status-message status-' + type;
-        el.style.display = 'block';
-        setTimeout(function() {
-            if (el) el.style.display = 'none';
-        }, 5000);
-    }
-
-    function addGiftCardToCart() {
-        var codeInput = document.getElementById('gift-card-code');
-        var valueInput = document.getElementById('gift-card-value');
-        var chargeInput = document.getElementById('gift-card-charge');
-        var recipientInput = document.getElementById('gift-card-recipient');
-        var notesInput = document.getElementById('gift-card-notes');
-
-        var code = codeInput ? codeInput.value.trim().toUpperCase() : '';
-        var cardValue = valueInput ? parseFloat(valueInput.value) : 0;
-        var chargeAmount = chargeInput ? parseFloat(chargeInput.value) : 0;
-        var recipientName = recipientInput ? recipientInput.value.trim() : '';
-        var notes = notesInput ? notesInput.value.trim() : '';
-
-        if (!code) {
-            showGiftCardStatus('Please enter or scan a barcode code.', 'warning');
-            return;
-        }
-
-        if (isNaN(cardValue) || cardValue <= 0) {
-            showGiftCardStatus('Please enter a valid card value greater than 0.', 'warning');
-            return;
-        }
-
-        if (isNaN(chargeAmount) || chargeAmount < 0) {
-            showGiftCardStatus('Please enter a valid charge amount (0 or greater).', 'warning');
-            return;
-        }
-
-        if (!recipientName) {
-            showGiftCardStatus('Please enter a recipient name.', 'warning');
-            return;
-        }
-
-        var giftCardItem = {
-            type: 'gift_card',
-            code: code,
-            card_value: cardValue,
-            charge_amount: chargeAmount,
-            recipient_name: recipientName,
-            notes: notes,
-            store_price: chargeAmount,
-            title: 'Gift Card - ' + recipientName,
-            artist: 'Gift Card',
-            barcode: code,
-            isCustom: true
-        };
-
-        checkoutSelectedItems.push(giftCardItem);
-        showGiftCardStatus('✅ Gift card added to cart: $' + cardValue.toFixed(2) + ' (Charge: $' + chargeAmount.toFixed(2) + ')', 'success');
-        
-        closeGiftCardModal();
-
-        checkoutViewMode = 'list';
-        filteredRecords = checkoutSelectedItems.slice();
-        totalRecords = filteredRecords.length;
-        currentPage = 1;
-        renderPagination();
-        renderTablePage();
-        updateSelectionCount();
-        
-        if (checkoutShowSelectedBtn) {
-            checkoutShowSelectedBtn.textContent = 'Checkout List (' + checkoutSelectedItems.length + ')';
-        }
-    }
-
     // ========== RENDER TABLE PAGE ==========
     function renderTablePage() {
         console.log('🔄 renderTablePage() – mode: ' + currentSearchMode + ', records: ' + filteredRecords.length);
@@ -2957,7 +2180,6 @@
                     rowHtml += '<td><span class="barcode-value">' + barcode + '</span></td>';
                     rowHtml += '<td>' + created + '</td>';
                     
-                    // Add a "Remove from Purchase" button if a purchase is selected
                     if (selectedPurchaseId) {
                         rowHtml += '<td><button class="btn btn-sm btn-danger" onclick="removeRecordFromPurchase(' + id + ')"><i class="fas fa-times"></i></button></td>';
                     } else {
@@ -3330,6 +2552,202 @@
         }
     }
 
+    // ========== Scan Location Builder Functions ==========
+    function populateScanGenreDropdown() {
+        if (!scanGenreSelect) return;
+        var currentVal = scanGenreSelect.value;
+        scanGenreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
+        genres.forEach(function(g) {
+            var opt = document.createElement('option');
+            opt.value = g;
+            opt.textContent = g;
+            scanGenreSelect.appendChild(opt);
+        });
+        if (currentVal && genres.includes(currentVal)) {
+            scanGenreSelect.value = currentVal;
+        }
+        updateScanLocationPreview();
+    }
+
+    function populateScanFormatDropdown() {
+        if (!scanFormatSelect) return;
+        var currentVal = scanFormatSelect.value;
+        scanFormatSelect.innerHTML = '<option value="">-- Select Format --</option>';
+        formats.forEach(function(f) {
+            var opt = document.createElement('option');
+            opt.value = f.id;
+            opt.textContent = f.name;
+            scanFormatSelect.appendChild(opt);
+        });
+        if (currentVal) scanFormatSelect.value = currentVal;
+    }
+
+    function populateScanAreaDropdown() {
+        if (!scanAreaSelect) return;
+        var currentVal = scanAreaSelect.value;
+        scanAreaSelect.innerHTML = '<option value="">-- Select Area --</option>';
+        areas.forEach(function(a) {
+            var opt = document.createElement('option');
+            opt.value = a.id;
+            opt.textContent = a.name;
+            scanAreaSelect.appendChild(opt);
+        });
+        if (currentVal) scanAreaSelect.value = currentVal;
+    }
+
+    function populateScanSublocationDropdown(areaId) {
+        if (!scanSublocationSelect) return;
+        var currentVal = scanSublocationSelect.value;
+        scanSublocationSelect.innerHTML = '<option value="">-- Select Sublocation --</option>';
+        var filtered = sublocations.filter(function(s) { return s.area_id == areaId; });
+        filtered.forEach(function(s) {
+            var opt = document.createElement('option');
+            opt.value = s.id;
+            opt.textContent = s.name + (s.abbreviation ? ' (' + s.abbreviation + ')' : '');
+            scanSublocationSelect.appendChild(opt);
+        });
+        if (currentVal && filtered.some(function(s) { return s.id == currentVal; })) {
+            scanSublocationSelect.value = currentVal;
+        }
+        updateScanLocationPreview();
+    }
+
+    function updateScanLocationPreview() {
+        var genre = scanGenreSelect ? scanGenreSelect.value : '';
+        var formatId = scanFormatSelect ? parseInt(scanFormatSelect.value) : null;
+        var areaId = scanAreaSelect ? parseInt(scanAreaSelect.value) : null;
+        var sublocationId = scanSublocationSelect ? parseInt(scanSublocationSelect.value) : null;
+
+        var formatName = formatId ? formats.find(function(f) { return f.id === formatId; })?.name : '';
+        var areaName = areaId ? areas.find(function(a) { return a.id === areaId; })?.name : '';
+        var sublocationName = sublocationId ? sublocations.find(function(s) { return s.id === sublocationId; })?.name : '';
+
+        var parts = [];
+        if (genre) parts.push(genre);
+        if (formatName) parts.push(formatName);
+        if (areaName) parts.push(areaName);
+        if (sublocationName) parts.push(sublocationName);
+
+        if (scanLocationDisplay) {
+            scanLocationDisplay.textContent = parts.length > 0 ? parts.join(' | ') : '-- Please select all location components --';
+        }
+
+        // Update index
+        if (scanIndexDisplay) {
+            scanIndexDisplay.textContent = '📍 Index: ' + scanIndex;
+        }
+
+        // Enable/disable scan input
+        var allSelected = genre && formatId && areaId && sublocationId;
+        if (scanInput) scanInput.disabled = !allSelected;
+        if (scanSubmitBtn) scanSubmitBtn.disabled = !allSelected;
+    }
+
+    function onScanSelectionChange() {
+        var areaId = scanAreaSelect ? parseInt(scanAreaSelect.value) : null;
+        if (areaId) {
+            populateScanSublocationDropdown(areaId);
+        } else {
+            if (scanSublocationSelect) {
+                scanSublocationSelect.innerHTML = '<option value="">-- Select Sublocation --</option>';
+            }
+        }
+        updateScanLocationPreview();
+    }
+
+    function updateScanCounter() {
+        if (scanCounterDisplay) {
+            scanCounterDisplay.textContent = scanCounter || filteredRecords.length;
+        }
+    }
+
+    function resetScanCounter() {
+        scanCounter = 0;
+        scanIndex = 0;
+        updateScanCounter();
+        if (scanIndexDisplay) {
+            scanIndexDisplay.textContent = '📍 Index: 0';
+        }
+        updateScanLocationPreview();
+    }
+
+    function applyScanLocation() {
+        var records = filteredRecords;
+        if (records.length === 0) {
+            showStatus('No scanned records to process.', 'warning');
+            return;
+        }
+
+        var genre = scanGenreSelect ? scanGenreSelect.value : '';
+        var formatId = scanFormatSelect ? parseInt(scanFormatSelect.value) : null;
+        var areaId = scanAreaSelect ? parseInt(scanAreaSelect.value) : null;
+        var sublocationId = scanSublocationSelect ? parseInt(scanSublocationSelect.value) : null;
+
+        if (!genre) {
+            showStatus('Please select a genre.', 'warning');
+            return;
+        }
+        if (!formatId) {
+            showStatus('Please select a format.', 'warning');
+            return;
+        }
+        if (!areaId) {
+            showStatus('Please select an area.', 'warning');
+            return;
+        }
+        if (!sublocationId) {
+            showStatus('Please select a sublocation.', 'warning');
+            return;
+        }
+
+        var today = getLocalMSTDate();
+
+        // Apply to all records
+        var updated = 0;
+        for (var i = records.length - 1; i >= 0; i--) {
+            var record = records[i];
+            var counter = records.length - i;
+            var locationIndex = counter;
+
+            try {
+                apiRequest('PUT', '/records/' + record.id, {
+                    genre_id: genre,
+                    format_id: formatId,
+                    area_id: areaId,
+                    sublocation_id: sublocationId,
+                    location_index: locationIndex,
+                    last_seen: today
+                }).then(function() {
+                    record.last_seen = today;
+                }).catch(function(e) {
+                    console.error('Failed to update record', record.id, e);
+                });
+                updated++;
+            } catch (e) {
+                console.error('Failed to update record', record.id, e);
+            }
+        }
+
+        if (updated > 0) {
+            // Calculate next index
+            scanIndex += records.length;
+            if (scanIndexDisplay) {
+                scanIndexDisplay.textContent = '📍 Index: ' + scanIndex;
+            }
+        }
+
+        filteredRecords = [];
+        totalRecords = 0;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+
+        showStatus('✅ Applied location to ' + updated + ' of ' + records.length + ' scanned records.', 'success');
+        playSound('success');
+        updateScanCounter();
+        updateScanLocationPreview();
+    }
+
     // ========== Custom Item Modal ==========
     var customItemModal = null;
 
@@ -3374,9 +2792,6 @@
             }
         });
     }
-
-    
-
 
     function closeCustomItemModal() {
         if (customItemModal) {
@@ -3502,7 +2917,6 @@
 
     // ========== Add Record from Discogs ==========
     async function addRecordFromDiscogs(row, discogsRecord) {
-        // ===== BLOCK: No purchase selected =====
         if (!selectedPurchaseId) {
             showStatus('⚠️ Please select a purchase from the table before adding records.', 'error');
             playSound('error');
@@ -3572,7 +2986,6 @@
         var result = await apiRequest('POST', '/records', recordData);
         showStatus('✅ Record #' + result.record.id + ' added successfully to purchase #' + selectedPurchaseId + '!', 'success');
         
-        // Reload records for this purchase
         await loadRecordsForPurchase(selectedPurchaseId);
         await loadPurchasesTable();
         
@@ -3591,6 +3004,11 @@
         var mode = currentSearchMode;
 
         if (mode === 'add') {
+            if (!selectedPurchaseId) {
+                showStatus('⚠️ Please select a purchase from the table before searching.', 'error');
+                playSound('error');
+                return;
+            }
             performDiscogsSearch(term);
             return;
         } else if (mode === 'scan') {
@@ -3678,6 +3096,253 @@
         }
 
         updateSelectionCount();
+    }
+
+    // ========== SCAN MODE with Duplicate Scoring ==========
+    function getArtistSortKey(artistName) {
+        if (!artistName) return '';
+        var name = artistName.trim();
+        name = name.replace(/^the\s+/i, '');
+        var numberMap = {
+            '10,000': 'ten thousand',
+            '10000': 'ten thousand',
+            '1000': 'one thousand',
+            '100': 'one hundred'
+        };
+        var numberMatch = name.match(/^(\d{1,5}(?:,\d{3})?)\s+/);
+        if (numberMatch) {
+            var numberStr = numberMatch[1];
+            if (numberMap[numberStr]) {
+                name = numberMap[numberStr] + ' ' + name.substring(numberMatch[0].length);
+            }
+        }
+        return name.charAt(0).toUpperCase();
+    }
+
+    function calculateMatchScore(record, recentScansList) {
+        if (!recentScansList || recentScansList.length === 0) return 0;
+        var recordSortKey = getArtistSortKey(record.artist);
+        var score = 0;
+        for (var i = 0; i < recentScansList.length; i++) {
+            var recent = recentScansList[i];
+            var weight = Math.pow(0.5, i);
+            if (recent.sortKey === recordSortKey) {
+                score += 100 * weight;
+            }
+            var recentArtistLower = recent.artist.toLowerCase();
+            var recordArtistLower = record.artist.toLowerCase();
+            var recentFirstWord = recentArtistLower.replace(/^the\s+/, '').split(' ')[0];
+            var recordFirstWord = recordArtistLower.replace(/^the\s+/, '').split(' ')[0];
+            if (recentFirstWord === recordFirstWord && recentFirstWord.length > 2) {
+                score += 30 * weight;
+            }
+        }
+        if (record.status_id === 2) {
+            score += 50;
+        }
+        if (record.status_id === 3) {
+            score -= 100;
+        }
+        return score;
+    }
+
+    function addToRecentScans(record, locationString) {
+        if (recentScans.length > 0 && recentScans[0].record.id === record.id) {
+            return;
+        }
+        recentScans.unshift({
+            record: record,
+            location: locationString,
+            timestamp: Date.now()
+        });
+        if (recentScans.length > MAX_RECENT_SCANS) {
+            recentScans.pop();
+        }
+        try {
+            var serialized = recentScans.map(function(s) {
+                return {
+                    recordId: s.record.id,
+                    artist: s.record.artist,
+                    location: s.location,
+                    timestamp: s.timestamp
+                };
+            });
+            localStorage.setItem('recentScans', JSON.stringify(serialized));
+        } catch (e) {}
+    }
+
+    function loadRecentScansFromStorage() {
+        try {
+            var stored = localStorage.getItem('recentScans');
+            if (stored) {
+                var parsed = JSON.parse(stored);
+                recentScans = parsed.map(function(item) {
+                    return {
+                        record: { id: item.recordId, artist: item.artist || 'Unknown' },
+                        location: item.location,
+                        timestamp: item.timestamp
+                    };
+                });
+                console.log('📋 Loaded ' + recentScans.length + ' recent scans from storage');
+            }
+        } catch (e) {
+            console.warn('Could not load recent scans from storage:', e);
+        }
+    }
+
+    function updateRecentScansUI() {
+        if (!recentScansList) return;
+        
+        if (recentScans.length === 0) {
+            recentScansList.innerHTML = '<div class="no-recent-scans">No recent scans</div>';
+            if (lastScanDisplay) lastScanDisplay.textContent = 'Last: --';
+            return;
+        }
+
+        var html = '';
+        recentScans.forEach(function(scan, index) {
+            var isLast = index === 0;
+            var record = scan.record;
+            var artist = record.artist || 'Unknown';
+            var title = record.title || 'Unknown';
+            var location = scan.location || '—';
+            var time = scan.timestamp ? new Date(scan.timestamp).toLocaleTimeString() : '';
+            
+            html += '<div class="recent-scan-item ' + (isLast ? 'recent-scan-last' : '') + '">';
+            html += '<span class="scan-index-badge">#' + (index + 1) + '</span>';
+            html += '<span class="scan-artist">' + escapeHtml(artist) + '</span>';
+            html += '<span class="scan-title">' + escapeHtml(title) + '</span>';
+            html += '<span class="scan-location">' + escapeHtml(location) + '</span>';
+            if (time) {
+                html += '<span class="scan-time">' + time + '</span>';
+            }
+            html += '</div>';
+        });
+        recentScansList.innerHTML = html;
+        
+        if (lastScanDisplay && recentScans.length > 0) {
+            var last = recentScans[0];
+            var artist = last.record.artist || 'Unknown';
+            var title = last.record.title || 'Unknown';
+            lastScanDisplay.textContent = 'Last: ' + escapeHtml(artist) + ' - ' + escapeHtml(title);
+        }
+    }
+
+    async function performScanSearch(term) {
+        try {
+            // Check if all selections are made
+            var genre = scanGenreSelect ? scanGenreSelect.value : '';
+            var formatId = scanFormatSelect ? parseInt(scanFormatSelect.value) : null;
+            var areaId = scanAreaSelect ? parseInt(scanAreaSelect.value) : null;
+            var sublocationId = scanSublocationSelect ? parseInt(scanSublocationSelect.value) : null;
+
+            if (!genre || !formatId || !areaId || !sublocationId) {
+                showStatus('Please select all location components before scanning.', 'warning');
+                playSound('error');
+                return;
+            }
+
+            var data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
+            if (!data.records || !data.records.length) {
+                playSound('error');
+                showStatus('No record found with that barcode or ID', 'error');
+                if (scanInput) scanInput.value = '';
+                return;
+            }
+
+            var records = data.records;
+
+            if (records.length === 1) {
+                var record = records[0];
+                await processScannedRecord(record);
+                return;
+            }
+
+            var recentScansList = recentScans.map(function(s) {
+                return {
+                    artist: s.record.artist,
+                    sortKey: getArtistSortKey(s.record.artist)
+                };
+            });
+
+            var scored = records.map(function(record) {
+                return {
+                    record: record,
+                    score: calculateMatchScore(record, recentScansList)
+                };
+            });
+
+            scored.sort(function(a, b) { return b.score - a.score; });
+
+            var best = scored[0];
+            var secondBest = scored.length > 1 ? scored[1] : null;
+            var bestScore = best.score;
+            var secondScore = secondBest ? secondBest.score : 0;
+
+            var HIGH_CONFIDENCE_SCORE = 100;
+            var GAP_THRESHOLD = 40;
+            var AUTO_SELECT_SCORE = 80;
+            var AUTO_SELECT_GAP = 30;
+
+            var selectedRecord = null;
+            var confidence = 'low';
+
+            if (bestScore > HIGH_CONFIDENCE_SCORE && (bestScore - secondScore) > GAP_THRESHOLD) {
+                selectedRecord = best.record;
+                confidence = 'high';
+                console.log('🎯 High confidence auto-select: ' + selectedRecord.artist + ' - ' + selectedRecord.title + ' (score ' + bestScore + ')');
+            } else if (bestScore > AUTO_SELECT_SCORE && (bestScore - secondScore) > AUTO_SELECT_GAP) {
+                selectedRecord = best.record;
+                confidence = 'medium';
+                console.log('🎯 Medium confidence auto-select: ' + selectedRecord.artist + ' - ' + selectedRecord.title + ' (score ' + bestScore + ')');
+            }
+
+            if (selectedRecord) {
+                playSound('success');
+                showStatus('🎯 Auto-selected: ' + selectedRecord.artist + ' - ' + selectedRecord.title + ' (' + confidence + ' confidence)', 'success');
+                await processScannedRecord(selectedRecord);
+                return;
+            }
+
+            playSound('error');
+            showStatus('⚠️ Multiple records (' + records.length + ') found for barcode. Confidence too low to auto-select. Please use a unique barcode or ID.', 'error');
+            if (scanInput) scanInput.value = '';
+
+        } catch (error) {
+            playSound('error');
+            showStatus('Error scanning: ' + error.message, 'error');
+            console.error('Scan search error:', error);
+            if (scanInput) scanInput.value = '';
+        }
+    }
+
+    async function processScannedRecord(record) {
+        var existing = filteredRecords.find(function(r) { return r.id === record.id; });
+        if (existing) {
+            var today = getLocalMSTDate();
+            existing.last_seen = today;
+            renderPagination();
+            renderTablePage();
+            playSound('success');
+            showStatus('✅ Updated last_seen for #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
+            if (scanInput) scanInput.value = '';
+            addToRecentScans(record, record.location || '');
+            updateRecentScansUI();
+            return;
+        }
+
+        filteredRecords.unshift(record);
+        totalRecords = filteredRecords.length;
+        currentPage = 1;
+        renderPagination();
+        renderTablePage();
+        playSound('success');
+        showStatus('✅ Added #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
+        updateSelectionCount();
+        if (scanInput) scanInput.value = '';
+        addToRecentScans(record, record.location || '');
+        updateScanCounter();
+        updateRecentScansUI();
     }
 
     // ========== Discogs search, etc. ==========
@@ -5164,7 +4829,7 @@
         var modal = document.createElement('div');
         modal.id = 'checkout-payment-modal';
         modal.className = 'modal-overlay';
-        modal.innerHTML = '<div class="modal-content" style="max-width: 550px; width: 95%;"><div class="modal-header" style="background: #007bff; color: white;"><h3 class="modal-title"><i class="fas fa-shopping-cart"></i> Checkout</h3><button class="modal-close" onclick="document.getElementById(\'checkout-payment-modal\').style.display=\'none\'" style="color: white;">&times;</button></div><div class="modal-body"><p><strong>' + selected.length + '</strong> item(s) selected.</p><div style="font-size: 20px; font-weight: bold; margin: 10px 0;">Total: $' + grandTotal.toFixed(2) + '</div><div style="font-size: 16px; margin: 10px 0; color: #28a745;">Remaining: $<span id="checkout-remaining">' + grandTotal.toFixed(2) + '</span></div><div style="background: #e3f2fd; padding: 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #b8daff;"><div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;"><input type="text" id="checkout-debtor-code" placeholder="GIFT-XXXXX or debtor name" style="flex: 2; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"><button class="btn btn-sm btn-primary" onclick="lookupDebtorForCheckout()" style="padding: 6px 12px;"><i class="fas fa-search"></i> Lookup</button></div><div id="checkout-debtor-info" style="display: none; margin-top: 8px; padding: 8px; background: white; border-radius: 4px;"><div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;"><span><strong id="checkout-debtor-name">—</strong> <span id="checkout-debtor-type" style="font-size: 12px; color: #666;">(Store Credit)</span></span><span style="font-weight: bold; color: #28a745;">Balance: $<span id="checkout-debtor-balance">0.00</span></span></div><div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;"><button class="btn btn-sm btn-success" onclick="applyDebtorToCheckout()" style="padding: 6px 12px;"><i class="fas fa-check"></i> Apply Credit</button><button class="btn btn-sm btn-secondary" onclick="document.getElementById(\'checkout-debtor-info\').style.display=\'none\'"><i class="fas fa-times"></i> Cancel</button></div><div id="checkout-debtor-status" style="font-size: 13px; margin-top: 5px;"></div></div><div style="font-size: 12px; color: #666; margin-top: 6px;"><i class="fas fa-info-circle"></i> Enter a gift card code (GIFT-XXXXX) or a store credit debtor name. Click Apply to use the balance.</div></div><div style="display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0;"><input type="number" id="checkout-payment-amount" class="form-control" placeholder="Amount" step="0.01" min="0" style="flex: 1; min-width: 100px;"><select id="checkout-payment-method" class="form-control" style="flex: 1; min-width: 120px;"><option value="Cash" selected>Cash</option><option value="Card (Square)">Card (Square)</option></select></div><button class="btn btn-primary" id="checkout-add-payment" style="background: #007bff; color: white;"><i class="fas fa-plus"></i> Add Payment</button></div><div id="checkout-square-warning" style="display:none; padding:8px; background:#fff3cd; border-radius:4px; margin-bottom:10px;">⚠️ Square POS is not available. Card option is disabled.</div><div id="checkout-square-status" style="margin-top:10px; padding:10px; border-radius:4px; display:none; background:#f8f9fa; border:1px solid #ddd;"></div><div id="checkout-payment-entries" style="max-height: 150px; overflow-y: auto; margin: 10px 0;"></div><div id="checkout-payment-status" style="margin-top: 10px; display: none;"></div><button class="btn btn-success" id="checkout-complete-payment" style="width: 100%; margin-top: 10px;" disabled>Complete Payment</button></div><div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById(\'checkout-payment-modal\').style.display=\'none\'">Cancel</button></div></div>';
+        modal.innerHTML = '<div class="modal-content" style="max-width: 550px; width: 95%;"><div class="modal-header" style="background: #007bff; color: white;"><h3 class="modal-title"><i class="fas fa-shopping-cart"></i> Checkout</h3><button class="modal-close" onclick="document.getElementById(\'checkout-payment-modal\').style.display=\'none\'" style="color: white;">&times;</button></div><div class="modal-body"><p><strong>' + selected.length + '</strong> item(s) selected.</p><div style="font-size: 20px; font-weight: bold; margin: 10px 0;">Total: $' + grandTotal.toFixed(2) + '</div><div style="font-size: 16px; margin: 10px 0; color: #28a745;">Remaining: $<span id="checkout-remaining">' + grandTotal.toFixed(2) + '</span></div><div style="background: #e3f2fd; padding: 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #b8daff;"><div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;"><input type="text" id="checkout-debtor-code" placeholder="GIFT-XXXXX or debtor name" style="flex: 2; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"><button class="btn btn-sm btn-primary" onclick="lookupDebtorForCheckout()" style="padding: 6px 12px;"><i class="fas fa-search"></i> Lookup</button></div><div id="checkout-debtor-info" style="display: none; margin-top: 8px; padding: 8px; background: white; border-radius: 4px;"><div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;"><span><strong id="checkout-debtor-name">—</strong> <span id="checkout-debtor-type" style="font-size: 12px; color: #666;">(Store Credit)</span></span><span style="font-weight: bold; color: #28a745;">Balance: $<span id="checkout-debtor-balance">0.00</span></span></div><div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;"><button class="btn btn-sm btn-success" onclick="applyDebtorToCheckout()" style="padding: 6px 12px;"><i class="fas fa-check"></i> Apply Credit</button><button class="btn btn-sm btn-secondary" onclick="document.getElementById(\'checkout-debtor-info\').style.display=\'none\'"><i class="fas fa-times"></i> Cancel</button></div><div id="checkout-debtor-status" style="font-size: 13px; margin-top: 5px;"></div></div><div style="font-size: 12px; color: #666; margin-top: 6px;"><i class="fas fa-info-circle"></i> Enter a gift card code (GIFT-XXXXX) or a store credit debtor name. Click Apply to use the balance.</div></div><div style="display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0;"><input type="number" id="checkout-payment-amount" class="form-control" placeholder="Amount" step="0.01" min="0" style="flex: 1; min-width: 100px;"><select id="checkout-payment-method" class="form-control" style="flex: 1; min-width: 120px;"><option value="Cash" selected>Cash</option><option value="Card (Square)">Card (Square)</option></select><button class="btn btn-primary" id="checkout-add-payment" style="background: #007bff; color: white;"><i class="fas fa-plus"></i> Add Payment</button></div><div id="checkout-square-warning" style="display:none; padding:8px; background:#fff3cd; border-radius:4px; margin-bottom:10px;">⚠️ Square POS is not available. Card option is disabled.</div><div id="checkout-square-status" style="margin-top:10px; padding:10px; border-radius:4px; display:none; background:#f8f9fa; border:1px solid #ddd;"></div><div id="checkout-payment-entries" style="max-height: 150px; overflow-y: auto; margin: 10px 0;"></div><div id="checkout-payment-status" style="margin-top: 10px; display: none;"></div><button class="btn btn-success" id="checkout-complete-payment" style="width: 100%; margin-top: 10px;" disabled>Complete Payment</button></div><div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById(\'checkout-payment-modal\').style.display=\'none\'">Cancel</button></div></div>';
         document.body.appendChild(modal);
         console.log('🛒 Modal created and appended');
 
@@ -5455,6 +5120,7 @@
     function handleCompleteAction() {
         var mode = currentSearchMode;
         console.log('🔵 handleCompleteAction called for mode: ' + mode);
+        console.log('🔵 completeActionBtn element:', completeActionBtn);
         
         if (mode === 'add') {
             console.log('🔵 Add mode - showing info');
@@ -5464,17 +5130,22 @@
             applyScanLocation();
         } else if (mode === 'discogs') {
             console.log('🔵 Discogs mode - showing post modal');
+            console.log('🔵 handleCompleteAction: calling showDiscogsPostModal');
             showDiscogsPostModal();
         } else if (mode === 'delete') {
             console.log('🔵 Delete mode - deleting selected');
             deleteSelected();
         } else if (mode === 'checkout') {
             console.log('🔵 Checkout mode - showing checkout modal');
+            console.log('🔵 checkoutSelectedItems length: ' + checkoutSelectedItems.length);
             if (checkoutSelectedItems.length === 0) {
+                console.log('🔵 No items in checkout');
                 showStatus('No items in checkout.', 'warning');
                 return;
             }
+            console.log('🔵 Calling showCheckoutModal...');
             showCheckoutModal();
+            console.log('🔵 showCheckoutModal returned');
         } else if (mode === 'discogs_orders') {
             console.log('🔵 Discogs Orders mode - processing order');
             processDiscogsOrder();
@@ -5555,7 +5226,12 @@
 
         if (completeActionBtn && mode !== 'add') {
             if (mode === 'scan') {
-                completeActionBtn.disabled = !(scanSession.is_ready && hasRecords);
+                var genre = scanGenreSelect ? scanGenreSelect.value : '';
+                var formatId = scanFormatSelect ? parseInt(scanFormatSelect.value) : null;
+                var areaId = scanAreaSelect ? parseInt(scanAreaSelect.value) : null;
+                var sublocationId = scanSublocationSelect ? parseInt(scanSublocationSelect.value) : null;
+                var isValid = genre && formatId && areaId && sublocationId && hasRecords;
+                completeActionBtn.disabled = !isValid;
             } else if (mode === 'discogs') {
                 completeActionBtn.disabled = !hasSelection;
             } else if (mode === 'delete') {
@@ -5576,8 +5252,20 @@
     }
 
     function applyFilters() {
-        // This is now handled by the mode containers
-        // The filter section is shown/hidden based on mode
+        if (currentSearchMode === 'scan' || currentSearchMode === 'discogs' || currentSearchMode === 'delete' || currentSearchMode === 'checkout' || currentSearchMode === 'discogs_orders' || currentSearchMode === 'refund') {
+            return;
+        }
+        if (currentMode === 'search') {
+            filteredRecords = currentResults.slice();
+        } else {
+            filteredRecords = allRecords.slice();
+        }
+        totalRecords = filteredRecords.length;
+        var totalPages = Math.ceil(totalRecords / pageSize) || 1;
+        if (currentPage > totalPages) currentPage = totalPages;
+        if (currentPage < 1) currentPage = 1;
+        renderPagination();
+        renderTablePage();
     }
 
     // ========== PDF Generation ==========
@@ -5680,7 +5368,8 @@
 
         cancelRangeSelection();
 
-        // ===== CLEAR PURCHASE SELECTION IF NOT IN ADD MODE =====
+        setActiveMode(newMode);
+
         if (newMode !== 'add') {
             if (selectedPurchaseId) {
                 clearPurchaseSelection();
@@ -5688,10 +5377,6 @@
             if (metadataPanel) metadataPanel.style.display = 'none';
         }
 
-        // Show the appropriate mode container
-        showModeContainer(newMode);
-
-        // Load data based on mode
         if (newMode === 'add') {
             currentMode = 'inventory';
             currentResults = [];
@@ -5708,6 +5393,12 @@
             renderTablePage();
             showStatus('Scan mode: Scan barcodes to build the list.', 'info');
             resetScanCounter();
+            // Populate dropdowns
+            populateScanGenreDropdown();
+            populateScanFormatDropdown();
+            populateScanAreaDropdown();
+            populateScanSublocationDropdown();
+            updateScanLocationPreview();
         } else if (newMode === 'discogs') {
             filteredRecords = [];
             totalRecords = 0;
@@ -5842,10 +5533,504 @@
         }
     }
 
-    function resetScanCounter() {
-        scanCounter = 0;
-        if (scanCounterDisplay) {
-            scanCounterDisplay.textContent = '0';
+    // ========== DOMAIN MANAGEMENT LOAD FUNCTIONS ==========
+
+    async function loadDomainGenres() {
+        try {
+            var response = await fetch(window.AppConfig.baseUrl + '/api/genres', {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            var data = await response.json();
+            if (data.status === 'success') {
+                genres = data.genres || [];
+                renderDomainGenres(genres);
+            }
+        } catch (error) {
+            console.error('Error loading genres:', error);
+        }
+    }
+
+    function renderDomainGenres(genresList) {
+        var container = document.getElementById('genres-list');
+        if (!container) return;
+        
+        if (!genresList || genresList.length === 0) {
+            container.innerHTML = '<div class="empty-message">No genres found.</div>';
+            return;
+        }
+        
+        var html = '<table class="domain-table"><thead><tr><th>ID</th><th>Name</th><th>Actions</th></tr></thead><tbody>';
+        genresList.forEach(function(g) {
+            html += '<tr>';
+            html += '<td>' + g.id + '</td>';
+            html += '<td>' + escapeHtml(g.name) + '</td>';
+            html += '<td><button class="btn btn-sm btn-danger" onclick="deleteDomainGenre(' + g.id + ', \'' + escapeHtml(g.name) + '\')"><i class="fas fa-trash"></i></button></td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    async function loadDomainFormats() {
+        try {
+            var response = await fetch(window.AppConfig.baseUrl + '/api/formats', {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            var data = await response.json();
+            if (data.status === 'success') {
+                renderDomainFormats(data.formats || []);
+            }
+        } catch (error) {
+            console.error('Error loading formats:', error);
+        }
+    }
+
+    function renderDomainFormats(formatsList) {
+        var container = document.getElementById('formats-list');
+        if (!container) return;
+        
+        if (!formatsList || formatsList.length === 0) {
+            container.innerHTML = '<div class="empty-message">No formats found.</div>';
+            return;
+        }
+        
+        var html = '<table class="domain-table"><thead><tr><th>ID</th><th>Name</th><th>Actions</th></tr></thead><tbody>';
+        formatsList.forEach(function(f) {
+            html += '<tr>';
+            html += '<td>' + f.id + '</td>';
+            html += '<td>' + escapeHtml(f.name) + '</td>';
+            html += '<td><button class="btn btn-sm btn-danger" onclick="deleteDomainFormat(' + f.id + ', \'' + escapeHtml(f.name) + '\')"><i class="fas fa-trash"></i></button></td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    async function loadDomainAreas() {
+        try {
+            var response = await fetch(window.AppConfig.baseUrl + '/api/areas', {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            var data = await response.json();
+            if (data.status === 'success') {
+                areas = data.areas || [];
+                renderDomainAreas(areas);
+                populateSublocationAreaSelects(areas);
+            }
+        } catch (error) {
+            console.error('Error loading areas:', error);
+        }
+    }
+
+    function renderDomainAreas(areasList) {
+        var container = document.getElementById('areas-list');
+        if (!container) return;
+        
+        if (!areasList || areasList.length === 0) {
+            container.innerHTML = '<div class="empty-message">No areas found.</div>';
+            return;
+        }
+        
+        var html = '<table class="domain-table"><thead><tr><th>ID</th><th>Name</th><th>Actions</th></tr></thead><tbody>';
+        areasList.forEach(function(a) {
+            html += '<tr>';
+            html += '<td>' + a.id + '</td>';
+            html += '<td>' + escapeHtml(a.name) + '</td>';
+            html += '<td><button class="btn btn-sm btn-danger" onclick="deleteDomainArea(' + a.id + ', \'' + escapeHtml(a.name) + '\')"><i class="fas fa-trash"></i></button></td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    function populateSublocationAreaSelects(areasList) {
+        var selects = document.querySelectorAll('#new-sublocation-area, #sublocation-area-filter');
+        selects.forEach(function(select) {
+            if (!select) return;
+            var currentVal = select.value;
+            select.innerHTML = '<option value="">' + (select.id === 'sublocation-area-filter' ? 'All Areas' : 'Select Area') + '</option>';
+            areasList.forEach(function(a) {
+                var opt = document.createElement('option');
+                opt.value = a.id;
+                opt.textContent = a.name;
+                select.appendChild(opt);
+            });
+            if (currentVal) select.value = currentVal;
+        });
+    }
+
+    async function loadDomainSublocations() {
+        try {
+            var filterSelect = document.getElementById('sublocation-area-filter');
+            var areaId = filterSelect ? parseInt(filterSelect.value) : null;
+            var url = '/api/sublocations' + (areaId ? '?area_id=' + areaId : '');
+            
+            var response = await fetch(window.AppConfig.baseUrl + url, {
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            var data = await response.json();
+            if (data.status === 'success') {
+                sublocations = data.sublocations || [];
+                renderDomainSublocations(sublocations);
+                // Also update scan dropdown
+                var scanAreaId = scanAreaSelect ? parseInt(scanAreaSelect.value) : null;
+                if (scanAreaId) {
+                    populateScanSublocationDropdown(scanAreaId);
+                }
+            }
+        } catch (error) {
+            console.error('Error loading sublocations:', error);
+        }
+    }
+
+    function renderDomainSublocations(sublocationsList) {
+        var container = document.getElementById('sublocations-list');
+        if (!container) return;
+        
+        if (!sublocationsList || sublocationsList.length === 0) {
+            container.innerHTML = '<div class="empty-message">No sublocations found.</div>';
+            return;
+        }
+        
+        var html = '<table class="domain-table"><thead><tr><th>ID</th><th>Area</th><th>Name</th><th>Abbr</th><th>Actions</th></tr></thead><tbody>';
+        sublocationsList.forEach(function(s) {
+            html += '<tr>';
+            html += '<td>' + s.id + '</td>';
+            html += '<td>' + escapeHtml(s.area_name || '—') + '</td>';
+            html += '<td>' + escapeHtml(s.name) + '</td>';
+            html += '<td>' + escapeHtml(s.abbreviation || '—') + '</td>';
+            html += '<td><button class="btn btn-sm btn-danger" onclick="deleteDomainSublocation(' + s.id + ', \'' + escapeHtml(s.name) + '\')"><i class="fas fa-trash"></i></button></td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    // ========== DOMAIN MANAGEMENT DELETE FUNCTIONS ==========
+
+    async function deleteDomainGenre(id, name) {
+        if (!confirm('Delete genre "' + name + '"?')) return;
+        try {
+            var response = await fetch(window.AppConfig.baseUrl + '/api/genres/' + id, {
+                method: 'DELETE',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            var data = await response.json();
+            if (data.status === 'success') {
+                showStatus('✅ Genre "' + name + '" deleted.', 'success');
+                loadDomainGenres();
+            } else {
+                throw new Error(data.error || 'Delete failed');
+            }
+        } catch (error) {
+            showStatus('❌ Error deleting genre: ' + error.message, 'error');
+        }
+    }
+
+    async function deleteDomainFormat(id, name) {
+        if (!confirm('Delete format "' + name + '"?')) return;
+        try {
+            var response = await fetch(window.AppConfig.baseUrl + '/api/formats/' + id, {
+                method: 'DELETE',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            var data = await response.json();
+            if (data.status === 'success') {
+                showStatus('✅ Format "' + name + '" deleted.', 'success');
+                loadDomainFormats();
+            } else {
+                throw new Error(data.error || 'Delete failed');
+            }
+        } catch (error) {
+            showStatus('❌ Error deleting format: ' + error.message, 'error');
+        }
+    }
+
+    async function deleteDomainArea(id, name) {
+        if (!confirm('Delete area "' + name + '"?')) return;
+        try {
+            var response = await fetch(window.AppConfig.baseUrl + '/api/areas/' + id, {
+                method: 'DELETE',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            var data = await response.json();
+            if (data.status === 'success') {
+                showStatus('✅ Area "' + name + '" deleted.', 'success');
+                loadDomainAreas();
+            } else {
+                throw new Error(data.error || 'Delete failed');
+            }
+        } catch (error) {
+            showStatus('❌ Error deleting area: ' + error.message, 'error');
+        }
+    }
+
+    async function deleteDomainSublocation(id, name) {
+        if (!confirm('Delete sublocation "' + name + '"?')) return;
+        try {
+            var response = await fetch(window.AppConfig.baseUrl + '/api/sublocations/' + id, {
+                method: 'DELETE',
+                credentials: 'include',
+                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+            });
+            var data = await response.json();
+            if (data.status === 'success') {
+                showStatus('✅ Sublocation "' + name + '" deleted.', 'success');
+                loadDomainSublocations();
+            } else {
+                throw new Error(data.error || 'Delete failed');
+            }
+        } catch (error) {
+            showStatus('❌ Error deleting sublocation: ' + error.message, 'error');
+        }
+    }
+
+    // ========== DOMAIN MANAGEMENT ADD HANDLERS ==========
+
+    function setupDomainManagementHandlers() {
+        // Add Genre
+        var domainAddGenreBtn = document.getElementById('add-genre-btn');
+        if (domainAddGenreBtn) {
+            console.log('✅ Found Location Management add-genre-btn');
+            domainAddGenreBtn.addEventListener('click', async function() {
+                console.log('🟢 Add Genre button clicked');
+                
+                var inputField = document.getElementById('new-genre');
+                if (!inputField) {
+                    showStatus('Error: Input field not found.', 'error');
+                    return;
+                }
+                
+                var genreName = inputField.value.trim();
+                if (!genreName) {
+                    showStatus('Please enter a genre name.', 'warning');
+                    inputField.focus();
+                    return;
+                }
+                
+                if (genres.includes(genreName)) {
+                    showStatus('Genre "' + genreName + '" already exists.', 'warning');
+                    inputField.value = '';
+                    return;
+                }
+                
+                try {
+                    var response = await fetch(window.AppConfig.baseUrl + '/api/genres', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: genreName })
+                    });
+                    
+                    var data = await response.json();
+                    if (data.status !== 'success') {
+                        throw new Error(data.error || 'Server rejected genre');
+                    }
+                    
+                    genres.push(genreName);
+                    genres.sort();
+                    inputField.value = '';
+                    showStatus('✅ Genre "' + genreName + '" added!', 'success');
+                    playSound('success');
+                    loadDomainGenres();
+                    
+                } catch (error) {
+                    console.error('Error adding genre:', error);
+                    showStatus('❌ Failed to add genre: ' + error.message, 'error');
+                    playSound('error');
+                }
+            });
+        }
+
+        // Add Format
+        var domainAddFormatBtn = document.getElementById('add-format-btn');
+        if (domainAddFormatBtn) {
+            console.log('✅ Found Location Management add-format-btn');
+            domainAddFormatBtn.addEventListener('click', async function() {
+                var inputField = document.getElementById('new-format');
+                if (!inputField) return;
+                
+                var formatName = inputField.value.trim();
+                if (!formatName) {
+                    showStatus('Please enter a format name.', 'warning');
+                    inputField.focus();
+                    return;
+                }
+                
+                try {
+                    var response = await fetch(window.AppConfig.baseUrl + '/api/formats', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: formatName })
+                    });
+                    
+                    var data = await response.json();
+                    if (data.status !== 'success') {
+                        throw new Error(data.error || 'Server rejected format');
+                    }
+                    
+                    inputField.value = '';
+                    showStatus('✅ Format "' + formatName + '" added!', 'success');
+                    playSound('success');
+                    loadDomainFormats();
+                    
+                } catch (error) {
+                    console.error('Error adding format:', error);
+                    showStatus('❌ Failed to add format: ' + error.message, 'error');
+                    playSound('error');
+                }
+            });
+        }
+
+        // Add Area
+        var domainAddAreaBtn = document.getElementById('add-area-btn');
+        if (domainAddAreaBtn) {
+            console.log('✅ Found Location Management add-area-btn');
+            domainAddAreaBtn.addEventListener('click', async function() {
+                var inputField = document.getElementById('new-area');
+                if (!inputField) return;
+                
+                var areaName = inputField.value.trim();
+                if (!areaName) {
+                    showStatus('Please enter an area name.', 'warning');
+                    inputField.focus();
+                    return;
+                }
+                
+                try {
+                    var response = await fetch(window.AppConfig.baseUrl + '/api/areas', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: areaName })
+                    });
+                    
+                    var data = await response.json();
+                    if (data.status !== 'success') {
+                        throw new Error(data.error || 'Server rejected area');
+                    }
+                    
+                    inputField.value = '';
+                    showStatus('✅ Area "' + areaName + '" added!', 'success');
+                    playSound('success');
+                    loadDomainAreas();
+                    
+                } catch (error) {
+                    console.error('Error adding area:', error);
+                    showStatus('❌ Failed to add area: ' + error.message, 'error');
+                    playSound('error');
+                }
+            });
+        }
+
+        // Add Sublocation
+        var domainAddSublocationBtn = document.getElementById('add-sublocation-btn');
+        if (domainAddSublocationBtn) {
+            console.log('✅ Found Location Management add-sublocation-btn');
+            domainAddSublocationBtn.addEventListener('click', async function() {
+                var areaSelect = document.getElementById('new-sublocation-area');
+                var nameInput = document.getElementById('new-sublocation-name');
+                var abbrInput = document.getElementById('new-sublocation-abbr');
+                
+                if (!areaSelect || !nameInput) return;
+                
+                var areaId = parseInt(areaSelect.value);
+                var name = nameInput.value.trim();
+                var abbreviation = abbrInput ? abbrInput.value.trim() : '';
+                
+                if (!areaId) {
+                    showStatus('Please select an area.', 'warning');
+                    return;
+                }
+                if (!name) {
+                    showStatus('Please enter a sublocation name.', 'warning');
+                    nameInput.focus();
+                    return;
+                }
+                
+                try {
+                    var response = await fetch(window.AppConfig.baseUrl + '/api/sublocations', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            area_id: areaId, 
+                            name: name, 
+                            abbreviation: abbreviation,
+                            sort_order: 0
+                        })
+                    });
+                    
+                    var data = await response.json();
+                    if (data.status !== 'success') {
+                        throw new Error(data.error || 'Server rejected sublocation');
+                    }
+                    
+                    nameInput.value = '';
+                    if (abbrInput) abbrInput.value = '';
+                    showStatus('✅ Sublocation "' + name + '" added!', 'success');
+                    playSound('success');
+                    loadDomainSublocations();
+                    
+                } catch (error) {
+                    console.error('Error adding sublocation:', error);
+                    showStatus('❌ Failed to add sublocation: ' + error.message, 'error');
+                    playSound('error');
+                }
+            });
+        }
+
+        // Sublocation area filter
+        var sublocationFilter = document.getElementById('sublocation-area-filter');
+        if (sublocationFilter) {
+            sublocationFilter.addEventListener('change', function() {
+                loadDomainSublocations();
+            });
+        }
+
+        // Scan area selection change
+        if (scanAreaSelect) {
+            scanAreaSelect.addEventListener('change', function() {
+                var areaId = parseInt(this.value);
+                if (areaId) {
+                    populateScanSublocationDropdown(areaId);
+                } else {
+                    if (scanSublocationSelect) {
+                        scanSublocationSelect.innerHTML = '<option value="">-- Select Sublocation --</option>';
+                    }
+                }
+                updateScanLocationPreview();
+            });
+        }
+
+        // Scan scan submit
+        if (scanSubmitBtn) {
+            scanSubmitBtn.addEventListener('click', function() {
+                var term = scanInput ? scanInput.value.trim() : '';
+                if (term) {
+                    performScanSearch(term);
+                }
+            });
+        }
+
+        if (scanInput) {
+            scanInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    var term = this.value.trim();
+                    if (term) {
+                        performScanSearch(term);
+                    }
+                }
+            });
         }
     }
 
@@ -5870,37 +6055,40 @@
         await loadAccounts();
         console.log('📥 Loading stats...');
         await loadStats();
+        console.log('📥 Loading genres...');
+        await loadGenres();
+        console.log('📥 Loading formats...');
+        await loadFormats();
+        console.log('📥 Loading areas...');
+        await loadAreas();
+        console.log('📥 Loading sublocations...');
+        await loadSublocations();
 
         console.log('📥 Populating default param selects...');
         populateDefaultParamSelects();
 
-        // Set up scan dropdown event listeners
-        if (scanGenreSelect) scanGenreSelect.addEventListener('change', onScanSelectionChange);
-        if (scanFormatSelect) scanFormatSelect.addEventListener('change', onScanSelectionChange);
-        if (scanAreaSelect) scanAreaSelect.addEventListener('change', onScanSelectionChange);
-        if (scanSublocationSelect) scanSublocationSelect.addEventListener('change', onScanSelectionChange);
-
-        // Set up scan input
-        if (scanInput) {
-            scanInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    var term = this.value.trim();
-                    if (term) {
-                        performScanSearch(term);
-                    }
-                }
-            });
+        // Setup scan dropdowns
+        populateScanGenreDropdown();
+        populateScanFormatDropdown();
+        populateScanAreaDropdown();
+        if (scanAreaSelect) {
+            var areaId = parseInt(scanAreaSelect.value);
+            if (areaId) {
+                populateScanSublocationDropdown(areaId);
+            }
         }
+        updateScanLocationPreview();
+        loadRecentScansFromStorage();
+        updateRecentScansUI();
 
-        if (scanSubmitBtn) {
-            scanSubmitBtn.addEventListener('click', function() {
-                var term = scanInput ? scanInput.value.trim() : '';
-                if (term) {
-                    performScanSearch(term);
-                }
-            });
-        }
+        // Setup Domain Management handlers
+        setupDomainManagementHandlers();
+
+        // Load Domain Management data
+        loadDomainGenres();
+        loadDomainFormats();
+        loadDomainAreas();
+        loadDomainSublocations();
 
         searchModeSelect.addEventListener('change', onModeChange);
 
@@ -5939,8 +6127,7 @@
         pageSizeSelect.addEventListener('change', function() {
             pageSize = parseInt(this.value);
             currentPage = 1;
-            renderPagination();
-            renderTablePage();
+            applyFilters();
         });
         currentPageInput.addEventListener('change', function() {
             var page = parseInt(this.value);
@@ -5958,10 +6145,12 @@
 
         printBtn.addEventListener('click', printPriceTags);
 
+        var oldGlobalBtn = document.getElementById('global-set-active-btn');
+        if (oldGlobalBtn) oldGlobalBtn.remove();
+
         completeActionBtn.addEventListener('click', handleCompleteAction);
         console.log('🔘 completeActionBtn click handler attached in init');
 
-        // Load purchases table on init
         await loadPurchasesTable();
 
         if (discogsLocationSelect) {
@@ -6041,6 +6230,17 @@
 
         _initialized = true;
         console.log('✅ inventory-ops.js initialized');
+    }
+
+    function showScanGenreStatus(message, type) {
+        var el = document.getElementById('scan-genre-status');
+        if (!el) return;
+        type = type || 'info';
+        var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+        el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
+        el.className = 'status-message status-' + type;
+        el.style.display = 'block';
+        setTimeout(function() { el.style.display = 'none'; }, 3000);
     }
 
     // ========== EXPOSE INIT FUNCTION FOR TABMANAGER ==========
@@ -6168,9 +6368,6 @@
     window.checkSquareAvailability = checkSquareAvailability;
     window.processSquarePayment = processSquarePayment;
     window.showCustomItemModal = showCustomItemModal;
-    window.showGiftCardModal = showGiftCardModal;
-
-    
     window.closeCustomItemModal = closeCustomItemModal;
     window.addBernieItem = addBernieItem;
     window.toggleInventorySetupPanel = toggleInventorySetupPanel;
@@ -6188,19 +6385,22 @@
     window.loadPurchasesTable = loadPurchasesTable;
     window.showCheckoutModal = showCheckoutModal;
     window.removeRecordFromPurchase = removeRecordFromPurchase;
+    window.togglePurchaseTable = togglePurchaseTable;
+    window.toggleMetadataPanel = toggleMetadataPanel;
+    window.onScanSelectionChange = onScanSelectionChange;
 
-    // ===== GIFT CARD FUNCTIONS - EXPOSE TO WINDOW =====
-    window.closeGiftCardModal = closeGiftCardModal;
-    window.scanGiftCard = scanGiftCard;
-    window.addGiftCardToCart = addGiftCardToCart;
+    // ========== Expose Domain Management Delete Functions ==========
+    window.deleteDomainGenre = deleteDomainGenre;
+    window.deleteDomainFormat = deleteDomainFormat;
+    window.deleteDomainArea = deleteDomainArea;
+    window.deleteDomainSublocation = deleteDomainSublocation;
+
 
     // ===== EXPOSE applyDefaultParams and clearDefaultParams =====
     window.applyDefaultParams = applyDefaultParams;
     window.clearDefaultParams = clearDefaultParams;
-    window.showGiftCardModal = showGiftCardModal;
 
     console.log('✅ All functions exposed to window');
     console.log('✅ applyDefaultParams and clearDefaultParams are now globally available.');
-    console.log('✅ showGiftCardModal is now globally available.');
 
 })();
