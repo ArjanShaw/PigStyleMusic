@@ -2403,26 +2403,16 @@ def get_records():
             r.id, r.artist, r.title, r.barcode, r.image_url, r.catalog_number,
             r.condition_sleeve_id, r.condition_disc_id, r.store_price,
             r.consignor_id, r.commission_rate, r.status_id, r.created_at, r.date_sold,
-            r.last_seen, r.notes, r.discogs_genre_raw,
-            r.genre_id, r.format_id, r.area_id, r.sublocation_id, r.location_index,
+            r.last_seen, r.location, r.notes, r.discogs_genre_raw,
             s.status_name,
             cs.condition_name as sleeve_condition_name, cs.display_name as sleeve_display,
             cs.abbreviation as sleeve_abbr, cs.quality_index as sleeve_quality,
             cd.condition_name as disc_condition_name, cd.display_name as disc_display,
-            cd.abbreviation as disc_abbr, cd.quality_index as disc_quality,
-            g.name as genre_name,
-            f.name as format_name,
-            a.name as area_name,
-            sl.name as sublocation_name,
-            sl.abbreviation as sublocation_abbr
+            cd.abbreviation as disc_abbr, cd.quality_index as disc_quality
         FROM records r
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
         LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-        LEFT JOIN genres g ON r.genre_id = g.id
-        LEFT JOIN formats f ON r.format_id = f.id
-        LEFT JOIN areas a ON r.area_id = a.id
-        LEFT JOIN sublocations sl ON r.sublocation_id = sl.id
         WHERE r.artist IS NOT NULL AND r.title IS NOT NULL 
         AND r.artist != '' AND r.title != ''
     '''
@@ -2463,11 +2453,11 @@ def get_records():
         query += ' AND r.image_url IS NOT NULL AND r.image_url != \'\''
     
     if require_location:
-        query += ' AND r.genre_id IS NOT NULL AND r.area_id IS NOT NULL AND r.sublocation_id IS NOT NULL'
+        query += ' AND r.location IS NOT NULL AND r.location != \'\' AND r.location != \'NULL\''
     
     if exclude_old_no_location:
         query += ''' AND (r.created_at >= date('now', '-30 days') 
-                     OR (r.genre_id IS NOT NULL AND r.area_id IS NOT NULL AND r.sublocation_id IS NOT NULL)) '''
+                     OR (r.location IS NOT NULL AND r.location != '' AND r.location != 'NULL')) '''
     
     query += ' ORDER BY r.created_at DESC'
     
@@ -2487,7 +2477,6 @@ def get_records():
         records_list.append(record_dict)
     
     return jsonify({'status': 'success', 'count': len(records_list), 'records': records_list})
-
 
 @app.route('/records/<int:record_id>', methods=['GET'])
 def get_record(record_id):
