@@ -30,214 +30,241 @@ const TabManager = (function() {
     }
     
     // Register tab initializers
-    // Register tab initializers
-function registerInitializers() {
-    // Inventory Ops Tab (formerly Add Records)
-    initializers['add-records'] = () => {
-        console.log('🔵 TabManager: Initializing Inventory Ops tab');
-        if (typeof window.initAddRecordsTab === 'function') {
-            console.log('✅ Found initAddRecordsTab function, calling it...');
-            window.initAddRecordsTab();
-        } else {
-            console.error('❌ initAddRecordsTab function not found!');
-            console.log('Available window functions:', Object.keys(window).filter(k => k.toLowerCase().includes('init')));
-            throw new Error('initAddRecordsTab is not defined. inventory-ops.js may not be loaded.');
-        }
-    };
-    
-    // Check Out Tab (removed from UI but kept for compatibility)
-    initializers['check-out'] = () => {
-        console.log('🔵 TabManager: Initializing Check Out tab');
-        if (typeof window.initCheckout === 'function') {
-            console.log('✅ Found initCheckout function, calling it...');
-            window.initCheckout();
-        } else if (typeof window.initCheckoutTab === 'function') {
-            console.log('✅ Found initCheckoutTab function, calling it...');
-            window.initCheckoutTab();
-        } else {
-            console.error('❌ initCheckout not found');
-        }
-    };
-    
-    // Inventory Tab
-    initializers['inventory'] = () => {
-        console.log('🔵 TabManager: Initializing Inventory tab');
-        if (typeof window.initInventoryTab === 'function') {
-            console.log('✅ Found initInventoryTab function, calling it...');
-            window.initInventoryTab();
-        } else {
-            console.warn('⚠️ initInventoryTab not found');
-        }
-    };
-    
-    // Discogs Tab
-    initializers['discogs'] = () => {
-        console.log('🔵 TabManager: Initializing Discogs tab');
-        if (typeof window.initDiscogsTab === 'function') {
-            console.log('✅ Found initDiscogsTab function, calling it...');
-            window.initDiscogsTab();
-        } else {
-            console.error('❌ initDiscogsTab function not found!');
-            console.log('Available window functions:', Object.keys(window).filter(k => k.toLowerCase().includes('discogs')));
-        }
-    };
-    
-    // Discogs Orders Tab
-    initializers['discogs-orders'] = () => {
-        console.log('🔵 TabManager: Initializing Discogs Orders tab');
-        if (typeof window.initDiscogsOrdersTab === 'function') {
-            console.log('✅ Found initDiscogsOrdersTab function, calling it...');
-            window.initDiscogsOrdersTab();
-        } else {
-            console.error('❌ initDiscogsOrdersTab function not found!');
-            console.log('Available window functions:', Object.keys(window).filter(k => k.toLowerCase().includes('discogs')));
-        }
-    };
-    
-    // Accessories Tab
-    initializers['accessories'] = () => {
-        console.log('🔵 TabManager: Initializing Accessories tab');
-        if (typeof window.initAccessoriesTab === 'function') {
-            console.log('✅ Found initAccessoriesTab function, calling it...');
-            window.initAccessoriesTab();
-        } else if (typeof window.loadAccessories === 'function') {
-            console.log('✅ Found loadAccessories function, calling it...');
-            window.loadAccessories();
-        } else {
-            console.warn('⚠️ initAccessoriesTab not found');
-        }
-    };
-    
-    // Users Tab
-    initializers['users'] = () => {
-        console.log('🔵 TabManager: Initializing Users tab');
-        if (typeof window.initUsersTab === 'function') {
-            console.log('✅ Found initUsersTab function, calling it...');
-            window.initUsersTab();
-        } else if (typeof window.loadUsers === 'function') {
-            console.log('✅ Found loadUsers function, calling it...');
-            window.loadUsers();
-        } else {
-            console.warn('⚠️ initUsersTab not found');
-        }
-    };
-    
-    // Admin Config Tab
-    initializers['admin-config'] = () => {
-        console.log('🔵 TabManager: Initializing Admin Config tab');
-        if (typeof window.initAdminConfigTab === 'function') {
-            console.log('✅ Found initAdminConfigTab function, calling it...');
-            window.initAdminConfigTab();
-        } else if (typeof window.loadConfigTables === 'function') {
-            console.log('✅ Found loadConfigTables function, calling it...');
-            window.loadConfigTables();
-        } else {
-            console.warn('⚠️ initAdminConfigTab not found');
-        }
-    };
-    
-    // Price Tags Tab (kept for compatibility)
-    initializers['price-tags'] = () => {
-        console.log('🔵 TabManager: Initializing Price Tags tab');
-        if (typeof window.initPriceTagsTab === 'function') {
-            console.log('✅ Found initPriceTagsTab function, calling it...');
-            window.initPriceTagsTab();
-        } else if (typeof window.loadRecordsForPriceTags === 'function') {
-            console.log('✅ Found loadRecordsForPriceTags function, calling it...');
-            window.loadRecordsForPriceTags();
-        } else {
-            console.warn('⚠️ initPriceTagsTab not found');
-        }
-    };
-    
-    // Custom Labels Tab
-    initializers['custom-labels'] = () => {
-        console.log('🔵 TabManager: Initializing Custom Labels tab');
-        if (typeof window.initCustomLabelsTab === 'function') {
-            console.log('✅ Found initCustomLabelsTab function, calling it...');
-            window.initCustomLabelsTab();
-        } else if (typeof window.customLabelsGeneratePDF === 'function') {
-            console.log('✅ Custom labels functions available');
-        } else {
-            console.warn('⚠️ Custom labels functions not found');
-        }
-    };
-    
-    // Orders Tab
-    initializers['orders'] = () => {
-        console.log('🔵 TabManager: Initializing Orders tab');
-        if (typeof window.initOrdersTab === 'function') {
-            console.log('✅ Found initOrdersTab function, calling it...');
-            window.initOrdersTab();
-        } else if (typeof window.loadOrders === 'function') {
-            console.log('✅ Found loadOrders function, calling it...');
-            window.loadOrders();
-        } else {
-            console.warn('⚠️ initOrdersTab not found');
-        }
-    };
-    
-    // Database Query Tab
-    initializers['db-query'] = () => {
-        console.log('🔵 TabManager: Initializing Database Query tab');
-        if (typeof window.initDbQueryTab === 'function') {
-            console.log('✅ Found initDbQueryTab function, calling it...');
-            window.initDbQueryTab();
-        } else {
-            console.warn('⚠️ initDbQueryTab not found');
-        }
-    };
-    
-    // Sticky Notes Tab
-    initializers['sticky-notes'] = () => {
-        console.log('🔵 TabManager: Initializing Sticky Notes tab');
-        if (typeof window.initStickyNotesTab === 'function') {
-            console.log('✅ Found initStickyNotesTab function, calling it...');
-            window.initStickyNotesTab();
-        } else if (typeof window.loadStickyNotes === 'function') {
-            console.log('✅ Found loadStickyNotes function, calling it...');
-            window.loadStickyNotes();
-        } else {
-            console.warn('⚠️ Sticky Notes functions not found');
-        }
-    };
-    
-    // Stats Tab
-    initializers['stats'] = () => {
-        console.log('🔵 TabManager: Initializing Stats tab');
-        if (typeof window.initStatsTab === 'function') {
-            console.log('✅ Found initStatsTab function, calling it...');
-            window.initStatsTab();
-        } else {
-            console.warn('⚠️ initStatsTab not found');
-        }
-    };
-    
-    // Inventory Purchases Tab
-    initializers['inventory-purchases'] = () => {
-        console.log('🔵 TabManager: Initializing Inventory Purchases tab');
-        if (typeof window.initInventoryPurchasesTab === 'function') {
-            console.log('✅ Found initInventoryPurchasesTab function, calling it...');
-            window.initInventoryPurchasesTab();
-        } else if (typeof window.loadInventoryPurchases === 'function') {
-            console.log('✅ Found loadInventoryPurchases function, calling it...');
-            window.loadInventoryPurchases();
-        } else {
-            console.warn('⚠️ initInventoryPurchasesTab not found');
-        }
-    };
-    
-    // Creditors Tab
-    initializers['creditors'] = () => {
-        console.log('🔵 TabManager: Initializing Creditors tab');
-        if (typeof window.initCreditorsTab === 'function') {
-            console.log('✅ Found initCreditorsTab function, calling it...');
-            window.initCreditorsTab();
-        } else {
-            console.warn('⚠️ initCreditorsTab not found - admin-creditors.js may not be loaded');
-        }
-    };
-}
+    function registerInitializers() {
+        // Inventory Ops Tab (formerly Add Records)
+        initializers['add-records'] = () => {
+            console.log('🔵 TabManager: Initializing Inventory Ops tab');
+            if (typeof window.initAddRecordsTab === 'function') {
+                console.log('✅ Found initAddRecordsTab function, calling it...');
+                window.initAddRecordsTab();
+            } else {
+                console.error('❌ initAddRecordsTab function not found!');
+                console.log('Available window functions:', Object.keys(window).filter(k => k.toLowerCase().includes('init')));
+                throw new Error('initAddRecordsTab is not defined. inventory-ops.js may not be loaded.');
+            }
+        };
+        
+        // Check Out Tab (removed from UI but kept for compatibility)
+        initializers['check-out'] = () => {
+            console.log('🔵 TabManager: Initializing Check Out tab');
+            if (typeof window.initCheckout === 'function') {
+                console.log('✅ Found initCheckout function, calling it...');
+                window.initCheckout();
+            } else if (typeof window.initCheckoutTab === 'function') {
+                console.log('✅ Found initCheckoutTab function, calling it...');
+                window.initCheckoutTab();
+            } else {
+                console.error('❌ initCheckout not found');
+            }
+        };
+        
+        // Inventory Tab
+        initializers['inventory'] = () => {
+            console.log('🔵 TabManager: Initializing Inventory tab');
+            if (typeof window.initInventoryTab === 'function') {
+                console.log('✅ Found initInventoryTab function, calling it...');
+                window.initInventoryTab();
+            } else {
+                console.warn('⚠️ initInventoryTab not found');
+            }
+        };
+        
+        // Discogs Tab
+        initializers['discogs'] = () => {
+            console.log('🔵 TabManager: Initializing Discogs tab');
+            if (typeof window.initDiscogsTab === 'function') {
+                console.log('✅ Found initDiscogsTab function, calling it...');
+                window.initDiscogsTab();
+            } else {
+                console.error('❌ initDiscogsTab function not found!');
+                console.log('Available window functions:', Object.keys(window).filter(k => k.toLowerCase().includes('discogs')));
+            }
+        };
+        
+        // Discogs Orders Tab
+        initializers['discogs-orders'] = () => {
+            console.log('🔵 TabManager: Initializing Discogs Orders tab');
+            if (typeof window.initDiscogsOrdersTab === 'function') {
+                console.log('✅ Found initDiscogsOrdersTab function, calling it...');
+                window.initDiscogsOrdersTab();
+            } else {
+                console.error('❌ initDiscogsOrdersTab function not found!');
+                console.log('Available window functions:', Object.keys(window).filter(k => k.toLowerCase().includes('discogs')));
+            }
+        };
+        
+        // Accessories Tab
+        initializers['accessories'] = () => {
+            console.log('🔵 TabManager: Initializing Accessories tab');
+            if (typeof window.initAccessoriesTab === 'function') {
+                console.log('✅ Found initAccessoriesTab function, calling it...');
+                window.initAccessoriesTab();
+            } else if (typeof window.loadAccessories === 'function') {
+                console.log('✅ Found loadAccessories function, calling it...');
+                window.loadAccessories();
+            } else {
+                console.warn('⚠️ initAccessoriesTab not found');
+            }
+        };
+        
+        // Users Tab
+        initializers['users'] = () => {
+            console.log('🔵 TabManager: Initializing Users tab');
+            if (typeof window.initUsersTab === 'function') {
+                console.log('✅ Found initUsersTab function, calling it...');
+                window.initUsersTab();
+            } else if (typeof window.loadUsers === 'function') {
+                console.log('✅ Found loadUsers function, calling it...');
+                window.loadUsers();
+            } else {
+                console.warn('⚠️ initUsersTab not found');
+            }
+        };
+        
+        // Admin Config Tab
+        initializers['admin-config'] = () => {
+            console.log('🔵 TabManager: Initializing Admin Config tab');
+            if (typeof window.initAdminConfigTab === 'function') {
+                console.log('✅ Found initAdminConfigTab function, calling it...');
+                window.initAdminConfigTab();
+            } else if (typeof window.loadConfigTables === 'function') {
+                console.log('✅ Found loadConfigTables function, calling it...');
+                window.loadConfigTables();
+            } else {
+                console.warn('⚠️ initAdminConfigTab not found');
+            }
+        };
+        
+        // Price Tags Tab (kept for compatibility)
+        initializers['price-tags'] = () => {
+            console.log('🔵 TabManager: Initializing Price Tags tab');
+            if (typeof window.initPriceTagsTab === 'function') {
+                console.log('✅ Found initPriceTagsTab function, calling it...');
+                window.initPriceTagsTab();
+            } else if (typeof window.loadRecordsForPriceTags === 'function') {
+                console.log('✅ Found loadRecordsForPriceTags function, calling it...');
+                window.loadRecordsForPriceTags();
+            } else {
+                console.warn('⚠️ initPriceTagsTab not found');
+            }
+        };
+        
+        // Custom Labels Tab
+        initializers['custom-labels'] = () => {
+            console.log('🔵 TabManager: Initializing Custom Labels tab');
+            if (typeof window.initCustomLabelsTab === 'function') {
+                console.log('✅ Found initCustomLabelsTab function, calling it...');
+                window.initCustomLabelsTab();
+            } else if (typeof window.customLabelsGeneratePDF === 'function') {
+                console.log('✅ Custom labels functions available');
+            } else {
+                console.warn('⚠️ Custom labels functions not found');
+            }
+        };
+        
+        // Orders Tab
+        initializers['orders'] = () => {
+            console.log('🔵 TabManager: Initializing Orders tab');
+            if (typeof window.initOrdersTab === 'function') {
+                console.log('✅ Found initOrdersTab function, calling it...');
+                window.initOrdersTab();
+            } else if (typeof window.loadOrders === 'function') {
+                console.log('✅ Found loadOrders function, calling it...');
+                window.loadOrders();
+            } else {
+                console.warn('⚠️ initOrdersTab not found');
+            }
+        };
+        
+        // Database Query Tab
+        initializers['db-query'] = () => {
+            console.log('🔵 TabManager: Initializing Database Query tab');
+            if (typeof window.initDbQueryTab === 'function') {
+                console.log('✅ Found initDbQueryTab function, calling it...');
+                window.initDbQueryTab();
+            } else {
+                console.warn('⚠️ initDbQueryTab not found');
+            }
+        };
+        
+        // Sticky Notes Tab
+        initializers['sticky-notes'] = () => {
+            console.log('🔵 TabManager: Initializing Sticky Notes tab');
+            if (typeof window.initStickyNotesTab === 'function') {
+                console.log('✅ Found initStickyNotesTab function, calling it...');
+                window.initStickyNotesTab();
+            } else if (typeof window.loadStickyNotes === 'function') {
+                console.log('✅ Found loadStickyNotes function, calling it...');
+                window.loadStickyNotes();
+            } else {
+                console.warn('⚠️ Sticky Notes functions not found');
+            }
+        };
+        
+        // Stats Tab
+        initializers['stats'] = () => {
+            console.log('🔵 TabManager: Initializing Stats tab');
+            if (typeof window.initStatsTab === 'function') {
+                console.log('✅ Found initStatsTab function, calling it...');
+                window.initStatsTab();
+            } else {
+                console.warn('⚠️ initStatsTab not found');
+            }
+        };
+        
+        // Inventory Purchases Tab
+        initializers['inventory-purchases'] = () => {
+            console.log('🔵 TabManager: Initializing Inventory Purchases tab');
+            if (typeof window.initInventoryPurchasesTab === 'function') {
+                console.log('✅ Found initInventoryPurchasesTab function, calling it...');
+                window.initInventoryPurchasesTab();
+            } else if (typeof window.loadInventoryPurchases === 'function') {
+                console.log('✅ Found loadInventoryPurchases function, calling it...');
+                window.loadInventoryPurchases();
+            } else {
+                console.warn('⚠️ initInventoryPurchasesTab not found');
+            }
+        };
+        
+        // Creditors Tab
+        initializers['creditors'] = () => {
+            console.log('🔵 TabManager: Initializing Creditors tab');
+            if (typeof window.initCreditorsTab === 'function') {
+                console.log('✅ Found initCreditorsTab function, calling it...');
+                window.initCreditorsTab();
+            } else {
+                console.warn('⚠️ initCreditorsTab not found - admin-creditors.js may not be loaded');
+            }
+        };
+
+        // ============================================================
+        // ⭐ NEW: Domain Management Tab (Location Management)
+        // ============================================================
+        initializers['domain-management'] = () => {
+            console.log('🔵 TabManager: Initializing Domain Management tab');
+            if (typeof window.loadDomainGenres === 'function') {
+                console.log('✅ Loading domain data...');
+                window.loadDomainGenres();
+                window.loadDomainFormats();
+                window.loadDomainAreas();
+                window.loadDomainSublocations();
+            } else {
+                console.warn('⚠️ Domain Management functions not loaded yet');
+                // Try again after a delay
+                setTimeout(() => {
+                    if (typeof window.loadDomainGenres === 'function') {
+                        console.log('✅ Loading domain data (delayed)...');
+                        window.loadDomainGenres();
+                        window.loadDomainFormats();
+                        window.loadDomainAreas();
+                        window.loadDomainSublocations();
+                    } else {
+                        console.error('❌ Domain Management functions still not available');
+                    }
+                }, 500);
+            }
+        };
+    }
     
     // Register cleanup functions
     function registerCleanupFunctions() {
