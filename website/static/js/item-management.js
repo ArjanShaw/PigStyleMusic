@@ -11,6 +11,7 @@
     const ItemManagement = {
         // State
         records: [],
+        selectedRecords: [], // Store FULL record objects for selected items
         selectedIds: new Set(),
         currentPage: 1,
         pageSize: 50,
@@ -22,7 +23,7 @@
         currentAction: 'checkout',
         viewMode: 'search', // 'search' or 'selection'
         
-        // Checkout state
+        // Checkout state - COMPLETE checkout system
         checkoutQueue: [],
         checkoutTotal: 0,
         checkoutSelectedItems: [],
@@ -76,14 +77,13 @@
             recordLastPage: document.getElementById('record-last-page'),
             recordPageSize: document.getElementById('record-page-size'),
             actionModeRadios: document.querySelectorAll('input[name="actionMode"]'),
-            viewSearchBtn: document.getElementById('view-search-btn'),
-            viewSelectionBtn: document.getElementById('view-selection-btn'),
-            selectionCountBadge: document.getElementById('selection-count-badge')
+            viewStatusText: document.getElementById('view-status-text'),
+            selectionCountBadge: document.getElementById('selection-count-badge'),
+            clearSelectionBtn: document.getElementById('clear-selection-btn')
         };
         
         // Set up event listeners
         setupEventListeners();
-        setupViewToggle();
         
         // Load initial data
         loadStats();
@@ -173,50 +173,207 @@
     }
 
     // ============================================================
-    // VIEW TOGGLE
+    // VIEW FUNCTIONS
     // ============================================================
-    function setupViewToggle() {
-        const searchBtn = ItemManagement.elements.viewSearchBtn;
-        const selectionBtn = ItemManagement.elements.viewSelectionBtn;
-        
-        if (searchBtn) {
-            searchBtn.addEventListener('click', function() {
-                ItemManagement.viewMode = 'search';
-                this.className = 'btn btn-primary btn-small active';
-                if (selectionBtn) {
-                    selectionBtn.className = 'btn btn-secondary btn-small';
-                }
-                renderTable();
-                updateViewButtons();
-            });
-        }
-        
-        if (selectionBtn) {
-            selectionBtn.addEventListener('click', function() {
-                ItemManagement.viewMode = 'selection';
-                this.className = 'btn btn-primary btn-small active';
-                if (searchBtn) {
-                    searchBtn.className = 'btn btn-secondary btn-small';
-                }
-                renderTable();
-                updateViewButtons();
-            });
-        }
-    }
-
     function updateViewButtons() {
-        const searchBtn = ItemManagement.elements.viewSearchBtn;
-        const selectionBtn = ItemManagement.elements.viewSelectionBtn;
-        const count = ItemManagement.selectedIds.size;
-        
-        if (selectionBtn) {
-            selectionBtn.innerHTML = 'Selection List (<span id="selection-count-badge">' + count + '</span>)';
-        }
-        
-        // Update badge
+        const count = ItemManagement.selectedRecords.length;
         const badge = document.getElementById('selection-count-badge');
         if (badge) {
             badge.textContent = count;
+        }
+        
+        // Show/hide clear selection button
+        const clearBtn = document.getElementById('clear-selection-btn');
+        if (clearBtn) {
+            clearBtn.style.display = count > 0 ? 'inline-block' : 'none';
+        }
+        
+        // Update view status text
+        const statusText = document.getElementById('view-status-text');
+        if (statusText) {
+            if (ItemManagement.viewMode === 'selection') {
+                statusText.textContent = 'Showing selection list (' + count + ' items)';
+            } else {
+                statusText.textContent = 'Showing search results';
+            }
+        }
+        
+        // Update selected count display
+        const selectedDisplay = document.getElementById('selected-count-display');
+        if (selectedDisplay) {
+            selectedDisplay.textContent = count;
+        }
+        const selectedText = document.getElementById('selected-count-text');
+        if (selectedText) {
+            selectedText.textContent = count;
+        }
+    }
+
+    // ============================================================
+    // SELECTION FUNCTIONS
+    // ============================================================
+    
+    function addToSelection(record) {
+        // Check if already selected
+        if (!ItemManagement.selectedRecords.some(function(r) { return r.id === record.id; })) {
+            ItemManagement.selectedRecords.push(record);
+            ItemManagement.selectedIds.add(record.id);
+        }
+        
+        // Auto-switch to selection view
+        ItemManagement.viewMode = 'selection';
+        updateViewButtons();
+        renderTable();
+        updateSelectionUI();
+        updateExecuteButton();
+        
+        // Clear search and refocus
+        const searchInput = ItemManagement.elements.searchInput;
+        if (searchInput) {
+            searchInput.value = '';
+            searchInput.focus();
+        }
+        ItemManagement.searchTerm = '';
+    }
+
+    function removeFromSelection(recordId) {
+        ItemManagement.selectedRecords = ItemManagement.selectedRecords.filter(function(r) {
+            return r.id !== recordId;
+        });
+        ItemManagement.selectedIds.delete(recordId);
+        
+        // Stay in selection view (or switch to search if empty)
+        if (ItemManagement.selectedRecords.length === 0) {
+            ItemManagement.viewMode = 'search';
+            const searchInput = ItemManagement.elements.searchInput;
+            if (searchInput) {
+                searchInput.focus();
+            }
+        }
+        updateViewButtons();
+        renderTable();
+        updateSelectionUI();
+        updateExecuteButton();
+    }
+
+    function selectAllRecords() {
+        // Add all records from current search results
+        ItemManagement.records.forEach(function(record) {
+            if (!ItemManagement.selectedRecords.some(function(r) { return r.id === record.id; })) {
+                ItemManagement.selectedRecords.push(record);
+                ItemManagement.selectedIds.add(record.id);
+            }
+        });
+        
+        // Auto-switch to selection view
+        ItemManagement.viewMode = 'selection';
+        updateViewButtons();
+        renderTable();
+        updateSelectionUI();
+        updateExecuteButton();
+        
+        // Clear search and refocus
+        const searchInput = ItemManagement.elements.searchInput;
+        if (searchInput) {
+            searchInput.value = '';
+            searchInput.focus();
+        }
+        ItemManagement.searchTerm = '';
+    }
+
+    function clearSelection() {
+        ItemManagement.selectedRecords = [];
+        ItemManagement.selectedIds.clear();
+        ItemManagement.viewMode = 'search';
+        updateViewButtons();
+        renderTable();
+        updateSelectionUI();
+        updateExecuteButton();
+        
+        const searchInput = ItemManagement.elements.searchInput;
+        if (searchInput) {
+            searchInput.focus();
+        }
+    }
+
+    function updateSelectionUI() {
+        const count = ItemManagement.selectedRecords.length;
+        const els = ItemManagement.elements;
+        
+        if (els.selectedCountText) els.selectedCountText.textContent = count;
+        if (els.selectedCountDisplay) els.selectedCountDisplay.textContent = count;
+        if (els.executeActionBtn) els.executeActionBtn.disabled = count === 0;
+        
+        // Update select all checkbox
+        const total = ItemManagement.records.length;
+        if (els.selectAllCheckbox) {
+            if (total > 0 && count === total) {
+                els.selectAllCheckbox.checked = true;
+                els.selectAllCheckbox.indeterminate = false;
+            } else if (count > 0 && count < total) {
+                els.selectAllCheckbox.checked = false;
+                els.selectAllCheckbox.indeterminate = true;
+            } else {
+                els.selectAllCheckbox.checked = false;
+                els.selectAllCheckbox.indeterminate = false;
+            }
+        }
+        
+        // Update total value
+        let totalValue = 0;
+        ItemManagement.selectedRecords.forEach(function(record) {
+            const price = record.store_price ? parseFloat(record.store_price) : 0;
+            totalValue += price;
+        });
+        if (els.totalValue) els.totalValue.textContent = '$' + totalValue.toFixed(2);
+        
+        // Update view buttons
+        updateViewButtons();
+        updateExecuteButton();
+    }
+
+    function updateExecuteButton() {
+        const count = ItemManagement.selectedRecords.length;
+        const btn = ItemManagement.elements.executeActionBtn;
+        if (btn) {
+            btn.disabled = count === 0;
+        }
+    }
+
+    function updateActionUI() {
+        const action = ItemManagement.currentAction;
+        const btn = ItemManagement.elements.executeActionBtn;
+        const icons = {
+            'checkout': 'fa-shopping-cart',
+            'delete': 'fa-trash',
+            'refund': 'fa-undo'
+        };
+        const labels = {
+            'checkout': 'Checkout Selected',
+            'delete': 'Delete Selected',
+            'refund': 'Refund Selected'
+        };
+        const colors = {
+            'checkout': 'btn-success',
+            'delete': 'btn-danger',
+            'refund': 'btn-warning'
+        };
+        
+        if (btn) {
+            btn.innerHTML = `<i class="fas ${icons[action]}"></i> ${labels[action]}`;
+            btn.className = `btn ${colors[action]}`;
+            btn.disabled = ItemManagement.selectedRecords.length === 0;
+        }
+        
+        const searchInput = ItemManagement.elements.searchInput;
+        if (searchInput) {
+            if (action === 'checkout') {
+                searchInput.placeholder = 'Search active records...';
+            } else if (action === 'refund') {
+                searchInput.placeholder = 'Search sold records...';
+            } else if (action === 'delete') {
+                searchInput.placeholder = 'Search records to delete...';
+            }
         }
     }
 
@@ -230,7 +387,7 @@
         ItemManagement.searchField = els.searchField.value;
         ItemManagement.currentPage = 1;
         
-        // When searching, switch back to search view
+        // When searching, switch to search view
         ItemManagement.viewMode = 'search';
         updateViewButtons();
         
@@ -310,7 +467,11 @@
         ItemManagement.elements.searchInput.value = '';
         ItemManagement.searchTerm = '';
         ItemManagement.currentPage = 1;
-        clearSelection();
+        
+        // Clear search switches to search view
+        ItemManagement.viewMode = 'search';
+        updateViewButtons();
+        
         performSearch();
     }
 
@@ -322,7 +483,7 @@
     }
 
     // ============================================================
-    // RENDER FUNCTIONS - TWO VIEWS
+    // RENDER FUNCTIONS
     // ============================================================
     function renderTable() {
         const tbody = ItemManagement.elements.recordsTableBody;
@@ -333,13 +494,11 @@
         let emptyMessage = '';
         
         if (viewMode === 'selection') {
-            // Show ONLY selected records
-            records = ItemManagement.records.filter(function(r) {
-                return ItemManagement.selectedIds.has(r.id);
-            });
+            // Show ALL selected records from the separate array
+            records = ItemManagement.selectedRecords;
             emptyMessage = 'No items selected. Search for records and add them to your selection.';
         } else {
-            // Show ALL search results (search mode)
+            // Show search results
             records = ItemManagement.records;
             const action = ItemManagement.currentAction;
             if (action === 'checkout') {
@@ -424,20 +583,17 @@
             tbody.querySelectorAll('.remove-selection-btn').forEach(function(btn) {
                 btn.addEventListener('click', function() {
                     const id = parseInt(this.dataset.id);
-                    ItemManagement.selectedIds.delete(id);
-                    updateSelectionUI();
-                    renderTable();
-                    updateViewButtons();
+                    removeFromSelection(id);
                 });
             });
         } else {
             tbody.querySelectorAll('.add-selection-btn').forEach(function(btn) {
                 btn.addEventListener('click', function() {
                     const id = parseInt(this.dataset.id);
-                    ItemManagement.selectedIds.add(id);
-                    updateSelectionUI();
-                    renderTable();
-                    updateViewButtons();
+                    const record = ItemManagement.records.find(function(r) { return r.id === id; });
+                    if (record) {
+                        addToSelection(record);
+                    }
                 });
             });
         }
@@ -446,14 +602,14 @@
         tbody.querySelectorAll('.record-checkbox').forEach(function(checkbox) {
             checkbox.addEventListener('change', function() {
                 const id = parseInt(this.dataset.id);
+                const record = ItemManagement.records.find(function(r) { return r.id === id; });
                 if (this.checked) {
-                    ItemManagement.selectedIds.add(id);
+                    if (record) {
+                        addToSelection(record);
+                    }
                 } else {
-                    ItemManagement.selectedIds.delete(id);
+                    removeFromSelection(id);
                 }
-                updateSelectionUI();
-                renderTable();
-                updateViewButtons();
             });
         });
     }
@@ -468,108 +624,6 @@
                 row.classList.remove('selected-row');
             }
         });
-    }
-
-    // ============================================================
-    // SELECTION FUNCTIONS
-    // ============================================================
-    function selectAllRecords() {
-        ItemManagement.records.forEach(function(record) {
-            ItemManagement.selectedIds.add(record.id);
-        });
-        updateSelectionUI();
-        renderTable();
-        updateViewButtons();
-    }
-
-    function clearSelection() {
-        ItemManagement.selectedIds.clear();
-        updateSelectionUI();
-        renderTable();
-        updateViewButtons();
-    }
-
-    function updateSelectionUI() {
-        const count = ItemManagement.selectedIds.size;
-        const els = ItemManagement.elements;
-        
-        els.selectedCountText.textContent = count;
-        els.selectedCountDisplay.textContent = count;
-        els.executeActionBtn.disabled = count === 0;
-        
-        const total = ItemManagement.records.length;
-        if (total > 0 && count === total) {
-            els.selectAllCheckbox.checked = true;
-            els.selectAllCheckbox.indeterminate = false;
-        } else if (count > 0 && count < total) {
-            els.selectAllCheckbox.checked = false;
-            els.selectAllCheckbox.indeterminate = true;
-        } else {
-            els.selectAllCheckbox.checked = false;
-            els.selectAllCheckbox.indeterminate = false;
-        }
-        
-        let totalValue = 0;
-        ItemManagement.records.forEach(function(record) {
-            if (ItemManagement.selectedIds.has(record.id)) {
-                const price = record.store_price ? parseFloat(record.store_price) : 0;
-                totalValue += price;
-            }
-        });
-        els.totalValue.textContent = '$' + totalValue.toFixed(2);
-        
-        // Update view buttons
-        updateViewButtons();
-    }
-
-    function updateActionUI() {
-        const action = ItemManagement.currentAction;
-        const btn = ItemManagement.elements.executeActionBtn;
-        const icons = {
-            'checkout': 'fa-shopping-cart',
-            'delete': 'fa-trash',
-            'refund': 'fa-undo'
-        };
-        const labels = {
-            'checkout': 'Checkout Selected',
-            'delete': 'Delete Selected',
-            'refund': 'Refund Selected'
-        };
-        const colors = {
-            'checkout': 'btn-success',
-            'delete': 'btn-danger',
-            'refund': 'btn-warning'
-        };
-        
-        btn.innerHTML = `<i class="fas ${icons[action]}"></i> ${labels[action]}`;
-        btn.className = `btn ${colors[action]}`;
-        btn.disabled = ItemManagement.selectedIds.size === 0;
-        
-        const searchInput = ItemManagement.elements.searchInput;
-        if (searchInput) {
-            if (action === 'checkout') {
-                searchInput.placeholder = 'Search active records...';
-            } else if (action === 'refund') {
-                searchInput.placeholder = 'Search sold records...';
-            } else if (action === 'delete') {
-                searchInput.placeholder = 'Search records to delete...';
-            }
-        }
-    }
-
-    function updateViewButtons() {
-        const searchBtn = ItemManagement.elements.viewSearchBtn;
-        const selectionBtn = ItemManagement.elements.viewSelectionBtn;
-        const count = ItemManagement.selectedIds.size;
-        
-        if (selectionBtn) {
-            selectionBtn.innerHTML = 'Selection List (<span id="selection-count-badge">' + count + '</span>)';
-        }
-        
-        const badge = document.getElementById('selection-count-badge');
-        if (badge) {
-            badge.textContent = count;
-        }
     }
 
     // ============================================================
@@ -628,9 +682,9 @@
         const end = Math.min(start + ItemManagement.pageSize - 1, ItemManagement.totalRecords);
         const els = ItemManagement.elements;
         
-        els.recordShowingStart.textContent = ItemManagement.totalRecords > 0 ? start : 0;
-        els.recordShowingEnd.textContent = end;
-        els.recordTotalFiltered.textContent = ItemManagement.totalRecords;
+        if (els.recordShowingStart) els.recordShowingStart.textContent = ItemManagement.totalRecords > 0 ? start : 0;
+        if (els.recordShowingEnd) els.recordShowingEnd.textContent = end;
+        if (els.recordTotalFiltered) els.recordTotalFiltered.textContent = ItemManagement.totalRecords;
     }
 
     // ============================================================
@@ -641,20 +695,20 @@
         const current = ItemManagement.currentPage;
         const total = ItemManagement.totalPages;
         
-        els.recordCurrentPage.value = current;
-        els.recordTotalPages.textContent = total;
+        if (els.recordCurrentPage) els.recordCurrentPage.value = current;
+        if (els.recordTotalPages) els.recordTotalPages.textContent = total;
         
-        els.recordFirstPage.disabled = current <= 1;
-        els.recordPrevPage.disabled = current <= 1;
-        els.recordNextPage.disabled = current >= total;
-        els.recordLastPage.disabled = current >= total;
+        if (els.recordFirstPage) els.recordFirstPage.disabled = current <= 1;
+        if (els.recordPrevPage) els.recordPrevPage.disabled = current <= 1;
+        if (els.recordNextPage) els.recordNextPage.disabled = current >= total;
+        if (els.recordLastPage) els.recordLastPage.disabled = current >= total;
     }
 
     // ============================================================
     // ACTION EXECUTION
     // ============================================================
     function executeAction() {
-        if (ItemManagement.selectedIds.size === 0) {
+        if (ItemManagement.selectedRecords.length === 0) {
             showStatus('Please select at least one item.', 'warning');
             return;
         }
@@ -677,14 +731,12 @@
     }
 
     // ============================================================
-    // CHECKOUT FUNCTIONS
+    // CHECKOUT FUNCTIONS - FULL SYSTEM
     // ============================================================
     
     function executeCheckout() {
         console.log('🛒 executeCheckout called');
-        var selectedRecords = ItemManagement.records.filter(function(r) {
-            return ItemManagement.selectedIds.has(r.id);
-        });
+        var selectedRecords = ItemManagement.selectedRecords;
         
         if (selectedRecords.length === 0) {
             showStatus('No records selected for checkout.', 'warning');
@@ -705,6 +757,7 @@
             showStatus(selectedRecords.length - availableRecords.length + ' record(s) are already sold and will be skipped.', 'warning');
         }
         
+        // Add to checkout queue
         availableRecords.forEach(function(r) {
             if (!ItemManagement.checkoutSelectedItems.some(function(item) { return item.id === r.id; })) {
                 ItemManagement.checkoutSelectedItems.push(r);
@@ -1527,6 +1580,7 @@
         ItemManagement.checkoutViewMode = 'list';
         ItemManagement.checkoutPaymentEntries = [];
         ItemManagement.checkoutRemaining = 0;
+        ItemManagement.selectedRecords = [];
         ItemManagement.selectedIds.clear();
 
         var modal = document.getElementById('checkout-payment-modal');
@@ -1536,6 +1590,7 @@
 
         ItemManagement.records = [];
         ItemManagement.totalRecords = 0;
+        ItemManagement.viewMode = 'search';
         renderTable();
         updatePagination();
         updateSelectionUI();
@@ -1549,9 +1604,7 @@
     // DELETE FUNCTIONS
     // ============================================================
     function confirmDelete() {
-        const selectedRecords = ItemManagement.records.filter(function(r) {
-            return ItemManagement.selectedIds.has(r.id);
-        });
+        var selectedRecords = ItemManagement.selectedRecords;
         
         if (selectedRecords.length === 0) {
             showStatus('No records selected for deletion.', 'warning');
@@ -1574,7 +1627,7 @@
         ItemManagement.isProcessing = true;
         showStatus('Deleting records...', 'info');
         
-        const ids = Array.from(ItemManagement.selectedIds);
+        const ids = ItemManagement.selectedRecords.map(function(r) { return r.id; });
         
         fetch(`${AppConfig.baseUrl}/api/records/delete`, {
             method: 'POST',
@@ -1621,17 +1674,15 @@
     // REFUND FUNCTIONS
     // ============================================================
     function confirmRefund() {
-        const selectedRecords = ItemManagement.records.filter(function(r) {
-            return ItemManagement.selectedIds.has(r.id);
-        });
+        var selectedRecords = ItemManagement.selectedRecords;
         
         if (selectedRecords.length === 0) {
             showStatus('No records selected for refund.', 'warning');
             return;
         }
         
-        const refundable = selectedRecords.filter(function(r) {
-            const status = r.status_id || r.status;
+        var refundable = selectedRecords.filter(function(r) {
+            var status = r.status_id || r.status;
             return status === 3 || status === 'sold';
         });
         
@@ -1807,6 +1858,88 @@
     }
 
     // ============================================================
+    // PROCESS CHECKOUT (for gift card payments)
+    // ============================================================
+    function processCheckout(method, details) {
+        if (ItemManagement.isProcessing) return;
+        ItemManagement.isProcessing = true;
+        showStatus('Processing checkout...', 'info');
+        
+        const items = ItemManagement.checkoutQueue.map(function(item) {
+            return { record_id: item.id };
+        });
+        
+        const payload = {
+            items: items,
+            payment_method: method,
+            payment_details: details
+        };
+        
+        fetch(`${AppConfig.baseUrl}/api/checkout/process`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.text().then(text => {
+                    throw new Error(text || 'HTTP ' + response.status);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            ItemManagement.isProcessing = false;
+            closeTenderModal();
+            
+            if (data.status === 'success') {
+                showStatus('Checkout complete! ' + data.completed + ' items sold for $' + data.total.toFixed(2), 'success');
+                ItemManagement.checkoutQueue = [];
+                ItemManagement.checkoutTotal = 0;
+                clearSelection();
+                performSearch();
+                loadStats();
+            } else {
+                showStatus(data.error || 'Checkout failed.', 'error');
+            }
+        })
+        .catch(error => {
+            ItemManagement.isProcessing = false;
+            console.error('Checkout error:', error);
+            showStatus('Error processing checkout: ' + error.message, 'error');
+        });
+    }
+
+    function closeTenderModal() {
+        document.getElementById('tender-modal').style.display = 'none';
+        document.getElementById('tender-amount').value = '';
+        document.getElementById('change-display-container').style.display = 'none';
+        document.getElementById('complete-payment-btn').disabled = true;
+    }
+
+    function processCashPayment() {
+        const totalDue = ItemManagement.checkoutTotal;
+        const tenderAmount = parseFloat(document.getElementById('tender-amount').value) || 0;
+        const change = tenderAmount - totalDue;
+        
+        if (tenderAmount < totalDue) {
+            showStatus('Insufficient payment amount.', 'error');
+            return;
+        }
+        
+        // Process the checkout
+        processCheckout('cash', {
+            amount: totalDue,
+            tendered: tenderAmount,
+            change: change
+        });
+    }
+
+    // ============================================================
     // UTILITY FUNCTIONS
     // ============================================================
     function getStatusClass(status) {
@@ -1846,6 +1979,7 @@
 
     function showStatus(message, type) {
         const el = ItemManagement.elements.statusMessage;
+        if (!el) return;
         el.textContent = message;
         el.className = 'status-message ' + type;
         el.style.display = 'block';
@@ -1853,7 +1987,9 @@
 
     function hideStatus() {
         const el = ItemManagement.elements.statusMessage;
-        el.style.display = 'none';
+        if (el) {
+            el.style.display = 'none';
+        }
     }
 
     function generateOrderId() {
@@ -1928,6 +2064,7 @@
     window.applyGiftCardToCart = applyGiftCardToCart;
     window.lookupDebtorForCheckout = lookupDebtorForCheckout;
     window.applyDebtorToCheckout = applyDebtorToCheckout;
+    window.processCashPayment = processCashPayment;
 
     console.log('Item Management JavaScript loaded.');
 
