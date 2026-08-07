@@ -2122,45 +2122,69 @@
     </style></head>
 <body>
     <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
-        <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
-            <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
-        </a>
-        <div style="display: flex; gap: 20px; align-items: center;">
-            <a href="/browse" style="color: white; text-decoration: none;">Browse</a>
-            <a href="/misc" style="color: white; text-decoration: none;">Misc</a>
-            <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
-            <div id="auth-section">
-                <div class="user-menu">
-                    <span class="user-greeting">Hi, admin</span>
-                    <div class="dropdown">
-                        <button class="dropdown-toggle" id="dropdown-toggle-button" aria-label="User menu">
-                            <i class="fas fa-user"></i>
-                            <i class="fas fa-caret-down"></i>
-                        </button>
-                        <div class="dropdown-menu" id="dropdown-menu">
-                            
-                            <a href="/dashboard" class="dropdown-item">
-                                <i class="fas fa-tachometer-alt"></i> Dashboard
-                            </a>
-                            
-                            
-                            <a href="/admin" class="dropdown-item">
-                                <i class="fas fa-cog"></i> Admin Panel
-                            </a>
-                            <a href="/admin/accounting" class="dropdown-item">
-                                <i class="fas fa-calculator"></i> Accounting
-                            </a>
-                            
-                            <div class="dropdown-divider"></div>
-                            <a href="#" id="logout-button" class="dropdown-item">
-                                <i class="fas fa-sign-out-alt"></i> Logout
-                            </a>
-                        </div>
+    <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
+        <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
+    </a>
+    <div style="display: flex; gap: 20px; align-items: center;">
+        <a href="/browse" style="color: white; text-decoration: none;">Browse</a>
+        <a href="/misc" style="color: white; text-decoration: none;">Misc</a>
+        <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
+        
+        <!-- ========== NOTIFICATION BELL ========== -->
+        <div id="navbar-notification-container" style="position: relative; display: inline-block; margin-right: 10px;">
+            <button id="navbar-notification-btn" style="background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: white; padding: 6px 10px; border-radius: 4px; cursor: pointer; position: relative; transition: all 0.2s; display: flex; align-items: center; gap: 5px; font-size: 14px;">
+                <i class="fas fa-bell" style="font-size: 16px;"></i>
+                <span id="navbar-notification-badge" style="display: none; position: absolute; top: -6px; right: -6px; background: #dc3545; color: white; border-radius: 50%; padding: 1px 6px; font-size: 10px; font-weight: bold; min-width: 18px; text-align: center; line-height: 16px;">0</span>
+            </button>
+            <div id="navbar-notification-dropdown" style="display: none; position: absolute; top: 40px; right: 0; background: white; min-width: 380px; max-height: 450px; overflow-y: auto; border-radius: 8px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25); padding: 0; border: 1px solid #ddd; z-index: 2000;">
+                <div style="padding: 12px 15px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; border-radius: 8px 8px 0 0; position: sticky; top: 0; z-index: 1;">
+                    <span style="font-weight: 600; color: #333; font-size: 14px;"><i class="fas fa-bell" style="color: #007bff; margin-right: 8px;"></i>Notifications</span>
+                    <button id="navbar-mark-all-read" style="background: none; border: none; color: #007bff; font-size: 12px; cursor: pointer; text-decoration: underline; padding: 4px 8px; border-radius: 4px;">Mark all read</button>
+                </div>
+                <div id="navbar-notification-list" style="padding: 5px 0;">
+                    <div style="padding: 30px 20px; color: #999; text-align: center; font-size: 14px;">
+                        <i class="fas fa-bell-slash" style="font-size: 28px; display: block; margin-bottom: 10px; color: #ddd;"></i>
+                        No new notifications
+                    </div>
+                </div>
+                <div style="padding: 10px 15px; border-top: 1px solid #eee; text-align: center; background: #f8f9fa; border-radius: 0 0 8px 8px; position: sticky; bottom: 0; z-index: 1;">
+                    <a href="/admin#email-subscriptions" style="color: #007bff; text-decoration: none; font-size: 13px; font-weight: 500;">View all in Admin Panel →</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== USER DROPDOWN ========== -->
+        <div id="auth-section">
+            <div class="user-menu">
+                <span class="user-greeting">Hi, admin</span>
+                <div class="dropdown">
+                    <button class="dropdown-toggle" id="dropdown-toggle-button" aria-label="User menu">
+                        <i class="fas fa-user"></i>
+                        <i class="fas fa-caret-down"></i>
+                    </button>
+                    <div class="dropdown-menu" id="dropdown-menu">
+                        <a href="/dashboard" class="dropdown-item">
+                            <i class="fas fa-tachometer-alt"></i> Dashboard
+                        </a>
+                        <a href="/admin" class="dropdown-item">
+                            <i class="fas fa-cog"></i> Admin Panel
+                        </a>
+                        <a href="/item-management" class="dropdown-item">
+                            <i class="fas fa-boxes"></i> Item Management
+                        </a>
+                        <a href="/admin/accounting" class="dropdown-item">
+                            <i class="fas fa-calculator"></i> Accounting
+                        </a>
+                        <div class="dropdown-divider"></div>
+                        <a href="#" id="logout-button" class="dropdown-item">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </a>
                     </div>
                 </div>
             </div>
         </div>
-    </nav>
+    </div>
+</nav>
 
     <div class="admin-container">
         <h1><i class="fas fa-cogs"></i> Admin Panel</h1>
