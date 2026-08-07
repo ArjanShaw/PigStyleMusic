@@ -2403,7 +2403,7 @@ def get_records():
             r.id, r.artist, r.title, r.barcode, r.image_url, r.catalog_number,
             r.condition_sleeve_id, r.condition_disc_id, r.store_price,
             r.consignor_id, r.commission_rate, r.status_id, r.created_at, r.date_sold,
-            r.last_seen, r.location, r.notes, r.discogs_genre_raw,
+            r.last_seen, r.notes, r.discogs_genre_raw,
             s.status_name,
             cs.condition_name as sleeve_condition_name, cs.display_name as sleeve_display,
             cs.abbreviation as sleeve_abbr, cs.quality_index as sleeve_quality,
@@ -5479,22 +5479,111 @@ def subscribe():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if subscription already exists (active)
+        # Check if subscription already exists
         cursor.execute('''
-            SELECT id FROM email_subscriptions 
-            WHERE email = ? AND artist = ? AND title = ? AND catalog_number = ? AND is_active = 1
+            SELECT id, is_active, notified FROM email_subscriptions 
+            WHERE email = ? AND artist = ? AND title = ? AND catalog_number = ?
         ''', (email, artist or None, title or None, catalog_number or None))
         
         existing = cursor.fetchone()
         
         if existing:
+            # If inactive, reactivate it
+            if not existing['is_active']:
+                cursor.execute('''
+                    UPDATE email_subscriptions 
+                    SET is_active = 1, notified = 0, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (existing['id'],))
+                conn.commit()
+                conn.close()
+                
+                # Send email notification to admin
+                try:
+                    admin_conn = get_db()
+                    admin_cursor = admin_conn.cursor()
+                    admin_cursor.execute('SELECT email FROM users WHERE role = "admin" AND email IS NOT NULL')
+                    admins = admin_cursor.fetchall()
+                    admin_conn.close()
+                    
+                    for admin in admins:
+                        subject = f"Record Alert Subscription Reactivated: {email}"
+                        body = f"""
+Subscription reactivated!
+
+Email: {email}
+Artist: {artist or 'Any'}
+Title: {title or 'Any'}
+Catalog Number: {catalog_number or 'Any'}
+
+View all subscriptions in the admin panel:
+https://www.pigstylemusic.com/admin
+                        """
+                        send_email(admin['email'], subject, body, from_name="PigStyle Music Alerts")
+                except Exception as e:
+                    app.logger.error(f"Error sending admin notification: {str(e)}")
+                
+                return jsonify({
+                    'status': 'success', 
+                    'message': 'Subscription reactivated',
+                    'already_subscribed': False,
+                    'subscription_id': existing['id']
+                }), 200
+            
+            # If active and already notified, reset notified to 0 for new notification
+            if existing['notified'] == 1:
+                cursor.execute('''
+                    UPDATE email_subscriptions 
+                    SET notified = 0, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (existing['id'],))
+                conn.commit()
+                conn.close()
+                
+                # Send email notification to admin
+                try:
+                    admin_conn = get_db()
+                    admin_cursor = admin_conn.cursor()
+                    admin_cursor.execute('SELECT email FROM users WHERE role = "admin" AND email IS NOT NULL')
+                    admins = admin_cursor.fetchall()
+                    admin_conn.close()
+                    
+                    for admin in admins:
+                        subject = f"New Record Alert Subscription: {email}"
+                        body = f"""
+New subscription created!
+
+Email: {email}
+Artist: {artist or 'Any'}
+Title: {title or 'Any'}
+Catalog Number: {catalog_number or 'Any'}
+
+View all subscriptions in the admin panel:
+https://www.pigstylemusic.com/admin
+                        """
+                        send_email(admin['email'], subject, body, from_name="PigStyle Music Alerts")
+                except Exception as e:
+                    app.logger.error(f"Error sending admin notification: {str(e)}")
+                
+                return jsonify({
+                    'status': 'success', 
+                    'message': 'Subscription re-notified',
+                    'already_subscribed': False,
+                    'subscription_id': existing['id']
+                }), 200
+            
             conn.close()
-            return jsonify({'status': 'success', 'message': 'You are already subscribed to these notifications', 'already_subscribed': True}), 200
+            return jsonify({
+                'status': 'success', 
+                'message': 'You are already subscribed to these notifications', 
+                'already_subscribed': True,
+                'subscription_id': existing['id']
+            }), 200
         
-        # Insert new subscription
+        # Insert new subscription with notified = 0 (new/unread)
         cursor.execute('''
-            INSERT INTO email_subscriptions (email, artist, title, catalog_number, created_at, is_active)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, 1)
+            INSERT INTO email_subscriptions (email, artist, title, catalog_number, created_at, is_active, notified)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, 1, 0)
         ''', (email, artist or None, title or None, catalog_number or None))
         
         subscription_id = cursor.lastrowid
@@ -5502,6 +5591,31 @@ def subscribe():
         conn.close()
         
         app.logger.info(f"New subscription: {email} - artist:{artist} title:{title} catalog:{catalog_number}")
+        
+        # Send email notification to admin
+        try:
+            admin_conn = get_db()
+            admin_cursor = admin_conn.cursor()
+            admin_cursor.execute('SELECT email FROM users WHERE role = "admin" AND email IS NOT NULL')
+            admins = admin_cursor.fetchall()
+            admin_conn.close()
+            
+            for admin in admins:
+                subject = f"New Record Alert Subscription: {email}"
+                body = f"""
+New subscription created!
+
+Email: {email}
+Artist: {artist or 'Any'}
+Title: {title or 'Any'}
+Catalog Number: {catalog_number or 'Any'}
+
+View all subscriptions in the admin panel:
+https://www.pigstylemusic.com/admin
+                """
+                send_email(admin['email'], subject, body, from_name="PigStyle Music Alerts")
+        except Exception as e:
+            app.logger.error(f"Error sending admin notification: {str(e)}")
         
         return jsonify({
             'status': 'success',
@@ -5513,34 +5627,320 @@ def subscribe():
         app.logger.error(f"Error creating subscription: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-@app.route('/api/subscriptions', methods=['GET'])
+
+
+@app.route('/api/subscriptions/<int:subscription_id>', methods=['PUT'])
 @login_required
 @role_required(['admin'])
-def get_subscriptions():
-    """Get all subscriptions (admin only)"""
+def update_subscription(subscription_id):
+    """Update a subscription - also supports marking as read via notified field"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if subscription exists
+        cursor.execute('SELECT id, email FROM email_subscriptions WHERE id = ?', (subscription_id,))
+        existing = cursor.fetchone()
+        if not existing:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Subscription not found'}), 404
+        
+        updates = []
+        params = []
+        
+        if 'email' in data:
+            email = data['email'].strip().lower()
+            if not email or '@' not in email or '.' not in email:
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'Valid email address required'}), 400
+            updates.append('email = ?')
+            params.append(email)
+        
+        if 'artist' in data:
+            updates.append('artist = ?')
+            params.append(data['artist'].strip() or None)
+        
+        if 'title' in data:
+            updates.append('title = ?')
+            params.append(data['title'].strip() or None)
+        
+        if 'catalog_number' in data:
+            updates.append('catalog_number = ?')
+            params.append(data['catalog_number'].strip() or None)
+        
+        if 'is_active' in data:
+            updates.append('is_active = ?')
+            params.append(1 if data['is_active'] else 0)
+        
+        # Support marking as read by setting notified = 1
+        if 'mark_read' in data:
+            updates.append('notified = ?')
+            params.append(1 if data['mark_read'] else 0)
+        
+        # Support marking as unread by setting notified = 0
+        if 'mark_unread' in data:
+            updates.append('notified = ?')
+            params.append(0 if data['mark_unread'] else 1)
+        
+        if not updates:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'No fields to update'}), 400
+        
+        updates.append('updated_at = CURRENT_TIMESTAMP')
+        params.append(subscription_id)
+        
+        cursor.execute(f'''
+            UPDATE email_subscriptions 
+            SET {', '.join(updates)}
+            WHERE id = ?
+        ''', params)
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Subscription updated successfully'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error updating subscription: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/subscriptions/<int:subscription_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def delete_subscription(subscription_id):
+    """Permanently delete a subscription"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if subscription exists
+        cursor.execute('SELECT id, email FROM email_subscriptions WHERE id = ?', (subscription_id,))
+        sub = cursor.fetchone()
+        
+        if not sub:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Subscription not found'}), 404
+        
+        # Delete the subscription
+        cursor.execute('DELETE FROM email_subscriptions WHERE id = ?', (subscription_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"Subscription deleted: {sub['email']} (ID: {subscription_id})")
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Subscription deleted successfully'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error deleting subscription: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/subscriptions/deactivate-all', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def deactivate_all_subscriptions():
+    """Deactivate all active subscriptions"""
     try:
         conn = get_db()
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT id, email, artist, title, catalog_number, created_at, is_active
-            FROM email_subscriptions
-            ORDER BY created_at DESC
+            UPDATE email_subscriptions 
+            SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+            WHERE is_active = 1
         ''')
         
-        subscriptions = cursor.fetchall()
+        affected = cursor.rowcount
+        conn.commit()
         conn.close()
         
         return jsonify({
             'status': 'success',
-            'subscriptions': [dict(sub) for sub in subscriptions],
-            'count': len(subscriptions)
+            'message': f'Deactivated {affected} subscriptions',
+            'count': affected
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error deactivating all subscriptions: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/subscriptions/notifications/count', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_unread_notification_count():
+    """Get count of unread subscription notifications"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT COUNT(*) as count 
+            FROM email_subscriptions 
+            WHERE notified = 0 AND is_active = 1
+        ''')
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'count': result['count'] if result else 0
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting notification count: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/subscriptions/notifications', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_notifications():
+    """Get all unread subscriptions (notified = 0)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                id,
+                email,
+                artist,
+                title,
+                catalog_number,
+                created_at,
+                notified
+            FROM email_subscriptions
+            WHERE notified = 0 AND is_active = 1
+            ORDER BY created_at DESC
+            LIMIT 100
+        ''')
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        notifications = []
+        for row in rows:
+            notifications.append({
+                'id': row['id'],
+                'subscription_id': row['id'],
+                'email': row['email'],
+                'artist': row['artist'],
+                'title': row['title'],
+                'catalog_number': row['catalog_number'],
+                'created_at': row['created_at'],
+                'is_read': row['notified'] == 1
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'notifications': notifications,
+            'count': len(notifications)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting notifications: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/subscriptions', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_subscriptions():
+    """Get all subscriptions with filtering and pagination"""
+    try:
+        search = request.args.get('search', '').strip()
+        status = request.args.get('status', 'all')
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        
+        # Filter by notified status (unread/read)
+        notified_filter = request.args.get('notified')  # '0' for unread, '1' for read, None for all
+        
+        offset = (page - 1) * per_page
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Build query with filters
+        query = '''
+            SELECT id, email, artist, title, catalog_number, created_at, is_active, notified
+            FROM email_subscriptions
+            WHERE 1=1
+        '''
+        params = []
+        
+        if search:
+            query += ''' AND (
+                email LIKE ? OR 
+                COALESCE(artist, '') LIKE ? OR 
+                COALESCE(title, '') LIKE ? OR 
+                COALESCE(catalog_number, '') LIKE ?
+            )'''
+            search_term = f'%{search}%'
+            params.extend([search_term, search_term, search_term, search_term])
+        
+        if status == 'active':
+            query += ' AND is_active = 1'
+        elif status == 'inactive':
+            query += ' AND is_active = 0'
+        
+        if notified_filter is not None:
+            query += ' AND notified = ?'
+            params.append(int(notified_filter))
+        
+        # Get total count
+        count_query = query.replace(
+            'SELECT id, email, artist, title, catalog_number, created_at, is_active, notified',
+            'SELECT COUNT(*) as total'
+        )
+        cursor.execute(count_query, params)
+        total = cursor.fetchone()['total']
+        
+        query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?'
+        params.extend([per_page, offset])
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        subscriptions = []
+        for row in rows:
+            sub = {
+                'id': row['id'],
+                'email': row['email'],
+                'artist': row['artist'],
+                'title': row['title'],
+                'catalog_number': row['catalog_number'],
+                'created_at': row['created_at'],
+                'is_active': bool(row['is_active']),
+                'notified': bool(row['notified']),
+                'is_new': row['notified'] == 0  # Not notified = new/unread
+            }
+            subscriptions.append(sub)
+        
+        return jsonify({
+            'status': 'success',
+            'subscriptions': subscriptions,
+            'total': total,
+            'page': page,
+            'per_page': per_page
         })
         
     except Exception as e:
         app.logger.error(f"Error getting subscriptions: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 @app.route('/api/subscriptions/<int:subscription_id>', methods=['DELETE'])
 def unsubscribe(subscription_id):

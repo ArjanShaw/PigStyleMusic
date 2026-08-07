@@ -103,7 +103,7 @@ const AppConfig = {
         
         // Price & Commission
         priceAdvice: '/api/price-advice',
-        priceEstimate: '/api/price-estimate-v3',  // ✅ UPDATED to new endpoint
+        priceEstimate: '/api/price-estimate-v3',
         commissionRate: '/api/commission-rate',
         
         // Consignment
@@ -124,7 +124,17 @@ const AppConfig = {
         
         // Stats & Health
         stats: '/stats',
-        health: '/health'
+        health: '/health',
+        
+        // ============================================================
+        // EMAIL SUBSCRIPTIONS (NEW)
+        // ============================================================
+        subscriptions: '/api/subscriptions',
+        subscribe: '/api/subscribe',
+        subscriptionById: (id) => `/api/subscriptions/${id}`,
+        subscriptionNotifications: '/api/subscriptions/notifications',
+        subscriptionNotificationCount: '/api/subscriptions/notifications/count',
+        subscriptionDeactivateAll: '/api/subscriptions/deactivate-all',
     },
     
     // API Request settings
@@ -417,6 +427,57 @@ const pigstyleAPI = {
             return text;
         }
         return text.substring(0, maxLength) + '...';
+    },
+    
+    // ============================================================
+    // EMAIL SUBSCRIPTION METHODS (NEW)
+    // ============================================================
+    
+    // Get all subscriptions
+    getSubscriptions(params = {}) {
+        return this.request('subscriptions', { params });
+    },
+    
+    // Create a new subscription
+    createSubscription(data) {
+        return this.request('subscribe', {
+            method: 'POST',
+            body: JSON.stringify(data)
+        });
+    },
+    
+    // Update a subscription
+    updateSubscription(id, data) {
+        return this.request('subscriptionById', {
+            method: 'PUT',
+            params: { id },
+            body: JSON.stringify(data)
+        });
+    },
+    
+    // Delete a subscription
+    deleteSubscription(id) {
+        return this.request('subscriptionById', {
+            method: 'DELETE',
+            params: { id }
+        });
+    },
+    
+    // Deactivate all subscriptions
+    deactivateAllSubscriptions() {
+        return this.request('subscriptionDeactivateAll', {
+            method: 'POST'
+        });
+    },
+    
+    // Get notification count (unread)
+    getNotificationCount() {
+        return this.request('subscriptionNotificationCount');
+    },
+    
+    // Get notifications (unread subscriptions)
+    getNotifications() {
+        return this.request('subscriptionNotifications');
     }
 };
 
@@ -707,6 +768,9 @@ const Auth = {
                             ${this.role === 'admin' ? `
                             <a href="/admin" class="dropdown-item">
                                 <i class="fas fa-cog"></i> Admin Panel
+                            </a>
+                            <a href="/item-management" class="dropdown-item">
+                                <i class="fas fa-boxes"></i> Item Management
                             </a>
                             <a href="/admin/accounting" class="dropdown-item">
                                 <i class="fas fa-calculator"></i> Accounting

@@ -36,10 +36,7 @@
     const addModeContainer = document.getElementById('mode-container-add');
     const scanModeContainer = document.getElementById('mode-container-scan');
     const discogsModeContainer = document.getElementById('mode-container-discogs');
-    const deleteModeContainer = document.getElementById('mode-container-delete');
-    const checkoutModeContainer = document.getElementById('mode-container-checkout');
     const discogsOrdersModeContainer = document.getElementById('mode-container-discogs_orders');
-    const refundModeContainer = document.getElementById('mode-container-refund');
 
     // ========== Scan Location Builder Elements ==========
     const scanGenreSelect = document.getElementById('scan-genre-select');
@@ -58,13 +55,6 @@
     const discogsStatusMessage = document.getElementById('discogs-status-message');
     const lastSeenCutoffDateInput = document.getElementById('last-seen-cutoff-date');
     const applyLastSeenFilterBtn = document.getElementById('apply-last-seen-filter');
-
-    // ========== Delete Mode Elements ==========
-    const deleteStatusFilter = document.getElementById('delete-status-filter');
-
-    // ========== Checkout Elements ==========
-    const checkoutShowSelectedBtn = document.getElementById('checkout-show-selected-btn');
-    const checkoutShowAllBtn = document.getElementById('checkout-show-all-btn');
 
     // ========== Discogs Orders Elements ==========
     const discogsOrderSelect = document.getElementById('discogs-order-select');
@@ -125,11 +115,6 @@
     let isRangeMode = false;
 
     let lastSubmittedLocation = localStorage.getItem('lastSubmittedLocation') || null;
-    let checkoutSelectedItems = [];
-    let checkoutViewMode = 'list';
-    let checkoutRemaining = 0;
-    let checkoutPaymentEntries = [];
-    let checkoutTotal = 0;
 
     let currentLocationRecords = [];
     let discogsFilteredRecords = [];
@@ -140,11 +125,6 @@
     let currentOrderItems = [];
     let selectedOrderId = null;
     let ordersStatusFilter = '';
-
-    let squareAvailable = false;
-    let squareCheckoutId = null;
-    let squarePollInterval = null;
-    let availableTerminals = [];
 
     let markupCurveChart = null;
     let markupDistributionChart = null;
@@ -179,10 +159,7 @@
         'add': addModeContainer,
         'scan': scanModeContainer,
         'discogs': discogsModeContainer,
-        'delete': deleteModeContainer,
-        'checkout': checkoutModeContainer,
-        'discogs_orders': discogsOrdersModeContainer,
-        'refund': refundModeContainer
+        'discogs_orders': discogsOrdersModeContainer
     };
 
     // ========== Helper Functions ==========
@@ -1867,140 +1844,6 @@
         }
     }
 
-    // ========== REFUND MODE ==========
-    async function processRefund() {
-        var selected = getSelectedRecords();
-        if (selected.length === 0) {
-            showStatus('No records selected. Please select a range using "from" and "to" buttons.', 'warning');
-            return;
-        }
-
-        var soldRecords = selected.filter(function(r) { return r.status_id === 3 || r.status_id === 4; });
-        if (soldRecords.length === 0) {
-            showStatus('No sold records selected. Only records with status "Sold" or "Sold on Discogs" can be refunded.', 'warning');
-            return;
-        }
-
-        if (soldRecords.length < selected.length) {
-            var nonSold = selected.length - soldRecords.length;
-            if (!confirm(nonSold + ' selected record(s) are not sold and will be skipped. Continue with ' + soldRecords.length + ' sold record(s)?')) {
-                return;
-            }
-        }
-
-        var totalAmount = soldRecords.reduce(function(sum, r) { return sum + (r.store_price || 0); }, 0);
-        showRefundModal(soldRecords, totalAmount);
-    }
-
-    function showRefundModal(records, totalAmount) {
-        var existingModal = document.getElementById('refund-modal');
-        if (existingModal) {
-            existingModal.remove();
-        }
-
-        var modal = document.createElement('div');
-        modal.id = 'refund-modal';
-        modal.className = 'modal-overlay';
-        modal.style.display = 'flex';
-        modal.innerHTML = '<div class="modal-content" style="max-width: 500px; width: 95%;"><div class="modal-header" style="background: #dc3545; color: white;"><h3 class="modal-title"><i class="fas fa-undo-alt"></i> Process Refund</h3><button class="modal-close" onclick="closeRefundModal()" style="color: white;">&times;</button></div><div class="modal-body"><p><strong>' + records.length + '</strong> record(s) selected for refund.</p><div style="margin-bottom: 15px; max-height: 150px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; font-size: 13px;">' + records.map(function(r) { return '<div>' + escapeHtml(r.artist) + ' - ' + escapeHtml(r.title) + ' (' + getStatusName(r.status_id) + ') - $' + (r.store_price || 0).toFixed(2) + '</div>'; }).join('') + '</div><div style="margin-bottom: 15px;"><label for="refund-amount" style="display:block; font-weight:500; margin-bottom:4px;">Refund Amount ($)</label><input type="number" id="refund-amount" class="form-control" step="0.01" min="0.01" value="' + totalAmount.toFixed(2) + '" style="width:100%; padding:8px; font-size:16px;"></div><div style="margin-bottom: 15px;"><label for="refund-method" style="display:block; font-weight:500; margin-bottom:4px;">Refund Method</label><select id="refund-method" class="form-control" style="width:100%; padding:8px;"><option value="cash">Cash</option><option value="square">Square</option><option value="discogs">Discogs</option></select></div><div style="margin-bottom: 15px;"><label for="refund-reason" style="display:block; font-weight:500; margin-bottom:4px;">Reason (optional)</label><input type="text" id="refund-reason" class="form-control" placeholder="e.g., Customer returned item" style="width:100%; padding:8px;"></div><div id="refund-status" style="margin-top:10px; display:none;"></div></div><div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;"><button class="btn btn-secondary" onclick="closeRefundModal()">Cancel</button><button class="btn btn-danger" id="refund-confirm-btn"><i class="fas fa-undo-alt"></i> Process Refund</button></div></div>';
-        document.body.appendChild(modal);
-
-        setTimeout(function() {
-            var amountInput = document.getElementById('refund-amount');
-            if (amountInput) amountInput.focus();
-        }, 200);
-
-        document.getElementById('refund-confirm-btn').addEventListener('click', function() {
-            confirmRefund(records);
-        });
-
-        document.getElementById('refund-amount').addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                document.getElementById('refund-confirm-btn').click();
-            }
-        });
-    }
-
-    function closeRefundModal() {
-        var modal = document.getElementById('refund-modal');
-        if (modal) {
-            modal.style.display = 'none';
-            modal.remove();
-        }
-    }
-
-    async function confirmRefund(records) {
-        var amountInput = document.getElementById('refund-amount');
-        var methodSelect = document.getElementById('refund-method');
-        var reasonInput = document.getElementById('refund-reason');
-        var statusDiv = document.getElementById('refund-status');
-        var confirmBtn = document.getElementById('refund-confirm-btn');
-
-        var amount = parseFloat(amountInput.value);
-        var method = methodSelect.value;
-        var reason = reasonInput.value.trim() || 'Customer refund';
-
-        if (isNaN(amount) || amount <= 0) {
-            showRefundStatus('Please enter a valid refund amount.', 'error');
-            return;
-        }
-
-        var recordSummary = records.map(function(r) { return r.artist + ' - ' + r.title; }).join('\n');
-        if (!confirm('Process refund for ' + records.length + ' record(s)?\n\n' + recordSummary + '\n\nAmount: $' + amount.toFixed(2) + '\nMethod: ' + method + '\nReason: ' + reason + '\n\n⚠️ Records will be DELETED from the database.')) {
-            return;
-        }
-
-        confirmBtn.disabled = true;
-        confirmBtn.textContent = 'Processing...';
-        showRefundStatus('⏳ Processing refund...', 'info');
-
-        try {
-            var recordIds = records.map(function(r) { return r.id; });
-            var result = await apiRequest('POST', '/api/refund/process', {
-                record_ids: recordIds,
-                amount: amount,
-                method: method,
-                reason: reason
-            });
-
-            if (result.status === 'success') {
-                showRefundStatus('✅ ' + result.message, 'success');
-                playSound('success');
-                var refundedIds = new Set(recordIds);
-                filteredRecords = filteredRecords.filter(function(r) { return !refundedIds.has(r.id); });
-                allRecords = allRecords.filter(function(r) { return !refundedIds.has(r.id); });
-                totalRecords = filteredRecords.length;
-                currentPage = 1;
-                renderPagination();
-                renderTablePage();
-                updateSelectionCount();
-                cancelRangeSelection();
-                setTimeout(closeRefundModal, 1500);
-            } else {
-                showRefundStatus('❌ Error: ' + (result.error || 'Unknown error'), 'error');
-                playSound('error');
-                confirmBtn.disabled = false;
-                confirmBtn.textContent = 'Process Refund';
-            }
-        } catch (error) {
-            showRefundStatus('❌ Error: ' + error.message, 'error');
-            playSound('error');
-            confirmBtn.disabled = false;
-            confirmBtn.textContent = 'Process Refund';
-        }
-    }
-
-    function showRefundStatus(message, type) {
-        var el = document.getElementById('refund-status');
-        if (!el) return;
-        type = type || 'info';
-        var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-        el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
-        el.className = 'status-message status-' + type;
-        el.style.display = 'block';
-    }
-
     // ========== RENDER TABLE PAGE ==========
     function renderTablePage() {
         console.log('🔄 renderTablePage() – mode: ' + currentSearchMode + ', records: ' + filteredRecords.length);
@@ -2037,14 +1880,8 @@
             theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Barcode</th><th>Last Seen</th></tr>';
         } else if (currentSearchMode === 'discogs') {
             theadHtml = '<tr><th style="width:60px;">Range</th><th>Image</th><th>ID</th><th>Artist</th><th>Title</th><th>Catalog #</th><th>Media Cond</th><th>Sleeve Cond</th><th>Store Price</th><th>Discogs Price</th><th>Markup %</th><th>Location</th><th>Post</th></tr>';
-        } else if (currentSearchMode === 'delete') {
-            theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Status</th></tr>';
-        } else if (currentSearchMode === 'checkout') {
-            theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Barcode</th><th>Action</th></tr>';
         } else if (currentSearchMode === 'discogs_orders') {
             theadHtml = '<tr><th>#</th><th>Artist</th><th>Title</th><th>Catalog</th><th>Barcode</th><th>Price</th><th>Condition</th><th>PigStyle ID</th><th>Status</th><th>Action</th></tr>';
-        } else if (currentSearchMode === 'refund') {
-            theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Sale Price</th><th>Status</th><th>Date Sold</th></tr>';
         }
 
         recordsTableHead.innerHTML = theadHtml;
@@ -2062,26 +1899,15 @@
             }
             if (currentSearchMode === 'scan') msg = 'Scan barcodes to add records.';
             if (currentSearchMode === 'discogs') msg = 'No records found. Check filters or add records in "Add Record" mode.';
-            if (currentSearchMode === 'delete') msg = 'No records to delete.';
-            if (currentSearchMode === 'refund') msg = 'No sold records found. Search by artist, title, or barcode to find sold records.';
-            if (currentSearchMode === 'checkout') {
-                if (checkoutViewMode === 'list') {
-                    msg = checkoutSelectedItems.length === 0 ? 'No records in checkout. Search to add records.' : 'No records in checkout.';
-                } else {
-                    msg = 'No records match your search. Try a different term.';
-                }
-            }
             if (currentSearchMode === 'discogs_orders') {
                 if (ordersList.length === 0) msg = 'No Discogs orders found. Click Refresh Orders.';
                 else if (!selectedOrderId) msg = 'Select an order from the dropdown.';
                 else msg = 'This order has no items.';
             }
             var colCount = currentSearchMode === 'discogs_orders' ? 10 :
-                             (currentSearchMode === 'refund' ? 7 :
                              (currentSearchMode === 'add' ? (currentMode === 'search' ? 11 : (selectedPurchaseId ? 11 : 10)) :
                              (currentSearchMode === 'scan' ? 7 :
-                             (currentSearchMode === 'discogs' ? 13 :
-                             (currentSearchMode === 'delete' ? 6 : 7)))));
+                             (currentSearchMode === 'discogs' ? 13 : 7)));
             tbodyHtml = '<tr><td colspan="' + colCount + '" style="text-align:center;padding:40px;">' + msg + '</td></tr>';
         } else {
             for (var idx = 0; idx < pageRecords.length; idx++) {
@@ -2232,48 +2058,6 @@
                     rowHtml += '<td class="markup-cell ' + markupClass + '">' + displayMarkup + '</td>';
                     rowHtml += '<td title="' + escapeHtml(location) + '" style="font-size: 12px;">' + escapeHtml(location.length > 30 ? location.substring(0,27)+'...' : location) + '</td>';
                     rowHtml += '<td style="text-align: center;">' + (discogsPrice ? '<button class="post-single-btn" data-record-id="' + record.id + '" data-artist="' + escapeHtml(artist) + '" data-title="' + escapeHtml(title) + '" data-price="' + record.store_price + '" data-discogs-price="' + discogsPrice + '" data-markup-percent="' + markupPercent + '" data-media-condition="' + mediaCond + '" data-sleeve-condition="' + sleeveCond + '" data-catalog="' + escapeHtml(catalog) + '" data-location="' + escapeHtml(location) + '" data-notes="' + escapeHtml(record.notes || '') + '"><i class="fab fa-discogs"></i> Post</button>' : '<span style="color: #999;">—</span>') + '</td>';
-                } else if (currentSearchMode === 'delete') {
-                    var id = record.id;
-                    var artist = record.artist || 'Unknown';
-                    var title = record.title || 'Unknown';
-                    var price = record.store_price ? '$' + record.store_price.toFixed(2) : 'N/A';
-                    var statusName = getStatusName(record.status_id);
-                    var statusClass = getStatusClass(record.status_id);
-                    rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
-                    rowHtml += '<td>' + id + '</td>';
-                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
-                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
-                    rowHtml += '<td>' + price + '</td>';
-                    rowHtml += '<td><span class="status-badge ' + statusClass + '">' + statusName + '</span></td>';
-                } else if (currentSearchMode === 'checkout') {
-                    var id = record.id;
-                    var artist = record.artist || 'Unknown';
-                    var title = record.title || 'Unknown';
-                    var price = record.store_price ? '$' + record.store_price.toFixed(2) : 'N/A';
-                    var barcode = record.barcode || record.id;
-                    var inSelected = checkoutSelectedItems.some(function(r) { return r.id === record.id; });
-                    
-                    var actionHtml;
-                    if (checkoutViewMode === 'list') {
-                        actionHtml = '<button class="btn btn-sm btn-danger remove-checkout-item" data-record-id="' + record.id + '"><i class="fas fa-minus"></i> Remove</button>';
-                    } else {
-                        if (inSelected) {
-                            actionHtml = '<button class="btn btn-sm btn-danger remove-checkout-item" data-record-id="' + record.id + '"><i class="fas fa-minus"></i> Remove</button>';
-                        } else {
-                            actionHtml = '<button class="btn btn-sm btn-success add-checkout-item" data-record-id="' + record.id + '"><i class="fas fa-plus"></i> Add</button>';
-                        }
-                    }
-                    
-                    var isCustom = record.isCustom === true;
-                    var customBadge = isCustom ? '<span class="status-badge" style="background:#17a2b8; color:white; margin-left:5px;">Custom</span>' : '';
-                    
-                    rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
-                    rowHtml += '<td>' + id + customBadge + '</td>';
-                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
-                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
-                    rowHtml += '<td>' + price + '</td>';
-                    rowHtml += '<td><span class="barcode-value">' + barcode + '</span></td>';
-                    rowHtml += '<td>' + actionHtml + '</td>';
                 } else if (currentSearchMode === 'discogs_orders') {
                     var orderItem = record;
                     var idxNum = globalIndex + 1;
@@ -2307,22 +2091,6 @@
                     rowHtml += '<td><input type="text" class="pigstyle-id-input" value="' + escapeHtml(pigstyleId) + '" placeholder="ID or barcode" style="width:100px; padding:4px; border:1px solid #ddd; border-radius:4px;"><button class="btn btn-sm btn-secondary scan-pigstyle-btn" style="padding:2px 6px; font-size:12px;"><i class="fas fa-qrcode"></i></button></td>';
                     rowHtml += '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>';
                     rowHtml += '<td>' + actionButton + '</td>';
-                } else if (currentSearchMode === 'refund') {
-                    var id = record.id;
-                    var artist = record.artist || 'Unknown';
-                    var title = record.title || 'Unknown';
-                    var price = record.store_price ? '$' + record.store_price.toFixed(2) : 'N/A';
-                    var statusName = getStatusName(record.status_id);
-                    var statusClass = getStatusClass(record.status_id);
-                    var dateSold = record.date_sold ? new Date(record.date_sold).toLocaleDateString() : 'Unknown';
-                    
-                    rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
-                    rowHtml += '<td>' + id + '</td>';
-                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
-                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
-                    rowHtml += '<td>' + price + '</td>';
-                    rowHtml += '<td><span class="status-badge ' + statusClass + '">' + statusName + '</span></td>';
-                    rowHtml += '<td>' + dateSold + '</td>';
                 }
 
                 rowHtml += '</tr>';
@@ -2393,22 +2161,6 @@
                     var location = this.dataset.location;
                     var notes = this.dataset.notes;
                     postSingleRecordToDiscogs(recordId, artist, title, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalog, location, notes);
-                });
-            });
-        }
-
-        // Checkout add/remove
-        if (currentSearchMode === 'checkout') {
-            document.querySelectorAll('.add-checkout-item').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    var recordId = parseInt(this.dataset.recordId);
-                    addToCheckout(recordId);
-                });
-            });
-            document.querySelectorAll('.remove-checkout-item').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    var recordId = parseInt(this.dataset.recordId);
-                    removeFromCheckout(recordId);
                 });
             });
         }
@@ -2748,138 +2500,6 @@
         updateScanLocationPreview();
     }
 
-    // ========== Custom Item Modal ==========
-    var customItemModal = null;
-
-    function showCustomItemModal() {
-        if (customItemModal) {
-            customItemModal.remove();
-            customItemModal = null;
-        }
-
-        customItemModal = document.createElement('div');
-        customItemModal.id = 'custom-item-modal';
-        customItemModal.className = 'modal-overlay';
-        customItemModal.style.display = 'flex';
-        customItemModal.innerHTML = '<div class="modal-content" style="max-width: 400px; width: 95%;"><div class="modal-header" style="background: #17a2b8; color: white;"><h3 class="modal-title"><i class="fas fa-plus-circle"></i> Add Custom Item</h3><button class="modal-close" onclick="closeCustomItemModal()" style="color: white; font-size: 28px; background: none; border: none; cursor: pointer;">&times;</button></div><div class="modal-body"><div style="margin-bottom: 15px;"><label for="custom-item-desc" style="display:block; font-weight:500; margin-bottom:4px;">Description *</label><input type="text" id="custom-item-desc" class="form-control" placeholder="e.g., Merchandise, Gift Card, etc." style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;"></div><div style="margin-bottom: 15px;"><label for="custom-item-price" style="display:block; font-weight:500; margin-bottom:4px;">Price ($) *</label><input type="number" id="custom-item-price" class="form-control" step="0.01" min="0.01" placeholder="0.00" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;"></div><div id="custom-item-status" style="margin-top:10px; display:none;"></div></div><div class="modal-footer" style="display:flex; gap:10px; justify-content:flex-end; padding:15px 20px; border-top:1px solid #ddd;"><button class="btn btn-secondary" onclick="closeCustomItemModal()" style="padding:8px 16px; border:none; border-radius:4px; cursor:pointer; background:#6c757d; color:white;">Cancel</button><button class="btn btn-success" id="custom-item-add-btn" style="padding:8px 16px; border:none; border-radius:4px; cursor:pointer; background:#28a745; color:white;"><i class="fas fa-check"></i> Add to Checkout</button></div></div>';
-        document.body.appendChild(customItemModal);
-
-        setTimeout(function() {
-            var descInput = document.getElementById('custom-item-desc');
-            if (descInput) descInput.focus();
-        }, 100);
-
-        document.getElementById('custom-item-add-btn').addEventListener('click', function() {
-            addCustomItemFromModal();
-        });
-
-        document.getElementById('custom-item-desc').addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                document.getElementById('custom-item-price').focus();
-            }
-        });
-        document.getElementById('custom-item-price').addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                addCustomItemFromModal();
-            }
-        });
-
-        customItemModal.addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeCustomItemModal();
-            }
-        });
-    }
-
-    function closeCustomItemModal() {
-        if (customItemModal) {
-            customItemModal.remove();
-            customItemModal = null;
-        }
-    }
-
-    function addCustomItemFromModal() {
-        var descInput = document.getElementById('custom-item-desc');
-        var priceInput = document.getElementById('custom-item-price');
-        var statusDiv = document.getElementById('custom-item-status');
-
-        function showStatus(msg, type) {
-            if (statusDiv) {
-                statusDiv.textContent = msg;
-                statusDiv.className = 'status-message status-' + type;
-                statusDiv.style.display = 'block';
-            } else {
-                showStatus(msg, type);
-            }
-        }
-
-        var desc = descInput.value.trim();
-        var price = parseFloat(priceInput.value);
-
-        if (!desc) {
-            showStatus('Please enter a description.', 'warning');
-            return;
-        }
-        if (isNaN(price) || price <= 0) {
-            showStatus('Please enter a valid price greater than 0.', 'warning');
-            return;
-        }
-
-        var customItem = {
-            id: -Date.now(),
-            artist: 'Custom',
-            title: desc,
-            store_price: price,
-            barcode: 'CUSTOM',
-            isCustom: true
-        };
-
-        checkoutSelectedItems.push(customItem);
-        showStatus('Added custom item: "' + desc + '" for $' + price.toFixed(2), 'success');
-        closeCustomItemModal();
-
-        checkoutViewMode = 'list';
-        filteredRecords = checkoutSelectedItems.slice();
-        totalRecords = filteredRecords.length;
-        currentPage = 1;
-        renderPagination();
-        renderTablePage();
-        updateSelectionCount();
-        if (checkoutShowSelectedBtn) {
-            checkoutShowSelectedBtn.textContent = 'Checkout List (' + checkoutSelectedItems.length + ')';
-        }
-    }
-
-    // ========== Bernie Item ==========
-    function addBernieItem() {
-        var bernieItem = {
-            id: -Date.now() - 1,
-            artist: 'Bernie',
-            title: 'Bern It',
-            store_price: 0.99,
-            barcode: null,
-            isCustom: true,
-            isBernie: true
-        };
-
-        checkoutSelectedItems.push(bernieItem);
-        showStatus('Added Bernie donation: "Bern It" for $0.99', 'success');
-        playSound('success');
-
-        checkoutViewMode = 'list';
-        filteredRecords = checkoutSelectedItems.slice();
-        totalRecords = filteredRecords.length;
-        currentPage = 1;
-        renderPagination();
-        renderTablePage();
-        updateSelectionCount();
-        if (checkoutShowSelectedBtn) {
-            checkoutShowSelectedBtn.textContent = 'Checkout List (' + checkoutSelectedItems.length + ')';
-        }
-    }
-
     // ========== Range Selection ==========
     function startRangeFrom(index) {
         console.log('🔵 startRangeFrom: index=' + index);
@@ -3014,17 +2634,8 @@
         } else if (mode === 'scan') {
             performScanSearch(term);
             return;
-        } else if (mode === 'refund') {
-            performRefundSearch(term);
-            return;
         } else if (mode === 'discogs') {
             performDiscogsFilterSearch(term);
-            return;
-        } else if (mode === 'delete') {
-            performDeleteSearch(term);
-            return;
-        } else if (mode === 'checkout') {
-            performLocalSearch(term);
             return;
         } else if (mode === 'discogs_orders') {
             performDiscogsOrdersSearch(term);
@@ -3032,70 +2643,6 @@
         }
 
         showStatus('No search available for this mode', 'info');
-    }
-
-    // ========== Unified Local Search (Delete & Checkout) ==========
-    function performLocalSearch(term) {
-        var termLower = term.trim().toLowerCase();
-        var isNumeric = /^\d+$/.test(termLower);
-
-        var source = [];
-        if (currentSearchMode === 'checkout') {
-            source = allRecords;
-        } else if (currentSearchMode === 'delete') {
-            source = allRecords;
-        }
-
-        if (!source || source.length === 0) {
-            showStatus('No records loaded. Please wait or refresh.', 'warning');
-            return;
-        }
-
-        var filtered;
-        if (isNumeric) {
-            var numericTerm = termLower;
-            filtered = source.filter(function(r) {
-                var idMatch = r.id && r.id.toString() === numericTerm;
-                var barcodeMatch = r.barcode && r.barcode.trim().toLowerCase() === numericTerm;
-                return idMatch || barcodeMatch;
-            });
-            if (filtered.length === 0) {
-                filtered = source.filter(function(r) {
-                    var artistMatch = r.artist && r.artist.toLowerCase().includes(numericTerm);
-                    var titleMatch = r.title && r.title.toLowerCase().includes(numericTerm);
-                    var catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(numericTerm);
-                    return artistMatch || titleMatch || catalogMatch;
-                });
-            }
-        } else {
-            filtered = source.filter(function(r) {
-                var artistMatch = r.artist && r.artist.toLowerCase().includes(termLower);
-                var titleMatch = r.title && r.title.toLowerCase().includes(termLower);
-                var catalogMatch = r.catalog_number && r.catalog_number.toLowerCase().includes(termLower);
-                var barcodeMatch = r.barcode && r.barcode.trim().toLowerCase().includes(termLower);
-                var idMatch = r.id && r.id.toString().includes(termLower);
-                return artistMatch || titleMatch || catalogMatch || barcodeMatch || idMatch;
-            });
-        }
-
-        if (currentSearchMode === 'checkout') {
-            checkoutViewMode = 'search';
-            filteredRecords = filtered;
-            totalRecords = filtered.length;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showStatus('Found ' + totalRecords + ' records matching "' + term + '"', 'info');
-        } else if (currentSearchMode === 'delete') {
-            filteredRecords = filtered;
-            totalRecords = filtered.length;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showStatus('Found ' + totalRecords + ' records matching "' + term + '"', 'info');
-        }
-
-        updateSelectionCount();
     }
 
     // ========== SCAN MODE with Duplicate Scoring ==========
@@ -3381,35 +2928,6 @@
         }
     }
 
-    async function performRefundSearch(term) {
-        try {
-            var data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
-            if (!data.records || !data.records.length) {
-                playSound('error');
-                showStatus('No sold record found with that search term', 'error');
-                return;
-            }
-            var soldRecords = data.records.filter(function(r) { return r.status_id === 3 || r.status_id === 4; });
-            if (soldRecords.length === 0) {
-                playSound('error');
-                showStatus('No sold records found matching that term', 'error');
-                return;
-            }
-            filteredRecords = soldRecords;
-            totalRecords = filteredRecords.length;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            playSound('success');
-            showStatus('Found ' + totalRecords + ' sold record(s)', 'success');
-            updateSelectionCount();
-        } catch (error) {
-            playSound('error');
-            showStatus('Error searching: ' + error.message, 'error');
-            console.error('Refund search error:', error);
-        }
-    }
-
     function performDiscogsFilterSearch(term) {
         var termLower = term.toLowerCase();
         var source = currentLocationRecords.length > 0 ? currentLocationRecords : allRecords;
@@ -3443,26 +2961,8 @@
             }
         } else if (currentSearchMode === 'scan') {
             // keep list
-        } else if (currentSearchMode === 'refund') {
-            filteredRecords = [];
-            totalRecords = 0;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showStatus('Search cleared', 'info');
         } else if (currentSearchMode === 'discogs') {
             refreshDiscogsRecords();
-        } else if (currentSearchMode === 'delete') {
-            applyDeleteFilter();
-        } else if (currentSearchMode === 'checkout') {
-            checkoutViewMode = 'list';
-            filteredRecords = checkoutSelectedItems.slice();
-            totalRecords = filteredRecords.length;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showStatus('Showing checkout list', 'info');
-            updateSelectionCount();
         } else if (currentSearchMode === 'discogs_orders') {
             if (discogsOrderSelect) discogsOrderSelect.value = '';
             selectedOrderId = null;
@@ -4198,41 +3698,6 @@
         showDiscogsPostModal();
     }
 
-    // ========== Delete Selected ==========
-    async function deleteSelected() {
-        var records = getSelectedRecords();
-        console.log('🗑️ deleteSelected: selected ' + records.length + ' records out of ' + filteredRecords.length + ' total filtered');
-        if (records.length === 0) {
-            showStatus('No records selected. Please select a range using "from" and "to" buttons.', 'warning');
-            return;
-        }
-        if (!confirm('Delete ' + records.length + ' record(s) permanently? This cannot be undone.')) {
-            return;
-        }
-        var deleted = 0;
-        for (var i = 0; i < records.length; i++) {
-            var record = records[i];
-            try {
-                await apiRequest('DELETE', '/records/' + record.id);
-                deleted++;
-            } catch (e) {
-                console.error('Delete failed for record', record.id, e);
-            }
-        }
-        showStatus('Deleted ' + deleted + ' of ' + records.length + ' records', 'success');
-        await loadRecords({ statusIds: [1,2], mode: 'delete' });
-        cancelRangeSelection();
-    }
-
-    // ========== Apply Delete Filter ==========
-    function applyDeleteFilter() {
-        var statusFilter = deleteStatusFilter ? deleteStatusFilter.value : '1,2';
-        var searchTerm = searchInput.value.trim().toLowerCase();
-        var statuses = statusFilter.split(',').map(function(s) { return parseInt(s.trim()); }).filter(function(s) { return !isNaN(s); });
-        if (statuses.length === 0) statuses = [1,2];
-        loadRecords({ statusIds: statuses, mode: 'delete', search: searchTerm });
-    }
-
     // ========== Print Price Tags ==========
     function printPriceTags() {
         var records = [];
@@ -4252,870 +3717,6 @@
         generatePDF(records);
     }
 
-    // ========== Checkout functions ==========
-    function addToCheckout(recordId) {
-        console.log('🛒 addToCheckout called with recordId: ' + recordId);
-        var record = allRecords.find(function(r) { return r.id === recordId; });
-        if (!record) {
-            console.warn('🛒 Record ' + recordId + ' not found in allRecords');
-            return;
-        }
-        console.log('🛒 Found record: ' + record.artist + ' - ' + record.title);
-        
-        if (!checkoutSelectedItems.some(function(r) { return r.id === recordId; })) {
-            checkoutSelectedItems.push(record);
-            console.log('🛒 Added to checkout. Now ' + checkoutSelectedItems.length + ' items.');
-            showStatus('Added "' + record.artist + ' - ' + record.title + '" to checkout', 'success');
-            checkoutViewMode = 'list';
-            filteredRecords = checkoutSelectedItems.slice();
-            totalRecords = filteredRecords.length;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            updateSelectionCount();
-            if (checkoutShowSelectedBtn) {
-                checkoutShowSelectedBtn.textContent = 'Checkout List (' + checkoutSelectedItems.length + ')';
-            }
-        } else {
-            console.log('🛒 Record ' + recordId + ' already in checkout');
-            showStatus('Record already in checkout list', 'info');
-        }
-    }
-
-    function removeFromCheckout(recordId) {
-        console.log('🛒 removeFromCheckout called with recordId: ' + recordId);
-        var index = checkoutSelectedItems.findIndex(function(r) { return r.id === recordId; });
-        if (index !== -1) {
-            var removed = checkoutSelectedItems.splice(index, 1)[0];
-            console.log('🛒 Removed ' + removed.artist + ' - ' + removed.title + ' from checkout. Now ' + checkoutSelectedItems.length + ' items.');
-            showStatus('Removed "' + removed.artist + ' - ' + removed.title + '" from checkout', 'info');
-            filteredRecords = checkoutSelectedItems.slice();
-            totalRecords = filteredRecords.length;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            updateSelectionCount();
-            if (checkoutShowSelectedBtn) {
-                checkoutShowSelectedBtn.textContent = 'Checkout List (' + checkoutSelectedItems.length + ')';
-            }
-            if (checkoutSelectedItems.length === 0) {
-                filteredRecords = [];
-                totalRecords = 0;
-                renderPagination();
-                renderTablePage();
-            }
-        } else {
-            console.warn('🛒 Record ' + recordId + ' not found in checkout');
-        }
-    }
-
-    // ========== Square Payment Processing ==========
-    async function checkSquareAvailability() {
-        try {
-            var response = await fetch(window.AppConfig.baseUrl + '/api/square/terminals', {
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            if (!response.ok) throw new Error('Failed to fetch terminals');
-            var data = await response.json();
-            squareAvailable = data.terminals && data.terminals.length > 0;
-            availableTerminals = data.terminals || [];
-            console.log('📟 Square terminals available: ' + squareAvailable + ', terminals:', availableTerminals);
-        } catch (error) {
-            console.warn('Square not available:', error);
-            squareAvailable = false;
-            availableTerminals = [];
-        }
-        return squareAvailable;
-    }
-
-    async function processSquarePayment() {
-        var statusDiv = document.getElementById('checkout-square-status');
-        var completeBtn = document.getElementById('checkout-complete-payment');
-        if (!statusDiv) return;
-
-        completeBtn.disabled = true;
-        completeBtn.textContent = 'Processing...';
-
-        statusDiv.style.display = 'block';
-        statusDiv.className = 'status-message status-info';
-        statusDiv.textContent = '⏳ Sending payment request to Square Terminal...';
-
-        try {
-            if (!squareAvailable || availableTerminals.length === 0) {
-                await checkSquareAvailability();
-                if (!squareAvailable || availableTerminals.length === 0) {
-                    throw new Error('No Square Terminal available. Please use Cash or Gift Card.');
-                }
-            }
-
-            var deviceId = availableTerminals[0].id;
-            console.log('Using Square Terminal device ID:', deviceId);
-
-            var records = checkoutSelectedItems;
-            var totalCents = Math.round(checkoutTotal * 100);
-            var recordIds = records.map(function(r) { return r.id; });
-            var titles = records.map(function(r) { return r.artist + ' - ' + r.title; });
-
-            var squareAmount = checkoutTotal;
-            addPaymentEntry('Card (Square)', squareAmount);
-
-            var response = await fetch(window.AppConfig.baseUrl + '/api/square/terminal/checkout', {
-                method: 'POST',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    amount_cents: totalCents,
-                    record_ids: recordIds,
-                    record_titles: titles,
-                    reference_id: generateOrderId(),
-                    device_id: deviceId
-                })
-            });
-
-            var data = await response.json();
-            if (data.status !== 'success') {
-                if (checkoutPaymentEntries.length > 0) {
-                    var lastEntry = checkoutPaymentEntries[checkoutPaymentEntries.length - 1];
-                    if (lastEntry.method === 'Card (Square)') {
-                        checkoutPaymentEntries.pop();
-                        checkoutRemaining += lastEntry.amount;
-                        document.getElementById('checkout-remaining').textContent = checkoutRemaining.toFixed(2);
-                        renderCheckoutEntries();
-                        updateCheckoutCompleteButton();
-                    }
-                }
-                throw new Error(data.message || 'Failed to create Square checkout');
-            }
-
-            var checkout = data.checkout;
-            squareCheckoutId = checkout.id;
-
-            statusDiv.textContent = '💳 Payment request sent to POS. Waiting for customer to complete payment...';
-            statusDiv.className = 'status-message status-info';
-
-            startPollingSquareStatus(checkout.id);
-
-        } catch (error) {
-            console.error('Square checkout error:', error);
-            statusDiv.textContent = '❌ Error: ' + error.message;
-            statusDiv.className = 'status-message status-error';
-            completeBtn.disabled = false;
-            completeBtn.textContent = 'Complete Payment';
-        }
-    }
-
-    function startPollingSquareStatus(checkoutId) {
-        if (squarePollInterval) {
-            clearInterval(squarePollInterval);
-        }
-
-        var statusDiv = document.getElementById('checkout-square-status');
-        var attempts = 0;
-        var maxAttempts = 60;
-
-        squarePollInterval = setInterval(async function() {
-            attempts++;
-            try {
-                var response = await fetch(window.AppConfig.baseUrl + '/api/square/terminal/checkout/' + checkoutId + '/status', {
-                    credentials: 'include',
-                    headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-                });
-                var data = await response.json();
-                if (data.status !== 'success') {
-                    return;
-                }
-
-                var checkout = data.checkout;
-                var status = checkout.status;
-
-                if (status === 'COMPLETED') {
-                    clearInterval(squarePollInterval);
-                    squarePollInterval = null;
-                    statusDiv.textContent = '✅ Payment completed successfully!';
-                    statusDiv.className = 'status-message status-success';
-                    await completeCheckout();
-                    setTimeout(function() {
-                        var modal = document.getElementById('checkout-payment-modal');
-                        if (modal) modal.style.display = 'none';
-                    }, 1500);
-                } else if (status === 'CANCELED' || status === 'FAILED') {
-                    clearInterval(squarePollInterval);
-                    squarePollInterval = null;
-                    statusDiv.textContent = '❌ Payment ' + status.toLowerCase() + '. Please try again.';
-                    statusDiv.className = 'status-message status-error';
-                    var completeBtn = document.getElementById('checkout-complete-payment');
-                    completeBtn.disabled = false;
-                    completeBtn.textContent = 'Complete Payment';
-                } else if (status === 'PENDING' || status === 'IN_PROGRESS') {
-                    statusDiv.textContent = '⏳ Waiting for payment... (' + attempts + 's)';
-                    statusDiv.className = 'status-message status-info';
-                }
-
-                if (attempts >= maxAttempts) {
-                    clearInterval(squarePollInterval);
-                    squarePollInterval = null;
-                    statusDiv.textContent = '⏰ Payment timed out. Please try again.';
-                    statusDiv.className = 'status-message status-warning';
-                    var completeBtn = document.getElementById('checkout-complete-payment');
-                    completeBtn.disabled = false;
-                    completeBtn.textContent = 'Complete Payment';
-                }
-
-            } catch (error) {
-                console.warn('Polling error:', error);
-            }
-        }, 2000);
-    }
-
-    // ========== Complete Checkout with Sale Recording ==========
-    async function completeCheckout() {
-        console.log('🛒 completeCheckout called');
-        console.log('🛒 checkoutRemaining: ' + checkoutRemaining);
-        console.log('🛒 checkoutSelectedItems length: ' + checkoutSelectedItems.length);
-        
-        if (checkoutRemaining > 0.01) {
-            console.log('🛒 Remaining balance not covered');
-            showCheckoutStatus('Remaining balance not covered', 'error');
-            return;
-        }
-
-        var selected = checkoutSelectedItems;
-        if (selected.length === 0) {
-            console.log('🛒 No items in checkout');
-            return;
-        }
-        console.log('🛒 Processing ' + selected.length + ' items');
-
-        var today = getLocalMSTDate();
-        var success = 0;
-        var bernieTotal = 0;
-        var consignorTransactions = [];
-
-        var regularRecords = [];
-        var bernieItems = [];
-        var consignorRecords = [];
-
-        for (var i = 0; i < selected.length; i++) {
-            var record = selected[i];
-            if (record.isBernie === true) {
-                bernieItems.push(record);
-            } else if (record.isCustom === true) {
-                // Skip other custom items
-            } else if (record.consignor_id && record.consignor_id !== 1 && record.consignor_id !== null) {
-                consignorRecords.push(record);
-            } else {
-                regularRecords.push(record);
-            }
-        }
-
-        bernieTotal = bernieItems.reduce(function(sum, r) { return sum + (r.store_price || 0); }, 0);
-        console.log('🛒 Bernie total: ' + bernieTotal);
-        console.log('🛒 Regular records: ' + regularRecords.length);
-        console.log('🛒 Consignor records: ' + consignorRecords.length);
-
-        var orderId = generateOrderId();
-        var totalAmount = 0;
-
-        var paymentMethod = checkoutPaymentEntries.length > 0 ? checkoutPaymentEntries[0].method : 'Cash';
-        var paymentMethodMap = {
-            'Cash': 'cash',
-            'Card (Square)': 'square',
-            'Gift Card': 'giftcard',
-            'Store Credit': 'store_credit'
-        };
-        var salePaymentMethod = paymentMethodMap[paymentMethod] || 'cash';
-        
-        for (var i = 0; i < selected.length; i++) {
-            totalAmount += (selected[i].store_price || 0);
-        }
-
-        var saleItems = selected.map(function(item) {
-            return {
-                id: item.id,
-                artist: item.artist || 'Custom',
-                title: item.title || 'Item',
-                price: item.store_price || 0,
-                isCustom: item.isCustom || false,
-                isBernie: item.isBernie || false,
-                consignor_id: item.consignor_id || null
-            };
-        });
-
-        try {
-            console.log('🛒 Creating sale journal entry for order:', orderId, 'total:', totalAmount);
-            var saleResult = await apiRequest('POST', '/api/accounting/sale', {
-                order_id: orderId,
-                payment_method: salePaymentMethod,
-                total_amount: totalAmount,
-                items: saleItems,
-                transaction_date: today
-            });
-            if (saleResult.status === 'success') {
-                console.log('✅ Sale journal entry created:', saleResult.entry_id);
-            } else {
-                console.warn('⚠️ Failed to create sale journal entry:', saleResult.error);
-            }
-        } catch (err) {
-            console.error('❌ Error creating sale journal entry:', err);
-        }
-
-        for (var i = 0; i < regularRecords.length; i++) {
-            var record = regularRecords[i];
-            try {
-                await apiRequest('PUT', '/records/' + record.id, {
-                    status_id: 3,
-                    date_sold: today,
-                    actual_sale_price: record.store_price
-                });
-                success++;
-            } catch (err) {
-                console.error('Failed to update record', record.id, err);
-            }
-        }
-
-        for (var i = 0; i < consignorRecords.length; i++) {
-            var record = consignorRecords[i];
-            try {
-                var consignorName = 'Unknown Consignor';
-                try {
-                    var userRes = await apiRequest('GET', '/users/' + record.consignor_id);
-                    if (userRes && userRes.id) {
-                        consignorName = userRes.full_name || userRes.username || 'Consignor-' + record.consignor_id;
-                    }
-                } catch (userErr) {
-                    console.warn('Could not fetch consignor name for ID:', record.consignor_id, userErr);
-                    consignorName = 'Consignor-' + record.consignor_id;
-                }
-
-                var salePrice = record.store_price || 0;
-                var commissionRate = record.commission_rate || 0.3;
-                var consignorShare = salePrice * (1 - commissionRate);
-                var storeCommission = salePrice * commissionRate;
-
-                consignorTransactions.push({
-                    record_id: record.id,
-                    consignor_id: record.consignor_id,
-                    consignor_name: consignorName,
-                    sale_price: salePrice,
-                    commission_rate: commissionRate,
-                    consignor_share: consignorShare,
-                    store_commission: storeCommission
-                });
-
-                await apiRequest('PUT', '/records/' + record.id, {
-                    status_id: 3,
-                    date_sold: today,
-                    actual_sale_price: salePrice
-                });
-                success++;
-
-            } catch (err) {
-                console.error('Failed to process consignor record', record.id, err);
-            }
-        }
-
-        for (var i = 0; i < consignorTransactions.length; i++) {
-            var tx = consignorTransactions[i];
-            try {
-                var accountsRes = await apiRequest('GET', '/api/accounting/accounts');
-                var accounts = accountsRes.accounts || [];
-                var cashAccount = accounts.find(function(a) { return a.code === '1015'; });
-                var revenueAccount = accounts.find(function(a) { return a.code === '4000'; });
-                var payableAccount = accounts.find(function(a) { return a.code === '2015'; });
-
-                if (!cashAccount || !revenueAccount || !payableAccount) {
-                    console.error('Required accounts not found for consignor transaction');
-                    showCheckoutStatus('Error: Required accounts not found', 'error');
-                    continue;
-                }
-
-                var entryData = {
-                    date: today,
-                    description: tx.consignor_name + ' | ISSUE | Record #' + tx.record_id + ' sold - $' + tx.sale_price.toFixed(2) + ' (' + (tx.commission_rate * 100).toFixed(0) + '% commission)',
-                    lines: [
-                        { account_id: cashAccount.id, debit: tx.sale_price, credit: 0 },
-                        { account_id: revenueAccount.id, debit: 0, credit: tx.store_commission },
-                        { account_id: payableAccount.id, debit: 0, credit: tx.consignor_share }
-                    ]
-                };
-                var result = await apiRequest('POST', '/api/accounting/manual', entryData);
-                if (result.status === 'success') {
-                    console.log('✅ Consignor ' + tx.consignor_name + ' credited $' + tx.consignor_share.toFixed(2));
-                } else {
-                    console.error('Failed to create consignor journal entry:', result.error);
-                }
-            } catch (err) {
-                console.error('Error processing consignor transaction:', err);
-            }
-        }
-
-        if (bernieTotal > 0) {
-            try {
-                var accountsRes = await apiRequest('GET', '/api/accounting/accounts');
-                var accounts = accountsRes.accounts || [];
-
-                var paymentMethod2 = checkoutPaymentEntries.length > 0 ? checkoutPaymentEntries[0].method : 'Cash';
-                var accountMap = {
-                    'Cash': '1015',
-                    'Card (Square)': '1030',
-                    'Gift Card': '1015',
-                    'Store Credit': '1015'
-                };
-                var accountCode = accountMap[paymentMethod2] || '1015';
-
-                var cashAccount = accounts.find(function(a) { return a.code === accountCode; });
-                var payableAccount = accounts.find(function(a) { return a.code === '2015'; });
-
-                if (cashAccount && payableAccount) {
-                    var entryData = {
-                        date: today,
-                        description: 'BERNIE | ISSUE | Donation - $' + bernieTotal.toFixed(2) + ' (' + bernieItems.length + ' items)',
-                        lines: [
-                            { account_id: cashAccount.id, debit: bernieTotal, credit: 0 },
-                            { account_id: payableAccount.id, debit: 0, credit: bernieTotal }
-                        ]
-                    };
-                    var result = await apiRequest('POST', '/api/accounting/manual', entryData);
-                    if (result.status === 'success') {
-                        console.log('✅ Bernie donation journal entry created: $' + bernieTotal.toFixed(2));
-                    } else {
-                        console.error('Failed to create Bernie journal entry:', result.error);
-                    }
-                }
-            } catch (err) {
-                console.error('Error processing Bernie donation:', err);
-            }
-        }
-
-        var receiptError = null;
-        var receiptDownloaded = false;
-
-        var now = new Date();
-        var dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-        var timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-
-        var receipt = 'PigStyle Music\n';
-        receipt += '====================\n';
-        receipt += dateStr + ' ' + timeStr + '\n';
-        receipt += 'Order: ' + orderId + '\n\n';
-        receipt += 'ITEMS:\n';
-        receipt += '--------------------\n';
-
-        var subtotal = 0;
-        for (var i = 0; i < selected.length; i++) {
-            var item = selected[i];
-            var price = item.store_price || 0;
-            var desc = item.isCustom ? item.title : item.artist + ' - ' + item.title;
-            if (item.isBernie) {
-                receipt += '[Bernie] ' + desc.padEnd(25) + '$' + price.toFixed(2) + '\n';
-            } else if (item.consignor_id && item.consignor_id !== 1) {
-                receipt += '[Consignor] ' + desc.padEnd(25) + '$' + price.toFixed(2) + '\n';
-            } else {
-                receipt += desc.padEnd(25) + '$' + price.toFixed(2) + '\n';
-            }
-            subtotal += price;
-        }
-
-        var taxRate = 0.08;
-        var tax = subtotal * taxRate;
-        var grandTotal = subtotal + tax;
-
-        receipt += '--------------------\n';
-        receipt += 'Subtotal'.padEnd(25) + '$' + subtotal.toFixed(2) + '\n';
-        receipt += 'Tax'.padEnd(25) + '$' + tax.toFixed(2) + '\n';
-        receipt += 'Total'.padEnd(25) + '$' + grandTotal.toFixed(2) + '\n\n';
-
-        receipt += 'PAYMENT:\n';
-        receipt += '--------------------\n';
-        var totalPaid = 0;
-        for (var i = 0; i < checkoutPaymentEntries.length; i++) {
-            var entry = checkoutPaymentEntries[i];
-            receipt += entry.method.padEnd(25) + '$' + entry.amount.toFixed(2) + '\n';
-            totalPaid += entry.amount;
-        }
-        if (totalPaid < grandTotal) {
-            receipt += 'Unpaid'.padEnd(25) + '$' + (grandTotal - totalPaid).toFixed(2) + '\n';
-        }
-        receipt += '--------------------\n';
-
-        receipt += 'Thank you!\n';
-        receipt += 'PigStyle Music\n';
-        receipt += 'Come back soon!\n\n\n\n';
-
-        var filename = 'receipt_' + now.getFullYear() + String(now.getMonth()+1).padStart(2,'0') + String(now.getDate()).padStart(2,'0') + '_' + String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0') + '.txt';
-
-        try {
-            downloadReceipt(receipt, filename);
-            receiptDownloaded = true;
-        } catch (error) {
-            receiptError = error.message || 'Download error';
-            console.error('Receipt download error:', error);
-        }
-
-        var consignorCount = consignorTransactions.length;
-        var consignorTotal = consignorTransactions.reduce(function(sum, t) { return sum + t.consignor_share; }, 0);
-
-        var statusMsg = success + ' records marked as sold';
-        if (consignorCount > 0) {
-            statusMsg += ', ' + consignorCount + ' consignor(s) credited $' + consignorTotal.toFixed(2);
-        }
-        if (bernieTotal > 0) {
-            statusMsg += ', Bernie donations: $' + bernieTotal.toFixed(2);
-        }
-
-        if (receiptDownloaded) {
-            statusMsg += ' ✅ Receipt downloaded.';
-        } else if (receiptError) {
-            statusMsg += ' ⚠️ Receipt could not be downloaded (' + receiptError + '). Purchase completed anyway.';
-        }
-
-        showCheckoutStatus('✅ ' + statusMsg, receiptError ? 'warning' : 'success');
-
-        checkoutSelectedItems = [];
-        checkoutViewMode = 'list';
-        checkoutPaymentEntries = [];
-        checkoutRemaining = 0;
-
-        var modal = document.getElementById('checkout-payment-modal');
-        if (modal) {
-            modal.style.display = 'none';
-        }
-
-        filteredRecords = [];
-        totalRecords = 0;
-        renderPagination();
-        renderTablePage();
-
-        if (checkoutShowSelectedBtn) {
-            checkoutShowSelectedBtn.textContent = 'Checkout List (0)';
-        }
-        updateSelectionCount();
-
-        playSound('success');
-        console.log('🛒 completeCheckout finished successfully');
-    }
-
-    // ========== Show Checkout Modal ==========
-    function showCheckoutModal() {
-        console.log('🛒 showCheckoutModal called');
-        console.log('🛒 checkoutSelectedItems length: ' + checkoutSelectedItems.length);
-        console.log('🛒 checkoutSelectedItems:', checkoutSelectedItems);
-        
-        var oldModal = document.getElementById('checkout-payment-modal');
-        if (oldModal) {
-            console.log('🛒 Removing existing modal');
-            oldModal.parentNode.removeChild(oldModal);
-        }
-
-        var selected = checkoutSelectedItems;
-        if (selected.length === 0) { 
-            console.log('🛒 No items in checkout');
-            showStatus('No records in checkout list', 'warning'); 
-            return; 
-        }
-        
-        var total = selected.reduce(function(sum, r) { return sum + (r.store_price || 0); }, 0);
-        var tax = total * 0.08;
-        var grandTotal = total + tax;
-        console.log('🛒 Total: ' + total + ', Tax: ' + tax + ', Grand Total: ' + grandTotal);
-        
-        checkoutTotal = grandTotal;
-        checkoutRemaining = grandTotal;
-        checkoutPaymentEntries = [];
-
-        var orderId = generateOrderId();
-
-        var modal = document.createElement('div');
-        modal.id = 'checkout-payment-modal';
-        modal.className = 'modal-overlay';
-        modal.innerHTML = '<div class="modal-content" style="max-width: 550px; width: 95%;"><div class="modal-header" style="background: #007bff; color: white;"><h3 class="modal-title"><i class="fas fa-shopping-cart"></i> Checkout</h3><button class="modal-close" onclick="document.getElementById(\'checkout-payment-modal\').style.display=\'none\'" style="color: white;">&times;</button></div><div class="modal-body"><p><strong>' + selected.length + '</strong> item(s) selected.</p><div style="font-size: 20px; font-weight: bold; margin: 10px 0;">Total: $' + grandTotal.toFixed(2) + '</div><div style="font-size: 16px; margin: 10px 0; color: #28a745;">Remaining: $<span id="checkout-remaining">' + grandTotal.toFixed(2) + '</span></div><div style="background: #e3f2fd; padding: 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #b8daff;"><div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;"><input type="text" id="checkout-debtor-code" placeholder="GIFT-XXXXX or debtor name" style="flex: 2; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"><button class="btn btn-sm btn-primary" onclick="lookupDebtorForCheckout()" style="padding: 6px 12px;"><i class="fas fa-search"></i> Lookup</button></div><div id="checkout-debtor-info" style="display: none; margin-top: 8px; padding: 8px; background: white; border-radius: 4px;"><div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;"><span><strong id="checkout-debtor-name">—</strong> <span id="checkout-debtor-type" style="font-size: 12px; color: #666;">(Store Credit)</span></span><span style="font-weight: bold; color: #28a745;">Balance: $<span id="checkout-debtor-balance">0.00</span></span></div><div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;"><button class="btn btn-sm btn-success" onclick="applyDebtorToCheckout()" style="padding: 6px 12px;"><i class="fas fa-check"></i> Apply Credit</button><button class="btn btn-sm btn-secondary" onclick="document.getElementById(\'checkout-debtor-info\').style.display=\'none\'"><i class="fas fa-times"></i> Cancel</button></div><div id="checkout-debtor-status" style="font-size: 13px; margin-top: 5px;"></div></div><div style="font-size: 12px; color: #666; margin-top: 6px;"><i class="fas fa-info-circle"></i> Enter a gift card code (GIFT-XXXXX) or a store credit debtor name. Click Apply to use the balance.</div></div><div style="display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0;"><input type="number" id="checkout-payment-amount" class="form-control" placeholder="Amount" step="0.01" min="0" style="flex: 1; min-width: 100px;"><select id="checkout-payment-method" class="form-control" style="flex: 1; min-width: 120px;"><option value="Cash" selected>Cash</option><option value="Card (Square)">Card (Square)</option></select><button class="btn btn-primary" id="checkout-add-payment" style="background: #007bff; color: white;"><i class="fas fa-plus"></i> Add Payment</button></div><div id="checkout-square-warning" style="display:none; padding:8px; background:#fff3cd; border-radius:4px; margin-bottom:10px;">⚠️ Square POS is not available. Card option is disabled.</div><div id="checkout-square-status" style="margin-top:10px; padding:10px; border-radius:4px; display:none; background:#f8f9fa; border:1px solid #ddd;"></div><div id="checkout-payment-entries" style="max-height: 150px; overflow-y: auto; margin: 10px 0;"></div><div id="checkout-payment-status" style="margin-top: 10px; display: none;"></div><button class="btn btn-success" id="checkout-complete-payment" style="width: 100%; margin-top: 10px;" disabled>Complete Payment</button></div><div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById(\'checkout-payment-modal\').style.display=\'none\'">Cancel</button></div></div>';
-        document.body.appendChild(modal);
-        console.log('🛒 Modal created and appended');
-
-        checkSquareAvailability().then(function(avail) {
-            var methodSelect = document.getElementById('checkout-payment-method');
-            var cardOption = methodSelect.querySelector('option[value="Card (Square)"]');
-            var warning = document.getElementById('checkout-square-warning');
-            if (!avail) {
-                if (cardOption) cardOption.disabled = true;
-                if (warning) warning.style.display = 'block';
-                if (methodSelect.value === 'Card (Square)') methodSelect.value = 'Cash';
-            } else {
-                if (cardOption) cardOption.disabled = false;
-                if (warning) warning.style.display = 'none';
-            }
-        });
-
-        document.getElementById('checkout-remaining').textContent = checkoutRemaining.toFixed(2);
-        renderCheckoutEntries();
-
-        document.getElementById('checkout-add-payment').onclick = function() {
-            var amountInput = document.getElementById('checkout-payment-amount');
-            var methodSelect2 = document.getElementById('checkout-payment-method');
-            var amount = parseFloat(amountInput.value);
-            if (isNaN(amount) || amount <= 0) {
-                amount = checkoutRemaining;
-                if (amount <= 0) {
-                    showCheckoutStatus('No remaining balance to pay.', 'error');
-                    return;
-                }
-                amountInput.value = amount.toFixed(2);
-            }
-            var method = methodSelect2.value;
-
-            if (method === 'Card (Square)' && !squareAvailable) {
-                showCheckoutStatus('Square POS is not available. Please use Cash.', 'error');
-                return;
-            }
-
-            addPaymentEntry(method, amount);
-        };
-
-        document.getElementById('checkout-complete-payment').onclick = function() {
-            console.log('🛒 Complete Payment button clicked');
-            if (checkoutRemaining > 0.01) {
-                console.log('🛒 Remaining: ' + checkoutRemaining);
-                showCheckoutStatus('Remaining balance not covered', 'error');
-                return;
-            }
-            var methodSelect3 = document.getElementById('checkout-payment-method');
-            var method = methodSelect3.value;
-            console.log('🛒 Payment method: ' + method);
-            if (method === 'Card (Square)') {
-                processSquarePayment();
-            } else {
-                completeCheckout();
-            }
-        };
-
-        modal.style.display = 'flex';
-        updateCheckoutCompleteButton();
-
-        var statusDiv = document.getElementById('checkout-square-status');
-        if (statusDiv) {
-            statusDiv.style.display = 'none';
-            statusDiv.textContent = '';
-        }
-        console.log('🛒 showCheckoutModal finished');
-    }
-
-    // ========== Add Payment Entry ==========
-    function addPaymentEntry(method, amount) {
-        console.log('💳 addPaymentEntry: ' + method + ' $' + amount);
-        if (amount > checkoutRemaining && checkoutRemaining > 0) {
-            // allow overpayment
-        }
-        checkoutPaymentEntries.push({ method: method, amount: amount });
-        checkoutRemaining -= amount;
-        document.getElementById('checkout-remaining').textContent = checkoutRemaining.toFixed(2);
-        renderCheckoutEntries();
-        updateCheckoutCompleteButton();
-        showCheckoutStatus('Added $' + amount.toFixed(2) + ' ' + method, 'success');
-        document.getElementById('checkout-payment-amount').value = '';
-    }
-
-    function renderCheckoutEntries() {
-        var container = document.getElementById('checkout-payment-entries');
-        if (!container) return;
-        if (checkoutPaymentEntries.length === 0) {
-            container.innerHTML = '<div style="color: #999; text-align: center; padding: 10px;">No payments added yet.</div>';
-            return;
-        }
-        var html = '';
-        checkoutPaymentEntries.forEach(function(entry, idx) {
-            html += '<div style="display: flex; justify-content: space-between; padding: 5px 10px; border-bottom: 1px solid #eee;"><span>' + entry.method + '</span><span>$' + entry.amount.toFixed(2) + '</span><button class="btn btn-sm btn-danger checkout-remove-entry" data-index="' + idx + '" style="padding: 2px 6px;"><i class="fas fa-times"></i></button></div>';
-        });
-        container.innerHTML = html;
-
-        container.querySelectorAll('.checkout-remove-entry').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var index = parseInt(this.dataset.index);
-                removeCheckoutEntry(index);
-            });
-        });
-    }
-
-    function removeCheckoutEntry(index) {
-        var entry = checkoutPaymentEntries[index];
-        if (entry) {
-            checkoutRemaining += entry.amount;
-            checkoutPaymentEntries.splice(index, 1);
-            document.getElementById('checkout-remaining').textContent = checkoutRemaining.toFixed(2);
-            renderCheckoutEntries();
-            updateCheckoutCompleteButton();
-            showCheckoutStatus('Payment entry removed', 'info');
-        }
-    }
-
-    function updateCheckoutCompleteButton() {
-        var btn = document.getElementById('checkout-complete-payment');
-        if (btn) {
-            btn.disabled = checkoutRemaining > 0.01;
-        }
-    }
-
-    function showCheckoutStatus(message, type) {
-        var el = document.getElementById('checkout-payment-status');
-        if (el) {
-            el.textContent = message;
-            el.className = 'status-message status-' + type;
-            el.style.display = 'block';
-        }
-    }
-
-    // ========== UNIFIED DEBTOR LOOKUP FOR CHECKOUT ==========
-
-    var checkoutDebtorData = null;
-
-    async function lookupDebtorForCheckout() {
-        var input = document.getElementById('checkout-debtor-code');
-        var infoDiv = document.getElementById('checkout-debtor-info');
-        var statusEl = document.getElementById('checkout-debtor-status');
-        var nameEl = document.getElementById('checkout-debtor-name');
-        var typeEl = document.getElementById('checkout-debtor-type');
-        var balanceEl = document.getElementById('checkout-debtor-balance');
-        
-        if (!input) return;
-        
-        var code = input.value.trim().toUpperCase();
-        if (!code) {
-            if (statusEl) {
-                statusEl.textContent = '⚠️ Please enter a code or name.';
-                statusEl.style.color = '#856404';
-            }
-            return;
-        }
-        
-        statusEl.textContent = '⏳ Looking up...';
-        statusEl.style.color = '#666';
-        
-        try {
-            var response = await fetch(window.AppConfig.baseUrl + '/api/debtor/lookup', {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: code })
-            });
-            
-            var data = await response.json();
-            
-            if (data.status === 'success' && data.balance !== undefined) {
-                checkoutDebtorData = data;
-                var balance = data.balance || 0;
-                var isGiftCard = data.is_gift_card;
-                var isBernie = data.is_bernie;
-                
-                infoDiv.style.display = 'block';
-                nameEl.textContent = data.debtor;
-                
-                if (isGiftCard) {
-                    typeEl.textContent = '🎁 Gift Card';
-                } else if (isBernie) {
-                    typeEl.textContent = '🌹 Bernie Fund (Cannot redeem)';
-                } else {
-                    typeEl.textContent = '💰 Store Credit';
-                }
-                
-                balanceEl.textContent = balance.toFixed(2);
-                balanceEl.style.color = balance > 0 ? '#28a745' : '#dc3545';
-                
-                if (balance <= 0) {
-                    statusEl.textContent = '⚠️ This account has no balance.';
-                    statusEl.style.color = '#856404';
-                } else if (isBernie) {
-                    statusEl.textContent = '⚠️ Bernie funds cannot be redeemed for purchases. Use the Donate button in Creditors.';
-                    statusEl.style.color = '#856404';
-                } else {
-                    statusEl.textContent = '✅ Balance available: $' + balance.toFixed(2) + '. Click Apply to use it.';
-                    statusEl.style.color = '#28a745';
-                }
-            } else {
-                infoDiv.style.display = 'block';
-                statusEl.textContent = '❌ Not found. Check the code or name.';
-                statusEl.style.color = '#dc3545';
-                checkoutDebtorData = null;
-            }
-        } catch (error) {
-            console.error('Error looking up debtor:', error);
-            statusEl.textContent = '❌ Error: ' + error.message;
-            statusEl.style.color = '#dc3545';
-            checkoutDebtorData = null;
-        }
-    }
-
-    // ========== APPLY DEBTOR TO CHECKOUT ==========
-
-    async function applyDebtorToCheckout() {
-        if (!checkoutDebtorData) {
-            showCheckoutStatus('Please lookup a debtor first.', 'error');
-            return;
-        }
-        
-        var statusEl = document.getElementById('checkout-debtor-status');
-        var balance = checkoutDebtorData.balance;
-        
-        if (balance <= 0) {
-            statusEl.textContent = '⚠️ This account has no balance.';
-            statusEl.style.color = '#856404';
-            return;
-        }
-        
-        if (checkoutRemaining <= 0.01) {
-            statusEl.textContent = '⚠️ No remaining balance to pay.';
-            statusEl.style.color = '#856404';
-            return;
-        }
-        
-        var amount = Math.min(balance, checkoutRemaining);
-        
-        try {
-            var response = await fetch(window.AppConfig.baseUrl + '/api/debtor/redeem', {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: checkoutDebtorData.debtor,
-                    amount: amount,
-                    description: 'Checkout redemption - ' + checkoutSelectedItems.length + ' items'
-                })
-            });
-            
-            var data = await response.json();
-            
-            if (data.status === 'success') {
-                var method = checkoutDebtorData.is_gift_card ? 'Gift Card' : 'Store Credit';
-                addPaymentEntry(method + ' (' + checkoutDebtorData.debtor + ')', amount);
-                
-                checkoutDebtorData.balance -= amount;
-                document.getElementById('checkout-debtor-balance').textContent = checkoutDebtorData.balance.toFixed(2);
-                
-                if (checkoutDebtorData.balance <= 0.01) {
-                    statusEl.textContent = '✅ Applied $' + amount.toFixed(2) + ' from ' + checkoutDebtorData.debtor + '. Card is now empty.';
-                    statusEl.style.color = '#28a745';
-                    setTimeout(function() {
-                        document.getElementById('checkout-debtor-info').style.display = 'none';
-                    }, 2000);
-                } else {
-                    statusEl.textContent = '✅ Applied $' + amount.toFixed(2) + ' from ' + checkoutDebtorData.debtor + '. Remaining balance: $' + checkoutDebtorData.balance.toFixed(2);
-                    statusEl.style.color = '#28a745';
-                }
-                
-                if (checkoutRemaining <= 0.01) {
-                    updateCheckoutCompleteButton();
-                }
-                
-            } else {
-                statusEl.textContent = '❌ ' + (data.error || 'Failed to redeem');
-                statusEl.style.color = '#dc3545';
-            }
-        } catch (error) {
-            console.error('Error redeeming debtor:', error);
-            statusEl.textContent = '❌ Error: ' + error.message;
-            statusEl.style.color = '#dc3545';
-        }
-    }
-
     // ========== Complete Action Handler ==========
     function handleCompleteAction() {
         var mode = currentSearchMode;
@@ -5132,26 +3733,9 @@
             console.log('🔵 Discogs mode - showing post modal');
             console.log('🔵 handleCompleteAction: calling showDiscogsPostModal');
             showDiscogsPostModal();
-        } else if (mode === 'delete') {
-            console.log('🔵 Delete mode - deleting selected');
-            deleteSelected();
-        } else if (mode === 'checkout') {
-            console.log('🔵 Checkout mode - showing checkout modal');
-            console.log('🔵 checkoutSelectedItems length: ' + checkoutSelectedItems.length);
-            if (checkoutSelectedItems.length === 0) {
-                console.log('🔵 No items in checkout');
-                showStatus('No items in checkout.', 'warning');
-                return;
-            }
-            console.log('🔵 Calling showCheckoutModal...');
-            showCheckoutModal();
-            console.log('🔵 showCheckoutModal returned');
         } else if (mode === 'discogs_orders') {
             console.log('🔵 Discogs Orders mode - processing order');
             processDiscogsOrder();
-        } else if (mode === 'refund') {
-            console.log('🔵 Refund mode - processing refund');
-            processRefund();
         } else {
             console.log('🔵 Unknown mode: ' + mode);
             showStatus('No action available for this mode', 'warning');
@@ -5184,9 +3768,6 @@
 
     // ========== Unified Selection Logic ==========
     function getSelectedRecords() {
-        if (currentSearchMode === 'checkout') {
-            return checkoutSelectedItems.slice();
-        }
         if (rangeFromIndex === null || rangeToIndex === null) {
             console.log('🔍 getSelectedRecords: no range selected');
             return [];
@@ -5209,7 +3790,6 @@
         var hasSelection = (rangeFromIndex !== null && rangeToIndex !== null && count > 0);
 
         var isAddMode = mode === 'add';
-        var isRefundMode = mode === 'refund';
         
         if (isAddMode) {
             var hasTargets = hasSelection || hasRecords;
@@ -5234,17 +3814,10 @@
                 completeActionBtn.disabled = !isValid;
             } else if (mode === 'discogs') {
                 completeActionBtn.disabled = !hasSelection;
-            } else if (mode === 'delete') {
-                completeActionBtn.disabled = !hasSelection;
-            } else if (mode === 'checkout') {
-                completeActionBtn.disabled = checkoutSelectedItems.length === 0;
-                console.log('🔘 updateSelectionCount: checkout mode, disabled=' + completeActionBtn.disabled + ', items=' + checkoutSelectedItems.length);
             } else if (mode === 'discogs_orders') {
                 var hasOrder = selectedOrderId !== null;
                 var hasItems = filteredRecords.length > 0;
                 completeActionBtn.disabled = !(hasOrder && hasItems);
-            } else if (mode === 'refund') {
-                completeActionBtn.disabled = !hasSelection;
             }
         }
 
@@ -5252,7 +3825,7 @@
     }
 
     function applyFilters() {
-        if (currentSearchMode === 'scan' || currentSearchMode === 'discogs' || currentSearchMode === 'delete' || currentSearchMode === 'checkout' || currentSearchMode === 'discogs_orders' || currentSearchMode === 'refund') {
+        if (currentSearchMode === 'scan' || currentSearchMode === 'discogs' || currentSearchMode === 'discogs_orders') {
             return;
         }
         if (currentMode === 'search') {
@@ -5418,72 +3991,6 @@
                 setTimeout(loadMarkupAnalysisCharts, 300);
             }
             initializeLastSeenDate();
-        } else if (newMode === 'delete') {
-            filteredRecords = [];
-            totalRecords = 0;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showStatus('Delete mode: Use filters to find records to delete.', 'info');
-            allRecords = [];
-            loadRecords({ statusIds: [1,2], mode: 'delete' }).then(function() {
-                renderTablePage();
-            });
-        } else if (newMode === 'refund') {
-            filteredRecords = [];
-            totalRecords = 0;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showStatus('Refund mode: Search sold records (status 3 or 4) to refund.', 'info');
-            allRecords = [];
-            loadRecords({ statusIds: [3, 4], mode: 'refund' });
-        } else if (newMode === 'checkout') {
-            checkoutSelectedItems = [];
-            checkoutViewMode = 'list';
-            filteredRecords = [];
-            totalRecords = 0;
-            currentPage = 1;
-            renderPagination();
-            renderTablePage();
-            showStatus('Checkout mode: Search to add records, or use "Custom Item".', 'info');
-            console.log('🔄 onModeChange: loading records for checkout');
-            loadRecords({ statusIds: [2], mode: 'checkout' }).then(function() {
-                checkoutViewMode = 'list';
-                filteredRecords = checkoutSelectedItems.slice();
-                totalRecords = filteredRecords.length;
-                currentPage = 1;
-                renderPagination();
-                renderTablePage();
-                updateSelectionCount();
-                console.log('🔄 Checkout loaded: ' + checkoutSelectedItems.length + ' items');
-            });
-            if (checkoutShowSelectedBtn) {
-                checkoutShowSelectedBtn.style.display = 'inline-block';
-                checkoutShowSelectedBtn.textContent = 'Checkout List (0)';
-                checkoutShowSelectedBtn.onclick = function() {
-                    checkoutViewMode = 'list';
-                    filteredRecords = checkoutSelectedItems.slice();
-                    totalRecords = filteredRecords.length;
-                    currentPage = 1;
-                    renderPagination();
-                    renderTablePage();
-                    updateSelectionCount();
-                };
-            }
-            if (checkoutShowAllBtn) {
-                checkoutShowAllBtn.style.display = 'inline-block';
-                checkoutShowAllBtn.textContent = 'Search Results';
-                checkoutShowAllBtn.onclick = function() {
-                    checkoutViewMode = 'search';
-                    filteredRecords = allRecords.slice();
-                    totalRecords = filteredRecords.length;
-                    currentPage = 1;
-                    renderPagination();
-                    renderTablePage();
-                    updateSelectionCount();
-                };
-            }
         } else if (newMode === 'discogs_orders') {
             filteredRecords = [];
             totalRecords = 0;
@@ -6165,19 +4672,6 @@
             });
         }
 
-        if (deleteStatusFilter) {
-            deleteStatusFilter.addEventListener('change', function() {
-                applyDeleteFilter();
-            });
-        }
-
-        var checkoutStatusFilter = document.getElementById('checkout-status-filter');
-        if (checkoutStatusFilter) {
-            checkoutStatusFilter.addEventListener('change', function() {
-                loadRecords({ statusIds: [2], mode: 'checkout' });
-            });
-        }
-
         if (discogsOrdersApplyFiltersBtn) {
             discogsOrdersApplyFiltersBtn.addEventListener('click', function() {
                 applyDiscogsOrdersFilters();
@@ -6357,19 +4851,6 @@
     window.refreshDiscogsLocations = loadDiscogsLocations;
     window.closeDiscogsPostModal = closeDiscogsPostModal;
     window.showDiscogsPostModal = showDiscogsPostModal;
-    window.closeRefundModal = closeRefundModal;
-    window.lookupDebtorForCheckout = lookupDebtorForCheckout;
-    window.applyDebtorToCheckout = applyDebtorToCheckout;
-    window.addPaymentEntry = addPaymentEntry;
-    window.removeCheckoutEntry = removeCheckoutEntry;
-    window.completeCheckout = completeCheckout;
-    window.addToCheckout = addToCheckout;
-    window.removeFromCheckout = removeFromCheckout;
-    window.checkSquareAvailability = checkSquareAvailability;
-    window.processSquarePayment = processSquarePayment;
-    window.showCustomItemModal = showCustomItemModal;
-    window.closeCustomItemModal = closeCustomItemModal;
-    window.addBernieItem = addBernieItem;
     window.toggleInventorySetupPanel = toggleInventorySetupPanel;
     window.toggleDefaultParamsSub = toggleDefaultParamsSub;
     window.togglePurchaseSub = togglePurchaseSub;
@@ -6383,7 +4864,6 @@
     window.acceptDraft = acceptDraft;
     window.refreshPurchases = refreshPurchases;
     window.loadPurchasesTable = loadPurchasesTable;
-    window.showCheckoutModal = showCheckoutModal;
     window.removeRecordFromPurchase = removeRecordFromPurchase;
     window.togglePurchaseTable = togglePurchaseTable;
     window.toggleMetadataPanel = toggleMetadataPanel;
@@ -6397,7 +4877,6 @@
     window.deleteDomainFormat = deleteDomainFormat;
     window.deleteDomainArea = deleteDomainArea;
     window.deleteDomainSublocation = deleteDomainSublocation;
-
 
     // ===== EXPOSE applyDefaultParams and clearDefaultParams =====
     window.applyDefaultParams = applyDefaultParams;

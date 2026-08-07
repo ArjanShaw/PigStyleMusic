@@ -238,7 +238,7 @@ const TabManager = (function() {
         };
 
         // ============================================================
-        // ⭐ NEW: Domain Management Tab (Location Management)
+        // DOMAIN MANAGEMENT TAB (Location Management)
         // ============================================================
         initializers['domain-management'] = () => {
             console.log('🔵 TabManager: Initializing Domain Management tab');
@@ -264,6 +264,36 @@ const TabManager = (function() {
                 }, 500);
             }
         };
+
+        // ============================================================
+        // EMAIL SUBSCRIPTIONS TAB (NEW)
+        // ============================================================
+        initializers['email-subscriptions'] = () => {
+            console.log('🔵 TabManager: Initializing Email Subscriptions tab');
+            if (typeof window.initEmailSubscriptionsTab === 'function') {
+                console.log('✅ Found initEmailSubscriptionsTab function, calling it...');
+                window.initEmailSubscriptionsTab();
+            } else {
+                console.error('❌ initEmailSubscriptionsTab function not found!');
+                console.log('Available window functions:', Object.keys(window).filter(k => k.toLowerCase().includes('subscription')));
+                // Try to load the script dynamically if not available
+                console.log('🔄 Attempting to load email-subscriptions.js dynamically...');
+                const script = document.createElement('script');
+                script.src = '/static/js/email-subscriptions.js';
+                script.onload = function() {
+                    console.log('✅ email-subscriptions.js loaded dynamically');
+                    if (typeof window.initEmailSubscriptionsTab === 'function') {
+                        window.initEmailSubscriptionsTab();
+                    } else {
+                        console.error('❌ Still cannot find initEmailSubscriptionsTab after dynamic load');
+                    }
+                };
+                script.onerror = function() {
+                    console.error('❌ Failed to load email-subscriptions.js dynamically');
+                };
+                document.head.appendChild(script);
+            }
+        };
     }
     
     // Register cleanup functions
@@ -284,6 +314,22 @@ const TabManager = (function() {
                 if (modal) {
                     modal.style.display = 'none';
                 }
+            },
+            'email-subscriptions': () => {
+                console.log('🧹 TabManager: Cleaning up Email Subscriptions tab');
+                if (typeof window.stopNotificationPolling === 'function') {
+                    window.stopNotificationPolling();
+                }
+                // Close any open modals
+                const modal = document.getElementById('subscription-modal');
+                if (modal) {
+                    modal.style.display = 'none';
+                }
+                const notificationPanel = document.getElementById('notification-panel');
+                if (notificationPanel) {
+                    notificationPanel.style.display = 'none';
+                }
+                SubscriptionState.isNotificationPanelOpen = false;
             }
         };
     }

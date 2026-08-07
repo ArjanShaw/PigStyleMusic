@@ -65,6 +65,13 @@ def admin_panel():
         return redirect('/access-denied')
     return send_from_directory('HTML', 'admin.html')
 
+# ==================== NEW: ITEM MANAGEMENT PAGE ====================
+@app.route('/item-management')
+def item_management():
+    if not is_admin():
+        return redirect('/access-denied')
+    return send_from_directory('HTML', 'item-management.html')
+
 @app.route('/admin/accounting')
 def admin_accounting():
     if not is_admin():
