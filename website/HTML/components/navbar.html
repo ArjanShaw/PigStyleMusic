@@ -1,0 +1,42 @@
+<!-- html/components/navbar.html -->
+<nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
+    <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
+        <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
+    </a>
+    <div style="display: flex; gap: 20px; align-items: center;">
+        <a href="/browse" style="color: white; text-decoration: none;">Browse</a>
+        <a href="/misc" style="color: white; text-decoration: none;">Misc</a>
+        <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
+        
+        <!-- Record Alerts - ALWAYS VISIBLE -->
+        <a href="#" id="subscribe-link" style="color: white; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+            <i class="fas fa-bell"></i> Record Alerts
+        </a>
+
+        <!-- Notification Bell - ONLY VISIBLE WHEN LOGGED IN -->
+        <div id="navbar-notification-container" class="hidden">
+            <button id="navbar-notification-btn" aria-label="Notifications">
+                <i class="fas fa-bell" style="font-size: 16px;"></i>
+                <span id="navbar-notification-badge">0</span>
+            </button>
+            <div id="navbar-notification-dropdown">
+                <div class="navbar-notification-header">
+                    <span><i class="fas fa-bell"></i>Notifications</span>
+                    <button id="navbar-mark-all-read">Mark all read</button>
+                </div>
+                <div id="navbar-notification-list">
+                    <div class="navbar-notification-empty">
+                        <i class="fas fa-bell-slash"></i>
+                        No new notifications
+                    </div>
+                </div>
+                <div class="navbar-notification-footer">
+                    <a href="/admin#email-subscriptions">View all in Admin Panel →</a>
+                </div>
+            </div>
+        </div>
+
+        <div id="auth-section">
+        </div>
+    </div>
+</nav>
