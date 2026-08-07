@@ -529,290 +529,23 @@
      
     <!-- JavaScript for expandable photos, commission rate, sticky notes, and subscription -->
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Get all store images
-            const storeImages = document.querySelectorAll('.store-front, .store-inside');
-            const modal = document.querySelector('.expandable-modal');
-            const expandedImg = document.querySelector('.expanded-image');
-            const imageCaption = document.querySelector('.image-caption');
-            const closeModal = document.querySelector('.close-modal');
-            
-            // Add click event to each image
-            storeImages.forEach(img => {
-                img.addEventListener('click', function() {
-                    // Set the expanded image source
-                    expandedImg.src = this.src;
-                    
-                    // Set the caption based on alt text
-                    imageCaption.textContent = this.alt;
-                    
-                    // Show modal
-                    modal.classList.add('active');
-                    document.body.classList.add('modal-open');
+        // Load navbar component
+        function loadNavbar() {
+            fetch('/components/navbar.html')
+                .then(response => response.text())
+                .then(html => {
+                    document.getElementById('navbar-placeholder').innerHTML = html;
+                    // After navbar loads, initialize the notification bell
+                    initNotificationBell();
+                })
+                .catch(error => {
+                    console.error('Error loading navbar:', error);
                 });
-            });
-            
-            // Close modal when X is clicked
-            if (closeModal) {
-                closeModal.addEventListener('click', function() {
-                    modal.classList.remove('active');
-                    document.body.classList.remove('modal-open');
-                });
-            }
-            
-            // Close modal when clicking outside the image
-            if (modal) {
-                modal.addEventListener('click', function(e) {
-                    if (e.target === modal) {
-                        modal.classList.remove('active');
-                        document.body.classList.remove('modal-open');
-                    }
-                });
-            }
-            
-            // Close modal with Escape key
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape' && modal.classList.contains('active')) {
-                    modal.classList.remove('active');
-                    document.body.classList.remove('modal-open');
-                }
-            });
+        }
 
-            // Function to update commission display
-            function updateCommissionDisplay(rate) {
-                const sellLineItem = document.getElementById('sell-records-line');
-                if (sellLineItem) {
-                    sellLineItem.innerHTML = `Paying cash for vinyl records`;
-                }
-            }
-
-            // Fetch and display commission rate
-            async function fetchCommissionRate() {
-                try {
-                    // Check if AppConfig is loaded
-                    if (typeof AppConfig === 'undefined') {
-                        console.warn('AppConfig not loaded yet, retrying...');
-                        setTimeout(fetchCommissionRate, 500);
-                        return;
-                    }
-                    
-                    const apiUrl = AppConfig.getUrl('commissionRate');
-                    console.log('Fetching commission rate from:', apiUrl);
-                    
-                    const response = await fetch(apiUrl, {
-                        method: 'GET',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        }
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`API returned ${response.status}: ${response.statusText}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    if (data && data.commission_rate_percent) {
-                        updateCommissionDisplay(data.commission_rate_percent);
-                    } else {
-                        throw new Error('Invalid response format: missing commission_rate_percent');
-                    }
-                    
-                } catch (error) {
-                    console.error('Error fetching commission rate:', error);
-                    const sellLineItem = document.getElementById('sell-records-line');
-                    if (sellLineItem) {
-                        sellLineItem.innerHTML = `Sell your records for cash - Rate info currently unavailable`;
-                    }
-                }
-            }
-
-            // Fetch and display sticky notes
-            async function fetchStickyNotes() {
-                try {
-                    const isLocalhost = window.location.hostname === 'localhost' || 
-                                      window.location.hostname === '127.0.0.1';
-                    const apiUrl = isLocalhost 
-                        ? 'http://localhost:5000/api/sticky-notes'
-                        : `https://${window.location.hostname}/api/sticky-notes`;
-                    
-                    const response = await fetch(apiUrl, {
-                        method: 'GET',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        }
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`API returned ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    if (data.status === 'success' && data.notes && data.notes.length > 0) {
-                        let container = document.querySelector('.sticky-notes-container');
-                        if (!container) {
-                            container = document.createElement('div');
-                            container.className = 'sticky-notes-container';
-                            document.body.appendChild(container);
-                        }
-                        
-                        container.innerHTML = '';
-                        
-                        data.notes.forEach(note => {
-                            const noteElement = document.createElement('div');
-                            noteElement.className = 'sticky-note';
-                            noteElement.textContent = note.note_text;
-                            container.appendChild(noteElement);
-                        });
-                    }
-                    
-                } catch (error) {
-                    console.error('Error fetching sticky notes:', error);
-                }
-            }
-
-            // ==================== SUBSCRIPTION FUNCTIONALITY ====================
-            
-            // Get modal elements
-            const subscribeLink = document.getElementById('subscribe-link');
-            const subscribeModal = document.getElementById('subscribe-modal');
-            const subscribeClose = document.querySelector('.subscribe-modal-close');
-            const subscribeForm = document.getElementById('subscribe-form');
-            const subscribeMessage = document.getElementById('subscribe-message');
-
-            // Open modal
-            if (subscribeLink) {
-                subscribeLink.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    if (subscribeModal) {
-                        subscribeModal.classList.add('active');
-                        document.body.classList.add('modal-open');
-                    }
-                });
-            }
-
-            // Close modal
-            if (subscribeClose) {
-                subscribeClose.addEventListener('click', function() {
-                    if (subscribeModal) {
-                        subscribeModal.classList.remove('active');
-                        document.body.classList.remove('modal-open');
-                        if (subscribeMessage) subscribeMessage.style.display = 'none';
-                        if (subscribeForm) subscribeForm.reset();
-                    }
-                });
-            }
-
-            // Close modal when clicking outside
-            if (subscribeModal) {
-                subscribeModal.addEventListener('click', function(e) {
-                    if (e.target === subscribeModal) {
-                        subscribeModal.classList.remove('active');
-                        document.body.classList.remove('modal-open');
-                        if (subscribeMessage) subscribeMessage.style.display = 'none';
-                        if (subscribeForm) subscribeForm.reset();
-                    }
-                });
-            }
-
-            // Handle form submission
-            if (subscribeForm) {
-                subscribeForm.addEventListener('submit', async function(e) {
-                    e.preventDefault();
-                    
-                    const email = document.getElementById('subscribe-email').value.trim();
-                    const artist = document.getElementById('subscribe-artist').value.trim();
-                    const title = document.getElementById('subscribe-title').value.trim();
-                    const catalog_number = document.getElementById('subscribe-catalog').value.trim();
-                    
-                    // Validate at least one search term
-                    if (!artist && !title && !catalog_number) {
-                        showSubscribeMessage('Please enter at least one search term (artist, title, or catalog number)', 'error');
-                        return;
-                    }
-                    
-                    // Validate email
-                    if (!email || !email.includes('@') || !email.includes('.')) {
-                        showSubscribeMessage('Please enter a valid email address', 'error');
-                        return;
-                    }
-                    
-                    // Disable button during submission
-                    const submitBtn = subscribeForm.querySelector('.subscribe-submit-btn');
-                    submitBtn.disabled = true;
-                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subscribing...';
-                    
-                    try {
-                        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                        const apiUrl = isLocalhost 
-                            ? 'http://localhost:5000/api/subscribe'
-                            : `https://${window.location.hostname}/api/subscribe`;
-                        
-                        const response = await fetch(apiUrl, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Accept': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                email: email,
-                                artist: artist,
-                                title: title,
-                                catalog_number: catalog_number
-                            })
-                        });
-                        
-                        const data = await response.json();
-                        
-                        if (response.ok && data.status === 'success') {
-                            if (data.already_subscribed) {
-                                showSubscribeMessage(data.message, 'info');
-                            } else {
-                                showSubscribeMessage('Thank you for subscribing! We\'ll email you when matching records arrive.', 'success');
-                            }
-                            subscribeForm.reset();
-                            
-                            // Auto-close modal after 3 seconds
-                            setTimeout(() => {
-                                if (subscribeModal) {
-                                    subscribeModal.classList.remove('active');
-                                    document.body.classList.remove('modal-open');
-                                }
-                                if (subscribeMessage) subscribeMessage.style.display = 'none';
-                            }, 3000);
-                        } else {
-                            showSubscribeMessage(data.error || 'Something went wrong. Please try again.', 'error');
-                        }
-                        
-                    } catch (error) {
-                        console.error('Subscription error:', error);
-                        showSubscribeMessage('Network error. Please try again.', 'error');
-                    } finally {
-                        submitBtn.disabled = false;
-                        submitBtn.innerHTML = '<i class="fas fa-bell"></i> Subscribe';
-                    }
-                });
-            }
-
-            function showSubscribeMessage(message, type) {
-                if (!subscribeMessage) return;
-                subscribeMessage.textContent = message;
-                subscribeMessage.className = type === 'success' ? 'subscribe-success' : (type === 'info' ? 'subscribe-info' : 'subscribe-error');
-                subscribeMessage.style.display = 'block';
-                subscribeMessage.style.background = type === 'success' ? '#d4edda' : (type === 'info' ? '#cce5ff' : '#f8d7da');
-                subscribeMessage.style.color = type === 'success' ? '#155724' : (type === 'info' ? '#004085' : '#721c24');
-                subscribeMessage.style.border = type === 'success' ? '1px solid #c3e6cb' : (type === 'info' ? '1px solid #b8daff' : '1px solid #f5c6cb');
-                subscribeMessage.style.borderRadius = '4px';
-                subscribeMessage.style.padding = '12px';
-                subscribeMessage.style.marginTop = '15px';
-            }
-
-            // ==================== NAVBAR NOTIFICATION BELL ====================
-            
-            // Get the notification container
+        // Notification bell initialization (runs after navbar is loaded)
+        function initNotificationBell() {
+            // Get elements
             const notificationContainer = document.getElementById('navbar-notification-container');
             const notificationBadge = document.getElementById('navbar-notification-badge');
             const notificationBtn = document.getElementById('navbar-notification-btn');
@@ -1108,10 +841,6 @@
                 });
             }
 
-            // ============================================================
-            // CRITICAL FIX: Check login status after Auth module initializes
-            // ============================================================
-            
             // Function to check auth status and show/hide bell
             function updateBellVisibility() {
                 console.log('🔄 Updating bell visibility...');
@@ -1146,14 +875,13 @@
             // Check immediately
             updateBellVisibility();
 
-            // Check again after Auth module initializes (app-config.js dispatches this)
+            // Check again after Auth module initializes
             document.addEventListener('authStateChanged', function(e) {
                 console.log('📢 authStateChanged event received:', e.detail);
                 updateBellVisibility();
             });
 
-            // Also check when Auth module is loaded (if it wasn't already)
-            // Wait for Auth to be defined
+            // Check for Auth module
             let authCheckAttempts = 0;
             const maxAuthChecks = 20;
             const authCheckInterval = setInterval(function() {
@@ -1165,20 +893,302 @@
                 } else if (authCheckAttempts >= maxAuthChecks) {
                     console.warn('⚠️ Auth module not found after multiple attempts');
                     clearInterval(authCheckInterval);
-                    // Fallback to session check
                     checkLoginStatus();
                 }
             }, 500);
 
-            // Also check on page visibility change (user might log in/out in another tab)
+            // Check on page visibility change
             document.addEventListener('visibilitychange', function() {
                 if (!document.hidden) {
                     console.log('👁️ Page became visible, checking auth...');
                     updateBellVisibility();
                 }
             });
+        }
 
-            // ==================== END NAVBAR NOTIFICATION BELL ====================
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load the navbar first
+            loadNavbar();
+
+            // Get all store images
+            const storeImages = document.querySelectorAll('.store-front, .store-inside');
+            const modal = document.querySelector('.expandable-modal');
+            const expandedImg = document.querySelector('.expanded-image');
+            const imageCaption = document.querySelector('.image-caption');
+            const closeModal = document.querySelector('.close-modal');
+            
+            // Add click event to each image
+            storeImages.forEach(img => {
+                img.addEventListener('click', function() {
+                    // Set the expanded image source
+                    expandedImg.src = this.src;
+                    
+                    // Set the caption based on alt text
+                    imageCaption.textContent = this.alt;
+                    
+                    // Show modal
+                    modal.classList.add('active');
+                    document.body.classList.add('modal-open');
+                });
+            });
+            
+            // Close modal when X is clicked
+            if (closeModal) {
+                closeModal.addEventListener('click', function() {
+                    modal.classList.remove('active');
+                    document.body.classList.remove('modal-open');
+                });
+            }
+            
+            // Close modal when clicking outside the image
+            if (modal) {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === modal) {
+                        modal.classList.remove('active');
+                        document.body.classList.remove('modal-open');
+                    }
+                });
+            }
+            
+            // Close modal with Escape key
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && modal.classList.contains('active')) {
+                    modal.classList.remove('active');
+                    document.body.classList.remove('modal-open');
+                }
+            });
+
+            // Function to update commission display
+            function updateCommissionDisplay(rate) {
+                const sellLineItem = document.getElementById('sell-records-line');
+                if (sellLineItem) {
+                    sellLineItem.innerHTML = `Paying cash for vinyl records`;
+                }
+            }
+
+            // Fetch and display commission rate
+            async function fetchCommissionRate() {
+                try {
+                    // Check if AppConfig is loaded
+                    if (typeof AppConfig === 'undefined') {
+                        console.warn('AppConfig not loaded yet, retrying...');
+                        setTimeout(fetchCommissionRate, 500);
+                        return;
+                    }
+                    
+                    const apiUrl = AppConfig.getUrl('commissionRate');
+                    console.log('Fetching commission rate from:', apiUrl);
+                    
+                    const response = await fetch(apiUrl, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    if (data && data.commission_rate_percent) {
+                        updateCommissionDisplay(data.commission_rate_percent);
+                    } else {
+                        throw new Error('Invalid response format: missing commission_rate_percent');
+                    }
+                    
+                } catch (error) {
+                    console.error('Error fetching commission rate:', error);
+                    const sellLineItem = document.getElementById('sell-records-line');
+                    if (sellLineItem) {
+                        sellLineItem.innerHTML = `Sell your records for cash - Rate info currently unavailable`;
+                    }
+                }
+            }
+
+            // Fetch and display sticky notes
+            async function fetchStickyNotes() {
+                try {
+                    const isLocalhost = window.location.hostname === 'localhost' || 
+                                      window.location.hostname === '127.0.0.1';
+                    const apiUrl = isLocalhost 
+                        ? 'http://localhost:5000/api/sticky-notes'
+                        : `https://${window.location.hostname}/api/sticky-notes`;
+                    
+                    const response = await fetch(apiUrl, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`API returned ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    if (data.status === 'success' && data.notes && data.notes.length > 0) {
+                        let container = document.querySelector('.sticky-notes-container');
+                        if (!container) {
+                            container = document.createElement('div');
+                            container.className = 'sticky-notes-container';
+                            document.body.appendChild(container);
+                        }
+                        
+                        container.innerHTML = '';
+                        
+                        data.notes.forEach(note => {
+                            const noteElement = document.createElement('div');
+                            noteElement.className = 'sticky-note';
+                            noteElement.textContent = note.note_text;
+                            container.appendChild(noteElement);
+                        });
+                    }
+                    
+                } catch (error) {
+                    console.error('Error fetching sticky notes:', error);
+                }
+            }
+
+            // ==================== SUBSCRIPTION FUNCTIONALITY ====================
+            
+            // Get modal elements
+            const subscribeLink = document.getElementById('subscribe-link');
+            const subscribeModal = document.getElementById('subscribe-modal');
+            const subscribeClose = document.querySelector('.subscribe-modal-close');
+            const subscribeForm = document.getElementById('subscribe-form');
+            const subscribeMessage = document.getElementById('subscribe-message');
+
+            // Open modal
+            if (subscribeLink) {
+                subscribeLink.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if (subscribeModal) {
+                        subscribeModal.classList.add('active');
+                        document.body.classList.add('modal-open');
+                    }
+                });
+            }
+
+            // Close modal
+            if (subscribeClose) {
+                subscribeClose.addEventListener('click', function() {
+                    if (subscribeModal) {
+                        subscribeModal.classList.remove('active');
+                        document.body.classList.remove('modal-open');
+                        if (subscribeMessage) subscribeMessage.style.display = 'none';
+                        if (subscribeForm) subscribeForm.reset();
+                    }
+                });
+            }
+
+            // Close modal when clicking outside
+            if (subscribeModal) {
+                subscribeModal.addEventListener('click', function(e) {
+                    if (e.target === subscribeModal) {
+                        subscribeModal.classList.remove('active');
+                        document.body.classList.remove('modal-open');
+                        if (subscribeMessage) subscribeMessage.style.display = 'none';
+                        if (subscribeForm) subscribeForm.reset();
+                    }
+                });
+            }
+
+            // Handle form submission
+            if (subscribeForm) {
+                subscribeForm.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    
+                    const email = document.getElementById('subscribe-email').value.trim();
+                    const artist = document.getElementById('subscribe-artist').value.trim();
+                    const title = document.getElementById('subscribe-title').value.trim();
+                    const catalog_number = document.getElementById('subscribe-catalog').value.trim();
+                    
+                    // Validate at least one search term
+                    if (!artist && !title && !catalog_number) {
+                        showSubscribeMessage('Please enter at least one search term (artist, title, or catalog number)', 'error');
+                        return;
+                    }
+                    
+                    // Validate email
+                    if (!email || !email.includes('@') || !email.includes('.')) {
+                        showSubscribeMessage('Please enter a valid email address', 'error');
+                        return;
+                    }
+                    
+                    // Disable button during submission
+                    const submitBtn = subscribeForm.querySelector('.subscribe-submit-btn');
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subscribing...';
+                    
+                    try {
+                        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                        const apiUrl = isLocalhost 
+                            ? 'http://localhost:5000/api/subscribe'
+                            : `https://${window.location.hostname}/api/subscribe`;
+                        
+                        const response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                email: email,
+                                artist: artist,
+                                title: title,
+                                catalog_number: catalog_number
+                            })
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (response.ok && data.status === 'success') {
+                            if (data.already_subscribed) {
+                                showSubscribeMessage(data.message, 'info');
+                            } else {
+                                showSubscribeMessage('Thank you for subscribing! We\'ll email you when matching records arrive.', 'success');
+                            }
+                            subscribeForm.reset();
+                            
+                            // Auto-close modal after 3 seconds
+                            setTimeout(() => {
+                                if (subscribeModal) {
+                                    subscribeModal.classList.remove('active');
+                                    document.body.classList.remove('modal-open');
+                                }
+                                if (subscribeMessage) subscribeMessage.style.display = 'none';
+                            }, 3000);
+                        } else {
+                            showSubscribeMessage(data.error || 'Something went wrong. Please try again.', 'error');
+                        }
+                        
+                    } catch (error) {
+                        console.error('Subscription error:', error);
+                        showSubscribeMessage('Network error. Please try again.', 'error');
+                    } finally {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = '<i class="fas fa-bell"></i> Subscribe';
+                    }
+                });
+            }
+
+            function showSubscribeMessage(message, type) {
+                if (!subscribeMessage) return;
+                subscribeMessage.textContent = message;
+                subscribeMessage.className = type === 'success' ? 'subscribe-success' : (type === 'info' ? 'subscribe-info' : 'subscribe-error');
+                subscribeMessage.style.display = 'block';
+                subscribeMessage.style.background = type === 'success' ? '#d4edda' : (type === 'info' ? '#cce5ff' : '#f8d7da');
+                subscribeMessage.style.color = type === 'success' ? '#155724' : (type === 'info' ? '#004085' : '#721c24');
+                subscribeMessage.style.border = type === 'success' ? '1px solid #c3e6cb' : (type === 'info' ? '1px solid #b8daff' : '1px solid #f5c6cb');
+                subscribeMessage.style.borderRadius = '4px';
+                subscribeMessage.style.padding = '12px';
+                subscribeMessage.style.marginTop = '15px';
+            }
 
             fetchCommissionRate();
             fetchStickyNotes();
@@ -1187,6 +1197,9 @@
 </head>
 
 <body>
+    <!-- Navbar placeholder - navbar will be loaded here -->
+    <div id="navbar-placeholder"></div>
+
     <!-- Sticky Notes Container (will be populated by JavaScript) -->
     <div class="sticky-notes-container"></div>
     
@@ -1234,48 +1247,6 @@
             </div>
         </div>
     </div>
-
-    <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
-        <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
-            <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
-        </a>
-        <div style="display: flex; gap: 20px; align-items: center;">
-            <a href="/browse" style="color: white; text-decoration: none;">Browse</a>
-            <a href="/misc" style="color: white; text-decoration: none;">Misc</a>
-            <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
-            
-            <!-- Record Alerts - ALWAYS VISIBLE -->
-            <a href="#" id="subscribe-link" style="color: white; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
-                <i class="fas fa-bell"></i> Record Alerts
-            </a>
-
-            <!-- Notification Bell - ONLY VISIBLE WHEN LOGGED IN -->
-            <div id="navbar-notification-container" class="hidden">
-                <button id="navbar-notification-btn" aria-label="Notifications">
-                    <i class="fas fa-bell" style="font-size: 16px;"></i>
-                    <span id="navbar-notification-badge">0</span>
-                </button>
-                <div id="navbar-notification-dropdown">
-                    <div class="navbar-notification-header">
-                        <span><i class="fas fa-bell"></i>Notifications</span>
-                        <button id="navbar-mark-all-read">Mark all read</button>
-                    </div>
-                    <div id="navbar-notification-list">
-                        <div class="navbar-notification-empty">
-                            <i class="fas fa-bell-slash"></i>
-                            No new notifications
-                        </div>
-                    </div>
-                    <div class="navbar-notification-footer">
-                        <a href="/admin#email-subscriptions">View all in Admin Panel →</a>
-                    </div>
-                </div>
-            </div>
-
-            <div id="auth-section">
-            </div>
-        </div>
-    </nav>
 
     <!-- Add padding to account for fixed navbar -->
     <div style="padding-top: 60px;"></div>
