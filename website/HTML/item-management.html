@@ -5,12 +5,279 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/static/images/PigStyle.ico">
     <title>Item Management - PigStyle Music</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-03HFDR9PV7');
+    </script>
+    
+    <!-- CSS FILE - All styles here -->
+    <link rel="stylesheet" href="/static/css/index.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="/static/css/admin.css">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script src="../static/js/app-config.js"></script>
 
+    <!-- Navbar Notification Bell Styles -->
     <style>
+        /* ========== NAVBAR NOTIFICATION BELL STYLES ========== */
+        #navbar-notification-container {
+            position: relative;
+            display: inline-block;
+            margin-right: 10px;
+        }
+
+        #navbar-notification-container.hidden {
+            display: none !important;
+        }
+
+        #navbar-notification-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 14px;
+        }
+
+        #navbar-notification-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        #navbar-notification-btn.has-notifications {
+            border-color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.15);
+        }
+
+        #navbar-notification-badge {
+            display: none;
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            background: #dc3545;
+            color: white;
+            border-radius: 50%;
+            padding: 1px 6px;
+            font-size: 10px;
+            font-weight: bold;
+            min-width: 18px;
+            text-align: center;
+            line-height: 16px;
+            animation: badge-pulse 2s infinite;
+        }
+
+        #navbar-notification-badge.show {
+            display: block;
+        }
+
+        #navbar-notification-dropdown {
+            display: none;
+            position: absolute;
+            top: 40px;
+            right: 0;
+            background: white;
+            min-width: 380px;
+            max-height: 450px;
+            overflow-y: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+            padding: 0;
+            border: 1px solid #ddd;
+            z-index: 2000;
+        }
+
+        #navbar-notification-dropdown.show {
+            display: block;
+            animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes badge-pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .navbar-notification-header {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8f9fa;
+            border-radius: 8px 8px 0 0;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .navbar-notification-header span {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .navbar-notification-header span i {
+            color: #007bff;
+            margin-right: 8px;
+        }
+
+        #navbar-mark-all-read {
+            background: none;
+            border: none;
+            color: #007bff;
+            font-size: 12px;
+            cursor: pointer;
+            text-decoration: underline;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        #navbar-mark-all-read:hover {
+            background: rgba(0, 123, 255, 0.1);
+        }
+
+        #navbar-notification-list {
+            padding: 5px 0;
+        }
+
+        .navbar-notification-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 10px 15px;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background 0.2s;
+        }
+
+        .navbar-notification-item:hover {
+            background: #f8f9fa;
+        }
+
+        .navbar-notification-item.unread {
+            background: #e8f4fd;
+            border-left: 3px solid #007bff;
+        }
+
+        .navbar-notification-item:last-child {
+            border-bottom: none;
+        }
+
+        .navbar-notification-icon {
+            width: 28px;
+            height: 28px;
+            background: #007bff;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 12px;
+        }
+
+        .navbar-notification-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .navbar-notification-email {
+            font-weight: 600;
+            color: #333;
+            font-size: 13px;
+        }
+
+        .navbar-notification-details {
+            font-size: 12px;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        .navbar-notification-time {
+            font-size: 10px;
+            color: #999;
+            margin-top: 3px;
+        }
+
+        .navbar-notification-mark-read {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 3px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 10px;
+            transition: all 0.2s;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .navbar-notification-mark-read:hover {
+            background: #218838;
+        }
+
+        .navbar-notification-empty {
+            padding: 30px 20px;
+            color: #999;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .navbar-notification-empty i {
+            font-size: 28px;
+            display: block;
+            margin-bottom: 10px;
+            color: #ddd;
+        }
+
+        .navbar-notification-footer {
+            padding: 10px 15px;
+            border-top: 1px solid #eee;
+            text-align: center;
+            background: #f8f9fa;
+            border-radius: 0 0 8px 8px;
+            position: sticky;
+            bottom: 0;
+            z-index: 1;
+        }
+
+        .navbar-notification-footer a {
+            color: #007bff;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .navbar-notification-footer a:hover {
+            color: #0056b3;
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            #navbar-notification-dropdown {
+                min-width: 300px;
+                right: -10px;
+            }
+        }
+
         /* ========== STATUS BADGE STYLES ========== */
         .status-badge {
             display: inline-block;
@@ -49,10 +316,10 @@
             margin-top: 70px;
         }
         .admin-container h1 {
-            color: white;
+            color: #333;
         }
         .admin-container .subtitle {
-            color: white;
+            color: #666;
             margin-bottom: 20px;
         }
 
@@ -528,91 +795,6 @@
             background: #e9ecef;
         }
 
-        /* ========== DROPDOWN STYLES ========== */
-        .user-menu {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .user-greeting {
-            color: white;
-            font-weight: 500;
-            font-size: 14px;
-        }
-
-        .dropdown {
-            position: relative;
-            display: inline-block;
-        }
-
-        .dropdown-toggle {
-            background: rgba(255, 255, 255, 0.2);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            padding: 6px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 14px;
-            min-width: 40px;
-            justify-content: center;
-            transition: background 0.2s;
-        }
-
-        .dropdown-toggle:hover {
-            background: rgba(255, 255, 255, 0.3);
-        }
-
-        .dropdown-menu {
-            display: none;
-            position: absolute;
-            right: 0;
-            top: 100%;
-            background: white;
-            min-width: 200px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            border-radius: 4px;
-            z-index: 1000;
-            margin-top: 5px;
-            border: 1px solid #ddd;
-        }
-
-        .dropdown-menu.show {
-            display: block !important;
-        }
-
-        .dropdown-item {
-            display: flex;
-            align-items: center;
-            padding: 10px 15px;
-            color: #333 !important;
-            text-decoration: none;
-            border-bottom: 1px solid #eee;
-            transition: background 0.2s;
-            font-size: 14px;
-        }
-
-        .dropdown-item:hover {
-            background: #f5f5f5;
-            color: #000;
-        }
-
-        .dropdown-item i {
-            margin-right: 10px;
-            width: 16px;
-            text-align: center;
-            color: #666;
-        }
-
-        .dropdown-divider {
-            height: 1px;
-            background: #eee;
-            margin: 5px 0;
-        }
-
         /* ========== VIEW TOGGLE STYLES ========== */
         .view-toggle {
             display: flex;
@@ -699,7 +881,7 @@
 </head>
 <body>
 
-    <!-- ========== STATIC NAVBAR (matches admin.html) ========== -->
+    <!-- ========== WORKING NAVBAR FROM FILE (1) ========== -->
     <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
         <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
             <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
@@ -708,13 +890,86 @@
             <a href="/browse" style="color: white; text-decoration: none;">Browse</a>
             <a href="/misc" style="color: white; text-decoration: none;">Misc</a>
             <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
+            
+            <!-- Record Alerts - ALWAYS VISIBLE -->
+            <a href="#" id="subscribe-link" style="color: white; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fas fa-bell"></i> Record Alerts
+            </a>
+
+            <!-- Notification Bell - ONLY VISIBLE WHEN LOGGED IN -->
+            <div id="navbar-notification-container" class="hidden">
+                <button id="navbar-notification-btn" aria-label="Notifications">
+                    <i class="fas fa-bell" style="font-size: 16px;"></i>
+                    <span id="navbar-notification-badge">0</span>
+                </button>
+                <div id="navbar-notification-dropdown">
+                    <div class="navbar-notification-header">
+                        <span><i class="fas fa-bell"></i>Notifications</span>
+                        <button id="navbar-mark-all-read">Mark all read</button>
+                    </div>
+                    <div id="navbar-notification-list">
+                        <div class="navbar-notification-empty">
+                            <i class="fas fa-bell-slash"></i>
+                            No new notifications
+                        </div>
+                    </div>
+                    <div class="navbar-notification-footer">
+                        <a href="/admin#email-subscriptions">View all in Admin Panel →</a>
+                    </div>
+                </div>
+            </div>
+
             <div id="auth-section">
-                <!-- app-config.js injects the user menu here -->
             </div>
         </div>
     </nav>
 
-    <!-- ========== MAIN CONTENT ========== -->
+    <!-- ========== SUBSCRIPTION MODAL FROM FILE (1) ========== -->
+    <div id="subscribe-modal" class="subscribe-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; justify-content: center; align-items: center;">
+        <div class="subscribe-modal-content" style="background: white; border-radius: 12px; max-width: 500px; width: 90%; max-height: 90%; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+            <div class="subscribe-modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px 12px 0 0; display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0; font-size: 1.3rem;"><i class="fas fa-bell"></i> Get Notified When We Get Records You Want!</h3>
+                <button class="subscribe-modal-close" style="background: none; border: none; color: white; font-size: 28px; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+            </div>
+            <div class="subscribe-modal-body" style="padding: 25px;">
+                <p>Enter your email and what you're looking for. We'll email you when matching records arrive!</p>
+                
+                <form id="subscribe-form">
+                    <div class="subscribe-form-group" style="margin-bottom: 20px;">
+                        <label for="subscribe-email" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;"><i class="fas fa-envelope"></i> Your Email *</label>
+                        <input type="email" id="subscribe-email" required placeholder="you@example.com" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; box-sizing: border-box;">
+                    </div>
+                    
+                    <div class="subscribe-form-group" style="margin-bottom: 20px;">
+                        <label for="subscribe-artist" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;"><i class="fas fa-microphone"></i> Artist</label>
+                        <input type="text" id="subscribe-artist" placeholder="e.g., Bruce Springsteen" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; box-sizing: border-box;">
+                    </div>
+                    
+                    <div class="subscribe-form-group" style="margin-bottom: 20px;">
+                        <label for="subscribe-title" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;"><i class="fas fa-music"></i> Album Title</label>
+                        <input type="text" id="subscribe-title" placeholder="e.g., Born to Run" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; box-sizing: border-box;">
+                    </div>
+                    
+                    <div class="subscribe-form-group" style="margin-bottom: 20px;">
+                        <label for="subscribe-catalog" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;"><i class="fas fa-barcode"></i> Catalog Number</label>
+                        <input type="text" id="subscribe-catalog" placeholder="e.g., JC 33795" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; box-sizing: border-box;">
+                    </div>
+                    
+                    <div class="subscribe-form-hint" style="font-size: 12px; color: #666; margin-bottom: 20px; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+                        <i class="fas fa-info-circle"></i> Enter at least one search term (artist, title, or catalog number)
+                    </div>
+                    
+                    <button type="submit" class="subscribe-submit-btn" style="width: 100%; padding: 14px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: transform 0.2s;">
+                        <i class="fas fa-bell"></i> Subscribe
+                    </button>
+                </form>
+                
+                <div id="subscribe-message" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== MAIN CONTENT FROM FILE (2) ========== -->
     <div class="admin-container">
         <h1><i class="fas fa-boxes"></i> Item Management</h1>
         <p class="subtitle">Search for items, select them, and perform Checkout, Delete, or Refund operations.</p>
@@ -829,7 +1084,7 @@
                 </span>
             </div>
             <div class="status-right">
-                <button class="btn btn-secondary btn-small" id="clear-selection-btn" style="display: none;">
+                <button class="btn btn-secondary btn-small" id="clear-selection-btn-top" style="display: none;">
                     <i class="fas fa-times"></i> Clear Selection
                 </button>
             </div>
@@ -992,7 +1247,6 @@
     </div>
 
     <!-- ========== SCRIPTS ========== -->
-    <script src="/static/js/app-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="/static/js/utils.js"></script>
@@ -1001,31 +1255,509 @@
     <script src="/static/js/item-management.js"></script>
 
     <script>
-        // Global functions for modal access ONLY
-        // These are called directly from HTML onclick attributes
-        
-        function closeTenderModal() {
-            document.getElementById('tender-modal').style.display = 'none';
-            document.getElementById('tender-amount').value = '';
-            document.getElementById('change-display-container').style.display = 'none';
-            document.getElementById('complete-payment-btn').disabled = true;
-        }
+        // ========== NAVBAR NOTIFICATION BELL JAVASCRIPT (from file 1) ==========
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get elements
+            const notificationContainer = document.getElementById('navbar-notification-container');
+            const notificationBadge = document.getElementById('navbar-notification-badge');
+            const notificationBtn = document.getElementById('navbar-notification-btn');
+            
+            // ==================== SUBSCRIPTION FUNCTIONALITY ====================
+            const subscribeLink = document.getElementById('subscribe-link');
+            const subscribeModal = document.getElementById('subscribe-modal');
+            const subscribeClose = document.querySelector('.subscribe-modal-close');
+            const subscribeForm = document.getElementById('subscribe-form');
+            const subscribeMessage = document.getElementById('subscribe-message');
 
-        function closeGiftCardModal() {
-            document.getElementById('giftcard-modal').style.display = 'none';
-            document.getElementById('giftcard-code').value = '';
-            document.getElementById('giftcard-info').style.display = 'none';
-            document.getElementById('giftcard-apply-section').style.display = 'none';
-            document.getElementById('giftcard-result').style.display = 'none';
-        }
+            // Open modal
+            if (subscribeLink) {
+                subscribeLink.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if (subscribeModal) {
+                        subscribeModal.style.display = 'flex';
+                        document.body.classList.add('modal-open');
+                    }
+                });
+            }
 
-        function closeConfirmDeleteModal() {
-            document.getElementById('confirm-delete-modal').style.display = 'none';
-        }
+            // Close modal
+            if (subscribeClose) {
+                subscribeClose.addEventListener('click', function() {
+                    if (subscribeModal) {
+                        subscribeModal.style.display = 'none';
+                        document.body.classList.remove('modal-open');
+                        if (subscribeMessage) subscribeMessage.style.display = 'none';
+                        if (subscribeForm) subscribeForm.reset();
+                    }
+                });
+            }
 
-        function closeConfirmRefundModal() {
-            document.getElementById('confirm-refund-modal').style.display = 'none';
-        }
+            // Close modal when clicking outside
+            if (subscribeModal) {
+                subscribeModal.addEventListener('click', function(e) {
+                    if (e.target === subscribeModal) {
+                        subscribeModal.style.display = 'none';
+                        document.body.classList.remove('modal-open');
+                        if (subscribeMessage) subscribeMessage.style.display = 'none';
+                        if (subscribeForm) subscribeForm.reset();
+                    }
+                });
+            }
+
+            // Handle form submission
+            if (subscribeForm) {
+                subscribeForm.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    
+                    const email = document.getElementById('subscribe-email').value.trim();
+                    const artist = document.getElementById('subscribe-artist').value.trim();
+                    const title = document.getElementById('subscribe-title').value.trim();
+                    const catalog_number = document.getElementById('subscribe-catalog').value.trim();
+                    
+                    if (!artist && !title && !catalog_number) {
+                        showSubscribeMessage('Please enter at least one search term (artist, title, or catalog number)', 'error');
+                        return;
+                    }
+                    
+                    if (!email || !email.includes('@') || !email.includes('.')) {
+                        showSubscribeMessage('Please enter a valid email address', 'error');
+                        return;
+                    }
+                    
+                    const submitBtn = subscribeForm.querySelector('.subscribe-submit-btn');
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subscribing...';
+                    
+                    try {
+                        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                        const apiUrl = isLocalhost 
+                            ? 'http://localhost:5000/api/subscribe'
+                            : `https://${window.location.hostname}/api/subscribe`;
+                        
+                        const response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                email: email,
+                                artist: artist,
+                                title: title,
+                                catalog_number: catalog_number
+                            })
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (response.ok && data.status === 'success') {
+                            if (data.already_subscribed) {
+                                showSubscribeMessage(data.message, 'info');
+                            } else {
+                                showSubscribeMessage('Thank you for subscribing! We\'ll email you when matching records arrive.', 'success');
+                            }
+                            subscribeForm.reset();
+                            
+                            setTimeout(() => {
+                                if (subscribeModal) {
+                                    subscribeModal.style.display = 'none';
+                                    document.body.classList.remove('modal-open');
+                                }
+                                if (subscribeMessage) subscribeMessage.style.display = 'none';
+                            }, 3000);
+                        } else {
+                            showSubscribeMessage(data.error || 'Something went wrong. Please try again.', 'error');
+                        }
+                        
+                    } catch (error) {
+                        console.error('Subscription error:', error);
+                        showSubscribeMessage('Network error. Please try again.', 'error');
+                    } finally {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = '<i class="fas fa-bell"></i> Subscribe';
+                    }
+                });
+            }
+
+            function showSubscribeMessage(message, type) {
+                if (!subscribeMessage) return;
+                subscribeMessage.textContent = message;
+                subscribeMessage.style.display = 'block';
+                subscribeMessage.style.background = type === 'success' ? '#d4edda' : (type === 'info' ? '#cce5ff' : '#f8d7da');
+                subscribeMessage.style.color = type === 'success' ? '#155724' : (type === 'info' ? '#004085' : '#721c24');
+                subscribeMessage.style.border = type === 'success' ? '1px solid #c3e6cb' : (type === 'info' ? '1px solid #b8daff' : '1px solid #f5c6cb');
+                subscribeMessage.style.borderRadius = '4px';
+                subscribeMessage.style.padding = '12px';
+                subscribeMessage.style.marginTop = '15px';
+            }
+
+            // ==================== NAVBAR NOTIFICATION BELL ====================
+            
+            // Check if user is logged in
+            async function checkLoginStatus() {
+                try {
+                    const response = await fetch('/session/check', {
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        console.warn('Session check failed:', response.status);
+                        return;
+                    }
+                    
+                    const data = await response.json();
+                    
+                    console.log('Login status check - logged_in:', data.logged_in);
+                    
+                    if (data.logged_in) {
+                        notificationContainer.classList.remove('hidden');
+                        notificationContainer.style.display = 'inline-block';
+                        checkNotifications();
+                        if (window.notificationInterval) {
+                            clearInterval(window.notificationInterval);
+                        }
+                        window.notificationInterval = setInterval(checkNotifications, 30000);
+                    } else {
+                        notificationContainer.classList.add('hidden');
+                        notificationContainer.style.display = 'none';
+                        if (window.notificationInterval) {
+                            clearInterval(window.notificationInterval);
+                            window.notificationInterval = null;
+                        }
+                        if (notificationBadge) {
+                            notificationBadge.style.display = 'none';
+                            notificationBadge.classList.remove('show');
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error checking login status:', error);
+                }
+            }
+
+            // Check for notifications
+            async function checkNotifications() {
+                try {
+                    if (notificationContainer.classList.contains('hidden')) {
+                        return;
+                    }
+                    
+                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    const apiUrl = isLocalhost 
+                        ? 'http://localhost:5000/api/subscriptions/notifications/count'
+                        : `https://${window.location.hostname}/api/subscriptions/notifications/count`;
+                    
+                    const response = await fetch(apiUrl, {
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        return;
+                    }
+                    
+                    const data = await response.json();
+                    
+                    if (data.status === 'success' && data.count > 0) {
+                        if (notificationBadge) {
+                            notificationBadge.textContent = data.count > 99 ? '99+' : data.count;
+                            notificationBadge.style.display = 'block';
+                            notificationBadge.classList.add('show');
+                        }
+                        if (notificationBtn) {
+                            notificationBtn.classList.add('has-notifications');
+                        }
+                    } else {
+                        if (notificationBadge) {
+                            notificationBadge.style.display = 'none';
+                            notificationBadge.classList.remove('show');
+                        }
+                        if (notificationBtn) {
+                            notificationBtn.classList.remove('has-notifications');
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error checking notifications:', error);
+                }
+            }
+
+            // Load notifications for dropdown
+            async function loadNotifications() {
+                try {
+                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    const apiUrl = isLocalhost 
+                        ? 'http://localhost:5000/api/subscriptions/notifications'
+                        : `https://${window.location.hostname}/api/subscriptions/notifications`;
+                    
+                    const response = await fetch(apiUrl, {
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        return;
+                    }
+                    
+                    const data = await response.json();
+                    const list = document.getElementById('navbar-notification-list');
+                    
+                    if (!list) return;
+                    
+                    if (data.status === 'success' && data.notifications && data.notifications.length > 0) {
+                        let html = '';
+                        data.notifications.forEach(n => {
+                            const timeAgo = getTimeAgo(n.created_at);
+                            html += `
+                                <div class="navbar-notification-item unread" data-id="${n.id}">
+                                    <div class="navbar-notification-icon">
+                                        <i class="fas fa-envelope"></i>
+                                    </div>
+                                    <div class="navbar-notification-content">
+                                        <div class="navbar-notification-email">${escapeHtml(n.email)}</div>
+                                        <div class="navbar-notification-details">
+                                            ${n.artist ? `Artist: ${escapeHtml(n.artist)}` : ''}
+                                            ${n.title ? `Title: ${escapeHtml(n.title)}` : ''}
+                                            ${n.catalog_number ? `Catalog: ${escapeHtml(n.catalog_number)}` : ''}
+                                        </div>
+                                        <div class="navbar-notification-time">${timeAgo}</div>
+                                    </div>
+                                    <button class="navbar-notification-mark-read" onclick="markNotificationRead(${n.id})">Mark Read</button>
+                                </div>
+                            `;
+                        });
+                        list.innerHTML = html;
+                    } else {
+                        list.innerHTML = `
+                            <div class="navbar-notification-empty">
+                                <i class="fas fa-bell-slash"></i>
+                                No new notifications
+                            </div>
+                        `;
+                    }
+                } catch (error) {
+                    console.error('Error loading notifications:', error);
+                }
+            }
+
+            // Mark notification as read
+            window.markNotificationRead = async function(id) {
+                try {
+                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    const apiUrl = isLocalhost 
+                        ? `http://localhost:5000/api/subscriptions/${id}`
+                        : `https://${window.location.hostname}/api/subscriptions/${id}`;
+                    
+                    await fetch(apiUrl, {
+                        method: 'PUT',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ mark_read: true })
+                    });
+                    
+                    loadNotifications();
+                    checkNotifications();
+                } catch (error) {
+                    console.error('Error marking notification read:', error);
+                }
+            };
+
+            // Mark all notifications as read
+            window.markAllNotificationsRead = async function() {
+                try {
+                    const items = document.querySelectorAll('.navbar-notification-item.unread');
+                    const ids = [];
+                    items.forEach(item => {
+                        const id = parseInt(item.dataset.id);
+                        if (id) ids.push(id);
+                    });
+                    
+                    if (ids.length === 0) return;
+                    
+                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    for (const id of ids) {
+                        const apiUrl = isLocalhost 
+                            ? `http://localhost:5000/api/subscriptions/${id}`
+                            : `https://${window.location.hostname}/api/subscriptions/${id}`;
+                        
+                        await fetch(apiUrl, {
+                            method: 'PUT',
+                            credentials: 'include',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ mark_read: true })
+                        });
+                    }
+                    
+                    loadNotifications();
+                    checkNotifications();
+                } catch (error) {
+                    console.error('Error marking all notifications read:', error);
+                }
+            };
+
+            // Toggle notification dropdown
+            window.toggleNotificationDropdown = function() {
+                const dropdown = document.getElementById('navbar-notification-dropdown');
+                if (dropdown.classList.contains('show')) {
+                    dropdown.classList.remove('show');
+                } else {
+                    dropdown.classList.add('show');
+                    loadNotifications();
+                }
+            };
+
+            // Escape HTML
+            function escapeHtml(text) {
+                if (!text) return '';
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            // Get time ago
+            function getTimeAgo(dateStr) {
+                if (!dateStr) return 'N/A';
+                const date = new Date(dateStr);
+                const now = new Date();
+                const diffMs = now - date;
+                const diffMins = Math.floor(diffMs / 60000);
+                const diffHours = Math.floor(diffMs / 3600000);
+                const diffDays = Math.floor(diffMs / 86400000);
+                
+                if (diffMins < 1) return 'Just now';
+                if (diffMins < 60) return `${diffMins}m ago`;
+                if (diffHours < 24) return `${diffHours}h ago`;
+                if (diffDays < 7) return `${diffDays}d ago`;
+                return date.toLocaleDateString();
+            }
+
+            // Setup notification bell event listeners
+            if (notificationBtn) {
+                notificationBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    toggleNotificationDropdown();
+                });
+            }
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function(e) {
+                const container = document.getElementById('navbar-notification-container');
+                if (container && !container.contains(e.target)) {
+                    const dropdown = document.getElementById('navbar-notification-dropdown');
+                    if (dropdown) {
+                        dropdown.classList.remove('show');
+                    }
+                }
+            });
+
+            // Mark all read button
+            const markAllBtn = document.getElementById('navbar-mark-all-read');
+            if (markAllBtn) {
+                markAllBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    window.markAllNotificationsRead();
+                });
+            }
+
+            // Update bell visibility
+            function updateBellVisibility() {
+                console.log('🔄 Updating bell visibility...');
+                
+                if (typeof Auth !== 'undefined' && Auth.isLoggedIn) {
+                    console.log('✅ User is logged in via Auth module');
+                    notificationContainer.classList.remove('hidden');
+                    notificationContainer.style.display = 'inline-block';
+                    checkNotifications();
+                    
+                    if (window.notificationInterval) {
+                        clearInterval(window.notificationInterval);
+                    }
+                    window.notificationInterval = setInterval(checkNotifications, 30000);
+                } else if (typeof Auth !== 'undefined' && !Auth.isLoggedIn) {
+                    console.log('❌ User is not logged in');
+                    notificationContainer.classList.add('hidden');
+                    notificationContainer.style.display = 'none';
+                    if (window.notificationInterval) {
+                        clearInterval(window.notificationInterval);
+                        window.notificationInterval = null;
+                    }
+                } else {
+                    console.log('⏳ Auth not loaded, checking session...');
+                    checkLoginStatus();
+                }
+            }
+
+            // Check immediately
+            updateBellVisibility();
+
+            // Listen for auth state changes
+            document.addEventListener('authStateChanged', function(e) {
+                console.log('📢 authStateChanged event received:', e.detail);
+                updateBellVisibility();
+            });
+
+            // Check for Auth module
+            let authCheckAttempts = 0;
+            const maxAuthChecks = 20;
+            const authCheckInterval = setInterval(function() {
+                authCheckAttempts++;
+                if (typeof Auth !== 'undefined') {
+                    console.log('✅ Auth module found!');
+                    clearInterval(authCheckInterval);
+                    updateBellVisibility();
+                } else if (authCheckAttempts >= maxAuthChecks) {
+                    console.warn('⚠️ Auth module not found after multiple attempts');
+                    clearInterval(authCheckInterval);
+                    checkLoginStatus();
+                }
+            }, 500);
+
+            // Check on page visibility change
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden) {
+                    console.log('👁️ Page became visible, checking auth...');
+                    updateBellVisibility();
+                }
+            });
+
+            // ========== MODAL CLOSE FUNCTIONS (for HTML onclick) ==========
+            window.closeTenderModal = function() {
+                document.getElementById('tender-modal').style.display = 'none';
+                document.getElementById('tender-amount').value = '';
+                document.getElementById('change-display-container').style.display = 'none';
+                document.getElementById('complete-payment-btn').disabled = true;
+            }
+
+            window.closeGiftCardModal = function() {
+                document.getElementById('giftcard-modal').style.display = 'none';
+                document.getElementById('giftcard-code').value = '';
+                document.getElementById('giftcard-info').style.display = 'none';
+                document.getElementById('giftcard-apply-section').style.display = 'none';
+                document.getElementById('giftcard-result').style.display = 'none';
+            }
+
+            window.closeConfirmDeleteModal = function() {
+                document.getElementById('confirm-delete-modal').style.display = 'none';
+            }
+
+            window.closeConfirmRefundModal = function() {
+                document.getElementById('confirm-refund-modal').style.display = 'none';
+            }
+        });
     </script>
 
 </body>
