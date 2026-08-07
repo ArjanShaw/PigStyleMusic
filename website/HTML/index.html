@@ -54,7 +54,6 @@
             animation: float 3s ease-in-out infinite;
         }
         
-        /* Different rotation for each note to make them look more natural */
         .sticky-note:nth-child(even) {
             transform: rotate(1deg);
             background-color: #fff176;
@@ -89,14 +88,9 @@
             z-index: -1;
         }
         
-        /* Subtle floating animation */
         @keyframes float {
-            0%, 100% {
-                transform: translateY(0px) rotate(-2deg);
-            }
-            50% {
-                transform: translateY(-5px) rotate(-2deg);
-            }
+            0%, 100% { transform: translateY(0px) rotate(-2deg); }
+            50% { transform: translateY(-5px) rotate(-2deg); }
         }
         
         .sticky-note:nth-child(even) {
@@ -108,45 +102,29 @@
         }
         
         @keyframes float-even {
-            0%, 100% {
-                transform: translateY(0px) rotate(1deg);
-            }
-            50% {
-                transform: translateY(-5px) rotate(1deg);
-            }
+            0%, 100% { transform: translateY(0px) rotate(1deg); }
+            50% { transform: translateY(-5px) rotate(1deg); }
         }
         
         @keyframes float-odd {
-            0%, 100% {
-                transform: translateY(0px) rotate(-3deg);
-            }
-            50% {
-                transform: translateY(-5px) rotate(-3deg);
-            }
+            0%, 100% { transform: translateY(0px) rotate(-3deg); }
+            50% { transform: translateY(-5px) rotate(-3deg); }
         }
         
-        /* Show sticky notes only on larger screens */
         @media (min-width: 769px) {
-            .sticky-notes-container {
-                display: flex;
-            }
+            .sticky-notes-container { display: flex; }
         }
         
-        /* Hide on mobile */
         @media (max-width: 768px) {
-            .sticky-notes-container {
-                display: none;
-            }
+            .sticky-notes-container { display: none; }
         }
         
-        /* Adjust for smaller desktop screens */
         @media (min-width: 769px) and (max-width: 1024px) {
             .sticky-notes-container {
                 top: 70px;
                 left: 10px;
                 max-width: 200px;
             }
-            
             .sticky-note {
                 padding: 10px 15px;
                 font-size: 1rem;
@@ -527,7 +505,6 @@
         }
     </style>
      
-    <!-- JavaScript for expandable photos, commission rate, sticky notes, and subscription -->
     <script>
         // Load navbar component
         function loadNavbar() {
@@ -535,22 +512,146 @@
                 .then(response => response.text())
                 .then(html => {
                     document.getElementById('navbar-placeholder').innerHTML = html;
-                    // After navbar loads, initialize the notification bell
                     initNotificationBell();
+                    initSubscriptionModal();
                 })
                 .catch(error => {
                     console.error('Error loading navbar:', error);
                 });
         }
 
-        // Notification bell initialization (runs after navbar is loaded)
+        // Load subscription modal
+        function loadSubscriptionModal() {
+            fetch('/components/subscription-modal.html')
+                .then(response => response.text())
+                .then(html => {
+                    document.getElementById('subscription-modal-placeholder').innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error loading subscription modal:', error);
+                });
+        }
+
+        // ===== SUBSCRIPTION MODAL INITIALIZATION =====
+        function initSubscriptionModal() {
+            const subscribeLink = document.getElementById('subscribe-link');
+            const subscribeModal = document.getElementById('subscribe-modal');
+            const subscribeClose = document.querySelector('.subscribe-modal-close');
+            const subscribeForm = document.getElementById('subscribe-form');
+            const subscribeMessage = document.getElementById('subscribe-message');
+
+            if (!subscribeLink || !subscribeModal) return;
+
+            subscribeLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                subscribeModal.style.display = 'flex';
+                document.body.classList.add('modal-open');
+            });
+
+            if (subscribeClose) {
+                subscribeClose.addEventListener('click', function() {
+                    subscribeModal.style.display = 'none';
+                    document.body.classList.remove('modal-open');
+                    if (subscribeMessage) subscribeMessage.style.display = 'none';
+                    if (subscribeForm) subscribeForm.reset();
+                });
+            }
+
+            subscribeModal.addEventListener('click', function(e) {
+                if (e.target === subscribeModal) {
+                    subscribeModal.style.display = 'none';
+                    document.body.classList.remove('modal-open');
+                    if (subscribeMessage) subscribeMessage.style.display = 'none';
+                    if (subscribeForm) subscribeForm.reset();
+                }
+            });
+
+            if (subscribeForm) {
+                subscribeForm.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    
+                    const email = document.getElementById('subscribe-email').value.trim();
+                    const artist = document.getElementById('subscribe-artist').value.trim();
+                    const title = document.getElementById('subscribe-title').value.trim();
+                    const catalog_number = document.getElementById('subscribe-catalog').value.trim();
+                    
+                    if (!artist && !title && !catalog_number) {
+                        showSubscribeMessage('Please enter at least one search term (artist, title, or catalog number)', 'error');
+                        return;
+                    }
+                    
+                    if (!email || !email.includes('@') || !email.includes('.')) {
+                        showSubscribeMessage('Please enter a valid email address', 'error');
+                        return;
+                    }
+                    
+                    const submitBtn = subscribeForm.querySelector('.subscribe-submit-btn');
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subscribing...';
+                    
+                    try {
+                        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                        const apiUrl = isLocalhost 
+                            ? 'http://localhost:5000/api/subscribe'
+                            : `https://${window.location.hostname}/api/subscribe`;
+                        
+                        const response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ email, artist, title, catalog_number })
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (response.ok && data.status === 'success') {
+                            showSubscribeMessage(data.already_subscribed ? data.message : 'Thank you for subscribing! We\'ll email you when matching records arrive.', data.already_subscribed ? 'info' : 'success');
+                            subscribeForm.reset();
+                            
+                            setTimeout(() => {
+                                subscribeModal.style.display = 'none';
+                                document.body.classList.remove('modal-open');
+                                if (subscribeMessage) subscribeMessage.style.display = 'none';
+                            }, 3000);
+                        } else {
+                            showSubscribeMessage(data.error || 'Something went wrong. Please try again.', 'error');
+                        }
+                    } catch (error) {
+                        console.error('Subscription error:', error);
+                        showSubscribeMessage('Network error. Please try again.', 'error');
+                    } finally {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = '<i class="fas fa-bell"></i> Subscribe';
+                    }
+                });
+            }
+
+            function showSubscribeMessage(message, type) {
+                if (!subscribeMessage) return;
+                subscribeMessage.textContent = message;
+                subscribeMessage.style.display = 'block';
+                subscribeMessage.style.background = type === 'success' ? '#d4edda' : (type === 'info' ? '#cce5ff' : '#f8d7da');
+                subscribeMessage.style.color = type === 'success' ? '#155724' : (type === 'info' ? '#004085' : '#721c24');
+                subscribeMessage.style.border = type === 'success' ? '1px solid #c3e6cb' : (type === 'info' ? '1px solid #b8daff' : '1px solid #f5c6cb');
+                subscribeMessage.style.borderRadius = '4px';
+                subscribeMessage.style.padding = '12px';
+                subscribeMessage.style.marginTop = '15px';
+            }
+        }
+
+        // ===== NOTIFICATION BELL INITIALIZATION =====
         function initNotificationBell() {
-            // Get elements
             const notificationContainer = document.getElementById('navbar-notification-container');
             const notificationBadge = document.getElementById('navbar-notification-badge');
             const notificationBtn = document.getElementById('navbar-notification-btn');
             
-            // Check if user is logged in
+            if (!notificationContainer || !notificationBtn) {
+                console.warn('Notification bell elements not found');
+                return;
+            }
+
             async function checkLoginStatus() {
                 try {
                     const response = await fetch('/session/check', {
@@ -568,28 +669,21 @@
                     
                     const data = await response.json();
                     
-                    console.log('Login status check - logged_in:', data.logged_in);
-                    
                     if (data.logged_in) {
-                        // User is logged in - show bell
                         notificationContainer.classList.remove('hidden');
                         notificationContainer.style.display = 'inline-block';
-                        // Start checking for notifications
                         checkNotifications();
-                        // Start polling
                         if (window.notificationInterval) {
                             clearInterval(window.notificationInterval);
                         }
                         window.notificationInterval = setInterval(checkNotifications, 30000);
                     } else {
-                        // User is not logged in - hide bell
                         notificationContainer.classList.add('hidden');
                         notificationContainer.style.display = 'none';
                         if (window.notificationInterval) {
                             clearInterval(window.notificationInterval);
                             window.notificationInterval = null;
                         }
-                        // Hide badge
                         if (notificationBadge) {
                             notificationBadge.style.display = 'none';
                             notificationBadge.classList.remove('show');
@@ -600,10 +694,8 @@
                 }
             }
 
-            // Check for notifications (only if logged in)
             async function checkNotifications() {
                 try {
-                    // If container is hidden, don't check
                     if (notificationContainer.classList.contains('hidden')) {
                         return;
                     }
@@ -621,10 +713,7 @@
                         }
                     });
                     
-                    if (!response.ok) {
-                        console.warn('Notification count API returned:', response.status);
-                        return;
-                    }
+                    if (!response.ok) return;
                     
                     const data = await response.json();
                     
@@ -651,7 +740,6 @@
                 }
             }
 
-            // Load notifications for dropdown
             async function loadNotifications() {
                 try {
                     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -667,9 +755,7 @@
                         }
                     });
                     
-                    if (!response.ok) {
-                        return;
-                    }
+                    if (!response.ok) return;
                     
                     const data = await response.json();
                     const list = document.getElementById('navbar-notification-list');
@@ -712,7 +798,6 @@
                 }
             }
 
-            // Mark notification as read
             window.markNotificationRead = async function(id) {
                 try {
                     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -730,7 +815,6 @@
                         body: JSON.stringify({ mark_read: true })
                     });
                     
-                    // Reload notifications
                     loadNotifications();
                     checkNotifications();
                 } catch (error) {
@@ -738,10 +822,8 @@
                 }
             };
 
-            // Mark all notifications as read
             window.markAllNotificationsRead = async function() {
                 try {
-                    // Get all unread notification IDs from the list
                     const items = document.querySelectorAll('.navbar-notification-item.unread');
                     const ids = [];
                     items.forEach(item => {
@@ -751,7 +833,6 @@
                     
                     if (ids.length === 0) return;
                     
-                    // Mark each as read
                     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
                     for (const id of ids) {
                         const apiUrl = isLocalhost 
@@ -769,7 +850,6 @@
                         });
                     }
                     
-                    // Reload notifications
                     loadNotifications();
                     checkNotifications();
                 } catch (error) {
@@ -777,7 +857,6 @@
                 }
             };
 
-            // Toggle notification dropdown
             window.toggleNotificationDropdown = function() {
                 const dropdown = document.getElementById('navbar-notification-dropdown');
                 if (dropdown.classList.contains('show')) {
@@ -788,7 +867,6 @@
                 }
             };
 
-            // Escape HTML
             function escapeHtml(text) {
                 if (!text) return '';
                 const div = document.createElement('div');
@@ -796,7 +874,6 @@
                 return div.innerHTML;
             }
 
-            // Get time ago
             function getTimeAgo(dateStr) {
                 if (!dateStr) return 'N/A';
                 const date = new Date(dateStr);
@@ -813,7 +890,6 @@
                 return date.toLocaleDateString();
             }
 
-            // Setup notification bell event listeners
             if (notificationBtn) {
                 notificationBtn.addEventListener('click', function(e) {
                     e.stopPropagation();
@@ -821,7 +897,6 @@
                 });
             }
 
-            // Close dropdown when clicking outside
             document.addEventListener('click', function(e) {
                 const container = document.getElementById('navbar-notification-container');
                 if (container && !container.contains(e.target)) {
@@ -832,7 +907,6 @@
                 }
             });
 
-            // Mark all read button
             const markAllBtn = document.getElementById('navbar-mark-all-read');
             if (markAllBtn) {
                 markAllBtn.addEventListener('click', function(e) {
@@ -841,24 +915,17 @@
                 });
             }
 
-            // Function to check auth status and show/hide bell
             function updateBellVisibility() {
-                console.log('🔄 Updating bell visibility...');
-                
-                // Check if Auth is available and user is logged in
                 if (typeof Auth !== 'undefined' && Auth.isLoggedIn) {
-                    console.log('✅ User is logged in via Auth module');
                     notificationContainer.classList.remove('hidden');
                     notificationContainer.style.display = 'inline-block';
                     checkNotifications();
                     
-                    // Start polling
                     if (window.notificationInterval) {
                         clearInterval(window.notificationInterval);
                     }
                     window.notificationInterval = setInterval(checkNotifications, 30000);
                 } else if (typeof Auth !== 'undefined' && !Auth.isLoggedIn) {
-                    console.log('❌ User is not logged in');
                     notificationContainer.classList.add('hidden');
                     notificationContainer.style.display = 'none';
                     if (window.notificationInterval) {
@@ -866,49 +933,40 @@
                         window.notificationInterval = null;
                     }
                 } else {
-                    // Auth not loaded yet, try session check
-                    console.log('⏳ Auth not loaded, checking session...');
                     checkLoginStatus();
                 }
             }
 
-            // Check immediately
             updateBellVisibility();
 
-            // Check again after Auth module initializes
             document.addEventListener('authStateChanged', function(e) {
-                console.log('📢 authStateChanged event received:', e.detail);
                 updateBellVisibility();
             });
 
-            // Check for Auth module
             let authCheckAttempts = 0;
             const maxAuthChecks = 20;
             const authCheckInterval = setInterval(function() {
                 authCheckAttempts++;
                 if (typeof Auth !== 'undefined') {
-                    console.log('✅ Auth module found!');
                     clearInterval(authCheckInterval);
                     updateBellVisibility();
                 } else if (authCheckAttempts >= maxAuthChecks) {
-                    console.warn('⚠️ Auth module not found after multiple attempts');
                     clearInterval(authCheckInterval);
                     checkLoginStatus();
                 }
             }, 500);
 
-            // Check on page visibility change
             document.addEventListener('visibilitychange', function() {
                 if (!document.hidden) {
-                    console.log('👁️ Page became visible, checking auth...');
                     updateBellVisibility();
                 }
             });
         }
 
         document.addEventListener('DOMContentLoaded', function() {
-            // Load the navbar first
+            // Load navbar and subscription modal
             loadNavbar();
+            loadSubscriptionModal();
 
             // Get all store images
             const storeImages = document.querySelectorAll('.store-front, .store-inside');
@@ -917,22 +975,15 @@
             const imageCaption = document.querySelector('.image-caption');
             const closeModal = document.querySelector('.close-modal');
             
-            // Add click event to each image
             storeImages.forEach(img => {
                 img.addEventListener('click', function() {
-                    // Set the expanded image source
                     expandedImg.src = this.src;
-                    
-                    // Set the caption based on alt text
                     imageCaption.textContent = this.alt;
-                    
-                    // Show modal
                     modal.classList.add('active');
                     document.body.classList.add('modal-open');
                 });
             });
             
-            // Close modal when X is clicked
             if (closeModal) {
                 closeModal.addEventListener('click', function() {
                     modal.classList.remove('active');
@@ -940,7 +991,6 @@
                 });
             }
             
-            // Close modal when clicking outside the image
             if (modal) {
                 modal.addEventListener('click', function(e) {
                     if (e.target === modal) {
@@ -950,7 +1000,6 @@
                 });
             }
             
-            // Close modal with Escape key
             document.addEventListener('keydown', function(e) {
                 if (e.key === 'Escape' && modal.classList.contains('active')) {
                     modal.classList.remove('active');
@@ -958,18 +1007,9 @@
                 }
             });
 
-            // Function to update commission display
-            function updateCommissionDisplay(rate) {
-                const sellLineItem = document.getElementById('sell-records-line');
-                if (sellLineItem) {
-                    sellLineItem.innerHTML = `Paying cash for vinyl records`;
-                }
-            }
-
             // Fetch and display commission rate
             async function fetchCommissionRate() {
                 try {
-                    // Check if AppConfig is loaded
                     if (typeof AppConfig === 'undefined') {
                         console.warn('AppConfig not loaded yet, retrying...');
                         setTimeout(fetchCommissionRate, 500);
@@ -977,8 +1017,6 @@
                     }
                     
                     const apiUrl = AppConfig.getUrl('commissionRate');
-                    console.log('Fetching commission rate from:', apiUrl);
-                    
                     const response = await fetch(apiUrl, {
                         method: 'GET',
                         headers: {
@@ -994,7 +1032,10 @@
                     const data = await response.json();
                     
                     if (data && data.commission_rate_percent) {
-                        updateCommissionDisplay(data.commission_rate_percent);
+                        const sellLineItem = document.getElementById('sell-records-line');
+                        if (sellLineItem) {
+                            sellLineItem.innerHTML = `Paying cash for vinyl records`;
+                        }
                     } else {
                         throw new Error('Invalid response format: missing commission_rate_percent');
                     }
@@ -1054,142 +1095,6 @@
                 }
             }
 
-            // ==================== SUBSCRIPTION FUNCTIONALITY ====================
-            
-            // Get modal elements
-            const subscribeLink = document.getElementById('subscribe-link');
-            const subscribeModal = document.getElementById('subscribe-modal');
-            const subscribeClose = document.querySelector('.subscribe-modal-close');
-            const subscribeForm = document.getElementById('subscribe-form');
-            const subscribeMessage = document.getElementById('subscribe-message');
-
-            // Open modal
-            if (subscribeLink) {
-                subscribeLink.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    if (subscribeModal) {
-                        subscribeModal.classList.add('active');
-                        document.body.classList.add('modal-open');
-                    }
-                });
-            }
-
-            // Close modal
-            if (subscribeClose) {
-                subscribeClose.addEventListener('click', function() {
-                    if (subscribeModal) {
-                        subscribeModal.classList.remove('active');
-                        document.body.classList.remove('modal-open');
-                        if (subscribeMessage) subscribeMessage.style.display = 'none';
-                        if (subscribeForm) subscribeForm.reset();
-                    }
-                });
-            }
-
-            // Close modal when clicking outside
-            if (subscribeModal) {
-                subscribeModal.addEventListener('click', function(e) {
-                    if (e.target === subscribeModal) {
-                        subscribeModal.classList.remove('active');
-                        document.body.classList.remove('modal-open');
-                        if (subscribeMessage) subscribeMessage.style.display = 'none';
-                        if (subscribeForm) subscribeForm.reset();
-                    }
-                });
-            }
-
-            // Handle form submission
-            if (subscribeForm) {
-                subscribeForm.addEventListener('submit', async function(e) {
-                    e.preventDefault();
-                    
-                    const email = document.getElementById('subscribe-email').value.trim();
-                    const artist = document.getElementById('subscribe-artist').value.trim();
-                    const title = document.getElementById('subscribe-title').value.trim();
-                    const catalog_number = document.getElementById('subscribe-catalog').value.trim();
-                    
-                    // Validate at least one search term
-                    if (!artist && !title && !catalog_number) {
-                        showSubscribeMessage('Please enter at least one search term (artist, title, or catalog number)', 'error');
-                        return;
-                    }
-                    
-                    // Validate email
-                    if (!email || !email.includes('@') || !email.includes('.')) {
-                        showSubscribeMessage('Please enter a valid email address', 'error');
-                        return;
-                    }
-                    
-                    // Disable button during submission
-                    const submitBtn = subscribeForm.querySelector('.subscribe-submit-btn');
-                    submitBtn.disabled = true;
-                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subscribing...';
-                    
-                    try {
-                        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                        const apiUrl = isLocalhost 
-                            ? 'http://localhost:5000/api/subscribe'
-                            : `https://${window.location.hostname}/api/subscribe`;
-                        
-                        const response = await fetch(apiUrl, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Accept': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                email: email,
-                                artist: artist,
-                                title: title,
-                                catalog_number: catalog_number
-                            })
-                        });
-                        
-                        const data = await response.json();
-                        
-                        if (response.ok && data.status === 'success') {
-                            if (data.already_subscribed) {
-                                showSubscribeMessage(data.message, 'info');
-                            } else {
-                                showSubscribeMessage('Thank you for subscribing! We\'ll email you when matching records arrive.', 'success');
-                            }
-                            subscribeForm.reset();
-                            
-                            // Auto-close modal after 3 seconds
-                            setTimeout(() => {
-                                if (subscribeModal) {
-                                    subscribeModal.classList.remove('active');
-                                    document.body.classList.remove('modal-open');
-                                }
-                                if (subscribeMessage) subscribeMessage.style.display = 'none';
-                            }, 3000);
-                        } else {
-                            showSubscribeMessage(data.error || 'Something went wrong. Please try again.', 'error');
-                        }
-                        
-                    } catch (error) {
-                        console.error('Subscription error:', error);
-                        showSubscribeMessage('Network error. Please try again.', 'error');
-                    } finally {
-                        submitBtn.disabled = false;
-                        submitBtn.innerHTML = '<i class="fas fa-bell"></i> Subscribe';
-                    }
-                });
-            }
-
-            function showSubscribeMessage(message, type) {
-                if (!subscribeMessage) return;
-                subscribeMessage.textContent = message;
-                subscribeMessage.className = type === 'success' ? 'subscribe-success' : (type === 'info' ? 'subscribe-info' : 'subscribe-error');
-                subscribeMessage.style.display = 'block';
-                subscribeMessage.style.background = type === 'success' ? '#d4edda' : (type === 'info' ? '#cce5ff' : '#f8d7da');
-                subscribeMessage.style.color = type === 'success' ? '#155724' : (type === 'info' ? '#004085' : '#721c24');
-                subscribeMessage.style.border = type === 'success' ? '1px solid #c3e6cb' : (type === 'info' ? '1px solid #b8daff' : '1px solid #f5c6cb');
-                subscribeMessage.style.borderRadius = '4px';
-                subscribeMessage.style.padding = '12px';
-                subscribeMessage.style.marginTop = '15px';
-            }
-
             fetchCommissionRate();
             fetchStickyNotes();
         });
@@ -1197,56 +1102,14 @@
 </head>
 
 <body>
-    <!-- Navbar placeholder - navbar will be loaded here -->
+    <!-- Navbar placeholder -->
     <div id="navbar-placeholder"></div>
-
-    <!-- Sticky Notes Container (will be populated by JavaScript) -->
-    <div class="sticky-notes-container"></div>
     
-    <!-- Subscription Modal -->
-    <div id="subscribe-modal" class="subscribe-modal">
-        <div class="subscribe-modal-content">
-            <div class="subscribe-modal-header">
-                <h3><i class="fas fa-bell"></i> Get Notified When We Get Records You Want!</h3>
-                <button class="subscribe-modal-close">&times;</button>
-            </div>
-            <div class="subscribe-modal-body">
-                <p>Enter your email and what you're looking for. We'll email you when matching records arrive!</p>
-                
-                <form id="subscribe-form">
-                    <div class="subscribe-form-group">
-                        <label for="subscribe-email"><i class="fas fa-envelope"></i> Your Email *</label>
-                        <input type="email" id="subscribe-email" required placeholder="you@example.com">
-                    </div>
-                    
-                    <div class="subscribe-form-group">
-                        <label for="subscribe-artist"><i class="fas fa-microphone"></i> Artist</label>
-                        <input type="text" id="subscribe-artist" placeholder="e.g., Bruce Springsteen">
-                    </div>
-                    
-                    <div class="subscribe-form-group">
-                        <label for="subscribe-title"><i class="fas fa-music"></i> Album Title</label>
-                        <input type="text" id="subscribe-title" placeholder="e.g., Born to Run">
-                    </div>
-                    
-                    <div class="subscribe-form-group">
-                        <label for="subscribe-catalog"><i class="fas fa-barcode"></i> Catalog Number</label>
-                        <input type="text" id="subscribe-catalog" placeholder="e.g., JC 33795">
-                    </div>
-                    
-                    <div class="subscribe-form-hint">
-                        <i class="fas fa-info-circle"></i> Enter at least one search term (artist, title, or catalog number)
-                    </div>
-                    
-                    <button type="submit" class="subscribe-submit-btn">
-                        <i class="fas fa-bell"></i> Subscribe
-                    </button>
-                </form>
-                
-                <div id="subscribe-message" style="display: none;"></div>
-            </div>
-        </div>
-    </div>
+    <!-- Subscription Modal placeholder -->
+    <div id="subscription-modal-placeholder"></div>
+
+    <!-- Sticky Notes Container -->
+    <div class="sticky-notes-container"></div>
 
     <!-- Add padding to account for fixed navbar -->
     <div style="padding-top: 60px;"></div>
