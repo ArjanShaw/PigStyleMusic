@@ -11343,6 +11343,67 @@ def update_purchase(purchase_id):
         app.logger.error(f"Error updating purchase: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/purchases/<int:purchase_id>', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_purchase_by_id(purchase_id):
+    """Get a single purchase by ID"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                p.id,
+                p.seller_name,
+                p.seller_contact,
+                p.description,
+                p.bill_of_sale_path,
+                p.status,
+                p.created_at,
+                p.updated_at,
+                COUNT(r.id) as record_count,
+                COALESCE(
+                    (SELECT jl.debit_amount / 100.0 
+                     FROM journal_lines jl
+                     JOIN journal_entries je ON jl.journal_entry_id = je.id
+                     WHERE je.source_id = p.id 
+                       AND je.source_type = 'purchase'
+                       AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050')
+                     LIMIT 1), 
+                    0
+                ) as amount_spent
+            FROM purchases p
+            LEFT JOIN records r ON r.batch_id = p.id
+            WHERE p.id = ?
+            GROUP BY p.id
+        ''', (purchase_id,))
+        
+        purchase = cursor.fetchone()
+        conn.close()
+        
+        if not purchase:
+            return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
+        
+        return jsonify({
+            'status': 'success',
+            'purchase': {
+                'id': purchase['id'],
+                'seller_name': purchase['seller_name'],
+                'seller_contact': purchase['seller_contact'] or '',
+                'description': purchase['description'] or '',
+                'bill_of_sale_path': purchase['bill_of_sale_path'],
+                'status': purchase['status'],
+                'created_at': purchase['created_at'],
+                'updated_at': purchase['updated_at'],
+                'record_count': purchase['record_count'] or 0,
+                'amount_spent': float(purchase['amount_spent'] or 0)
+            }
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting purchase: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 # ============================================================
 # PURCHASE BILL UPLOAD (POST)
