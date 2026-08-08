@@ -71,6 +71,8 @@
     const defaultDiscSelect = document.getElementById('default-disc-condition');
     const defaultPriceInput = document.getElementById('default-price');
     const defaultConsignorSelect = document.getElementById('default-consignor');
+    const defaultFormatSelect = document.getElementById('default-format');
+    const defaultPurchaseSelect = document.getElementById('default-purchase');
 
     // ========== Purchase Table Elements ==========
     const purchasesContainer = document.getElementById('purchases-container');
@@ -86,6 +88,11 @@
     const purchaseIdDisplay = document.getElementById('purchase-id-display');
     const deletePurchaseBtn = document.getElementById('delete-purchase-btn');
     const acceptDraftBtn = document.getElementById('accept-draft-btn');
+
+    // ========== Current Purchase Display ==========
+    const currentPurchaseDisplay = document.getElementById('current-purchase-display');
+    const currentPurchaseName = document.getElementById('current-purchase-name');
+    const currentPurchaseIdSpan = document.getElementById('current-purchase-id');
 
     // ========== State ==========
     let currentSearchMode = 'add';
@@ -138,7 +145,9 @@
         sleeveConditionId: null,
         discConditionId: null,
         price: null,
-        consignorId: null
+        consignorId: null,
+        formatId: null,
+        purchaseId: null
     };
     let defaultParamsActive = false;
 
@@ -463,6 +472,12 @@
                 if (params.consignorId && defaultConsignorSelect) {
                     defaultConsignorSelect.value = params.consignorId;
                 }
+                if (params.formatId && defaultFormatSelect) {
+                    defaultFormatSelect.value = params.formatId;
+                }
+                if (params.purchaseId && defaultPurchaseSelect) {
+                    defaultPurchaseSelect.value = params.purchaseId;
+                }
                 defaultParams = params;
                 defaultParamsActive = true;
                 updateDefaultParamsStatus('Defaults loaded from storage', 'info');
@@ -485,15 +500,23 @@
         var discId = defaultDiscSelect ? parseInt(defaultDiscSelect.value) : null;
         var price = defaultPriceInput ? parseFloat(defaultPriceInput.value) : null;
         var consignorId = defaultConsignorSelect ? parseInt(defaultConsignorSelect.value) : null;
+        var formatId = defaultFormatSelect ? parseInt(defaultFormatSelect.value) : null;
+        var purchaseId = defaultPurchaseSelect ? parseInt(defaultPurchaseSelect.value) : null;
 
         defaultParams = {
             sleeveConditionId: sleeveId || null,
             discConditionId: discId || null,
             price: price || null,
-            consignorId: consignorId || null
+            consignorId: consignorId || null,
+            formatId: formatId || null,
+            purchaseId: purchaseId || null
         };
         defaultParamsActive = true;
         saveDefaultParamsToStorage();
+
+        if (purchaseId) {
+            selectPurchase(purchaseId);
+        }
 
         var rows = document.querySelectorAll('.btn-add-record-from-search');
         if (rows.length === 0) {
@@ -508,11 +531,13 @@
             var discSelect = row.querySelector('.disc-condition-select');
             var priceInput = row.querySelector('.price-input');
             var consignorSelect = row.querySelector('.consignor-select');
+            var formatSelect = row.querySelector('.format-select');
 
             if (sleeveSelect && defaultParams.sleeveConditionId) sleeveSelect.value = defaultParams.sleeveConditionId;
             if (discSelect && defaultParams.discConditionId) discSelect.value = defaultParams.discConditionId;
             if (priceInput && defaultParams.price) priceInput.value = defaultParams.price;
             if (consignorSelect && defaultParams.consignorId) consignorSelect.value = defaultParams.consignorId;
+            if (formatSelect && defaultParams.formatId) formatSelect.value = defaultParams.formatId;
         });
 
         updateDefaultParamsStatus('Defaults applied to ' + rows.length + ' search results', 'success');
@@ -524,13 +549,17 @@
             sleeveConditionId: null,
             discConditionId: null,
             price: null,
-            consignorId: null
+            consignorId: null,
+            formatId: null,
+            purchaseId: null
         };
         defaultParamsActive = false;
         if (defaultSleeveSelect) defaultSleeveSelect.value = '';
         if (defaultDiscSelect) defaultDiscSelect.value = '';
         if (defaultPriceInput) defaultPriceInput.value = '';
         if (defaultConsignorSelect) defaultConsignorSelect.value = '';
+        if (defaultFormatSelect) defaultFormatSelect.value = '';
+        if (defaultPurchaseSelect) defaultPurchaseSelect.value = '';
         localStorage.removeItem('defaultParams');
         updateDefaultParamsStatus('Defaults cleared', 'info');
         renderTablePage();
@@ -552,7 +581,8 @@
             sleeveConditionId: defaultParams.sleeveConditionId || null,
             discConditionId: defaultParams.discConditionId || null,
             price: defaultParams.price || null,
-            consignorId: defaultParams.consignorId || null
+            consignorId: defaultParams.consignorId || null,
+            formatId: defaultParams.formatId || null
         };
     }
 
@@ -590,6 +620,45 @@
             });
             if (currentVal) defaultConsignorSelect.value = currentVal;
         }
+        if (defaultFormatSelect) {
+            var currentVal = defaultFormatSelect.value;
+            defaultFormatSelect.innerHTML = '<option value="">Select...</option>';
+            formats.forEach(function(f) {
+                var opt = document.createElement('option');
+                opt.value = f.id;
+                opt.textContent = f.name;
+                defaultFormatSelect.appendChild(opt);
+            });
+            if (currentVal) defaultFormatSelect.value = currentVal;
+        }
+        // Purchase dropdown populated separately
+        loadDefaultParamsFromStorage();
+    }
+
+    function populateDefaultPurchaseDropdown() {
+        if (!defaultPurchaseSelect) return;
+        var currentVal = defaultPurchaseSelect.value;
+        defaultPurchaseSelect.innerHTML = '<option value="">Select a purchase...</option>';
+        
+        var purchaseRows = document.querySelectorAll('#purchases-body tr');
+        if (purchaseRows.length === 0) {
+            console.log('No purchase rows found, will populate after table loads');
+            return;
+        }
+        
+        purchaseRows.forEach(function(row) {
+            var id = row.dataset.id;
+            if (!id) return;
+            var sellerName = row.querySelector('td:nth-child(2)')?.textContent || 'Unknown';
+            var statusEl = row.querySelector('.status-badge');
+            var status = statusEl ? statusEl.textContent : 'draft';
+            var option = document.createElement('option');
+            option.value = id;
+            option.textContent = '#' + id + ' - ' + sellerName + ' (' + status + ')';
+            defaultPurchaseSelect.appendChild(option);
+        });
+        
+        if (currentVal) defaultPurchaseSelect.value = currentVal;
     }
 
     // ========== New Visibility Function ==========
@@ -798,14 +867,14 @@
     async function loadPurchasesTable() {
         console.log('📋 loadPurchasesTable: fetching purchases...');
         try {
-            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/drafts', {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/inventory-purchases', {
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
             });
             const data = await response.json();
             if (data.status !== 'success') throw new Error(data.error || 'Failed to load purchases');
 
-            const purchases = data.drafts || [];
+            const purchases = data.purchases || [];
             if (!purchasesBody) return;
 
             const badge = document.getElementById('purchase-table-badge');
@@ -815,30 +884,42 @@
 
             if (purchases.length === 0) {
                 purchasesBody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#999;">No purchases found. Click "New" to create one.</td></tr>';
+                populateDefaultPurchaseDropdown();
                 return;
             }
 
             let html = '';
             purchases.forEach(p => {
-                const isSelected = (p.draft_id == selectedPurchaseId);
-                const shouldHide = (selectedPurchaseId !== null && p.draft_id != selectedPurchaseId);
-                const displayStyle = shouldHide ? 'display:none;' : '';
-                html += `<tr class="${isSelected ? 'record-selected' : ''}" data-id="${p.draft_id}" onclick="selectPurchase(${p.draft_id})" style="cursor:pointer; ${displayStyle}">`;
-                html += `<td>${p.draft_id}</td>`;
+                const isSelected = (p.id == selectedPurchaseId);
+                html += `<tr class="${isSelected ? 'record-selected' : ''}" data-id="${p.id}">`;
+                html += `<td>${p.id}</td>`;
                 html += `<td>${escapeHtml(p.seller_name)}</td>`;
                 html += `<td><span class="status-badge ${p.status === 'complete' ? 'paid' : 'draft'}">${p.status}</span></td>`;
                 html += `<td>${p.record_count || 0}</td>`;
-                html += `<td>${p.offer_amount ? '$' + p.offer_amount.toFixed(2) : '—'}</td>`;
+                html += `<td>${p.amount_spent && p.amount_spent > 0 ? '$' + p.amount_spent.toFixed(2) : '—'}</td>`;
                 html += `<td>${p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td>`;
                 html += `<td>${p.bill_of_sale_path ? '<i class="fas fa-file-pdf" style="color:#28a745;"></i>' : '<i class="fas fa-times" style="color:#999;"></i>'}</td>`;
-                html += `<td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deletePurchase(${p.draft_id})"><i class="fas fa-trash"></i></button></td>`;
+                html += `<td><button class="btn btn-sm btn-danger" onclick="deletePurchase(${p.id})"><i class="fas fa-trash"></i></button></td>`;
                 html += `</tr>`;
             });
             purchasesBody.innerHTML = html;
 
+            // Populate dropdown AFTER table rows are rendered
+            populateDefaultPurchaseDropdown();
+
+            // Update current purchase display
             if (selectedPurchaseId) {
                 const row = purchasesBody.querySelector(`tr[data-id="${selectedPurchaseId}"]`);
                 if (row) row.classList.add('record-selected');
+                
+                if (currentPurchaseDisplay) {
+                    currentPurchaseDisplay.style.display = 'block';
+                    const sellerName = row?.querySelector('td:nth-child(2)')?.textContent || 'Unknown';
+                    if (currentPurchaseName) currentPurchaseName.textContent = sellerName;
+                    if (currentPurchaseIdSpan) currentPurchaseIdSpan.textContent = '(#' + selectedPurchaseId + ')';
+                }
+            } else {
+                if (currentPurchaseDisplay) currentPurchaseDisplay.style.display = 'none';
             }
         } catch (error) {
             console.error('Error loading purchases:', error);
@@ -855,6 +936,22 @@
         if (metadataPanel) metadataPanel.style.display = 'block';
         if (purchaseIdDisplay) purchaseIdDisplay.textContent = '#' + id;
 
+        // Update current purchase display
+        if (currentPurchaseDisplay) {
+            currentPurchaseDisplay.style.display = 'block';
+            const row = document.querySelector(`#purchases-body tr[data-id="${id}"]`);
+            if (row) {
+                const sellerName = row.querySelector('td:nth-child(2)')?.textContent || 'Unknown';
+                if (currentPurchaseName) currentPurchaseName.textContent = sellerName;
+                if (currentPurchaseIdSpan) currentPurchaseIdSpan.textContent = '(#' + id + ')';
+            }
+        }
+
+        // Update dropdown to match
+        if (defaultPurchaseSelect) {
+            defaultPurchaseSelect.value = id;
+        }
+
         metadataExpanded = true;
         const metadataBody = document.getElementById('metadata-body');
         const metadataIcon = document.getElementById('metadata-toggle-icon');
@@ -862,21 +959,21 @@
         if (metadataIcon) metadataIcon.style.transform = 'rotate(0deg)';
 
         try {
-            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + id, {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/' + id, {
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
             });
             const data = await response.json();
-            if (data.status !== 'success' || !data.draft) throw new Error(data.error || 'Purchase not found');
+            if (data.status !== 'success' || !data.purchase) throw new Error(data.error || 'Purchase not found');
 
-            const draft = data.draft;
-            if (editPurchaseId) editPurchaseId.value = draft.draft_id;
-            if (editSellerName) editSellerName.value = draft.seller_name || '';
-            if (editSellerContact) editSellerContact.value = draft.seller_contact || '';
-            if (editDescription) editDescription.value = draft.description || '';
-            if (editStatus) editStatus.value = draft.status || 'draft';
+            const purchase = data.purchase;
+            if (editPurchaseId) editPurchaseId.value = purchase.id;
+            if (editSellerName) editSellerName.value = purchase.seller_name || '';
+            if (editSellerContact) editSellerContact.value = purchase.seller_contact || '';
+            if (editDescription) editDescription.value = purchase.description || '';
+            if (editStatus) editStatus.value = purchase.status || 'draft';
 
-            const billPath = draft.bill_of_sale_path;
+            const billPath = purchase.bill_of_sale_path;
             if (editBillPreview) {
                 if (billPath) {
                     const fullUrl = window.AppConfig.baseUrl + '/' + billPath.replace(/^\/+/, '');
@@ -893,7 +990,7 @@
             if (editBillUpload) editBillUpload.value = '';
 
             if (acceptDraftBtn) {
-                if (draft.status === 'draft' && draft.record_count > 0) {
+                if (purchase.status === 'draft' && purchase.record_count > 0) {
                     acceptDraftBtn.style.display = 'inline-block';
                 } else {
                     acceptDraftBtn.style.display = 'none';
@@ -901,12 +998,12 @@
             }
 
             if (deletePurchaseBtn) {
-                deletePurchaseBtn.disabled = (draft.status === 'complete');
+                deletePurchaseBtn.disabled = (purchase.status === 'complete');
             }
 
             await loadRecordsForPurchase(id);
 
-            showStatus('Selected purchase: ' + draft.seller_name + ' (' + (draft.record_count || 0) + ' records)', 'info');
+            showStatus('Selected purchase: ' + purchase.seller_name + ' (' + (purchase.record_count || 0) + ' records)', 'info');
 
         } catch (error) {
             console.error('Error loading purchase metadata:', error);
@@ -1000,7 +1097,7 @@
         if (!confirm(`Are you sure you want to delete purchase #${id} and all its linked records? This cannot be undone.`)) return;
 
         try {
-            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + id, {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/' + id, {
                 method: 'DELETE',
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
@@ -1012,6 +1109,7 @@
             if (selectedPurchaseId == id) {
                 selectedPurchaseId = null;
                 if (metadataPanel) metadataPanel.style.display = 'none';
+                if (currentPurchaseDisplay) currentPurchaseDisplay.style.display = 'none';
                 filteredRecords = [];
                 totalRecords = 0;
                 currentPurchaseRecords = [];
@@ -1021,6 +1119,7 @@
             await loadPurchasesTable();
         } catch (error) {
             showStatus('Error deleting purchase: ' + error.message, 'error');
+            console.error('Delete error:', error);
         }
     }
 
@@ -1032,6 +1131,8 @@
     function clearPurchaseSelection() {
         selectedPurchaseId = null;
         if (metadataPanel) metadataPanel.style.display = 'none';
+        if (currentPurchaseDisplay) currentPurchaseDisplay.style.display = 'none';
+        if (defaultPurchaseSelect) defaultPurchaseSelect.value = '';
         loadPurchasesTable();
         filteredRecords = [];
         totalRecords = 0;
@@ -1048,7 +1149,7 @@
         const description = prompt('Enter description [optional]:') || '';
 
         try {
-            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft', {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases', {
                 method: 'POST',
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
@@ -1059,8 +1160,8 @@
 
             showStatus('✅ New purchase created.', 'success');
             await loadPurchasesTable();
-            if (data.draft_id) {
-                await selectPurchase(data.draft_id);
+            if (data.id) {
+                await selectPurchase(data.id);
             }
         } catch (error) {
             showStatus('Error creating purchase: ' + error.message, 'error');
@@ -1101,21 +1202,21 @@
             return;
         }
 
-        let draft;
+        let purchase;
         try {
-            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + purchaseId, {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/' + purchaseId, {
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
             });
             const data = await response.json();
-            if (data.status !== 'success' || !data.draft) throw new Error(data.error || 'Purchase not found');
-            draft = data.draft;
+            if (data.status !== 'success' || !data.purchase) throw new Error(data.error || 'Purchase not found');
+            purchase = data.purchase;
         } catch (error) {
             showToast('Error fetching purchase: ' + error.message, 'error');
             return;
         }
 
-        if (draft.status === 'complete') {
+        if (purchase.status === 'complete') {
             showToast('This purchase is already complete.', 'warning');
             return;
         }
@@ -1136,8 +1237,8 @@
         };
 
         try {
-            console.log('📋 acceptDraft: sending PUT to /api/purchases/draft/' + purchaseId);
-            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft/' + purchaseId, {
+            console.log('📋 acceptDraft: sending PUT to /api/purchases/' + purchaseId);
+            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/' + purchaseId, {
                 method: 'PUT',
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
@@ -1156,9 +1257,9 @@
                 playSound('success');
 
                 if (signatureMethod) {
-                    await sendBillToSquarePOS(draft, offerAmount, currentPurchaseRecords);
+                    await sendBillToSquarePOS(purchase, offerAmount, currentPurchaseRecords);
                 } else {
-                    var billText = generateBillOfSale(draft, offerAmount, currentPurchaseRecords);
+                    var billText = generateBillOfSale(purchase, offerAmount, currentPurchaseRecords);
                     downloadReceipt(billText, 'bill_of_sale_' + purchaseId + '.txt');
                     showToast('📄 Bill of Sale downloaded. Have customer sign, take photo, and upload.', 'info');
                 }
@@ -1176,7 +1277,7 @@
         }
     }
 
-    async function sendBillToSquarePOS(draft, offerAmount, records) {
+    async function sendBillToSquarePOS(purchase, offerAmount, records) {
         try {
             var recordDetails = records.map(function(r) {
                 return {
@@ -1193,8 +1294,8 @@
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    draft_id: draft.draft_id,
-                    seller_name: draft.seller_name || '',
+                    draft_id: purchase.id,
+                    seller_name: purchase.seller_name || '',
                     offer_amount: offerAmount,
                     records: recordDetails,
                     signature_method: 'square'
@@ -1215,7 +1316,7 @@
         }
     }
 
-    function generateBillOfSale(draft, offerAmount, records) {
+    function generateBillOfSale(purchase, offerAmount, records) {
         var now = new Date();
         var dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
         var timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -1224,12 +1325,12 @@
         bill += '====================\n';
         bill += 'BILL OF SALE\n';
         bill += dateStr + ' ' + timeStr + '\n\n';
-        bill += 'Purchase #: ' + draft.draft_id + '\n';
-        bill += 'Seller: ' + (draft.seller_name || '—') + '\n';
-        if (draft.seller_contact) {
-            bill += 'Contact: ' + draft.seller_contact + '\n';
+        bill += 'Purchase #: ' + purchase.id + '\n';
+        bill += 'Seller: ' + (purchase.seller_name || '—') + '\n';
+        if (purchase.seller_contact) {
+            bill += 'Contact: ' + purchase.seller_contact + '\n';
         }
-        bill += 'Description: ' + (draft.description || '—') + '\n';
+        bill += 'Description: ' + (purchase.description || '—') + '\n';
         bill += '\n';
         bill += 'ITEMS:\n';
         bill += '--------------------\n';
@@ -1863,11 +1964,26 @@
                 var consignorOptions = consignors.map(function(c) {
                     return '<option value="' + c.id + '" ' + (c.id === selectedConsignorId ? 'selected' : '') + '>' + c.username + '</option>';
                 }).join('');
+                var formatOptions = formats.map(function(f) {
+                    return '<option value="' + f.id + '">' + f.name + '</option>';
+                }).join('');
 
                 if (showDefaultInputs) {
-                    theadHtml = '<tr><th style="width:60px;">Range</th><th style="width:60px;">Image</th><th>Artist</th><th>Title</th><th>Catalog #</th><th>Sleeve</th><th>Disc</th><th>Price</th><th>Consignor</th><th>Notes</th><th>Action</th></tr>';
+                    theadHtml = '<tr><th style="width:60px;">Range</th><th style="width:60px;">Image</th><th>Artist</th><th>Title</th><th>Catalog #</th><th>Sleeve</th><th>Disc</th><th>Price</th><th>Consignor</th><th>Format</th><th>Notes</th><th>Action</th></tr>';
                 } else {
-                    theadHtml = '<tr><th style="width:60px;">Range</th><th style="width:60px;">Image</th><th>Artist</th><th>Title</th><th>Catalog #</th><th>Action</th></tr>';
+                    var hideSleeve = defaultParams.sleeveConditionId ? true : false;
+                    var hideDisc = defaultParams.discConditionId ? true : false;
+                    var hidePrice = defaultParams.price ? true : false;
+                    var hideConsignor = defaultParams.consignorId ? true : false;
+                    var hideFormat = defaultParams.formatId ? true : false;
+                    
+                    theadHtml = '<tr><th style="width:60px;">Range</th><th style="width:60px;">Image</th><th>Artist</th><th>Title</th><th>Catalog #</th>';
+                    if (!hideSleeve) theadHtml += '<th>Sleeve</th>';
+                    if (!hideDisc) theadHtml += '<th>Disc</th>';
+                    if (!hidePrice) theadHtml += '<th>Price</th>';
+                    if (!hideConsignor) theadHtml += '<th>Consignor</th>';
+                    if (!hideFormat) theadHtml += '<th>Format</th>';
+                    theadHtml += '<th>Notes</th><th>Action</th></tr>';
                 }
             } else {
                 if (selectedPurchaseId && currentPurchaseRecords.length > 0) {
@@ -1905,7 +2021,7 @@
                 else msg = 'This order has no items.';
             }
             var colCount = currentSearchMode === 'discogs_orders' ? 10 :
-                             (currentSearchMode === 'add' ? (currentMode === 'search' ? 11 : (selectedPurchaseId ? 11 : 10)) :
+                             (currentSearchMode === 'add' ? (currentMode === 'search' ? 12 : (selectedPurchaseId ? 11 : 10)) :
                              (currentSearchMode === 'scan' ? 7 :
                              (currentSearchMode === 'discogs' ? 13 : 7)));
             tbodyHtml = '<tr><td colspan="' + colCount + '" style="text-align:center;padding:40px;">' + msg + '</td></tr>';
@@ -1949,6 +2065,9 @@
                     var consignorOptions = consignors.map(function(c) {
                         return '<option value="' + c.id + '" ' + (c.id === selectedConsignorId ? 'selected' : '') + '>' + c.username + '</option>';
                     }).join('');
+                    var formatOptions = formats.map(function(f) {
+                        return '<option value="' + f.id + '">' + f.name + '</option>';
+                    }).join('');
 
                     var imageUrl = record.image_url || record.thumb || '';
                     var imageHtml = imageUrl ?
@@ -1968,6 +2087,7 @@
                         rowHtml += '<td><select class="disc-condition-select" style="width:100px; padding:4px;"><option value="">Select...</option>' + condOptions + '</select></td>';
                         rowHtml += '<td><input type="number" class="price-input" step="1" min="' + (minimumPrice !== null ? minimumPrice : 0) + '" value="" style="width:80px; padding:4px;"></td>';
                         rowHtml += '<td><select class="consignor-select" style="width:100px; padding:4px;"><option value="">None</option>' + consignorOptions + '</select></td>';
+                        rowHtml += '<td><select class="format-select" style="width:100px; padding:4px;"><option value="">Select...</option>' + formatOptions + '</select></td>';
                         rowHtml += '<td><input type="text" class="notes-input" placeholder="Optional note..." style="width:120px; padding:4px; font-size:12px;"></td>';
                     } else {
                         var def = getDefaultParamsForRecord();
@@ -1975,11 +2095,19 @@
                         var discName = def.discConditionId ? (conditions.find(function(c) { return c.id === def.discConditionId; })?.display_name || '—') : '—';
                         var priceDisplay = def.price ? '$' + def.price : '—';
                         var consignorDisplay = def.consignorId ? (consignors.find(function(c) { return c.id === def.consignorId; })?.username || 'None') : 'None';
+                        var formatDisplay = def.formatId ? (formats.find(function(f) { return f.id === def.formatId; })?.name || '—') : '—';
                         
-                        rowHtml += '<td style="font-size:12px; color:#666;" title="Using defaults">S: ' + escapeHtml(sleeveName) + '</td>';
-                        rowHtml += '<td style="font-size:12px; color:#666;" title="Using defaults">D: ' + escapeHtml(discName) + '</td>';
-                        rowHtml += '<td style="font-size:12px; color:#666;" title="Using defaults">' + priceDisplay + '</td>';
-                        rowHtml += '<td style="font-size:12px; color:#666;" title="Using defaults">' + escapeHtml(consignorDisplay) + '</td>';
+                        var hideSleeve = defaultParams.sleeveConditionId ? true : false;
+                        var hideDisc = defaultParams.discConditionId ? true : false;
+                        var hidePrice = defaultParams.price ? true : false;
+                        var hideConsignor = defaultParams.consignorId ? true : false;
+                        var hideFormat = defaultParams.formatId ? true : false;
+                        
+                        if (!hideSleeve) rowHtml += '<td style="font-size:12px; color:#666;" title="Using defaults">S: ' + escapeHtml(sleeveName) + '</td>';
+                        if (!hideDisc) rowHtml += '<td style="font-size:12px; color:#666;" title="Using defaults">D: ' + escapeHtml(discName) + '</td>';
+                        if (!hidePrice) rowHtml += '<td style="font-size:12px; color:#666;" title="Using defaults">' + priceDisplay + '</td>';
+                        if (!hideConsignor) rowHtml += '<td style="font-size:12px; color:#666;" title="Using defaults">' + escapeHtml(consignorDisplay) + '</td>';
+                        if (!hideFormat) rowHtml += '<td style="font-size:12px; color:#666;" title="Using defaults">' + escapeHtml(formatDisplay) + '</td>';
                         rowHtml += '<td><input type="text" class="notes-input" placeholder="Optional note..." style="width:120px; padding:4px; font-size:12px;"></td>';
                     }
                     
@@ -2547,12 +2675,14 @@
         var consignorSelect = row.querySelector('.consignor-select');
         var sleeveSelect = row.querySelector('.sleeve-condition-select');
         var discSelect = row.querySelector('.disc-condition-select');
+        var formatSelect = row.querySelector('.format-select');
         var notesInput = row.querySelector('.notes-input');
 
         var price = null;
         var consignorId = null;
         var sleeveId = null;
         var discId = null;
+        var formatId = null;
         var notes = notesInput ? notesInput.value.trim() : '';
 
         if (defaultParamsActive) {
@@ -2560,6 +2690,7 @@
             discId = defaultParams.discConditionId;
             price = defaultParams.price;
             consignorId = defaultParams.consignorId;
+            formatId = defaultParams.formatId;
         }
 
         if (priceInput && priceInput.value) {
@@ -2577,6 +2708,10 @@
         if (discSelect && discSelect.value) {
             var val = parseInt(discSelect.value);
             if (!isNaN(val)) discId = val;
+        }
+        if (formatSelect && formatSelect.value) {
+            var val = parseInt(formatSelect.value);
+            if (!isNaN(val)) formatId = val;
         }
 
         if (!sleeveId || !discId) {
@@ -2600,7 +2735,8 @@
             consignor_id: consignorId,
             status_id: 1,
             notes: notes,
-            batch_id: selectedPurchaseId
+            batch_id: selectedPurchaseId,
+            format_id: formatId
         };
 
         var result = await apiRequest('POST', '/records', recordData);
@@ -4539,6 +4675,30 @@
                 }
             });
         }
+
+        // Default params event listeners
+        if (defaultFormatSelect) {
+            defaultFormatSelect.addEventListener('change', function() {
+                defaultParams.formatId = parseInt(this.value) || null;
+                saveDefaultParamsToStorage();
+                renderTablePage();
+            });
+        }
+
+        if (defaultPurchaseSelect) {
+            defaultPurchaseSelect.addEventListener('change', function() {
+                var purchaseId = parseInt(this.value);
+                if (purchaseId) {
+                    defaultParams.purchaseId = purchaseId;
+                    saveDefaultParamsToStorage();
+                    selectPurchase(purchaseId);
+                } else {
+                    defaultParams.purchaseId = null;
+                    saveDefaultParamsToStorage();
+                    clearPurchaseSelection();
+                }
+            });
+        }
     }
 
     // ========== Init ==========
@@ -4655,10 +4815,12 @@
         var oldGlobalBtn = document.getElementById('global-set-active-btn');
         if (oldGlobalBtn) oldGlobalBtn.remove();
 
-        completeActionBtn.addEventListener('click', handleCompleteAction);
-        console.log('🔘 completeActionBtn click handler attached in init');
-
+        // Load purchases table first
         await loadPurchasesTable();
+
+        // Set up complete action button AFTER table is loaded
+        completeActionBtn.addEventListener('click', handleCompleteAction);
+        console.log('🔘 completeActionBtn click handler attached after table load');
 
         if (discogsLocationSelect) {
             discogsLocationSelect.addEventListener('change', function() {
