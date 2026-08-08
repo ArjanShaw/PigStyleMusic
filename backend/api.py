@@ -2400,9 +2400,17 @@ def get_records():
         params.append(status_id)
     
     if search:
-        query += ' AND (r.artist LIKE ? OR r.title LIKE ? OR r.barcode LIKE ? OR r.catalog_number LIKE ?)'
-        search_term = f'%{search}%'
-        params.extend([search_term, search_term, search_term, search_term])
+        # If search term is numeric, it could be a record ID (used as barcode for newer records)
+        if search.isdigit():
+            # ID and barcode: EXACT match, Artist and Title: partial match
+            query += ' AND (r.id = ? OR r.barcode = ? OR r.artist LIKE ? OR r.title LIKE ? OR r.catalog_number LIKE ?)'
+            search_term = f'%{search}%'
+            params.extend([int(search), search, search_term, search_term, search_term])
+        else:
+            # For non-numeric search: barcode EXACT match, Artist and Title: partial match
+            query += ' AND (r.barcode = ? OR r.artist LIKE ? OR r.title LIKE ? OR r.catalog_number LIKE ?)'
+            search_term = f'%{search}%'
+            params.extend([search, search_term, search_term, search_term])
     else:
         if not bypass_date_filter and not created_after and batch_id is None:
             seven_days_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
