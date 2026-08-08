@@ -1040,7 +1040,7 @@
         renderTablePage();
         showStatus('Purchase deselected.', 'info');
     }
-
+    
     async function createNewPurchase() {
         const sellerName = prompt('Enter seller name:');
         if (!sellerName) return;
@@ -1048,7 +1048,7 @@
         const description = prompt('Enter description [optional]:') || '';
 
         try {
-            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases/draft', {
+            const response = await fetch(window.AppConfig.baseUrl + '/api/purchases', {
                 method: 'POST',
                 credentials: 'include',
                 headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
