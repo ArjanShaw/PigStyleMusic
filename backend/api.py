@@ -9812,6 +9812,51 @@ def process_refund():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/purchases', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def create_purchase():
+    """Create a new purchase draft (alias for /api/purchases/draft)"""
+    try:
+        data = request.get_json() or {}
+        seller_name = data.get('seller_name', 'New Purchase')
+        seller_contact = data.get('seller_contact', '')
+        description = data.get('description', 'New inventory purchase')
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Insert into purchases table
+        cursor.execute('''
+            INSERT INTO purchases (seller_name, seller_contact, description, status)
+            VALUES (?, ?, ?, 'draft')
+        ''', (seller_name, seller_contact, description))
+        purchase_id = cursor.lastrowid
+        
+        # Insert into journal_entries
+        from datetime import datetime
+        cursor.execute('''
+            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+            VALUES (?, ?, ?, ?)
+        ''', (
+            datetime.now().strftime('%Y-%m-%d'),
+            f'Purchase #{purchase_id}',
+            'purchase',
+            str(purchase_id)
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Purchase created',
+            'draft_id': purchase_id
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error creating purchase: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/purchases/draft', methods=['GET'])
 @login_required
@@ -9835,62 +9880,7 @@ def get_active_draft():
     
     return jsonify({'status': 'success', 'draft': draft})
 
-
-@app.route('/api/purchases/draft', methods=['POST'])
-@login_required
-@role_required(['admin'])
-def create_draft_purchase():
-    """
-    Create a new draft purchase.
-    Inserts a row into purchases and a minimal journal entry.
-    """
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
-
-        seller_name = data.get('seller_name', '').strip()
-        seller_contact = data.get('seller_contact', '').strip()
-        description = data.get('description', '').strip()
-
-        if not seller_name or not description:
-            return jsonify({'status': 'error', 'error': 'Seller name and description are required'}), 400
-
-        conn = get_db()
-        cursor = conn.cursor()
-
-        # 1. Insert into purchases
-        cursor.execute('''
-            INSERT INTO purchases (seller_name, seller_contact, description, status)
-            VALUES (?, ?, ?, 'draft')
-        ''', (seller_name, seller_contact, description))
-        purchase_id = cursor.lastrowid
-
-        # 2. Insert into journal_entries – CRITICAL: set source_id = purchase_id
-        from datetime import datetime
-        cursor.execute('''
-            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-            VALUES (?, ?, ?, ?)
-        ''', (
-            datetime.now().strftime('%Y-%m-%d'),
-            f'Purchase #{purchase_id}',
-            'purchase',
-            str(purchase_id)   # ← important: store the purchase ID as a string
-        ))
-
-        conn.commit()
-        conn.close()
-
-        return jsonify({
-            'status': 'success',
-            'message': 'Draft purchase created',
-            'draft_id': purchase_id
-        })
-
-    except Exception as e:
-        app.logger.error(f"Error creating draft: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
+ 
 @app.route('/api/purchases/draft/<int:draft_id>', methods=['PUT'])
 @login_required
 @role_required(['admin'])
