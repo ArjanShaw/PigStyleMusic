@@ -8373,7 +8373,6 @@ def balance_sheet():
 # ============================================================
 
 @app.route('/api/square/create-payment-link', methods=['POST'])
-@login_required
 def create_square_payment_link():
     """Create a generic Square payment link."""
     try:
