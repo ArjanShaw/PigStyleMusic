@@ -1601,6 +1601,274 @@
     }
 
     // ============================================================
+    // CUSTOM ITEM FUNCTIONS
+    // ============================================================
+    
+    function showCustomItemModal() {
+        var existingModal = document.getElementById('custom-item-modal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+        
+        var modal = document.createElement('div');
+        modal.id = 'custom-item-modal';
+        modal.className = 'modal-overlay';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 400px; width: 95%;">
+                <div class="modal-header" style="background: #17a2b8; color: white;">
+                    <h3 class="modal-title"><i class="fas fa-plus-circle"></i> Add Custom Item</h3>
+                    <button class="modal-close" onclick="closeCustomItemModal()" style="color: white; font-size: 28px; background: none; border: none; cursor: pointer;">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div style="margin-bottom: 15px;">
+                        <label for="custom-item-desc" style="display:block; font-weight:500; margin-bottom:4px;">Description *</label>
+                        <input type="text" id="custom-item-desc" placeholder="e.g., Merchandise, Gift Card, etc." style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="custom-item-price" style="display:block; font-weight:500; margin-bottom:4px;">Price ($) *</label>
+                        <input type="number" id="custom-item-price" step="0.01" min="0.01" placeholder="0.00" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+                    </div>
+                    <div id="custom-item-status" style="margin-top:10px; display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeCustomItemModal()">Cancel</button>
+                    <button class="btn btn-success" id="custom-item-add-btn"><i class="fas fa-check"></i> Add to Checkout</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        document.getElementById('custom-item-add-btn').addEventListener('click', addCustomItemFromModal);
+
+        document.getElementById('custom-item-desc').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('custom-item-price').focus();
+            }
+        });
+        document.getElementById('custom-item-price').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                addCustomItemFromModal();
+            }
+        });
+    }
+
+    function closeCustomItemModal() {
+        var modal = document.getElementById('custom-item-modal');
+        if (modal) modal.remove();
+    }
+
+    function addCustomItemFromModal() {
+        var desc = document.getElementById('custom-item-desc').value.trim();
+        var price = parseFloat(document.getElementById('custom-item-price').value);
+        var statusDiv = document.getElementById('custom-item-status');
+
+        if (!desc) {
+            statusDiv.textContent = 'Please enter a description.';
+            statusDiv.className = 'status-message warning';
+            statusDiv.style.display = 'block';
+            return;
+        }
+        if (isNaN(price) || price <= 0) {
+            statusDiv.textContent = 'Please enter a valid price greater than 0.';
+            statusDiv.className = 'status-message error';
+            statusDiv.style.display = 'block';
+            return;
+        }
+
+        var customItem = {
+            id: -Date.now(),
+            artist: 'Custom',
+            title: desc,
+            store_price: price,
+            barcode: 'CUSTOM',
+            isCustom: true
+        };
+
+        if (!ItemManagement.selectedRecords.some(function(r) { return r.id === customItem.id; })) {
+            ItemManagement.selectedRecords.push(customItem);
+            ItemManagement.selectedIds.add(customItem.id);
+        }
+        if (!ItemManagement.checkoutSelectedItems.some(function(r) { return r.id === customItem.id; })) {
+            ItemManagement.checkoutSelectedItems.push(customItem);
+        }
+
+        closeCustomItemModal();
+        ItemManagement.viewMode = 'selection';
+        updateViewButtons();
+        renderTable();
+        updateSelectionUI();
+        updateExecuteButton();
+
+        showStatus('Added custom item: "' + desc + '" for $' + price.toFixed(2), 'success');
+    }
+
+    function addBernieItem() {
+        var bernieItem = {
+            id: -Date.now() - 1,
+            artist: 'Bernie',
+            title: 'Bern It',
+            store_price: 0.99,
+            barcode: null,
+            isCustom: true,
+            isBernie: true
+        };
+
+        if (!ItemManagement.selectedRecords.some(function(r) { return r.id === bernieItem.id; })) {
+            ItemManagement.selectedRecords.push(bernieItem);
+            ItemManagement.selectedIds.add(bernieItem.id);
+        }
+        if (!ItemManagement.checkoutSelectedItems.some(function(r) { return r.id === bernieItem.id; })) {
+            ItemManagement.checkoutSelectedItems.push(bernieItem);
+        }
+
+        ItemManagement.viewMode = 'selection';
+        updateViewButtons();
+        renderTable();
+        updateSelectionUI();
+        updateExecuteButton();
+
+        showStatus('Added Bernie donation: "Bern It" for $0.99', 'success');
+        playSound('success');
+    }
+
+    function showGiftCardModal() {
+        var existingModal = document.getElementById('gift-card-modal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+        
+        var modal = document.createElement('div');
+        modal.id = 'gift-card-modal';
+        modal.className = 'modal-overlay';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 500px; width: 95%;">
+                <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
+                    <h3 class="modal-title"><i class="fas fa-gift"></i> Gift Card</h3>
+                    <button class="modal-close" onclick="closeGiftCardModal()" style="color: white; font-size: 28px; background: none; border: none; cursor: pointer;">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div style="margin-bottom: 15px;">
+                        <label for="gift-card-code" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Barcode / Code *</label>
+                        <input type="text" id="gift-card-code" placeholder="Scan or enter code (e.g., GC-A7F3K9M2)" style="width:100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; text-transform: uppercase;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="gift-card-value" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Card Value ($) *</label>
+                        <input type="number" id="gift-card-value" step="0.01" min="0.01" placeholder="0.00" style="width:100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="gift-card-charge" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Charge Amount ($)</label>
+                        <input type="number" id="gift-card-charge" step="0.01" min="0" placeholder="0.00" style="width:100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                        <p style="font-size: 12px; color: #666; margin-top: 5px;"><i class="fas fa-info-circle"></i> Set to $0 for free cards, or enter any amount</p>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="gift-card-recipient" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Recipient Name *</label>
+                        <input type="text" id="gift-card-recipient" placeholder="Enter recipient name" style="width:100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label for="gift-card-notes" style="display: block; font-weight: 600; margin-bottom: 5px; color: #333;">Reason / Notes (optional)</label>
+                        <input type="text" id="gift-card-notes" placeholder="e.g., Birthday gift, Trade-in, etc." style="width:100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                    </div>
+                    <div id="gift-card-status" style="margin-top: 10px; display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeGiftCardModal()">Cancel</button>
+                    <button class="btn btn-success" id="gift-card-add-btn"><i class="fas fa-gift"></i> Add to Cart</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        document.getElementById('gift-card-add-btn').addEventListener('click', addGiftCardFromModal);
+
+        document.getElementById('gift-card-code').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('gift-card-value').focus();
+            }
+        });
+        document.getElementById('gift-card-value').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('gift-card-charge').focus();
+            }
+        });
+        document.getElementById('gift-card-charge').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('gift-card-recipient').focus();
+            }
+        });
+        document.getElementById('gift-card-recipient').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                addGiftCardFromModal();
+            }
+        });
+    }
+
+    function closeGiftCardModal() {
+        var modal = document.getElementById('gift-card-modal');
+        if (modal) modal.remove();
+    }
+
+    function addGiftCardFromModal() {
+        var code = document.getElementById('gift-card-code').value.trim().toUpperCase();
+        var value = parseFloat(document.getElementById('gift-card-value').value);
+        var charge = parseFloat(document.getElementById('gift-card-charge').value) || 0;
+        var recipient = document.getElementById('gift-card-recipient').value.trim();
+        var notes = document.getElementById('gift-card-notes').value.trim();
+        var statusDiv = document.getElementById('gift-card-status');
+
+        if (!code) {
+            statusDiv.textContent = 'Please enter a barcode/code.';
+            statusDiv.className = 'status-message warning';
+            statusDiv.style.display = 'block';
+            return;
+        }
+        if (isNaN(value) || value <= 0) {
+            statusDiv.textContent = 'Please enter a valid card value greater than 0.';
+            statusDiv.className = 'status-message error';
+            statusDiv.style.display = 'block';
+            return;
+        }
+        if (!recipient) {
+            statusDiv.textContent = 'Please enter a recipient name.';
+            statusDiv.className = 'status-message warning';
+            statusDiv.style.display = 'block';
+            return;
+        }
+
+        var giftCardItem = {
+            id: -Date.now() - 2,
+            artist: 'Gift Card',
+            title: recipient + (notes ? ' (' + notes + ')' : ''),
+            store_price: value,
+            barcode: code,
+            isCustom: true,
+            isGiftCard: true,
+            card_value: value,
+            charge_amount: charge,
+            recipient: recipient,
+            notes: notes
+        };
+
+        if (!ItemManagement.selectedRecords.some(function(r) { return r.id === giftCardItem.id; })) {
+            ItemManagement.selectedRecords.push(giftCardItem);
+            ItemManagement.selectedIds.add(giftCardItem.id);
+        }
+        if (!ItemManagement.checkoutSelectedItems.some(function(r) { return r.id === giftCardItem.id; })) {
+            ItemManagement.checkoutSelectedItems.push(giftCardItem);
+        }
+
+        closeGiftCardModal();
+        ItemManagement.viewMode = 'selection';
+        updateViewButtons();
+        renderTable();
+        updateSelectionUI();
+        updateExecuteButton();
+
+        showStatus('Added gift card: "' + code + '" for $' + value.toFixed(2), 'success');
+    }
+
+    // ============================================================
     // DELETE FUNCTIONS
     // ============================================================
     function confirmDelete() {
@@ -1764,7 +2032,7 @@
     }
 
     // ============================================================
-    // GIFT CARD FUNCTIONS
+    // GIFT CARD FUNCTIONS (for payment)
     // ============================================================
     function checkGiftCardForPayment() {
         const code = document.getElementById('giftcard-code').value.trim();
@@ -2065,6 +2333,11 @@
     window.lookupDebtorForCheckout = lookupDebtorForCheckout;
     window.applyDebtorToCheckout = applyDebtorToCheckout;
     window.processCashPayment = processCashPayment;
+    window.showCustomItemModal = showCustomItemModal;
+    window.closeCustomItemModal = closeCustomItemModal;
+    window.addBernieItem = addBernieItem;
+    window.showGiftCardModal = showGiftCardModal;
+    window.closeGiftCardModal = closeGiftCardModal;
 
     console.log('Item Management JavaScript loaded.');
 

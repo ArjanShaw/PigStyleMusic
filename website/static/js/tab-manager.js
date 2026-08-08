@@ -266,7 +266,7 @@ const TabManager = (function() {
         };
 
         // ============================================================
-        // EMAIL SUBSCRIPTIONS TAB (NEW)
+        // EMAIL SUBSCRIPTIONS TAB
         // ============================================================
         initializers['email-subscriptions'] = () => {
             console.log('🔵 TabManager: Initializing Email Subscriptions tab');
@@ -290,6 +290,40 @@ const TabManager = (function() {
                 };
                 script.onerror = function() {
                     console.error('❌ Failed to load email-subscriptions.js dynamically');
+                };
+                document.head.appendChild(script);
+            }
+        };
+
+        // ============================================================
+        // RECORD ORDERS TAB (NEW)
+        // ============================================================
+        initializers['record-orders'] = () => {
+            console.log('🔵 TabManager: Initializing Record Orders tab');
+            if (typeof window.initRecordOrdersTab === 'function') {
+                console.log('✅ Found initRecordOrdersTab function, calling it...');
+                window.initRecordOrdersTab();
+            } else if (typeof window.loadOrders === 'function') {
+                console.log('✅ Found loadOrders function, calling it...');
+                window.loadOrders();
+            } else {
+                console.warn('⚠️ initRecordOrdersTab not found - order-management.js may not be loaded');
+                // Try to load the script dynamically
+                console.log('🔄 Attempting to load order-management.js dynamically...');
+                const script = document.createElement('script');
+                script.src = '/static/js/order-management.js';
+                script.onload = function() {
+                    console.log('✅ order-management.js loaded dynamically');
+                    if (typeof window.initRecordOrdersTab === 'function') {
+                        window.initRecordOrdersTab();
+                    } else if (typeof window.loadOrders === 'function') {
+                        window.loadOrders();
+                    } else {
+                        console.error('❌ Still cannot find order management functions after dynamic load');
+                    }
+                };
+                script.onerror = function() {
+                    console.error('❌ Failed to load order-management.js dynamically');
                 };
                 document.head.appendChild(script);
             }
@@ -330,6 +364,19 @@ const TabManager = (function() {
                     notificationPanel.style.display = 'none';
                 }
                 SubscriptionState.isNotificationPanelOpen = false;
+            },
+            'record-orders': () => {
+                console.log('🧹 TabManager: Cleaning up Record Orders tab');
+                // Close any open modals
+                const modal = document.getElementById('order-detail-modal');
+                if (modal) {
+                    modal.classList.remove('active');
+                }
+                const statusModal = document.getElementById('order-status-modal');
+                if (statusModal) {
+                    statusModal.classList.remove('active');
+                }
+                document.body.classList.remove('modal-open');
             }
         };
     }

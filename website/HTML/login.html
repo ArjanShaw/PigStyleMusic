@@ -5,7 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - PigStyle Music</title>
     <link rel="icon" href="/static/images/PigStyle.ico">
+    
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-03HFDR9PV7');
+    </script>
+    
+    <!-- CSS FILES -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/shared.css">
+    
+    <script src="/static/js/app-config.js"></script>
+    <script src="/static/js/notification-bell.js"></script>
+    <script src="/static/js/shared.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -22,9 +39,10 @@
             padding: 20px;
             color: white;
             overflow: hidden;
+            padding-top: 70px;
         }
 
-        /* Background Image Container - Same as streaming page */
+        /* Background Image Container */
         .background-container {
             position: fixed;
             top: 0;
@@ -50,7 +68,7 @@
         }
 
         .login-container {
-            background: rgba(0, 0, 0, 0.8); /* Dark background with transparency */
+            background: rgba(0, 0, 0, 0.8);
             padding: 40px;
             border-radius: 10px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.3);
@@ -60,6 +78,7 @@
             backdrop-filter: blur(10px);
             position: relative;
             z-index: 1;
+            margin: 20px auto;
         }
 
         .login-header {
@@ -131,7 +150,7 @@
 
         .login-form input:focus {
             outline: none;
-            border-color: #ff6b6b; /* Pink accent color matching streaming page */
+            border-color: #ff6b6b;
             background: rgba(255, 255, 255, 0.15);
             box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.1);
         }
@@ -139,7 +158,7 @@
         .login-button {
             width: 100%;
             padding: 14px;
-            background: linear-gradient(135deg, #ff6b6b 0%, #e74c3c 100%); /* Pink gradient matching streaming page */
+            background: linear-gradient(135deg, #ff6b6b 0%, #e74c3c 100%);
             color: white;
             border: none;
             border-radius: 6px;
@@ -308,11 +327,16 @@
                 height: 35px;
                 width: 35px;
             }
+            
+            body {
+                padding-top: 60px;
+            }
         }
 
         @media (max-width: 480px) {
             body {
                 padding: 10px;
+                padding-top: 60px;
             }
             
             .login-container {
@@ -336,11 +360,17 @@
     </style>
 </head>
 <body>
-    <!-- Background Image - Same as streaming page -->
+    <!-- Background Image -->
     <div class="background-container">
         <img src="/static/images/background.png" alt="Background" class="background-image">
         <div class="background-overlay"></div>
     </div>
+
+    <!-- ===== NAVBAR PLACEHOLDER ===== -->
+    <div id="navbar-placeholder"></div>
+
+    <!-- ===== SUBSCRIPTION MODAL PLACEHOLDER ===== -->
+    <div id="subscription-modal-placeholder"></div>
 
     <div class="login-container">
         <a href="/" class="back-link">
@@ -412,15 +442,36 @@
         </div>
     </div>
 
-   
-    <script src="/static/js/app-config.js"></script>
-    
     <script>
+        // Load navbar and subscription modal from shared components
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load navbar from shared component
+            if (typeof loadNavbar === 'function') {
+                loadNavbar();
+            } else {
+                console.warn('loadNavbar function not found, make sure shared.js is loaded');
+            }
+            
+            // Load subscription modal from shared component
+            if (typeof loadSubscriptionModal === 'function') {
+                loadSubscriptionModal();
+            } else {
+                console.warn('loadSubscriptionModal function not found, make sure shared.js is loaded');
+            }
+            
+            // Initialize subscription modal
+            if (typeof initSubscriptionModal === 'function') {
+                initSubscriptionModal();
+            }
+        });
+
         // Redirect if already logged in
         document.addEventListener('DOMContentLoaded', async () => {
-            await Auth.checkSession();
-            if (Auth.isLoggedIn) {
-                window.location.href = '/dashboard';
+            if (typeof Auth !== 'undefined') {
+                await Auth.checkSession();
+                if (Auth.isLoggedIn) {
+                    window.location.href = '/dashboard';
+                }
             }
         });
 
@@ -439,6 +490,12 @@
             
             if (!username || !password) {
                 errorMessage.textContent = 'Please enter both username and password';
+                errorMessage.classList.add('show');
+                return;
+            }
+            
+            if (typeof Auth === 'undefined') {
+                errorMessage.textContent = 'Authentication system not loaded. Please refresh.';
                 errorMessage.classList.add('show');
                 return;
             }

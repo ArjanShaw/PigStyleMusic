@@ -5,14 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Accounting - PigStyle Music Admin</title>
     <link rel="icon" href="/static/images/PigStyle.ico">
+    
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-03HFDR9PV7');
+    </script>
+    
+    <!-- CSS FILES -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/static/css/admin.css">
+    <link rel="stylesheet" href="/static/css/shared.css">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.0/nouislider.min.css">
+    
+    <script src="/static/js/app-config.js"></script>
+    <script src="/static/js/notification-bell.js"></script>
+    <script src="/static/js/shared.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    
     <style>
-        body { background: #f4f6f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; }
+        body { background: #f4f6f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; padding-top: 70px; }
         .admin-container { max-width: 1400px; margin: 0 auto; padding: 25px 30px; }
         .accounting-title { margin-top: 0; margin-bottom: 20px; color: #000; font-size: 24px; display: flex; align-items: center; gap: 12px; }
         .sub-tabs { display: flex; gap: 5px; border-bottom: 2px solid #ddd; margin-bottom: 20px; padding-bottom: 5px; flex-wrap: wrap; background: white; padding: 10px 15px 0 15px; border-radius: 8px 8px 0 0; }
@@ -228,344 +245,373 @@
         .tx-select:disabled { opacity: 0.4; cursor: not-allowed; }
         #select-all-tx { width: 16px; height: 16px; cursor: pointer; }
         #bulk-account-select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; color: #000; background: #fff; min-width: 150px; display: none; }
+
+        /* Background styles for admin-accounting */
+        .background-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+        .background-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .background-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+        }
+
+        @media (max-width: 768px) {
+            body { padding-top: 60px; }
+            .admin-container { padding: 15px; }
+            .sub-tabs { padding: 5px 10px 0 10px; }
+            .sub-tab { padding: 8px 12px; font-size: 13px; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+        }
     </style>
 </head>
 <body>
-    <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
-        <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
-            <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
-        </a>
-        <div style="display: flex; gap: 20px; align-items: center;">
-            <a href="/browse" style="color: white; text-decoration: none;">Browse</a>
-            <a href="/misc" style="color: white; text-decoration: none;">Misc</a>
-            <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
-            <div id="auth-section"></div>
-        </div>
-    </nav>
-
-    <div style="margin-top: 60px;">
-        <div class="admin-container" id="accounting-container">
-            <h1 class="accounting-title"><i class="fas fa-calculator"></i> Accounting</h1>
-            
-            <!-- TABS -->
-            <div class="sub-tabs" id="accounting-sub-tabs">
-                <button class="sub-tab active" data-subtab="import"><i class="fas fa-upload"></i> Import</button>
-                <button class="sub-tab" data-subtab="accounts"><i class="fas fa-sitemap"></i> Accounts</button>
-                <button class="sub-tab" data-subtab="journal"><i class="fas fa-book"></i> Journal</button>
-                <button class="sub-tab" data-subtab="reconcile"><i class="fas fa-handshake"></i> Reconciliation</button>
-                <button class="sub-tab" data-subtab="reports"><i class="fas fa-chart-pie"></i> Reports</button>
-                <button class="sub-tab" data-subtab="cash-flow"><i class="fas fa-money-bill-wave"></i> Cash Flow</button>
-                <button class="sub-tab" data-subtab="monthly-pl"><i class="fas fa-chart-line"></i> Monthly P&L</button>
-                <button class="sub-tab" data-subtab="balance-sheet"><i class="fas fa-balance-scale"></i> Balance Sheet</button>
-            </div>
-
-
-            <!-- IMPORT TAB -->
-<div id="sub-import" class="sub-tab-content active">
-    <h4 style="color: #000;"><i class="fas fa-upload"></i> Import Bank Transactions</h4>
-    <p style="color: #000;">Select a source to view its transactions. Select accounts in the dropdown and click Post Updates to create or update journal entries.</p>
-
-    <!-- ===== ACCOUNT BALANCE STATS CARDS ===== -->
-    <div class="stats-row" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 20px;">
-        <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
-            <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">💵 Square Asset</div>
-            <div class="stat-value" id="balance-square" style="font-size: 24px; font-weight: bold; color: #007bff;">$0.00</div>
-            <div style="font-size: 11px; color: #999;">Account 1030</div>
-        </div>
-        <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
-            <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">🏦 FNBO Bank</div>
-            <div class="stat-value" id="balance-fnbo" style="font-size: 24px; font-weight: bold; color: #28a745;">$0.00</div>
-            <div style="font-size: 11px; color: #999;">Account 1011</div>
-        </div>
-        <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
-            <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">🏦 Bluevine Bank</div>
-            <div class="stat-value" id="balance-bluevine" style="font-size: 24px; font-weight: bold; color: #17a2b8;">$0.00</div>
-            <div style="font-size: 11px; color: #999;">Account 1010</div>
-        </div>
-        <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
-            <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">💳 PayPal</div>
-            <div class="stat-value" id="balance-paypal" style="font-size: 24px; font-weight: bold; color: #6f42c1;">$0.00</div>
-            <div style="font-size: 11px; color: #999;">Account 1020</div>
-        </div>
-        <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
-            <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">💰 Cash - Register</div>
-            <div class="stat-value" id="balance-cash" style="font-size: 24px; font-weight: bold; color: #fd7e14;">$0.00</div>
-            <div style="font-size: 11px; color: #999;">Account 1015</div>
-        </div>
-        <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
-            <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">📦 Inventory</div>
-            <div class="stat-value" id="balance-inventory" style="font-size: 24px; font-weight: bold; color: #20c997;">$0.00</div>
-            <div style="font-size: 11px; color: #999;">Account 1050</div>
-        </div>
-        <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
-            <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">📊 Total Assets</div>
-            <div class="stat-value" id="balance-total-assets" style="font-size: 24px; font-weight: bold; color: #6f42c1;">$0.00</div>
-            <div style="font-size: 11px; color: #999;">All Asset Accounts</div>
-        </div>
-        <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
-            <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">💳 Store Credit Owed</div>
-            <div class="stat-value" id="balance-store-credit" style="font-size: 24px; font-weight: bold; color: #dc3545;">$0.00</div>
-            <div style="font-size: 11px; color: #999;">Account 2015 (Payable)</div>
-        </div>
+    <!-- Background -->
+    <div class="background-container">
+        <img src="/static/images/background.png" alt="Background" class="background-image">
+        <div class="background-overlay"></div>
     </div>
 
-    <div class="bank-status-bar">
-        <div>
-            <span class="count-badge" id="bank-unprocessed-count">0</span>
-            <span class="text-muted" id="bank-count-label"> unprocessed transactions</span>
-            <span class="text-muted" id="bank-total-count" style="margin-left:10px;">(0 total)</span>
-        </div>
-        <div class="filter-group">
-            <div class="form-group" style="margin:0;">
-                <select id="bank-source" class="source-filter-select">
-                    <option value="fnbo">FNBO Bank (Plaid)</option>
-                    <option value="bluevine">Bluevine Bank (Historic)</option>
-                    <option value="square">Square Asset</option>
-                    <option value="paypal">PayPal (Plaid)</option>
-                </select>
-            </div>
-            <div class="form-group" style="margin:0;">
-                <select id="bank-view-filter" class="source-filter-select">
-                    <option value="unposted">Unposted</option>
-                    <option value="posted">Posted</option>
-                    <option value="all">All</option>
-                </select>
-            </div>
-            <button class="btn btn-secondary btn-sm" onclick="refreshAllBalances()" style="padding: 6px 12px;">
-                <i class="fas fa-sync-alt"></i> Refresh Balances
-            </button>
-        </div>
-    </div>
+    <!-- ===== NAVBAR PLACEHOLDER ===== -->
+    <div id="navbar-placeholder"></div>
 
-    <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end; background:#f8f9fa; padding:10px; border-radius:4px;">
-        <div class="form-group" style="flex:2;">
-            <label style="color:#000;">Filter by description</label>
-            <input type="text" id="bank-filter" placeholder="e.g. STAMPS.COM" style="color:#000; background:#fff;">
+    <!-- ===== SUBSCRIPTION MODAL PLACEHOLDER ===== -->
+    <div id="subscription-modal-placeholder"></div>
+
+    <div class="admin-container" id="accounting-container">
+        <h1 class="accounting-title"><i class="fas fa-calculator"></i> Accounting</h1>
+        
+        <!-- TABS -->
+        <div class="sub-tabs" id="accounting-sub-tabs">
+            <button class="sub-tab active" data-subtab="import"><i class="fas fa-upload"></i> Import</button>
+            <button class="sub-tab" data-subtab="accounts"><i class="fas fa-sitemap"></i> Accounts</button>
+            <button class="sub-tab" data-subtab="journal"><i class="fas fa-book"></i> Journal</button>
+            <button class="sub-tab" data-subtab="reconcile"><i class="fas fa-handshake"></i> Reconciliation</button>
+            <button class="sub-tab" data-subtab="reports"><i class="fas fa-chart-pie"></i> Reports</button>
+            <button class="sub-tab" data-subtab="cash-flow"><i class="fas fa-money-bill-wave"></i> Cash Flow</button>
+            <button class="sub-tab" data-subtab="monthly-pl"><i class="fas fa-chart-line"></i> Monthly P&L</button>
+            <button class="sub-tab" data-subtab="balance-sheet"><i class="fas fa-balance-scale"></i> Balance Sheet</button>
         </div>
-        <div class="form-group" style="flex:0 0 auto;">
-            <label style="color:#000;">&nbsp;</label>
-            <button class="btn btn-primary" id="bank-search-btn"><i class="fas fa-search"></i> Search</button>
-        </div>
-    </div>
 
-    <!-- Bulk Actions Bar -->
-    <div class="bank-actions">
-        <span style="font-weight:600; color:#000; font-size:14px;">Bulk Actions:</span>
-        <button class="btn btn-success" id="post-updates-btn">
-            <i class="fas fa-check-double"></i> Post Updates
-        </button>
-        <button class="btn btn-secondary" id="clear-selections-btn">
-            <i class="fas fa-undo"></i> Clear All
-        </button>
-        <button class="btn btn-info" id="bulk-assign-btn">
-            <i class="fas fa-tasks"></i> Bulk Assign Account
-        </button>
-        <select id="bulk-account-select">
-            <option value="">Select Account</option>
-        </select>
-        <span id="post-status" style="color:#000; font-size:13px; margin-left:10px;"></span>
-    </div>
 
-    <div class="bank-table-container">
-        <table class="journal-table" id="bank-table">
-            <thead>
-                <tr>
-                    <th><input type="checkbox" id="select-all-tx"></th>
-                    <th>Date</th>
-                    <th>Description</th>
-                    <th>Amount</th>
-                    <th>Category</th>
-                    <th>Status</th>
-                    <th>Post To</th>
-                </tr>
-            </thead>
-            <tbody id="bank-body"><tr><td colspan="7" style="text-align:center; padding:40px;">Select a source and click Search.</td></tr></tbody>
-        </table>
-    </div>
-    <div style="margin-top:15px;">
-        <span id="bank-pagination-info">Showing 0 entries</span>
-    </div>
-</div>
+        <!-- IMPORT TAB -->
+        <div id="sub-import" class="sub-tab-content active">
+            <h4 style="color: #000;"><i class="fas fa-upload"></i> Import Bank Transactions</h4>
+            <p style="color: #000;">Select a source to view its transactions. Select accounts in the dropdown and click Post Updates to create or update journal entries.</p>
 
-            <!-- ACCOUNTS TAB -->
-            <div id="sub-accounts" class="sub-tab-content">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                    <h4 style="color:#000;"><i class="fas fa-sitemap"></i> Chart of Accounts</h4>
-                    <button class="btn btn-primary" id="add-account-btn" onclick="showAddAccountModal()"><i class="fas fa-plus"></i> Add Account</button>
+            <!-- ===== ACCOUNT BALANCE STATS CARDS ===== -->
+            <div class="stats-row" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
+                    <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">💵 Square Asset</div>
+                    <div class="stat-value" id="balance-square" style="font-size: 24px; font-weight: bold; color: #007bff;">$0.00</div>
+                    <div style="font-size: 11px; color: #999;">Account 1030</div>
                 </div>
-                <div class="journal-table-container">
-                    <table class="journal-table" id="accounts-table">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Code</th>
-                                <th>Name</th>
-                                <th>Type</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="accounts-body"><tr><td colspan="5" style="text-align:center; padding:40px;">Loading accounts...</td></tr></tbody>
-                    </table>
+                <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
+                    <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">🏦 FNBO Bank</div>
+                    <div class="stat-value" id="balance-fnbo" style="font-size: 24px; font-weight: bold; color: #28a745;">$0.00</div>
+                    <div style="font-size: 11px; color: #999;">Account 1011</div>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
+                    <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">🏦 Bluevine Bank</div>
+                    <div class="stat-value" id="balance-bluevine" style="font-size: 24px; font-weight: bold; color: #17a2b8;">$0.00</div>
+                    <div style="font-size: 11px; color: #999;">Account 1010</div>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
+                    <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">💳 PayPal</div>
+                    <div class="stat-value" id="balance-paypal" style="font-size: 24px; font-weight: bold; color: #6f42c1;">$0.00</div>
+                    <div style="font-size: 11px; color: #999;">Account 1020</div>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
+                    <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">💰 Cash - Register</div>
+                    <div class="stat-value" id="balance-cash" style="font-size: 24px; font-weight: bold; color: #fd7e14;">$0.00</div>
+                    <div style="font-size: 11px; color: #999;">Account 1015</div>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
+                    <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">📦 Inventory</div>
+                    <div class="stat-value" id="balance-inventory" style="font-size: 24px; font-weight: bold; color: #20c997;">$0.00</div>
+                    <div style="font-size: 11px; color: #999;">Account 1050</div>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
+                    <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">📊 Total Assets</div>
+                    <div class="stat-value" id="balance-total-assets" style="font-size: 24px; font-weight: bold; color: #6f42c1;">$0.00</div>
+                    <div style="font-size: 11px; color: #999;">All Asset Accounts</div>
+                </div>
+                <div class="stat-card" style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center;">
+                    <div class="stat-label" style="font-size: 12px; color: #666; font-weight: 600; text-transform: uppercase;">💳 Store Credit Owed</div>
+                    <div class="stat-value" id="balance-store-credit" style="font-size: 24px; font-weight: bold; color: #dc3545;">$0.00</div>
+                    <div style="font-size: 11px; color: #999;">Account 2015 (Payable)</div>
                 </div>
             </div>
 
-            <!-- JOURNAL TAB -->
-            <div id="sub-journal" class="sub-tab-content">
-                <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end;">
-                    <div class="form-group"><label>Account</label><select id="journal-account-filter"><option value="">All Accounts</option></select></div>
-                    <div class="form-group"><label>Search</label><input type="text" id="journal-search" placeholder="Description or order ID..."></div>
-                    <button class="btn btn-primary" onclick="loadJournalEntries()"><i class="fas fa-search"></i> Filter</button>
-                    <button class="btn btn-secondary" onclick="resetJournalFilters()"><i class="fas fa-undo"></i> Reset</button>
-                    <button class="btn btn-success" onclick="exportJournalCSV()"><i class="fas fa-download"></i> Export CSV</button>
+            <div class="bank-status-bar">
+                <div>
+                    <span class="count-badge" id="bank-unprocessed-count">0</span>
+                    <span class="text-muted" id="bank-count-label"> unprocessed transactions</span>
+                    <span class="text-muted" id="bank-total-count" style="margin-left:10px;">(0 total)</span>
                 </div>
-                <div class="journal-table-container">
-                    <table class="journal-table" id="journal-table">
-                        <thead><tr><th>ID</th><th>Date</th><th>Description</th><th>Account (Debit)</th><th>Debit</th><th>Account (Credit)</th><th>Credit</th><th>Source</th><th>Actions</th></tr></thead>
-                        <tbody id="journal-body"><tr><td colspan="9" style="text-align:center; padding:40px;">Loading journal entries...</td></tr></tbody>
-                    </table>
-                </div>
-                <div style="margin-top:15px; display:flex; justify-content:space-between; align-items:center;">
-                    <span id="journal-pagination-info">Showing 0 entries</span>
-                    <div><button class="btn btn-sm btn-secondary" id="journal-prev" disabled>Prev</button><span id="journal-page-info">Page 1</span><button class="btn btn-sm btn-secondary" id="journal-next" disabled>Next</button></div>
-                </div>
-            </div>
-
-            <!-- RECONCILIATION TAB -->
-            <div id="sub-reconcile" class="sub-tab-content">
-                <h4 style="color: #000;"><i class="fas fa-handshake"></i> Reconciliation Dashboard</h4>
-                <p style="color: #000;">Select a date range and click a pair to see detailed transactions.</p>
-
-                <div class="controls-row" style="display:flex; gap:15px; flex-wrap:wrap; align-items:center; margin-bottom:15px; background:#f8f9fa; padding:15px; border-radius:8px;">
-                    <div class="form-group" style="flex: 1; min-width: 250px;">
-                        <label style="color: #000;">Date Range</label>
-                        <div id="reconcile-slider" style="margin: 10px 0 5px;"></div>
-                        <div style="display: flex; justify-content: space-between; margin-top: 5px; color: #000;">
-                            <span id="reconcile-date-start-label">Loading...</span>
-                            <span id="reconcile-date-end-label">Loading...</span>
-                        </div>
+                <div class="filter-group">
+                    <div class="form-group" style="margin:0;">
+                        <select id="bank-source" class="source-filter-select">
+                            <option value="fnbo">FNBO Bank (Plaid)</option>
+                            <option value="bluevine">Bluevine Bank (Historic)</option>
+                            <option value="square">Square Asset</option>
+                            <option value="paypal">PayPal (Plaid)</option>
+                        </select>
                     </div>
-                    <button class="btn btn-success btn-sm" onclick="showAddPairModal()" style="color:#fff; background:#28a745; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">
-                        <i class="fas fa-plus"></i> Add Pair
-                    </button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteSelectedPair()" style="color:#fff; background:#dc3545; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">
-                        <i class="fas fa-trash"></i> Delete Selected
+                    <div class="form-group" style="margin:0;">
+                        <select id="bank-view-filter" class="source-filter-select">
+                            <option value="unposted">Unposted</option>
+                            <option value="posted">Posted</option>
+                            <option value="all">All</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="refreshAllBalances()" style="padding: 6px 12px;">
+                        <i class="fas fa-sync-alt"></i> Refresh Balances
                     </button>
                 </div>
+            </div>
 
-                <div style="margin-bottom:20px; overflow-x:auto;">
-                    <table class="journal-table" id="reconcile-pairs-table" style="width:100%;">
-                        <thead>
-                            <tr>
-                                <th style="color:#000;">Account A</th>
-                                <th style="color:#000;">Account B</th>
-                                <th style="color:#000;">Description</th>
-                                <th style="color:#000;">Net Balance (A + B)</th>
-                                <th style="color:#000;">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="reconcile-pairs-body">
-                            <tr><td colspan="5" style="text-align:center; padding:20px; color:#000;">Loading pairs...</td></tr>
-                        </tbody>
-                    </table>
+            <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end; background:#f8f9fa; padding:10px; border-radius:4px;">
+                <div class="form-group" style="flex:2;">
+                    <label style="color:#000;">Filter by description</label>
+                    <input type="text" id="bank-filter" placeholder="e.g. STAMPS.COM" style="color:#000; background:#fff;">
                 </div>
-
-                <div id="reconcile-result">
-                    <p class="text-muted" style="color: #000;">Select a pair row above to see detailed transactions.</p>
+                <div class="form-group" style="flex:0 0 auto;">
+                    <label style="color:#000;">&nbsp;</label>
+                    <button class="btn btn-primary" id="bank-search-btn"><i class="fas fa-search"></i> Search</button>
                 </div>
             </div>
 
-            <!-- REPORTS TAB -->
-            <div id="sub-reports" class="sub-tab-content">
-                <h4 style="color:#000;"><i class="fas fa-chart-pie"></i> Financial Reports</h4>
-                <div class="report-selector">
-                    <div class="form-group"><label style="color:#000;">Report Type</label><select id="report-type"><option value="pll">Profit & Loss</option><option value="balance-sheet">Balance Sheet</option><option value="batch-profit">Batch Profitability</option><option value="order-economics">Order Economics</option></select></div>
-                    <div class="form-group"><label style="color:#000;">Date From</label><input type="date" id="report-date-from"></div>
-                    <div class="form-group"><label style="color:#000;">Date To</label><input type="date" id="report-date-to"></div>
-                    <button class="btn btn-primary" onclick="runReport()"><i class="fas fa-play"></i> Generate</button>
-                    <button class="btn btn-success" onclick="exportReportCSV()"><i class="fas fa-download"></i> Export CSV</button>
-                </div>
-                <div id="report-result" class="report-result"><p class="text-muted">Select a report and click Generate.</p></div>
+            <!-- Bulk Actions Bar -->
+            <div class="bank-actions">
+                <span style="font-weight:600; color:#000; font-size:14px;">Bulk Actions:</span>
+                <button class="btn btn-success" id="post-updates-btn">
+                    <i class="fas fa-check-double"></i> Post Updates
+                </button>
+                <button class="btn btn-secondary" id="clear-selections-btn">
+                    <i class="fas fa-undo"></i> Clear All
+                </button>
+                <button class="btn btn-info" id="bulk-assign-btn">
+                    <i class="fas fa-tasks"></i> Bulk Assign Account
+                </button>
+                <select id="bulk-account-select">
+                    <option value="">Select Account</option>
+                </select>
+                <span id="post-status" style="color:#000; font-size:13px; margin-left:10px;"></span>
             </div>
 
-            <!-- CASH FLOW TAB -->
-            <div id="sub-cash-flow" class="sub-tab-content">
-                <h4 style="color:#000;"><i class="fas fa-money-bill-wave"></i> Cash Flow by Account</h4>
-                <p class="text-muted" style="color:#666;">Shows monthly cash inflows (positive) and outflows (negative) by account. <strong>Click a month on the x-axis</strong> to see a bar chart breakdown. <strong>Click any bar</strong> in the breakdown to see transactions with unpost capability. <strong>Double-click the chart</strong> to expand it full screen.</p>
+            <div class="bank-table-container">
+                <table class="journal-table" id="bank-table">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="select-all-tx"></th>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th>Amount</th>
+                            <th>Category</th>
+                            <th>Status</th>
+                            <th>Post To</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bank-body"><tr><td colspan="7" style="text-align:center; padding:40px;">Select a source and click Search.</td></tr></tbody>
+                </table>
+            </div>
+            <div style="margin-top:15px;">
+                <span id="bank-pagination-info">Showing 0 entries</span>
+            </div>
+        </div>
 
-                <div class="controls-row">
-                    <div class="form-group">
-                        <label style="color:#000;">Start Month</label>
-                        <input type="month" id="cash-flow-start">
-                    </div>
-                    <div class="form-group">
-                        <label style="color:#000;">End Month</label>
-                        <input type="month" id="cash-flow-end">
-                    </div>
-                    <button class="btn btn-primary" onclick="loadCashFlow()"><i class="fas fa-sync-alt"></i> Generate</button>
-                    <div class="spacer"></div>
-                </div>
+        <!-- ACCOUNTS TAB -->
+        <div id="sub-accounts" class="sub-tab-content">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h4 style="color:#000;"><i class="fas fa-sitemap"></i> Chart of Accounts</h4>
+                <button class="btn btn-primary" id="add-account-btn" onclick="showAddAccountModal()"><i class="fas fa-plus"></i> Add Account</button>
+            </div>
+            <div class="journal-table-container">
+                <table class="journal-table" id="accounts-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Code</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="accounts-body"><tr><td colspan="5" style="text-align:center; padding:40px;">Loading accounts...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
 
-                <div id="cash-flow-chart-container" class="chart-container-wrapper">
-                    <div class="chart-title">Cash Flow</div>
-                    <div class="chart-subtitle">Monthly cash inflows and outflows by account</div>
-                    <div id="cash-flow-date-range" style="font-size: 14px; color: #000; text-align: center; margin-bottom: 10px; display: none;"></div>
-                    <div class="chart-click-hint">Click x-axis month for breakdown &bull; Double-click to expand</div>
-                    <canvas id="cash-flow-chart"></canvas>
+        <!-- JOURNAL TAB -->
+        <div id="sub-journal" class="sub-tab-content">
+            <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end;">
+                <div class="form-group"><label>Account</label><select id="journal-account-filter"><option value="">All Accounts</option></select></div>
+                <div class="form-group"><label>Search</label><input type="text" id="journal-search" placeholder="Description or order ID..."></div>
+                <button class="btn btn-primary" onclick="loadJournalEntries()"><i class="fas fa-search"></i> Filter</button>
+                <button class="btn btn-secondary" onclick="resetJournalFilters()"><i class="fas fa-undo"></i> Reset</button>
+                <button class="btn btn-success" onclick="exportJournalCSV()"><i class="fas fa-download"></i> Export CSV</button>
+            </div>
+            <div class="journal-table-container">
+                <table class="journal-table" id="journal-table">
+                    <thead><tr><th>ID</th><th>Date</th><th>Description</th><th>Account (Debit)</th><th>Debit</th><th>Account (Credit)</th><th>Credit</th><th>Source</th><th>Actions</th></tr></thead>
+                    <tbody id="journal-body"><tr><td colspan="9" style="text-align:center; padding:40px;">Loading journal entries...</td></tr></tbody>
+                </table>
+            </div>
+            <div style="margin-top:15px; display:flex; justify-content:space-between; align-items:center;">
+                <span id="journal-pagination-info">Showing 0 entries</span>
+                <div><button class="btn btn-sm btn-secondary" id="journal-prev" disabled>Prev</button><span id="journal-page-info">Page 1</span><button class="btn btn-sm btn-secondary" id="journal-next" disabled>Next</button></div>
+            </div>
+        </div>
+
+        <!-- RECONCILIATION TAB -->
+        <div id="sub-reconcile" class="sub-tab-content">
+            <h4 style="color: #000;"><i class="fas fa-handshake"></i> Reconciliation Dashboard</h4>
+            <p style="color: #000;">Select a date range and click a pair to see detailed transactions.</p>
+
+            <div class="controls-row" style="display:flex; gap:15px; flex-wrap:wrap; align-items:center; margin-bottom:15px; background:#f8f9fa; padding:15px; border-radius:8px;">
+                <div class="form-group" style="flex: 1; min-width: 250px;">
+                    <label style="color: #000;">Date Range</label>
+                    <div id="reconcile-slider" style="margin: 10px 0 5px;"></div>
+                    <div style="display: flex; justify-content: space-between; margin-top: 5px; color: #000;">
+                        <span id="reconcile-date-start-label">Loading...</span>
+                        <span id="reconcile-date-end-label">Loading...</span>
+                    </div>
                 </div>
+                <button class="btn btn-success btn-sm" onclick="showAddPairModal()" style="color:#fff; background:#28a745; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">
+                    <i class="fas fa-plus"></i> Add Pair
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="deleteSelectedPair()" style="color:#fff; background:#dc3545; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">
+                    <i class="fas fa-trash"></i> Delete Selected
+                </button>
             </div>
 
-            <!-- MONTHLY P&L TAB -->
-            <div id="sub-monthly-pl" class="sub-tab-content">
-                <h4 style="color:#000;"><i class="fas fa-chart-line"></i> Monthly Profit & Loss</h4>
-                <p class="text-muted" style="color:#666;">Shows revenue and expenses matched to each month. Includes amortisation of prepaid rent. <strong>Click a month on the x-axis</strong> to see a bar chart breakdown. <strong>Click any bar</strong> in the breakdown to see transactions with unpost capability.</p>
-
-                <div class="controls-row">
-                    <div class="form-group">
-                        <label style="color:#000;">Start Month</label>
-                        <input type="month" id="pl-start">
-                    </div>
-                    <div class="form-group">
-                        <label style="color:#000;">End Month</label>
-                        <input type="month" id="pl-end">
-                    </div>
-                    <button class="btn btn-primary" onclick="loadMonthlyPL()"><i class="fas fa-sync-alt"></i> Generate</button>
-                    <div class="spacer"></div>
-                </div>
-
-                <div id="pl-chart-container" class="chart-container-wrapper">
-                    <div class="chart-title">Monthly Profit &amp; Loss</div>
-                    <div class="chart-subtitle">Revenue, expenses, and net income by month</div>
-                    <div id="pl-date-range" style="font-size: 14px; color: #000; text-align: center; margin-bottom: 10px; display: none;"></div>
-                    <div class="chart-click-hint">Click x-axis month for breakdown</div>
-                    <canvas id="pl-chart"></canvas>
-                </div>
+            <div style="margin-bottom:20px; overflow-x:auto;">
+                <table class="journal-table" id="reconcile-pairs-table" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th style="color:#000;">Account A</th>
+                            <th style="color:#000;">Account B</th>
+                            <th style="color:#000;">Description</th>
+                            <th style="color:#000;">Net Balance (A + B)</th>
+                            <th style="color:#000;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reconcile-pairs-body">
+                        <tr><td colspan="5" style="text-align:center; padding:20px; color:#000;">Loading pairs...</td></tr>
+                    </tbody>
+                </table>
             </div>
 
-            <!-- BALANCE SHEET TAB -->
-            <div id="sub-balance-sheet" class="sub-tab-content">
-                <h4 style="color:#000;"><i class="fas fa-balance-scale"></i> Balance Sheet</h4>
-                <p class="text-muted" style="color:#666;">Shows the cumulative balance of assets, liabilities, and equity accounts over time. <strong>Click a month on the x-axis</strong> to see a bar chart breakdown. <strong>Click any bar</strong> in the breakdown to see transactions with unpost capability.</p>
+            <div id="reconcile-result">
+                <p class="text-muted" style="color: #000;">Select a pair row above to see detailed transactions.</p>
+            </div>
+        </div>
 
-                <div class="controls-row">
-                    <div class="form-group">
-                        <label style="color:#000;">Start Month</label>
-                        <input type="month" id="bs-start">
-                    </div>
-                    <div class="form-group">
-                        <label style="color:#000;">End Month</label>
-                        <input type="month" id="bs-end">
-                    </div>
-                    <button class="btn btn-primary" onclick="loadBalanceSheet()"><i class="fas fa-sync-alt"></i> Generate</button>
-                    <div class="spacer"></div>
-                </div>
+        <!-- REPORTS TAB -->
+        <div id="sub-reports" class="sub-tab-content">
+            <h4 style="color:#000;"><i class="fas fa-chart-pie"></i> Financial Reports</h4>
+            <div class="report-selector">
+                <div class="form-group"><label style="color:#000;">Report Type</label><select id="report-type"><option value="pll">Profit & Loss</option><option value="balance-sheet">Balance Sheet</option><option value="batch-profit">Batch Profitability</option><option value="order-economics">Order Economics</option></select></div>
+                <div class="form-group"><label style="color:#000;">Date From</label><input type="date" id="report-date-from"></div>
+                <div class="form-group"><label style="color:#000;">Date To</label><input type="date" id="report-date-to"></div>
+                <button class="btn btn-primary" onclick="runReport()"><i class="fas fa-play"></i> Generate</button>
+                <button class="btn btn-success" onclick="exportReportCSV()"><i class="fas fa-download"></i> Export CSV</button>
+            </div>
+            <div id="report-result" class="report-result"><p class="text-muted">Select a report and click Generate.</p></div>
+        </div>
 
-                <div id="bs-chart-container" class="chart-container-wrapper">
-                    <div class="chart-title">Balance Sheet</div>
-                    <div class="chart-subtitle">Assets, liabilities, and equity over time</div>
-                    <div id="bs-date-range" style="font-size: 14px; color: #000; text-align: center; margin-bottom: 10px; display: none;"></div>
-                    <div class="chart-click-hint">Click x-axis month for breakdown</div>
-                    <canvas id="bs-chart"></canvas>
+        <!-- CASH FLOW TAB -->
+        <div id="sub-cash-flow" class="sub-tab-content">
+            <h4 style="color:#000;"><i class="fas fa-money-bill-wave"></i> Cash Flow by Account</h4>
+            <p class="text-muted" style="color:#666;">Shows monthly cash inflows (positive) and outflows (negative) by account. <strong>Click a month on the x-axis</strong> to see a bar chart breakdown. <strong>Click any bar</strong> in the breakdown to see transactions with unpost capability. <strong>Double-click the chart</strong> to expand it full screen.</p>
+
+            <div class="controls-row">
+                <div class="form-group">
+                    <label style="color:#000;">Start Month</label>
+                    <input type="month" id="cash-flow-start">
                 </div>
+                <div class="form-group">
+                    <label style="color:#000;">End Month</label>
+                    <input type="month" id="cash-flow-end">
+                </div>
+                <button class="btn btn-primary" onclick="loadCashFlow()"><i class="fas fa-sync-alt"></i> Generate</button>
+                <div class="spacer"></div>
+            </div>
+
+            <div id="cash-flow-chart-container" class="chart-container-wrapper">
+                <div class="chart-title">Cash Flow</div>
+                <div class="chart-subtitle">Monthly cash inflows and outflows by account</div>
+                <div id="cash-flow-date-range" style="font-size: 14px; color: #000; text-align: center; margin-bottom: 10px; display: none;"></div>
+                <div class="chart-click-hint">Click x-axis month for breakdown &bull; Double-click to expand</div>
+                <canvas id="cash-flow-chart"></canvas>
+            </div>
+        </div>
+
+        <!-- MONTHLY P&L TAB -->
+        <div id="sub-monthly-pl" class="sub-tab-content">
+            <h4 style="color:#000;"><i class="fas fa-chart-line"></i> Monthly Profit & Loss</h4>
+            <p class="text-muted" style="color:#666;">Shows revenue and expenses matched to each month. Includes amortisation of prepaid rent. <strong>Click a month on the x-axis</strong> to see a bar chart breakdown. <strong>Click any bar</strong> in the breakdown to see transactions with unpost capability.</p>
+
+            <div class="controls-row">
+                <div class="form-group">
+                    <label style="color:#000;">Start Month</label>
+                    <input type="month" id="pl-start">
+                </div>
+                <div class="form-group">
+                    <label style="color:#000;">End Month</label>
+                    <input type="month" id="pl-end">
+                </div>
+                <button class="btn btn-primary" onclick="loadMonthlyPL()"><i class="fas fa-sync-alt"></i> Generate</button>
+                <div class="spacer"></div>
+            </div>
+
+            <div id="pl-chart-container" class="chart-container-wrapper">
+                <div class="chart-title">Monthly Profit &amp; Loss</div>
+                <div class="chart-subtitle">Revenue, expenses, and net income by month</div>
+                <div id="pl-date-range" style="font-size: 14px; color: #000; text-align: center; margin-bottom: 10px; display: none;"></div>
+                <div class="chart-click-hint">Click x-axis month for breakdown</div>
+                <canvas id="pl-chart"></canvas>
+            </div>
+        </div>
+
+        <!-- BALANCE SHEET TAB -->
+        <div id="sub-balance-sheet" class="sub-tab-content">
+            <h4 style="color:#000;"><i class="fas fa-balance-scale"></i> Balance Sheet</h4>
+            <p class="text-muted" style="color:#666;">Shows the cumulative balance of assets, liabilities, and equity accounts over time. <strong>Click a month on the x-axis</strong> to see a bar chart breakdown. <strong>Click any bar</strong> in the breakdown to see transactions with unpost capability.</p>
+
+            <div class="controls-row">
+                <div class="form-group">
+                    <label style="color:#000;">Start Month</label>
+                    <input type="month" id="bs-start">
+                </div>
+                <div class="form-group">
+                    <label style="color:#000;">End Month</label>
+                    <input type="month" id="bs-end">
+                </div>
+                <button class="btn btn-primary" onclick="loadBalanceSheet()"><i class="fas fa-sync-alt"></i> Generate</button>
+                <div class="spacer"></div>
+            </div>
+
+            <div id="bs-chart-container" class="chart-container-wrapper">
+                <div class="chart-title">Balance Sheet</div>
+                <div class="chart-subtitle">Assets, liabilities, and equity over time</div>
+                <div id="bs-date-range" style="font-size: 14px; color: #000; text-align: center; margin-bottom: 10px; display: none;"></div>
+                <div class="chart-click-hint">Click x-axis month for breakdown</div>
+                <canvas id="bs-chart"></canvas>
             </div>
         </div>
     </div>
@@ -707,7 +753,6 @@
     </div>
 
     <!-- SCRIPTS -->
-    <script src="/static/js/app-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -718,5 +763,29 @@
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/admin-orders.js"></script>
     <script src="/static/js/admin-accounting.js?v=30"></script>
+
+    <script>
+        // Load navbar and subscription modal from shared components
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load navbar from shared component
+            if (typeof loadNavbar === 'function') {
+                loadNavbar();
+            } else {
+                console.warn('loadNavbar function not found, make sure shared.js is loaded');
+            }
+            
+            // Load subscription modal from shared component
+            if (typeof loadSubscriptionModal === 'function') {
+                loadSubscriptionModal();
+            } else {
+                console.warn('loadSubscriptionModal function not found, make sure shared.js is loaded');
+            }
+            
+            // Initialize subscription modal
+            if (typeof initSubscriptionModal === 'function') {
+                initSubscriptionModal();
+            }
+        });
+    </script>
 </body>
 </html>
