@@ -11,8 +11,7 @@ function loadNavbar() {
             if (typeof initNotificationBell === 'function') {
                 initNotificationBell();
             }
-            // initSubscriptionModal() is DEPRECATED - using /record-alerts page instead
-            // No longer call initSubscriptionModal()
+            initSubscriptionModal();
         })
         .catch(error => {
             console.error('Error loading navbar:', error);
@@ -30,145 +29,111 @@ function loadSubscriptionModal() {
         });
 }
 
-// ===== SUBSCRIPTION MODAL INITIALIZATION (DEPRECATED) =====
-// Record Alerts now uses a dedicated page at /record-alerts
-// This function is kept for backwards compatibility but does NOT attach any click handlers
+// ===== SUBSCRIPTION MODAL INITIALIZATION =====
 function initSubscriptionModal() {
-    console.log('📄 Record Alerts now uses /record-alerts page (not popup)');
-    // The modal functionality is deprecated - use the page instead
-    // No click handlers are attached here anymore
-    // The subscribe-link in navbar now points directly to /record-alerts
-}
+    const subscribeLink = document.getElementById('subscribe-link');
+    const subscribeModal = document.getElementById('subscribe-modal');
+    const subscribeClose = document.querySelector('.subscribe-modal-close');
+    const subscribeForm = document.getElementById('subscribe-form');
+    const subscribeMessage = document.getElementById('subscribe-message');
 
-// ===== MOBILE MENU =====
-function initMobileMenu() {
-    // Check if we're on mobile (icons only mode)
-    const isMobile = window.innerWidth <= 768;
-    
-    // Add smooth scrolling for the nav links container
-    const navLinks = document.querySelector('.nav-links');
-    if (navLinks && isMobile) {
-        // Enable horizontal scrolling with momentum
-        navLinks.style.webkitOverflowScrolling = 'touch';
-        navLinks.style.overflowX = 'auto';
-        
-        // Hide scrollbar indicator
-        navLinks.addEventListener('touchstart', function() {
-            this.style.scrollbarWidth = 'none';
+    if (!subscribeLink || !subscribeModal) return;
+
+    subscribeLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        subscribeModal.style.display = 'flex';
+        document.body.classList.add('modal-open');
+    });
+
+    if (subscribeClose) {
+        subscribeClose.addEventListener('click', function() {
+            subscribeModal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+            if (subscribeMessage) subscribeMessage.style.display = 'none';
+            if (subscribeForm) subscribeForm.reset();
         });
     }
-    
-    // Handle window resize to update mobile state
-    let resizeTimer;
-    window.addEventListener('resize', function() {
-        clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(function() {
-            const newIsMobile = window.innerWidth <= 768;
-            if (newIsMobile !== isMobile) {
-                // Toggle mobile-specific classes if needed
-                const navLinksEl = document.querySelector('.nav-links');
-                if (navLinksEl) {
-                    if (newIsMobile) {
-                        navLinksEl.style.webkitOverflowScrolling = 'touch';
-                        navLinksEl.style.overflowX = 'auto';
-                    } else {
-                        navLinksEl.style.webkitOverflowScrolling = '';
-                        navLinksEl.style.overflowX = '';
-                    }
-                }
+
+    subscribeModal.addEventListener('click', function(e) {
+        if (e.target === subscribeModal) {
+            subscribeModal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+            if (subscribeMessage) subscribeMessage.style.display = 'none';
+            if (subscribeForm) subscribeForm.reset();
+        }
+    });
+
+    if (subscribeForm) {
+        subscribeForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('subscribe-email').value.trim();
+            const artist = document.getElementById('subscribe-artist').value.trim();
+            const title = document.getElementById('subscribe-title').value.trim();
+            const catalog_number = document.getElementById('subscribe-catalog').value.trim();
+            
+            if (!artist && !title && !catalog_number) {
+                showSubscribeMessage('Please enter at least one search term (artist, title, or catalog number)', 'error');
+                return;
             }
-        }, 250);
-    });
-}
-
-// ===== NAV TOOLTIPS =====
-function initNavTooltips() {
-    const isMobile = window.innerWidth <= 768;
-    
-    if (isMobile) {
-        // On mobile, show tooltips on tap/long press
-        document.querySelectorAll('.nav-link').forEach(link => {
-            let pressTimer;
             
-            link.addEventListener('touchstart', function(e) {
-                pressTimer = setTimeout(function() {
-                    const tooltip = link.querySelector('.nav-tooltip');
-                    if (tooltip) {
-                        tooltip.style.display = 'block';
-                        setTimeout(function() {
-                            tooltip.style.display = '';
-                        }, 2000);
-                    }
-                }, 500);
-            });
+            if (!email || !email.includes('@') || !email.includes('.')) {
+                showSubscribeMessage('Please enter a valid email address', 'error');
+                return;
+            }
             
-            link.addEventListener('touchend', function() {
-                clearTimeout(pressTimer);
-            });
+            const submitBtn = subscribeForm.querySelector('.subscribe-submit-btn');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subscribing...';
             
-            link.addEventListener('touchmove', function() {
-                clearTimeout(pressTimer);
-            });
+            try {
+                const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                const apiUrl = isLocalhost 
+                    ? 'http://localhost:5000/api/subscribe'
+                    : `https://${window.location.hostname}/api/subscribe`;
+                
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ email, artist, title, catalog_number })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'success') {
+                    showSubscribeMessage(data.already_subscribed ? data.message : 'Thank you for subscribing! We\'ll email you when matching records arrive.', data.already_subscribed ? 'info' : 'success');
+                    subscribeForm.reset();
+                    
+                    setTimeout(() => {
+                        subscribeModal.style.display = 'none';
+                        document.body.classList.remove('modal-open');
+                        if (subscribeMessage) subscribeMessage.style.display = 'none';
+                    }, 3000);
+                } else {
+                    showSubscribeMessage(data.error || 'Something went wrong. Please try again.', 'error');
+                }
+            } catch (error) {
+                console.error('Subscription error:', error);
+                showSubscribeMessage('Network error. Please try again.', 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-bell"></i> Subscribe';
+            }
         });
     }
-}
 
-// ===== LOGOUT FUNCTION =====
-function logoutUser() {
-    fetch('/logout', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            sessionStorage.clear();
-            // Clear cookies
-            document.cookie.split(';').forEach(function(c) {
-                document.cookie = c.replace(/^ +/, '').replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/');
-            });
-            window.location.href = '/';
-        }
-    })
-    .catch(error => {
-        console.error('Logout error:', error);
-        window.location.href = '/';
-    });
-}
-
-// ===== COOKIE HELPER =====
-function getCookie(name) {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(';').shift();
-    return null;
-}
-
-// ===== DATE HELPER =====
-function getTimeAgo(dateStr) {
-    if (!dateStr) return 'N/A';
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-    
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
-}
-
-// ===== HTML ESCAPE =====
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    function showSubscribeMessage(message, type) {
+        if (!subscribeMessage) return;
+        subscribeMessage.textContent = message;
+        subscribeMessage.style.display = 'block';
+        subscribeMessage.style.background = type === 'success' ? '#d4edda' : (type === 'info' ? '#cce5ff' : '#f8d7da');
+        subscribeMessage.style.color = type === 'success' ? '#155724' : (type === 'info' ? '#004085' : '#721c24');
+        subscribeMessage.style.border = type === 'success' ? '1px solid #c3e6cb' : (type === 'info' ? '1px solid #b8daff' : '1px solid #f5c6cb');
+        subscribeMessage.style.borderRadius = '4px';
+        subscribeMessage.style.padding = '12px';
+        subscribeMessage.style.marginTop = '15px';
+    }
 }
