@@ -1980,6 +1980,42 @@
             from { opacity: 0; transform: translateY(-10px); }
             to { opacity: 1; transform: translateY(0); }
         }
+
+        /* Email Subscriptions Tab Styles */
+        .subscription-status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .subscription-status-badge.active {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .subscription-status-badge.inactive {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .subscription-read-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .subscription-read-badge.unread {
+            background: #cce5ff;
+            color: #004085;
+            border: 1px solid #b8daff;
+        }
+        .subscription-read-badge.read {
+            background: #e9ecef;
+            color: #495057;
+            border: 1px solid #dee2e6;
+        }
     </style>
 </head>
 <body>
@@ -2000,6 +2036,7 @@
             <div class="tab" data-tab="users"><i class="fas fa-users"></i> Users</div>
             <div class="tab" data-tab="admin-config"><i class="fas fa-sliders-h"></i> Admin Config</div>
             <div class="tab" data-tab="custom-labels"><i class="fas fa-tag"></i> Custom Labels</div>
+            <div class="tab" data-tab="email-subscriptions"><i class="fas fa-envelope"></i> Email Subscriptions</div>
             <div class="tab" data-tab="db-query"><i class="fas fa-database"></i> DB Query</div>
             <div class="tab" data-tab="sticky-notes"><i class="fas fa-sticky-note"></i> Sticky Notes</div>
             <div class="tab" data-tab="stats"><i class="fas fa-chart-line"></i> Stats</div>
@@ -2038,10 +2075,7 @@
                                 <option value="add" selected>Add Record</option>
                                 <option value="scan">Scan / Locate</option>
                                 <option value="discogs">Post to Discogs</option>
-                                <option value="delete">Delete</option>
-                                <option value="checkout">Checkout</option>
                                 <option value="discogs_orders">Discogs Orders</option>
-                                <option value="refund">Refund</option>
                             </select>
                         </div>
                     </div>
@@ -2321,66 +2355,6 @@
                 </div>
                 <!-- ========== END DISCOGS MODE CONTAINER ========== -->
 
-                <!-- DELETE MODE CONTAINER -->
-                <div id="mode-container-delete" style="display: none;">
-                    <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
-                        <div>
-                            <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
-                                <div>
-                                    <label for="delete-status-filter" style="font-weight:500;">Status:</label>
-                                    <select id="delete-status-filter" class="filter-select" style="padding:6px 12px; border:1px solid #ddd; border-radius:4px;">
-                                        <option value="1,2">New &amp; Active</option>
-                                        <option value="1">New</option>
-                                        <option value="2">Active</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <!-- ========== END DELETE MODE CONTAINER ========== -->
-
-                <!-- CHECKOUT MODE CONTAINER -->
-                <div id="mode-container-checkout" style="display: none;">
-                    <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
-                        <div>
-                            <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
-                                <div>
-                                    <label for="checkout-status-filter" style="font-weight:500;">Status:</label>
-                                    <select id="checkout-status-filter" class="filter-select" style="padding:6px 12px; border:1px solid #ddd; border-radius:4px;">
-                                        <option value="2">Active</option>
-                                        <option value="1">New</option>
-                                        <option value="3">Sold</option>
-                                        <option value="4">Removed</option>
-                                        <option value="all">All</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Checkout Actions Controls -->
-                    <div class="search-section" style="background: #e3f2fd; border-left: 4px solid #007bff; padding: 15px; margin-bottom: 15px;">
-                        <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-                            <span style="font-weight: 600; color: #004085;"><i class="fas fa-shopping-cart"></i> Checkout Actions:</span>
-                            <button class="btn btn-info" onclick="window.showCustomItemModal()">
-                                <i class="fas fa-plus-circle"></i> Custom Item
-                            </button>
-                            <button class="btn btn-primary" onclick="window.addBernieItem()">
-                                <i class="fas fa-donate"></i> Bernie ($0.99)
-                            </button>
-                            
-                            <button class="btn btn-success" onclick="window.showGiftCardModal()" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
-                                <i class="fas fa-gift"></i> Gift Card
-                            </button>
-                            <span style="font-size: 12px; color: #666; margin-left: 10px;">
-                                <i class="fas fa-info-circle"></i> Add custom items, Bernie donations, or activate gift cards
-                            </span>
-                        </div>
-                    </div>
-                </div>
-                <!-- ========== END CHECKOUT MODE CONTAINER ========== -->
-
                 <!-- DISCOGS ORDERS MODE CONTAINER -->
                 <div id="mode-container-discogs_orders" style="display: none;">
                     <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
@@ -2414,14 +2388,6 @@
                 </div>
                 <!-- ========== END DISCOGS ORDERS MODE CONTAINER ========== -->
 
-                <!-- REFUND MODE CONTAINER -->
-                <div id="mode-container-refund" style="display: none;">
-                    <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
-                        <p style="color: #666; margin: 0;"><i class="fas fa-info-circle"></i> Use the search bar above to find sold records for refund.</p>
-                    </div>
-                </div>
-                <!-- ========== END REFUND MODE CONTAINER ========== -->
-
                 <!-- ========== GLOBAL SEARCH & RECORD TABLE ========== -->
                 <div class="search-section" style="margin-bottom: 15px;">
                     <div class="search-options-row">
@@ -2436,7 +2402,8 @@
                         </div>
                         <form class="search-form" id="searchForm" action="javascript:void(0);">
                             <input type="text" class="search-input" id="searchInput" placeholder="Search records...">
-                            <button id="searchButton" type="button" class="btn btn-primary" style="margin-left: 8px;"><i class="fas fa-search"></i> Search</button><button type="button" class="btn btn-secondary" id="clearSearch"><i class="fas fa-times"></i> Clear</button>
+                            <button id="searchButton" type="button" class="btn btn-primary" style="margin-left: 8px;"><i class="fas fa-search"></i> Search</button>
+                            <button type="button" class="btn btn-secondary" id="clearSearch"><i class="fas fa-times"></i> Clear</button>
                         </form>
                     </div>
                 </div>
@@ -2447,7 +2414,6 @@
                         <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
                             <span><strong>Selected:</strong> <span id="selected-count">0</span></span>
                             <button class="btn btn-success" id="print-btn" style="display: none;" disabled="">🖨️ Print (all)</button>
-                            <button class="btn btn-primary" id="complete-action-btn" disabled="" style="">🛒 Checkout</button>
                             <button class="btn btn-secondary" id="cancel-range-btn" style="display: none;"><i class="fas fa-times"></i> Cancel Selection</button>
                         </div>
                     </div>
@@ -2455,7 +2421,7 @@
                     <div class="records-table-container" style="overflow-x:auto;">
                         <table class="records-table" style="width:100%; border-collapse:collapse;">
                             <thead id="records-table-head"><tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Barcode</th><th>Action</th></tr></thead>
-                            <tbody id="records-table-body"><tr><td colspan="7" style="text-align:center;padding:40px;">No records in checkout. Search to add records.</td></tr></tbody>
+                            <tbody id="records-table-body"><tr><td colspan="7" style="text-align:center;padding:40px;">No records found. Search to add records.</td></tr></tbody>
                         </table>
                     </div>
 
@@ -2479,7 +2445,7 @@
                     </div>
                 </div>
 
-                <div id="status-message" class="status-message status-info" style="display: none;">Showing 9002 records with status_id=2</div>
+                <div id="status-message" class="status-message status-info" style="display: none;">Showing records</div>
             </div>
         </div>
         <!-- ========== END ADD RECORDS TAB ========== -->
@@ -3036,7 +3002,107 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
     </div>
 </div>
 
-
+        <!-- ==================== EMAIL SUBSCRIPTIONS TAB ==================== -->
+        <div id="email-subscriptions-tab" class="tab-content">
+            <h2><i class="fas fa-envelope"></i> Email Subscriptions</h2>
+            <p class="text-muted">Manage users who want to be notified when specific records become available.</p>
+            
+            <!-- Stats Row -->
+            <div class="stats-row" style="margin-bottom: 20px;">
+                <div class="stat-card">
+                    <div class="stat-value" id="sub-total" style="color: #007bff;">0</div>
+                    <div class="stat-label">Total Subscriptions</div>
+                </div>
+                <div class="stat-card" style="background: #d4edda; border-left: 4px solid #28a745;">
+                    <div class="stat-value" id="sub-active" style="color: #28a745;">0</div>
+                    <div class="stat-label">Active</div>
+                </div>
+                <div class="stat-card" style="background: #fff3cd; border-left: 4px solid #ffc107;">
+                    <div class="stat-value" id="sub-unread" style="color: #856404;">0</div>
+                    <div class="stat-label">📬 New (Unread)</div>
+                </div>
+                <div class="stat-card" style="background: #f8d7da; border-left: 4px solid #dc3545;">
+                    <div class="stat-value" id="sub-inactive" style="color: #dc3545;">0</div>
+                    <div class="stat-label">Inactive</div>
+                </div>
+            </div>
+            
+            <!-- Quick Actions -->
+            <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                <button class="btn btn-success" onclick="loadSubscriptions()"><i class="fas fa-sync-alt"></i> Refresh</button>
+                <button class="btn btn-warning" onclick="markAllSubscriptionsRead()"><i class="fas fa-check-double"></i> Mark All as Read</button>
+                <button class="btn btn-danger" onclick="deactivateAllSubscriptions()"><i class="fas fa-ban"></i> Deactivate All</button>
+            </div>
+            
+            <!-- Filters -->
+            <div class="search-section" style="margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                    <div>
+                        <label for="sub-search" style="font-weight: 500;">Search:</label>
+                        <input type="text" id="sub-search" class="search-input" placeholder="Email, artist, title, or catalog..." style="width: 250px; padding: 8px 12px;">
+                    </div>
+                    <div>
+                        <label for="sub-status-filter" style="font-weight: 500;">Status:</label>
+                        <select id="sub-status-filter" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;">
+                            <option value="all">All</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="sub-read-filter" style="font-weight: 500;">Read Status:</label>
+                        <select id="sub-read-filter" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;">
+                            <option value="all">All</option>
+                            <option value="unread">New (Unread)</option>
+                            <option value="read">Read</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" onclick="applySubFilters()"><i class="fas fa-search"></i> Apply Filters</button>
+                        <button class="btn btn-secondary" onclick="clearSubFilters()"><i class="fas fa-times"></i> Clear</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Subscriptions Table -->
+            <div class="records-table-container">
+                <table class="records-table" id="subscriptions-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;">ID</th>
+                            <th style="min-width: 180px;">Email</th>
+                            <th style="min-width: 120px;">Artist</th>
+                            <th style="min-width: 120px;">Title</th>
+                            <th style="min-width: 100px;">Catalog #</th>
+                            <th style="width: 100px;">Status</th>
+                            <th style="width: 80px;">Read</th>
+                            <th style="width: 130px;">Created</th>
+                            <th style="width: 140px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="subscriptions-body">
+                        <tr><td colspan="9" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin" style="font-size: 24px;"></i> Loading subscriptions...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            <div class="pagination-container">
+                <div class="pagination-info">
+                    Showing <span id="sub-showing-start">0</span>-<span id="sub-showing-end">0</span> of <span id="sub-total-filtered">0</span> subscriptions
+                </div>
+                <div class="pagination-controls">
+                    <button class="pagination-btn" id="sub-prev-page" disabled=""><i class="fas fa-chevron-left"></i></button>
+                    <span>Page <span id="sub-current-page">1</span> of <span id="sub-total-pages">1</span></span>
+                    <button class="pagination-btn" id="sub-next-page" disabled=""><i class="fas fa-chevron-right"></i></button>
+                    <select id="sub-page-size" style="padding: 4px; border: 1px solid #ddd; border-radius: 4px;">
+                        <option value="25">25</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
+        </div>
 
         <!-- ==================== DB QUERY TAB ==================== -->
         <div id="db-query-tab" class="tab-content">
@@ -3661,6 +3727,7 @@ Example: SELECT * FROM records LIMIT 10;" onkeydown="handleQueryKeydown(event)">
     <script src="/static/js/accessories-manager.js"></script>
     <script src="/static/js/stats.js"></script>
     <script src="/static/js/admin-creditors.js"></script>
+    <script src="/static/js/email-subscriptions.js"></script>
 
     <script>
     window.dbConfigValues = window.dbConfigValues || {};
