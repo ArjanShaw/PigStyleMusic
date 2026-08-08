@@ -1,11 +1,22 @@
 /* static/css/shared.css */
 /* Shared styles for navbar, notification bell, and subscription modal */
+/* Updated with mobile menu, tooltips, and notification enhancements */
 
-/* ========== NAVBAR NOTIFICATION BELL STYLES ========== */
+/* ============================================================
+   NAVBAR STYLES
+   ============================================================ */
+
+/* Navbar container - handled inline in navbar.html */
+/* Additional navbar styles can go here if needed */
+
+/* ============================================================
+   NAVBAR NOTIFICATION BELL STYLES
+   ============================================================ */
+
 #navbar-notification-container {
     position: relative;
     display: inline-block;
-    margin-right: 10px;
+    margin-right: 4px;
 }
 
 #navbar-notification-container.hidden {
@@ -14,21 +25,23 @@
 
 #navbar-notification-btn {
     background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     color: white;
-    padding: 6px 10px;
+    padding: 4px 8px;
     border-radius: 4px;
     cursor: pointer;
     position: relative;
     transition: all 0.2s;
     display: flex;
     align-items: center;
-    gap: 5px;
-    font-size: 14px;
+    gap: 3px;
+    font-size: 16px;
+    min-height: 30px;
 }
 
 #navbar-notification-btn:hover {
     background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.3);
 }
 
 #navbar-notification-btn.has-notifications {
@@ -39,17 +52,17 @@
 #navbar-notification-badge {
     display: none;
     position: absolute;
-    top: -6px;
-    right: -6px;
+    top: -4px;
+    right: -4px;
     background: #dc3545;
     color: white;
     border-radius: 50%;
-    padding: 1px 6px;
-    font-size: 10px;
+    padding: 1px 5px;
+    font-size: 9px;
     font-weight: bold;
-    min-width: 18px;
+    min-width: 16px;
     text-align: center;
-    line-height: 16px;
+    line-height: 14px;
     animation: badge-pulse 2s infinite;
 }
 
@@ -57,20 +70,32 @@
     display: block;
 }
 
+@keyframes badge-pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+}
+
+/* ============================================================
+   NOTIFICATION DROPDOWN STYLES
+   ============================================================ */
+
 #navbar-notification-dropdown {
     display: none;
     position: absolute;
-    top: 40px;
+    top: 100%;
     right: 0;
-    background: white;
-    min-width: 380px;
-    max-height: 450px;
-    overflow-y: auto;
+    background: #1a1a2e;
+    border: 1px solid #333;
     border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    min-width: 340px;
+    max-width: 420px;
+    max-height: 420px;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    z-index: 1100;
     padding: 0;
-    border: 1px solid #ddd;
-    z-index: 2000;
+    margin-top: 4px;
 }
 
 #navbar-notification-dropdown.show {
@@ -83,19 +108,16 @@
     to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes badge-pulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.1); }
-    100% { transform: scale(1); }
-}
-
+/* Dropdown Header */
 .navbar-notification-header {
-    padding: 12px 15px;
-    border-bottom: 1px solid #eee;
+    padding: 10px 14px;
+    border-bottom: 1px solid #2a2a3e;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #f8f9fa;
+    flex-wrap: wrap;
+    gap: 6px;
+    background: #14142a;
     border-radius: 8px 8px 0 0;
     position: sticky;
     top: 0;
@@ -103,51 +125,54 @@
 }
 
 .navbar-notification-header span {
+    color: white;
     font-weight: 600;
-    color: #333;
-    font-size: 14px;
+    font-size: 13px;
 }
 
 .navbar-notification-header span i {
-    color: #007bff;
-    margin-right: 8px;
+    color: #ff6b6b;
+    margin-right: 6px;
 }
 
 #navbar-mark-all-read {
     background: none;
     border: none;
-    color: #007bff;
-    font-size: 12px;
+    color: #ff6b6b;
+    font-size: 11px;
     cursor: pointer;
-    text-decoration: underline;
     padding: 4px 8px;
     border-radius: 4px;
     transition: background 0.2s;
 }
 
 #navbar-mark-all-read:hover {
-    background: rgba(0, 123, 255, 0.1);
+    background: rgba(255, 107, 107, 0.1);
 }
 
+/* Dropdown List */
 #navbar-notification-list {
-    padding: 5px 0;
+    padding: 4px 0;
+    max-height: 320px;
+    overflow-y: auto;
 }
 
+/* Individual Notification Items */
 .navbar-notification-item {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    padding: 10px 15px;
-    border-bottom: 1px solid #f0f0f0;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid #25253a;
     transition: background 0.2s;
 }
 
 .navbar-notification-item:hover {
-    background: #f8f9fa;
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .navbar-notification-item.unread {
-    background: #e8f4fd;
+    background: rgba(0, 123, 255, 0.08);
     border-left: 3px solid #007bff;
 }
 
@@ -155,19 +180,20 @@
     border-bottom: none;
 }
 
+/* Notification Icon */
 .navbar-notification-icon {
     width: 28px;
     height: 28px;
-    background: #007bff;
-    color: white;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
     font-size: 12px;
+    color: white;
 }
 
+/* Notification Content */
 .navbar-notification-content {
     flex: 1;
     min-width: 0;
@@ -175,22 +201,31 @@
 
 .navbar-notification-email {
     font-weight: 600;
-    color: #333;
+    color: white;
     font-size: 13px;
+}
+
+.navbar-notification-email span {
+    font-weight: normal;
+    font-size: 11px;
+    color: #888;
+    margin-left: 6px;
 }
 
 .navbar-notification-details {
     font-size: 12px;
-    color: #666;
+    color: #aaa;
     margin-top: 2px;
+    word-break: break-word;
 }
 
 .navbar-notification-time {
     font-size: 10px;
-    color: #999;
+    color: #666;
     margin-top: 3px;
 }
 
+/* Mark Read Button */
 .navbar-notification-mark-read {
     background: #28a745;
     color: white;
@@ -206,27 +241,34 @@
 
 .navbar-notification-mark-read:hover {
     background: #218838;
+    transform: scale(1.05);
 }
 
+/* Empty State */
 .navbar-notification-empty {
-    padding: 30px 20px;
-    color: #999;
+    padding: 20px;
     text-align: center;
-    font-size: 14px;
+    color: #666;
 }
 
 .navbar-notification-empty i {
-    font-size: 28px;
+    font-size: 24px;
     display: block;
-    margin-bottom: 10px;
-    color: #ddd;
+    margin-bottom: 8px;
+    color: #444;
 }
 
+.navbar-notification-empty p {
+    margin: 0;
+    font-size: 13px;
+}
+
+/* Dropdown Footer */
 .navbar-notification-footer {
-    padding: 10px 15px;
-    border-top: 1px solid #eee;
+    padding: 8px 14px;
+    border-top: 1px solid #2a2a3e;
     text-align: center;
-    background: #f8f9fa;
+    background: #14142a;
     border-radius: 0 0 8px 8px;
     position: sticky;
     bottom: 0;
@@ -234,26 +276,78 @@
 }
 
 .navbar-notification-footer a {
-    color: #007bff;
+    color: #ff6b6b;
     text-decoration: none;
-    font-size: 13px;
-    font-weight: 500;
+    font-size: 12px;
     transition: color 0.2s;
 }
 
 .navbar-notification-footer a:hover {
-    color: #0056b3;
+    color: #ff8a8a;
     text-decoration: underline;
 }
+
+/* ============================================================
+   MOBILE RESPONSIVENESS - NOTIFICATIONS
+   ============================================================ */
 
 @media (max-width: 768px) {
     #navbar-notification-dropdown {
         min-width: 300px;
+        max-width: 340px;
         right: -10px;
+    }
+    
+    #navbar-notification-btn {
+        padding: 3px 6px;
+        font-size: 14px;
+        min-height: 26px;
+    }
+    
+    .navbar-notification-item {
+        padding: 8px 12px;
+        gap: 8px;
+    }
+    
+    .navbar-notification-icon {
+        width: 24px;
+        height: 24px;
+        font-size: 10px;
+    }
+    
+    .navbar-notification-email {
+        font-size: 12px;
+    }
+    
+    .navbar-notification-details {
+        font-size: 11px;
     }
 }
 
-/* ========== SUBSCRIPTION MODAL STYLES ========== */
+@media (max-width: 480px) {
+    #navbar-notification-dropdown {
+        min-width: 260px;
+        max-width: 300px;
+        right: -5px;
+    }
+    
+    .navbar-notification-header span {
+        font-size: 12px;
+    }
+    
+    #navbar-mark-all-read {
+        font-size: 10px;
+    }
+    
+    .navbar-notification-item {
+        padding: 6px 10px;
+    }
+}
+
+/* ============================================================
+   SUBSCRIPTION MODAL STYLES
+   ============================================================ */
+
 .subscribe-modal {
     display: none;
     position: fixed;
@@ -261,7 +355,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0,0,0,0.8);
+    background: rgba(0, 0, 0, 0.8);
     z-index: 2000;
     justify-content: center;
     align-items: center;
@@ -278,7 +372,7 @@
     width: 90%;
     max-height: 90%;
     overflow-y: auto;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
 }
 
 .subscribe-modal-header {
@@ -372,4 +466,124 @@
 
 body.modal-open {
     overflow: hidden;
+}
+
+/* ============================================================
+   NAV TOOLTIP STYLES (Enhanced)
+   ============================================================ */
+
+.nav-tooltip {
+    display: none;
+    position: absolute;
+    bottom: -28px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1100;
+    border: 1px solid #333;
+}
+
+/* Show tooltips on desktop hover */
+@media (min-width: 769px) {
+    .nav-link:hover .nav-tooltip {
+        display: block;
+    }
+}
+
+/* Show tooltips on mobile long press (handled by JS) */
+@media (max-width: 768px) {
+    .nav-tooltip {
+        font-size: 10px;
+        bottom: -26px;
+        padding: 2px 8px;
+    }
+}
+
+/* ============================================================
+   RESPONSIVE NAVBAR HELPER CLASSES
+   ============================================================ */
+
+/* Mobile-first icon-only mode */
+@media (max-width: 768px) {
+    .nav-text-mobile-hidden {
+        display: none !important;
+    }
+}
+
+/* Tablet text shortening */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .nav-text-tablet-short {
+        font-size: 12px;
+    }
+}
+
+/* ============================================================
+   UTILITY CLASSES
+   ============================================================ */
+
+.hidden {
+    display: none !important;
+}
+
+.text-truncate {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.flex-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideOut {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(-10px); }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+/* ============================================================
+   SCROLLBAR STYLING (For notification dropdown)
+   ============================================================ */
+
+#navbar-notification-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+#navbar-notification-list::-webkit-scrollbar-track {
+    background: #1a1a2e;
+}
+
+#navbar-notification-list::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 4px;
+}
+
+#navbar-notification-list::-webkit-scrollbar-thumb:hover {
+    background: #666;
 }

@@ -1,5 +1,19 @@
 // static/js/notification-bell.js
 // Shared notification bell functionality for all pages
+// Supports: Subscriptions, Feedback, Orders
+
+// ============================================================
+// NOTIFICATION TYPES
+// ============================================================
+const NOTIFICATION_TYPES = {
+    SUBSCRIPTION: 'subscription',
+    FEEDBACK: 'feedback',
+    ORDER: 'order'
+};
+
+// ============================================================
+// MAIN INITIALIZATION
+// ============================================================
 
 function initNotificationBell() {
     const notificationContainer = document.getElementById('navbar-notification-container');
@@ -10,6 +24,10 @@ function initNotificationBell() {
         console.warn('Notification bell elements not found');
         return;
     }
+
+    // ============================================================
+    // LOGIN STATUS CHECK
+    // ============================================================
 
     async function checkLoginStatus() {
         try {
@@ -53,6 +71,10 @@ function initNotificationBell() {
         }
     }
 
+    // ============================================================
+    // CHECK NOTIFICATIONS (ALL TYPES)
+    // ============================================================
+
     async function checkNotifications() {
         try {
             if (notificationContainer.classList.contains('hidden')) {
@@ -60,25 +82,44 @@ function initNotificationBell() {
             }
             
             const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const apiUrl = isLocalhost 
-                ? 'http://localhost:5000/api/subscriptions/notifications/count'
-                : `https://${window.location.hostname}/api/subscriptions/notifications/count`;
+            const baseUrl = isLocalhost ? 'http://localhost:5000' : `https://${window.location.hostname}`;
             
-            const response = await fetch(apiUrl, {
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
+            // Get all unread notification counts from different sources
+            const endpoints = [
+                { url: `${baseUrl}/api/subscriptions/notifications/count`, type: 'subscription' },
+                { url: `${baseUrl}/api/feedback/unread-count`, type: 'feedback' },
+                { url: `${baseUrl}/api/record-orders/unread-count`, type: 'order' }
+            ];
+            
+            let totalCount = 0;
+            const counts = {};
+            
+            for (const endpoint of endpoints) {
+                try {
+                    const response = await fetch(endpoint.url, {
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.status === 'success' && data.count > 0) {
+                            counts[endpoint.type] = data.count;
+                            totalCount += data.count;
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`Failed to fetch ${endpoint.type} notifications:`, e);
                 }
-            });
+            }
             
-            if (!response.ok) return;
-            
-            const data = await response.json();
-            
-            if (data.status === 'success' && data.count > 0) {
+            // Update badge
+            if (totalCount > 0) {
                 if (notificationBadge) {
-                    notificationBadge.textContent = data.count > 99 ? '99+' : data.count;
+                    notificationBadge.textContent = totalCount > 99 ? '99+' : totalCount;
                     notificationBadge.style.display = 'block';
                     notificationBadge.classList.add('show');
                 }
@@ -99,47 +140,103 @@ function initNotificationBell() {
         }
     }
 
+    // ============================================================
+    // LOAD NOTIFICATIONS (ALL TYPES)
+    // ============================================================
+
     async function loadNotifications() {
         try {
             const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const apiUrl = isLocalhost 
-                ? 'http://localhost:5000/api/subscriptions/notifications'
-                : `https://${window.location.hostname}/api/subscriptions/notifications`;
-            
-            const response = await fetch(apiUrl, {
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                }
-            });
-            
-            if (!response.ok) return;
-            
-            const data = await response.json();
+            const baseUrl = isLocalhost ? 'http://localhost:5000' : `https://${window.location.hostname}`;
             const list = document.getElementById('navbar-notification-list');
             
             if (!list) return;
             
-            if (data.status === 'success' && data.notifications && data.notifications.length > 0) {
+            // Fetch all types of notifications
+            const endpoints = [
+                { url: `${baseUrl}/api/subscriptions/notifications`, type: 'subscription', icon: 'fa-envelope', label: 'Record Alert' },
+                { url: `${baseUrl}/api/feedback/unread`, type: 'feedback', icon: 'fa-comment', label: 'Feedback' },
+                { url: `${baseUrl}/api/record-orders/unread`, type: 'order', icon: 'fa-shopping-cart', label: 'Order' }
+            ];
+            
+            let allNotifications = [];
+            
+            for (const endpoint of endpoints) {
+                try {
+                    const response = await fetch(endpoint.url, {
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.status === 'success' && data.notifications) {
+                            // Add type metadata to each notification
+                            const typed = data.notifications.map(n => ({
+                                ...n,
+                                type: endpoint.type,
+                                icon: endpoint.icon,
+                                label: endpoint.label
+                            }));
+                            allNotifications = allNotifications.concat(typed);
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`Failed to fetch ${endpoint.type} notifications:`, e);
+                }
+            }
+            
+            // Sort by created_at descending (newest first)
+            allNotifications.sort((a, b) => {
+                return new Date(b.created_at) - new Date(a.created_at);
+            });
+            
+            if (allNotifications.length > 0) {
                 let html = '';
-                data.notifications.forEach(n => {
+                allNotifications.forEach(n => {
                     const timeAgo = getTimeAgo(n.created_at);
+                    const iconClass = n.icon || 'fa-bell';
+                    const label = n.label || 'Notification';
+                    
+                    // Build detail text based on type
+                    let detailText = '';
+                    if (n.type === 'subscription') {
+                        const parts = [];
+                        if (n.artist) parts.push(`Artist: ${escapeHtml(n.artist)}`);
+                        if (n.title) parts.push(`Title: ${escapeHtml(n.title)}`);
+                        if (n.catalog_number) parts.push(`Catalog: ${escapeHtml(n.catalog_number)}`);
+                        detailText = parts.join(' | ') || 'New subscription';
+                    } else if (n.type === 'feedback') {
+                        detailText = n.content ? escapeHtml(n.content.substring(0, 100)) : 'New feedback';
+                        if (n.content && n.content.length > 100) detailText += '...';
+                    } else if (n.type === 'order') {
+                        const parts = [];
+                        if (n.artist) parts.push(`Artist: ${escapeHtml(n.artist)}`);
+                        if (n.title) parts.push(`Title: ${escapeHtml(n.title)}`);
+                        detailText = parts.join(' | ') || 'New order request';
+                    }
+                    
+                    const idAttr = n.type === 'subscription' ? `data-subscription-id="${n.id}"` : 
+                                   n.type === 'feedback' ? `data-feedback-id="${n.id}"` : 
+                                   `data-order-id="${n.id}"`;
+                    
                     html += `
-                        <div class="navbar-notification-item unread" data-id="${n.id}">
-                            <div class="navbar-notification-icon">
-                                <i class="fas fa-envelope"></i>
+                        <div class="navbar-notification-item unread" ${idAttr} data-type="${n.type}">
+                            <div class="navbar-notification-icon" style="background: ${getIconColor(n.type)};">
+                                <i class="fas ${iconClass}"></i>
                             </div>
                             <div class="navbar-notification-content">
-                                <div class="navbar-notification-email">${escapeHtml(n.email)}</div>
-                                <div class="navbar-notification-details">
-                                    ${n.artist ? `Artist: ${escapeHtml(n.artist)}` : ''}
-                                    ${n.title ? `Title: ${escapeHtml(n.title)}` : ''}
-                                    ${n.catalog_number ? `Catalog: ${escapeHtml(n.catalog_number)}` : ''}
+                                <div class="navbar-notification-email">
+                                    ${escapeHtml(n.email || 'User')}
+                                    <span style="font-weight: normal; font-size: 11px; color: #888; margin-left: 6px;">${label}</span>
                                 </div>
+                                <div class="navbar-notification-details">${detailText}</div>
                                 <div class="navbar-notification-time">${timeAgo}</div>
                             </div>
-                            <button class="navbar-notification-mark-read" onclick="markNotificationRead(${n.id})">Mark Read</button>
+                            <button class="navbar-notification-mark-read" onclick="markNotificationRead(${n.id}, '${n.type}')">Mark Read</button>
                         </div>
                     `;
                 });
@@ -157,22 +254,61 @@ function initNotificationBell() {
         }
     }
 
-    window.markNotificationRead = async function(id) {
+    // ============================================================
+    // ICON COLOR HELPER
+    // ============================================================
+
+    function getIconColor(type) {
+        switch(type) {
+            case 'subscription': return '#007bff';
+            case 'feedback': return '#28a745';
+            case 'order': return '#ff6b6b';
+            default: return '#6c757d';
+        }
+    }
+
+    // ============================================================
+    // MARK NOTIFICATION READ
+    // ============================================================
+
+    window.markNotificationRead = async function(id, type) {
         try {
             const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const apiUrl = isLocalhost 
-                ? `http://localhost:5000/api/subscriptions/${id}`
-                : `https://${window.location.hostname}/api/subscriptions/${id}`;
+            const baseUrl = isLocalhost ? 'http://localhost:5000' : `https://${window.location.hostname}`;
             
-            await fetch(apiUrl, {
-                method: 'PUT',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify({ mark_read: true })
-            });
+            let url;
+            if (type === 'subscription') {
+                url = `${baseUrl}/api/subscriptions/${id}`;
+                await fetch(url, {
+                    method: 'PUT',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ mark_read: true })
+                });
+            } else if (type === 'feedback') {
+                url = `${baseUrl}/api/feedback/${id}/mark-read`;
+                await fetch(url, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+            } else if (type === 'order') {
+                url = `${baseUrl}/api/record-orders/${id}/mark-read`;
+                await fetch(url, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+            }
             
             loadNotifications();
             checkNotifications();
@@ -181,24 +317,37 @@ function initNotificationBell() {
         }
     };
 
+    // ============================================================
+    // MARK ALL NOTIFICATIONS READ
+    // ============================================================
+
     window.markAllNotificationsRead = async function() {
         try {
             const items = document.querySelectorAll('.navbar-notification-item.unread');
-            const ids = [];
-            items.forEach(item => {
-                const id = parseInt(item.dataset.id);
-                if (id) ids.push(id);
-            });
             
-            if (ids.length === 0) return;
+            if (items.length === 0) return;
             
             const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            for (const id of ids) {
-                const apiUrl = isLocalhost 
-                    ? `http://localhost:5000/api/subscriptions/${id}`
-                    : `https://${window.location.hostname}/api/subscriptions/${id}`;
+            const baseUrl = isLocalhost ? 'http://localhost:5000' : `https://${window.location.hostname}`;
+            
+            // Process each notification type separately
+            const subscriptionIds = [];
+            const feedbackIds = [];
+            const orderIds = [];
+            
+            items.forEach(item => {
+                const type = item.dataset.type;
+                const id = parseInt(item.dataset.subscriptionId || item.dataset.feedbackId || item.dataset.orderId);
+                if (!id) return;
                 
-                await fetch(apiUrl, {
+                if (type === 'subscription') subscriptionIds.push(id);
+                else if (type === 'feedback') feedbackIds.push(id);
+                else if (type === 'order') orderIds.push(id);
+            });
+            
+            // Mark each type as read
+            for (const id of subscriptionIds) {
+                await fetch(`${baseUrl}/api/subscriptions/${id}`, {
                     method: 'PUT',
                     credentials: 'include',
                     headers: {
@@ -209,12 +358,38 @@ function initNotificationBell() {
                 });
             }
             
+            for (const id of feedbackIds) {
+                await fetch(`${baseUrl}/api/feedback/${id}/mark-read`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+            }
+            
+            for (const id of orderIds) {
+                await fetch(`${baseUrl}/api/record-orders/${id}/mark-read`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+            }
+            
             loadNotifications();
             checkNotifications();
         } catch (error) {
             console.error('Error marking all notifications read:', error);
         }
     };
+
+    // ============================================================
+    // TOGGLE DROPDOWN
+    // ============================================================
 
     window.toggleNotificationDropdown = function() {
         const dropdown = document.getElementById('navbar-notification-dropdown');
@@ -226,28 +401,9 @@ function initNotificationBell() {
         }
     };
 
-    function escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    function getTimeAgo(dateStr) {
-        if (!dateStr) return 'N/A';
-        const date = new Date(dateStr);
-        const now = new Date();
-        const diffMs = now - date;
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMs / 3600000);
-        const diffDays = Math.floor(diffMs / 86400000);
-        
-        if (diffMins < 1) return 'Just now';
-        if (diffMins < 60) return `${diffMins}m ago`;
-        if (diffHours < 24) return `${diffHours}h ago`;
-        if (diffDays < 7) return `${diffDays}d ago`;
-        return date.toLocaleDateString();
-    }
+    // ============================================================
+    // EVENT LISTENERS
+    // ============================================================
 
     if (notificationBtn) {
         notificationBtn.addEventListener('click', function(e) {
@@ -273,6 +429,10 @@ function initNotificationBell() {
             window.markAllNotificationsRead();
         });
     }
+
+    // ============================================================
+    // VISIBILITY MANAGEMENT
+    // ============================================================
 
     function updateBellVisibility() {
         if (typeof Auth !== 'undefined' && Auth.isLoggedIn) {
@@ -320,4 +480,35 @@ function initNotificationBell() {
             updateBellVisibility();
         }
     });
+}
+
+// ============================================================
+// HELPER FUNCTIONS (if not defined elsewhere)
+// ============================================================
+
+if (typeof getTimeAgo === 'undefined') {
+    function getTimeAgo(dateStr) {
+        if (!dateStr) return 'N/A';
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        if (diffDays < 7) return `${diffDays}d ago`;
+        return date.toLocaleDateString();
+    }
+}
+
+if (typeof escapeHtml === 'undefined') {
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
 }

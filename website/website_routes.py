@@ -65,7 +65,7 @@ def admin_panel():
         return redirect('/access-denied')
     return send_from_directory('HTML', 'admin.html')
 
-# ==================== NEW: ITEM MANAGEMENT PAGE ====================
+# ==================== ITEM MANAGEMENT PAGE ====================
 @app.route('/item-management')
 def item_management():
     if not is_admin():
@@ -82,13 +82,25 @@ def admin_accounting():
 def access_denied():
     return send_from_directory('HTML', 'access_denied.html')
 
-# ==================== NEW: GIFT CARDS PAGE ====================
+# ==================== GIFT CARDS PAGE ====================
 @app.route('/gift-cards')
 def gift_cards():
     """Public gift card purchase page."""
     return send_from_directory('HTML', 'gift-cards.html')
 
-# ==================== NEW: PAYMENT CONFIRMATION PAGE ====================
+# ==================== RECORD ALERTS PAGE ====================
+@app.route('/record-alerts')
+def record_alerts():
+    """Record alerts subscription page."""
+    return send_from_directory('HTML', 'record-alerts.html')
+
+# ==================== ORDER RECORDS PAGE (UNIFIED) ====================
+@app.route('/order-records')
+def order_records():
+    """Order records page - uses same HTML as record-alerts with different mode."""
+    return send_from_directory('HTML', 'record-alerts.html')
+
+# ==================== PAYMENT CONFIRMATION PAGE ====================
 # Note: This is handled by the modal in gift-cards.html,
 # but if you want a fallback standalone page:
 @app.route('/payment-confirm')

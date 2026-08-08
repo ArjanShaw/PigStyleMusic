@@ -1,42 +1,169 @@
-<!-- html/components/navbar.html -->
-<nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
-    <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
-        <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
+<!-- components/navbar.html -->
+<nav style="background: #000; padding: 6px 10px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b; min-height: 50px;">
+    
+    <!-- Logo -->
+    <a href="/" style="color: white; text-decoration: none; font-size: 18px; font-weight: bold; display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+        <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 28px; width: 28px;">
+        <span style="display: none; @media (min-width: 768px) { display: inline; }">PigStyle</span>
     </a>
-    <div style="display: flex; gap: 20px; align-items: center;">
-        <a href="/browse" style="color: white; text-decoration: none;">Browse</a>
-        <a href="/misc" style="color: white; text-decoration: none;">Misc</a>
-        <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
-        
-        <!-- Record Alerts - ALWAYS VISIBLE -->
-        <a href="#" id="subscribe-link" style="color: white; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
-            <i class="fas fa-bell"></i> Record Alerts
+
+    <!-- Navigation Links -->
+    <div class="nav-links" style="display: flex; gap: 4px; align-items: center; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; flex: 1; justify-content: center; padding: 0 2px;">
+        <style>
+            .nav-links::-webkit-scrollbar { display: none; }
+            .nav-link { 
+                color: white; 
+                text-decoration: none; 
+                padding: 5px 8px; 
+                border-radius: 6px; 
+                font-size: 13px; 
+                white-space: nowrap;
+                transition: background 0.2s, transform 0.2s;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                min-height: 34px;
+                position: relative;
+            }
+            .nav-link:hover { 
+                background: rgba(255,255,255,0.15); 
+                transform: translateY(-1px);
+            }
+            .nav-link .nav-icon { font-size: 16px; }
+            .nav-link .nav-text { 
+                display: inline; 
+                font-size: 13px;
+                font-weight: 500;
+            }
+            /* Tooltip for mobile */
+            .nav-link .nav-tooltip {
+                display: none;
+                position: absolute;
+                bottom: -28px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(0,0,0,0.9);
+                color: white;
+                padding: 3px 10px;
+                border-radius: 4px;
+                font-size: 11px;
+                white-space: nowrap;
+                pointer-events: none;
+                z-index: 1100;
+                border: 1px solid #333;
+            }
+            .nav-link:hover .nav-tooltip {
+                display: block;
+            }
+            /* Mobile: show only icons */
+            @media (max-width: 768px) {
+                .nav-link .nav-text { display: none; }
+                .nav-link { padding: 4px 6px; font-size: 18px; min-height: 30px; }
+                .nav-link .nav-icon { font-size: 20px; }
+                .nav-link .nav-tooltip { display: block; font-size: 10px; bottom: -26px; padding: 2px 8px; }
+            }
+            /* Tablet: show short text */
+            @media (min-width: 769px) and (max-width: 1024px) {
+                .nav-link { font-size: 12px; padding: 4px 6px; }
+                .nav-link .nav-text { font-size: 12px; }
+                .nav-link .nav-icon { font-size: 14px; }
+            }
+            /* Small screens: reduce gap */
+            @media (max-width: 480px) {
+                .nav-links { gap: 1px; }
+                .nav-link { padding: 3px 4px; min-height: 26px; }
+                .nav-link .nav-icon { font-size: 16px; }
+            }
+            /* Very small screens */
+            @media (max-width: 380px) {
+                .nav-links { gap: 0px; }
+                .nav-link { padding: 2px 3px; }
+                .nav-link .nav-icon { font-size: 14px; }
+            }
+            .nav-link.active { background: rgba(255,107,107,0.25); }
+            .nav-link .badge-new {
+                background: #ff6b6b;
+                color: white;
+                font-size: 8px;
+                padding: 1px 5px;
+                border-radius: 10px;
+                margin-left: 2px;
+                font-weight: 700;
+                text-transform: uppercase;
+            }
+            @media (max-width: 768px) {
+                .nav-link .badge-new { display: none; }
+            }
+        </style>
+
+        <!-- Browse -->
+        <a href="/browse" class="nav-link" title="Browse Records">
+            <i class="fas fa-record-vinyl nav-icon"></i>
+            <span class="nav-text">Browse</span>
+            <span class="nav-tooltip">Browse</span>
+        </a>
+
+        <!-- Misc -->
+        <a href="/misc" class="nav-link" title="Miscellaneous">
+            <i class="fas fa-ellipsis-h nav-icon"></i>
+            <span class="nav-text">Misc</span>
+            <span class="nav-tooltip">Misc</span>
+        </a>
+
+        <!-- Connect -->
+        <a href="/connect" class="nav-link" title="Connect">
+            <i class="fas fa-envelope nav-icon"></i>
+            <span class="nav-text">Connect</span>
+            <span class="nav-tooltip">Connect</span>
+        </a>
+
+        <!-- Gift Cards -->
+        <a href="/gift-cards" class="nav-link" title="Gift Cards">
+            <i class="fas fa-gift nav-icon"></i>
+            <span class="nav-text">Gift Cards</span>
+            <span class="nav-tooltip">Gift Cards</span>
+        </a>
+
+        <!-- Record Alerts (NOW A PAGE, NOT POPUP) -->
+        <a href="/record-alerts" class="nav-link" title="Record Alerts">
+            <i class="fas fa-bell nav-icon"></i>
+            <span class="nav-text">Alerts</span>
+            <span class="nav-tooltip">Record Alerts</span>
+        </a>
+
+        <!-- Order Records -->
+        <a href="/order-records" class="nav-link" title="Order Records">
+            <i class="fas fa-shopping-cart nav-icon"></i>
+            <span class="nav-text">Order</span>
+            <span class="nav-tooltip">Order</span>
         </a>
 
         <!-- Notification Bell - ONLY VISIBLE WHEN LOGGED IN -->
-        <div id="navbar-notification-container" class="hidden">
-            <button id="navbar-notification-btn" aria-label="Notifications">
-                <i class="fas fa-bell" style="font-size: 16px;"></i>
-                <span id="navbar-notification-badge">0</span>
+        <div id="navbar-notification-container" class="hidden" style="display: none; position: relative; margin: 0 2px;">
+            <button id="navbar-notification-btn" aria-label="Notifications" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); color: white; padding: 4px 8px; border-radius: 4px; cursor: pointer; position: relative; display: flex; align-items: center; gap: 3px; font-size: 16px; min-height: 30px; transition: all 0.2s;">
+                <i class="fas fa-bell"></i>
+                <span id="navbar-notification-badge" style="display: none; position: absolute; top: -4px; right: -4px; background: #dc3545; color: white; font-size: 9px; font-weight: bold; border-radius: 50%; padding: 1px 5px; min-width: 16px; text-align: center; line-height: 14px;">0</span>
             </button>
-            <div id="navbar-notification-dropdown">
-                <div class="navbar-notification-header">
-                    <span><i class="fas fa-bell"></i>Notifications</span>
-                    <button id="navbar-mark-all-read">Mark all read</button>
+            <div id="navbar-notification-dropdown" style="display: none; position: absolute; top: 100%; right: 0; background: #1a1a2e; border: 1px solid #333; border-radius: 8px; min-width: 340px; max-width: 420px; max-height: 420px; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.6); z-index: 1100; padding: 0; margin-top: 4px;">
+                <div class="navbar-notification-header" style="padding: 10px 14px; border-bottom: 1px solid #2a2a3e; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; background: #14142a; border-radius: 8px 8px 0 0; position: sticky; top: 0; z-index: 1;">
+                    <span style="color: white; font-weight: 600; font-size: 13px;"><i class="fas fa-bell" style="color: #ff6b6b; margin-right: 6px;"></i> Notifications</span>
+                    <button id="navbar-mark-all-read" style="background: none; border: none; color: #ff6b6b; font-size: 11px; cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: background 0.2s;">Mark all read</button>
                 </div>
-                <div id="navbar-notification-list">
-                    <div class="navbar-notification-empty">
-                        <i class="fas fa-bell-slash"></i>
-                        No new notifications
+                <div id="navbar-notification-list" style="padding: 4px 0; max-height: 320px; overflow-y: auto;">
+                    <div class="navbar-notification-empty" style="padding: 20px; text-align: center; color: #666;">
+                        <i class="fas fa-bell-slash" style="font-size: 24px; display: block; margin-bottom: 8px; color: #444;"></i>
+                        <p style="margin: 0; font-size: 13px;">No new notifications</p>
                     </div>
                 </div>
-                <div class="navbar-notification-footer">
-                    <a href="/admin#email-subscriptions">View all in Admin Panel →</a>
+                <div class="navbar-notification-footer" style="padding: 8px 14px; border-top: 1px solid #2a2a3e; text-align: center; background: #14142a; border-radius: 0 0 8px 8px; position: sticky; bottom: 0; z-index: 1;">
+                    <a href="/admin#email-subscriptions" style="color: #ff6b6b; text-decoration: none; font-size: 12px; transition: color 0.2s;">View all in Admin Panel →</a>
                 </div>
             </div>
         </div>
 
-        <div id="auth-section">
+        <!-- Auth Section -->
+        <div id="auth-section" style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+            <!-- Will be populated by JS -->
         </div>
     </div>
 </nav>

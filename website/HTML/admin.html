@@ -52,6 +52,15 @@
         .status-badge.batch-completed { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .status-badge.batch-cancelled { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         
+        /* Order status badges */
+        .status-badge.order-pending { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        .status-badge.order-confirmed { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
+        .status-badge.order-processing { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
+        .status-badge.order-shipped { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status-badge.order-delivered { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status-badge.order-completed { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status-badge.order-cancelled { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        
         input[type="number"][step="1"] {
             -moz-appearance: textfield;
         }
@@ -2016,6 +2025,33 @@
             color: #495057;
             border: 1px solid #dee2e6;
         }
+
+        /* Order Status Badge Styles */
+        .order-status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: capitalize;
+        }
+        .order-status-badge.pending { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        .order-status-badge.confirmed { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
+        .order-status-badge.processing { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
+        .order-status-badge.shipped { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .order-status-badge.delivered { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .order-status-badge.completed { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .order-status-badge.cancelled { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .order-status-badge.unread { background: #ff6b6b; color: white; border: 1px solid #dc3545; }
+        
+        /* Order unread indicator */
+        .order-row-unread {
+            background-color: #fff5f5 !important;
+            border-left: 4px solid #ff6b6b !important;
+        }
+        .order-row-unread td {
+            background-color: #fff5f5 !important;
+        }
     </style>
 </head>
 <body>
@@ -2037,6 +2073,7 @@
             <div class="tab" data-tab="admin-config"><i class="fas fa-sliders-h"></i> Admin Config</div>
             <div class="tab" data-tab="custom-labels"><i class="fas fa-tag"></i> Custom Labels</div>
             <div class="tab" data-tab="email-subscriptions"><i class="fas fa-envelope"></i> Email Subscriptions</div>
+            <div class="tab" data-tab="record-orders"><i class="fas fa-shopping-cart"></i> Record Orders</div>
             <div class="tab" data-tab="db-query"><i class="fas fa-database"></i> DB Query</div>
             <div class="tab" data-tab="sticky-notes"><i class="fas fa-sticky-note"></i> Sticky Notes</div>
             <div class="tab" data-tab="stats"><i class="fas fa-chart-line"></i> Stats</div>
@@ -3104,6 +3141,115 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
             </div>
         </div>
 
+        <!-- ==================== RECORD ORDERS TAB ==================== -->
+        <div id="record-orders-tab" class="tab-content">
+            <h2><i class="fas fa-shopping-cart"></i> Record Orders</h2>
+            <p class="text-muted">Manage customer record orders. New orders appear here and trigger notifications.</p>
+            
+            <!-- Stats Row -->
+            <div class="stats-row" style="margin-bottom: 20px;">
+                <div class="stat-card">
+                    <div class="stat-value" id="orders-total" style="color: #007bff;">0</div>
+                    <div class="stat-label">Total Orders</div>
+                </div>
+                <div class="stat-card" style="background: #fff3cd; border-left: 4px solid #ffc107;">
+                    <div class="stat-value" id="orders-pending" style="color: #856404;">0</div>
+                    <div class="stat-label">⏳ Pending</div>
+                </div>
+                <div class="stat-card" style="background: #d4edda; border-left: 4px solid #28a745;">
+                    <div class="stat-value" id="orders-completed" style="color: #28a745;">0</div>
+                    <div class="stat-label">✅ Completed</div>
+                </div>
+                <div class="stat-card" style="background: #cce5ff; border-left: 4px solid #007bff;">
+                    <div class="stat-value" id="orders-unread" style="color: #004085;">0</div>
+                    <div class="stat-label">📬 New (Unread)</div>
+                </div>
+            </div>
+            
+            <!-- Quick Actions -->
+            <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                <button class="btn btn-success" onclick="loadOrders()"><i class="fas fa-sync-alt"></i> Refresh</button>
+                <button class="btn btn-warning" onclick="markAllOrdersRead()"><i class="fas fa-check-double"></i> Mark All as Read</button>
+                <button class="btn btn-secondary" onclick="exportOrdersCSV()"><i class="fas fa-file-csv"></i> Export CSV</button>
+            </div>
+            
+            <!-- Filters -->
+            <div class="search-section" style="margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                    <div>
+                        <label for="orders-search" style="font-weight: 500;">Search:</label>
+                        <input type="text" id="orders-search" class="search-input" placeholder="Order #, customer, email, phone..." style="width: 250px; padding: 8px 12px;">
+                    </div>
+                    <div>
+                        <label for="orders-status-filter" style="font-weight: 500;">Status:</label>
+                        <select id="orders-status-filter" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;">
+                            <option value="all">All</option>
+                            <option value="pending">Pending</option>
+                            <option value="confirmed">Confirmed</option>
+                            <option value="processing">Processing</option>
+                            <option value="shipped">Shipped</option>
+                            <option value="delivered">Delivered</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="orders-read-filter" style="font-weight: 500;">Read Status:</label>
+                        <select id="orders-read-filter" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;">
+                            <option value="all">All</option>
+                            <option value="unread">New (Unread)</option>
+                            <option value="read">Read</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" onclick="applyOrderFilters()"><i class="fas fa-search"></i> Apply Filters</button>
+                        <button class="btn btn-secondary" onclick="clearOrderFilters()"><i class="fas fa-times"></i> Clear</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Orders Table -->
+            <div class="records-table-container">
+                <table class="records-table" id="orders-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 60px;">#</th>
+                            <th style="min-width: 130px;">Order #</th>
+                            <th style="min-width: 120px;">Customer</th>
+                            <th style="min-width: 140px;">Email</th>
+                            <th style="min-width: 100px;">Phone</th>
+                            <th style="min-width: 100px;">Items</th>
+                            <th style="min-width: 90px;">Total</th>
+                            <th style="min-width: 110px;">Status</th>
+                            <th style="min-width: 80px;">Read</th>
+                            <th style="min-width: 130px;">Created</th>
+                            <th style="min-width: 180px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orders-body">
+                        <tr><td colspan="11" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin" style="font-size: 24px;"></i> Loading orders...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            <div class="pagination-container">
+                <div class="pagination-info">
+                    Showing <span id="orders-showing-start">0</span>-<span id="orders-showing-end">0</span> of <span id="orders-total-filtered">0</span> orders
+                </div>
+                <div class="pagination-controls">
+                    <button class="pagination-btn" id="orders-prev-page" disabled=""><i class="fas fa-chevron-left"></i></button>
+                    <span>Page <span id="orders-current-page">1</span> of <span id="orders-total-pages">1</span></span>
+                    <button class="pagination-btn" id="orders-next-page" disabled=""><i class="fas fa-chevron-right"></i></button>
+                    <select id="orders-page-size" style="padding: 4px; border: 1px solid #ddd; border-radius: 4px;">
+                        <option value="25">25</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
         <!-- ==================== DB QUERY TAB ==================== -->
         <div id="db-query-tab" class="tab-content">
             <h2><i class="fas fa-database"></i> Database Query Tool</h2>
@@ -3728,6 +3874,7 @@ Example: SELECT * FROM records LIMIT 10;" onkeydown="handleQueryKeydown(event)">
     <script src="/static/js/stats.js"></script>
     <script src="/static/js/admin-creditors.js"></script>
     <script src="/static/js/email-subscriptions.js"></script>
+    <script src="/static/js/order-management.js"></script>
 
     <script>
     window.dbConfigValues = window.dbConfigValues || {};
