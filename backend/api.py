@@ -1165,43 +1165,6 @@ def get_admin_order_detail(order_id):
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
-@app.route('/api/admin/orders/<order_id>/status', methods=['PUT', 'OPTIONS'])
-@login_required
-@role_required(['admin'])
-def update_order_status(order_id):
-    """Update order status"""
-    if request.method == 'OPTIONS':
-        return jsonify({'status': 'ok'}), 200
-    
-    try:
-        data = request.json
-        new_status = data.get('status')
-        
-        if not new_status:
-            return jsonify({'status': 'error', 'error': 'Status required'}), 400
-        
-        valid_statuses = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']
-        if new_status not in valid_statuses:
-            return jsonify({'status': 'error', 'error': f'Invalid status. Must be one of: {valid_statuses}'}), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute('UPDATE orders SET order_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', (new_status, order_id))
-        
-        if cursor.rowcount == 0:
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Order not found'}), 404
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({'status': 'success', 'message': f'Order status updated to {new_status}'})
-        
-    except Exception as e:
-        app.logger.error(f"Error updating order status: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 @app.route('/api/admin/orders/stats', methods=['GET', 'OPTIONS'])
 def get_admin_orders_stats():
@@ -4250,9 +4213,6 @@ def merchandise_page():
     """Serve the merchandise store page"""
     return send_from_directory('static', 'accessories.html')
 
- 
-# ==================== FEEDBACK ENDPOINT ====================
-
 @app.route('/api/feedback', methods=['POST'])
 def submit_feedback():
     """Submit feedback from the connect page"""
@@ -4277,9 +4237,10 @@ def submit_feedback():
         conn = get_db()
         cursor = conn.cursor()
         
+        # MODIFIED: Added notified = 0 (unread) for new feedback
         cursor.execute('''
-            INSERT INTO feedback (type_of_feedback, content, contact_info, event_name, status)
-            VALUES (?, ?, ?, ?, 'new')
+            INSERT INTO feedback (type_of_feedback, content, contact_info, event_name, status, notified)
+            VALUES (?, ?, ?, ?, 'new', 0)
         ''', (type_of_feedback, content, contact_info, event_name))
         
         feedback_id = cursor.lastrowid
@@ -4298,6 +4259,33 @@ def submit_feedback():
         app.logger.error(f"Error submitting feedback: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
+@app.route('/api/record-orders/unread-count', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_record_orders_unread_count():
+    """Get count of unread record orders (notified = 0)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT COUNT(*) as count 
+            FROM record_orders 
+            WHERE notified = 0 OR notified IS NULL
+        ''')
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'count': result['count'] if result else 0
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting unread record orders count: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/feedback', methods=['GET'])
 @login_required
@@ -5454,179 +5442,33 @@ def price_estimate_v3():
 
 # ==================== SUBSCRIPTION ENDPOINTS ====================
 
-@app.route('/api/subscribe', methods=['POST'])
-def subscribe():
-    """Subscribe a user to email notifications for specific artists/titles"""
+ 
+
+def send_alert_notification(email, artist, title, action='new'):
+    """Send admin notification for new alert subscription."""
     try:
-        data = request.get_json()
+        admin_conn = get_db()
+        admin_cursor = admin_conn.cursor()
+        admin_cursor.execute('SELECT email FROM users WHERE role = "admin" AND email IS NOT NULL')
+        admins = admin_cursor.fetchall()
+        admin_conn.close()
         
-        if not data:
-            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
-        
-        email = data.get('email', '').strip().lower()
-        artist = data.get('artist', '').strip()
-        title = data.get('title', '').strip()
-        catalog_number = data.get('catalog_number', '').strip()
-        
-        # Validate email
-        if not email or '@' not in email or '.' not in email:
-            return jsonify({'status': 'error', 'error': 'Valid email address required'}), 400
-        
-        # At least one search term required
-        if not artist and not title and not catalog_number:
-            return jsonify({'status': 'error', 'error': 'At least one search term (artist, title, or catalog number) is required'}), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Check if subscription already exists
-        cursor.execute('''
-            SELECT id, is_active, notified FROM email_subscriptions 
-            WHERE email = ? AND artist = ? AND title = ? AND catalog_number = ?
-        ''', (email, artist or None, title or None, catalog_number or None))
-        
-        existing = cursor.fetchone()
-        
-        if existing:
-            # If inactive, reactivate it
-            if not existing['is_active']:
-                cursor.execute('''
-                    UPDATE email_subscriptions 
-                    SET is_active = 1, notified = 0, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                ''', (existing['id'],))
-                conn.commit()
-                conn.close()
-                
-                # Send email notification to admin
-                try:
-                    admin_conn = get_db()
-                    admin_cursor = admin_conn.cursor()
-                    admin_cursor.execute('SELECT email FROM users WHERE role = "admin" AND email IS NOT NULL')
-                    admins = admin_cursor.fetchall()
-                    admin_conn.close()
-                    
-                    for admin in admins:
-                        subject = f"Record Alert Subscription Reactivated: {email}"
-                        body = f"""
-Subscription reactivated!
+        for admin in admins:
+            subject = f"🔔 New Record Alert: {artist}"
+            body = f"""
+New record alert subscription!
 
 Email: {email}
-Artist: {artist or 'Any'}
+Artist: {artist}
 Title: {title or 'Any'}
-Catalog Number: {catalog_number or 'Any'}
+Action: {action}
 
-View all subscriptions in the admin panel:
-https://www.pigstylemusic.com/admin
-                        """
-                        send_email(admin['email'], subject, body, from_name="PigStyle Music Alerts")
-                except Exception as e:
-                    app.logger.error(f"Error sending admin notification: {str(e)}")
-                
-                return jsonify({
-                    'status': 'success', 
-                    'message': 'Subscription reactivated',
-                    'already_subscribed': False,
-                    'subscription_id': existing['id']
-                }), 200
-            
-            # If active and already notified, reset notified to 0 for new notification
-            if existing['notified'] == 1:
-                cursor.execute('''
-                    UPDATE email_subscriptions 
-                    SET notified = 0, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                ''', (existing['id'],))
-                conn.commit()
-                conn.close()
-                
-                # Send email notification to admin
-                try:
-                    admin_conn = get_db()
-                    admin_cursor = admin_conn.cursor()
-                    admin_cursor.execute('SELECT email FROM users WHERE role = "admin" AND email IS NOT NULL')
-                    admins = admin_cursor.fetchall()
-                    admin_conn.close()
-                    
-                    for admin in admins:
-                        subject = f"New Record Alert Subscription: {email}"
-                        body = f"""
-New subscription created!
-
-Email: {email}
-Artist: {artist or 'Any'}
-Title: {title or 'Any'}
-Catalog Number: {catalog_number or 'Any'}
-
-View all subscriptions in the admin panel:
-https://www.pigstylemusic.com/admin
-                        """
-                        send_email(admin['email'], subject, body, from_name="PigStyle Music Alerts")
-                except Exception as e:
-                    app.logger.error(f"Error sending admin notification: {str(e)}")
-                
-                return jsonify({
-                    'status': 'success', 
-                    'message': 'Subscription re-notified',
-                    'already_subscribed': False,
-                    'subscription_id': existing['id']
-                }), 200
-            
-            conn.close()
-            return jsonify({
-                'status': 'success', 
-                'message': 'You are already subscribed to these notifications', 
-                'already_subscribed': True,
-                'subscription_id': existing['id']
-            }), 200
-        
-        # Insert new subscription with notified = 0 (new/unread)
-        cursor.execute('''
-            INSERT INTO email_subscriptions (email, artist, title, catalog_number, created_at, is_active, notified)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, 1, 0)
-        ''', (email, artist or None, title or None, catalog_number or None))
-        
-        subscription_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        
-        app.logger.info(f"New subscription: {email} - artist:{artist} title:{title} catalog:{catalog_number}")
-        
-        # Send email notification to admin
-        try:
-            admin_conn = get_db()
-            admin_cursor = admin_conn.cursor()
-            admin_cursor.execute('SELECT email FROM users WHERE role = "admin" AND email IS NOT NULL')
-            admins = admin_cursor.fetchall()
-            admin_conn.close()
-            
-            for admin in admins:
-                subject = f"New Record Alert Subscription: {email}"
-                body = f"""
-New subscription created!
-
-Email: {email}
-Artist: {artist or 'Any'}
-Title: {title or 'Any'}
-Catalog Number: {catalog_number or 'Any'}
-
-View all subscriptions in the admin panel:
-https://www.pigstylemusic.com/admin
-                """
-                send_email(admin['email'], subject, body, from_name="PigStyle Music Alerts")
-        except Exception as e:
-            app.logger.error(f"Error sending admin notification: {str(e)}")
-        
-        return jsonify({
-            'status': 'success',
-            'message': 'Subscription created successfully',
-            'subscription_id': subscription_id
-        }), 201
-        
+View in Admin Panel:
+https://www.pigstylemusic.com/admin#email-subscriptions
+            """
+            send_email(admin['email'], subject, body, from_name="PigStyle Music Alerts")
     except Exception as e:
-        app.logger.error(f"Error creating subscription: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
+        app.logger.error(f"Error sending alert notification email: {str(e)}")
 
 
 @app.route('/api/subscriptions/<int:subscription_id>', methods=['PUT'])
@@ -13342,6 +13184,886 @@ def list_gift_cards():
         app.logger.error(f"Error listing gift cards: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
+# ==================== FEEDBACK NOTIFICATION ENDPOINTS ====================
+
+@app.route('/api/feedback/unread-count', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_unread_feedback_count():
+    """Get count of unread feedback (notified = 0)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT COUNT(*) as count 
+            FROM feedback 
+            WHERE notified = 0 OR notified IS NULL
+        ''')
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'count': result['count'] if result else 0
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting unread feedback count: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/feedback/unread', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_unread_feedback():
+    """Get all unread feedback (notified = 0)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                id,
+                type_of_feedback,
+                content,
+                contact_info,
+                event_name,
+                status,
+                notified,
+                created_at
+            FROM feedback
+            WHERE notified = 0 OR notified IS NULL
+            ORDER BY created_at DESC
+            LIMIT 50
+        ''')
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        feedback_list = []
+        for row in rows:
+            feedback_list.append({
+                'id': row['id'],
+                'type_of_feedback': row['type_of_feedback'],
+                'content': row['content'],
+                'contact_info': row['contact_info'],
+                'event_name': row['event_name'],
+                'status': row['status'],
+                'notified': bool(row['notified']) if row['notified'] is not None else False,
+                'created_at': row['created_at'],
+                'email': row['contact_info'] or 'Anonymous'
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'notifications': feedback_list,
+            'count': len(feedback_list)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting unread feedback: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/feedback/<int:feedback_id>/mark-read', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def mark_feedback_read(feedback_id):
+    """Mark feedback as read (set notified = 1)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE feedback 
+            SET notified = 1 
+            WHERE id = ?
+        ''', (feedback_id,))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Feedback not found'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Feedback #{feedback_id} marked as read'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error marking feedback read: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+ 
+ 
+
+
+@app.route('/api/orders/<int:order_id>', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_order_details(order_id):
+    """Get detailed information for a specific order including items"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get order
+        cursor.execute('''
+            SELECT 
+                id,
+                order_number,
+                customer_name,
+                customer_email,
+                customer_phone,
+                shipping_address,
+                notes,
+                status,
+                notified,
+                created_at,
+                updated_at
+            FROM record_orders
+            WHERE id = ?
+        ''', (order_id,))
+        
+        order = cursor.fetchone()
+        
+        if not order:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Order not found'}), 404
+        
+        # Get order items
+        cursor.execute('''
+            SELECT 
+                oi.id,
+                oi.record_id,
+                oi.quantity,
+                oi.price_at_time,
+                r.artist,
+                r.title,
+                r.barcode,
+                r.image_url
+            FROM order_items oi
+            LEFT JOIN records r ON oi.record_id = r.id
+            WHERE oi.order_id = ?
+        ''', (order_id,))
+        
+        items = cursor.fetchall()
+        conn.close()
+        
+        items_list = []
+        for item in items:
+            items_list.append({
+                'id': item['id'],
+                'record_id': item['record_id'],
+                'quantity': item['quantity'],
+                'price_at_time': float(item['price_at_time']) if item['price_at_time'] else 0,
+                'artist': item['artist'],
+                'title': item['title'],
+                'barcode': item['barcode'],
+                'image_url': item['image_url']
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'order': {
+                'id': order['id'],
+                'order_number': order['order_number'],
+                'customer_name': order['customer_name'],
+                'customer_email': order['customer_email'],
+                'customer_phone': order['customer_phone'],
+                'shipping_address': order['shipping_address'],
+                'notes': order['notes'],
+                'status': order['status'],
+                'notified': bool(order['notified']) if order['notified'] is not None else False,
+                'created_at': order['created_at'],
+                'updated_at': order['updated_at'],
+                'items': items_list,
+                'item_count': len(items_list)
+            }
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting order details: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/orders', methods=['POST'])
+def create_order():
+    """Create a new order (public endpoint)"""
+    try:
+        data = request.json
+        
+        # Validate required fields
+        required_fields = ['customer_name']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({'status': 'error', 'error': f'{field} is required'}), 400
+        
+        customer_name = data['customer_name'].strip()
+        customer_email = data.get('customer_email', '').strip()
+        customer_phone = data.get('customer_phone', '').strip()
+        shipping_address = data.get('shipping_address', '').strip()
+        notes = data.get('notes', '').strip()
+        items = data.get('items', [])
+        
+        if not items or len(items) == 0:
+            return jsonify({'status': 'error', 'error': 'At least one item is required'}), 400
+        
+        # Generate order number
+        date_str = datetime.now().strftime('%Y%m%d')
+        random_chars = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        order_number = f"ORD-{date_str}-{random_chars}"
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Start transaction
+        cursor.execute('BEGIN TRANSACTION')
+        
+        # Insert order
+        cursor.execute('''
+            INSERT INTO record_orders (
+                order_number,
+                customer_name,
+                customer_email,
+                customer_phone,
+                shipping_address,
+                notes,
+                status,
+                notified,
+                created_at,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ''', (order_number, customer_name, customer_email, customer_phone, shipping_address, notes))
+        
+        order_id = cursor.lastrowid
+        
+        # Insert order items
+        total_amount = 0
+        for item in items:
+            record_id = item.get('record_id')
+            quantity = item.get('quantity', 1)
+            price_at_time = item.get('price_at_time', 0)
+            
+            if not record_id:
+                conn.rollback()
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'record_id is required for each item'}), 400
+            
+            # Get record price if not provided
+            if not price_at_time:
+                cursor.execute('SELECT store_price FROM records WHERE id = ?', (record_id,))
+                record = cursor.fetchone()
+                if record:
+                    price_at_time = record['store_price']
+                else:
+                    conn.rollback()
+                    conn.close()
+                    return jsonify({'status': 'error', 'error': f'Record #{record_id} not found'}), 404
+            
+            cursor.execute('''
+                INSERT INTO order_items (order_id, record_id, quantity, price_at_time)
+                VALUES (?, ?, ?, ?)
+            ''', (order_id, record_id, quantity, price_at_time))
+            
+            total_amount += price_at_time * quantity
+        
+        conn.commit()
+        conn.close()
+        
+        # Send admin notification (send email to admins)
+        try:
+            admin_conn = get_db()
+            admin_cursor = admin_conn.cursor()
+            admin_cursor.execute('SELECT email FROM users WHERE role = "admin" AND email IS NOT NULL')
+            admins = admin_cursor.fetchall()
+            admin_conn.close()
+            
+            for admin in admins:
+                subject = f"🛒 New Order Received - {order_number}"
+                body = f"""
+New order received!
+
+Order Number: {order_number}
+Customer: {customer_name}
+Email: {customer_email or 'Not provided'}
+Phone: {customer_phone or 'Not provided'}
+
+Items:
+"""
+                for item in items:
+                    body += f"  - Record #{item.get('record_id')} x {item.get('quantity', 1)} @ ${item.get('price_at_time', 0):.2f}\n"
+                
+                body += f"""
+Total: ${total_amount:.2f}
+Shipping Address: {shipping_address or 'Not provided'}
+Notes: {notes or 'None'}
+
+View in Admin Panel: https://www.pigstylemusic.com/admin#record-orders
+                """
+                send_email(admin['email'], subject, body, from_name="PigStyle Music Orders")
+        except Exception as e:
+            app.logger.error(f"Error sending order notification email: {str(e)}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Order created successfully',
+            'order_id': order_id,
+            'order_number': order_number,
+            'total_amount': total_amount
+        }), 201
+        
+    except Exception as e:
+        app.logger.error(f"Error creating order: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+  
+
+ 
+
+
+
+ 
+ 
+
+# ==================== ORDER NOTIFICATION HELPER ====================
+
+def send_order_notification(email, artist, title, action='new'):
+    """Send admin notification for new order request."""
+    try:
+        admin_conn = get_db()
+        admin_cursor = admin_conn.cursor()
+        admin_cursor.execute('SELECT email FROM users WHERE role = "admin" AND email IS NOT NULL')
+        admins = admin_cursor.fetchall()
+        admin_conn.close()
+        
+        for admin in admins:
+            subject = f"📦 New Order Request: {artist} - {title}"
+            body = f"""
+New order request!
+
+Email: {email}
+Artist: {artist}
+Title: {title}
+Action: {action}
+
+View in Admin Panel:
+https://www.pigstylemusic.com/admin#record-orders
+            """
+            send_email(admin['email'], subject, body, from_name="PigStyle Music Orders")
+    except Exception as e:
+        app.logger.error(f"Error sending order notification email: {str(e)}")
+
+def send_order_notification(email, artist, title, action='new'):
+    """Send admin notification for new order request."""
+    try:
+        admin_conn = get_db()
+        admin_cursor = admin_conn.cursor()
+        admin_cursor.execute('SELECT email FROM users WHERE role = "admin" AND email IS NOT NULL')
+        admins = admin_cursor.fetchall()
+        admin_conn.close()
+        
+        for admin in admins:
+            subject = f"📦 New Order Request: {artist} - {title}"
+            body = f"""
+New order request!
+
+Email: {email}
+Artist: {artist}
+Title: {title}
+Action: {action}
+
+View in Admin Panel:
+https://www.pigstylemusic.com/admin#email-subscriptions
+            """
+            send_email(admin['email'], subject, body, from_name="PigStyle Music Orders")
+    except Exception as e:
+        app.logger.error(f"Error sending order notification email: {str(e)}")
+
+
+# ==================== SUBSCRIPTION ENDPOINT (NO EMAIL) ====================
+
+@app.route('/api/subscribe', methods=['POST'])
+def subscribe():
+    """Subscribe a user to email notifications for specific artists/titles"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+        
+        email = data.get('email', '').strip().lower() if data.get('email') else ''
+        artist = data.get('artist', '').strip() if data.get('artist') else ''
+        title = data.get('title', '').strip() if data.get('title') else ''
+        
+        # Validate email
+        if not email or '@' not in email or '.' not in email:
+            return jsonify({'status': 'error', 'error': 'Valid email address required'}), 400
+        
+        # Artist is required
+        if not artist:
+            return jsonify({'status': 'error', 'error': 'Artist name is required'}), 400
+        
+        # Title is optional for alerts
+        title_value = title if title else None
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if subscription already exists
+        if title_value:
+            cursor.execute('''
+                SELECT id, is_active, notified 
+                FROM email_subscriptions 
+                WHERE email = ? AND artist = ? AND title = ?
+            ''', (email, artist, title_value))
+        else:
+            cursor.execute('''
+                SELECT id, is_active, notified 
+                FROM email_subscriptions 
+                WHERE email = ? AND artist = ? AND (title IS NULL OR title = '')
+            ''', (email, artist))
+        
+        existing = cursor.fetchone()
+        
+        if existing:
+            # If inactive, reactivate it
+            if not existing['is_active']:
+                cursor.execute('''
+                    UPDATE email_subscriptions 
+                    SET is_active = 1, notified = 0, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (existing['id'],))
+                conn.commit()
+                conn.close()
+                return jsonify({
+                    'status': 'success',
+                    'message': 'Subscription reactivated',
+                    'already_subscribed': False,
+                    'subscription_id': existing['id']
+                }), 200
+            
+            # If active and already notified, reset
+            if existing['notified'] == 1:
+                cursor.execute('''
+                    UPDATE email_subscriptions 
+                    SET notified = 0, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (existing['id'],))
+                conn.commit()
+                conn.close()
+                return jsonify({
+                    'status': 'success',
+                    'message': 'Subscription re-notified',
+                    'already_subscribed': False,
+                    'subscription_id': existing['id']
+                }), 200
+            
+            conn.close()
+            return jsonify({
+                'status': 'success',
+                'message': 'You are already subscribed to these notifications',
+                'already_subscribed': True,
+                'subscription_id': existing['id']
+            }), 200
+        
+        # Insert new subscription
+        cursor.execute('''
+            INSERT INTO email_subscriptions (
+                email, 
+                artist, 
+                title, 
+                is_active, 
+                notified,
+                created_at
+            ) VALUES (?, ?, ?, 1, 0, CURRENT_TIMESTAMP)
+        ''', (email, artist, title_value))
+        
+        subscription_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"New subscription: {email} - Artist: {artist}, Title: {title_value or 'Any'}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Subscription created successfully',
+            'subscription_id': subscription_id
+        }), 201
+        
+    except Exception as e:
+        app.logger.error(f"Error creating subscription: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+# ==================== RECORD ORDERS ENDPOINT (NO EMAIL) ====================
+
+@app.route('/api/record-orders', methods=['POST'])
+def create_record_order():
+    """
+    Create a new record order request.
+    Uses the separate record_orders table.
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+        
+        email = data.get('email', '').strip().lower() if data.get('email') else ''
+        artist = data.get('artist', '').strip() if data.get('artist') else ''
+        title = data.get('title', '').strip() if data.get('title') else ''
+        
+        # Validate email
+        if not email or '@' not in email or '.' not in email:
+            return jsonify({'status': 'error', 'error': 'Valid email address required'}), 400
+        
+        # Validate artist
+        if not artist:
+            return jsonify({'status': 'error', 'error': 'Artist name is required'}), 400
+        
+        # Validate title
+        if not title:
+            return jsonify({'status': 'error', 'error': 'Record title is required'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if this order already exists
+        cursor.execute('''
+            SELECT id, status, notified 
+            FROM record_orders 
+            WHERE email = ? AND artist = ? AND title = ?
+        ''', (email, artist, title))
+        
+        existing = cursor.fetchone()
+        
+        if existing:
+            # If cancelled or completed, reactivate it
+            if existing['status'] in ('cancelled', 'completed'):
+                cursor.execute('''
+                    UPDATE record_orders 
+                    SET status = 'pending', notified = 0, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (existing['id'],))
+                conn.commit()
+                conn.close()
+                return jsonify({
+                    'status': 'success',
+                    'message': 'Order request reactivated',
+                    'order_id': existing['id'],
+                    'already_exists': True
+                }), 200
+            
+            # If pending and already notified, reset notified
+            if existing['notified'] == 1:
+                cursor.execute('''
+                    UPDATE record_orders 
+                    SET notified = 0, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (existing['id'],))
+                conn.commit()
+                conn.close()
+                return jsonify({
+                    'status': 'success',
+                    'message': 'Order request re-notified',
+                    'order_id': existing['id'],
+                    'already_exists': True
+                }), 200
+            
+            conn.close()
+            return jsonify({
+                'status': 'success',
+                'message': 'You already have an order request for this record',
+                'order_id': existing['id'],
+                'already_exists': True
+            }), 200
+        
+        # Insert new order request
+        cursor.execute('''
+            INSERT INTO record_orders (
+                email, 
+                artist, 
+                title, 
+                status,
+                notified,
+                created_at
+            ) VALUES (?, ?, ?, 'pending', 0, CURRENT_TIMESTAMP)
+        ''', (email, artist, title))
+        
+        order_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"New order request: {email} - Artist: {artist}, Title: {title}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Order request placed successfully',
+            'order_id': order_id
+        }), 201
+        
+    except Exception as e:
+        app.logger.error(f"Error creating order request: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+ 
+
+@app.route('/api/record-orders/unread', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_unread_orders():
+    """Get all unread orders (notified = 0)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                id,
+                email,
+                artist,
+                title,
+                status,
+                notified,
+                created_at,
+                updated_at
+            FROM record_orders
+            WHERE notified = 0 OR notified IS NULL
+            ORDER BY created_at DESC
+            LIMIT 50
+        ''')
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        orders_list = []
+        for row in rows:
+            orders_list.append({
+                'id': row['id'],
+                'email': row['email'],
+                'artist': row['artist'],
+                'title': row['title'],
+                'status': row['status'],
+                'notified': bool(row['notified']) if row['notified'] is not None else False,
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at']
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'notifications': orders_list,
+            'count': len(orders_list)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting unread orders: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/record-orders/<int:order_id>/mark-read', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def mark_order_read(order_id):
+    """Mark order as read (set notified = 1)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE record_orders 
+            SET notified = 1 
+            WHERE id = ?
+        ''', (order_id,))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Order not found'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Order #{order_id} marked as read'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error marking order read: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/record-orders', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_all_orders():
+    """Get all orders with filtering"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        status = request.args.get('status', 'all')
+        search = request.args.get('search', '').strip()
+        
+        offset = (page - 1) * per_page
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        query = '''
+            SELECT 
+                id,
+                email,
+                artist,
+                title,
+                status,
+                notified,
+                created_at,
+                updated_at
+            FROM record_orders
+            WHERE 1=1
+        '''
+        params = []
+        
+        if status != 'all':
+            query += ' AND status = ?'
+            params.append(status)
+        
+        if search:
+            query += ''' AND (
+                email LIKE ? OR 
+                artist LIKE ? OR 
+                title LIKE ? OR 
+                status LIKE ?
+            )'''
+            search_term = f'%{search}%'
+            params.extend([search_term, search_term, search_term, search_term])
+        
+        query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?'
+        params.extend([per_page, offset])
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        # Get total count
+        count_query = 'SELECT COUNT(*) as total FROM record_orders WHERE 1=1'
+        count_params = []
+        if status != 'all':
+            count_query += ' AND status = ?'
+            count_params.append(status)
+        if search:
+            count_query += ''' AND (
+                email LIKE ? OR 
+                artist LIKE ? OR 
+                title LIKE ? OR 
+                status LIKE ?
+            )'''
+            count_params.extend([search_term, search_term, search_term, search_term])
+        
+        cursor.execute(count_query, count_params)
+        total = cursor.fetchone()['total']
+        conn.close()
+        
+        orders_list = []
+        for row in rows:
+            orders_list.append({
+                'id': row['id'],
+                'email': row['email'],
+                'artist': row['artist'],
+                'title': row['title'],
+                'status': row['status'],
+                'notified': bool(row['notified']) if row['notified'] is not None else False,
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at']
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'orders': orders_list,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total + per_page - 1) // per_page if total > 0 else 1
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting orders: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/record-orders/<int:order_id>', methods=['PUT'])
+@login_required
+@role_required(['admin'])
+def update_order_status(order_id):
+    """Update order status"""
+    try:
+        data = request.json
+        new_status = data.get('status')
+        
+        if not new_status:
+            return jsonify({'status': 'error', 'error': 'Status is required'}), 400
+        
+        valid_statuses = ['pending', 'processing', 'ordered', 'received', 'cancelled']
+        if new_status not in valid_statuses:
+            return jsonify({'status': 'error', 'error': f'Invalid status. Must be one of: {valid_statuses}'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE record_orders 
+            SET status = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (new_status, order_id))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Order not found'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Order status updated to {new_status}'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error updating order status: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/record-orders/<int:order_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def delete_order(order_id):
+    """Delete an order"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('DELETE FROM record_orders WHERE id = ?', (order_id,))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Order not found'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Order #{order_id} deleted successfully'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error deleting order: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
 if __name__ == '__main__': 
