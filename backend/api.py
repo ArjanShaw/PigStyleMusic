@@ -2749,8 +2749,6 @@ def parse_purchase_from_journal(entry):
     
     return purchase
 
-
-
 @app.route('/api/inventory-purchases', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -2765,102 +2763,74 @@ def get_inventory_purchases():
         conn = get_db()
         cursor = conn.cursor()
 
-        # Main query: join journal_entries with journal_lines to get total debit for inventory account
         query = '''
             SELECT 
-                je.id,
-                je.transaction_date,
-                je.description,
-                je.created_at,
-                COALESCE(SUM(jl.debit_amount), 0) / 100.0 as amount_spent
-            FROM journal_entries je
-            LEFT JOIN journal_lines jl ON jl.journal_entry_id = je.id
-            LEFT JOIN accounts a ON a.id = jl.account_id AND a.code = '1050'
-            WHERE je.source_type = 'purchase'
+                p.id,
+                p.seller_name,
+                p.seller_contact,
+                p.description,
+                p.bill_of_sale_path,
+                p.status,
+                p.created_at,
+                p.updated_at,
+                COUNT(r.id) as record_count,
+                COALESCE(
+                    (SELECT jl.debit_amount / 100.0 
+                     FROM journal_lines jl
+                     JOIN journal_entries je ON jl.journal_entry_id = je.id
+                     WHERE je.source_id = p.id 
+                       AND je.source_type = 'purchase'
+                       AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050')
+                     LIMIT 1), 
+                    0
+                ) as amount_spent
+            FROM purchases p
+            LEFT JOIN records r ON r.batch_id = p.id
+            WHERE 1=1
         '''
         params = []
 
         if start_date:
-            query += ' AND je.transaction_date >= ?'
+            query += ' AND p.created_at >= ?'
             params.append(start_date)
         if end_date:
-            query += ' AND je.transaction_date <= ?'
+            query += ' AND p.created_at <= ?'
             params.append(end_date)
         if seller_name:
-            query += ' AND je.description LIKE ?'
+            query += ' AND p.seller_name LIKE ?'
             params.append(f'%{seller_name}%')
 
-        query += ' GROUP BY je.id ORDER BY je.transaction_date DESC, je.id DESC LIMIT ? OFFSET ?'
+        query += ' GROUP BY p.id ORDER BY p.created_at DESC LIMIT ? OFFSET ?'
         params.extend([limit, offset])
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
-
+        
         purchases = []
         for row in rows:
-            row_dict = dict(row)
-            desc = row_dict.get('description') or ''
-            amount = row_dict.get('amount_spent', 0.0)
-
-            # Parse seller name from description
-            seller = 'Unknown'
-            if desc:
-                # Try pipe format: seller: <name>
-                if 'seller:' in desc:
-                    parts = desc.split('|')
-                    for part in parts:
-                        part = part.strip()
-                        if part.startswith('seller:'):
-                            seller = part.split(':', 1)[1].strip()
-                            break
-                # Fallback to "Inventory purchase from <seller>"
-                else:
-                    import re
-                    match = re.search(r'Inventory purchase from (.*?)(?:\||$)', desc)
-                    if match:
-                        seller = match.group(1).strip()
-
-            # Parse contact, description, bill path (optional)
-            contact = ''
-            description = ''
-            bill_path = None
-            if desc and '|' in desc:
-                parts = desc.split('|')
-                for part in parts:
-                    part = part.strip()
-                    if part.startswith('contact:'):
-                        contact = part.split(':', 1)[1].strip()
-                    elif part.startswith('desc:'):
-                        description = part.split(':', 1)[1].strip()
-                    elif part.startswith('bill:'):
-                        bill_path = part.split(':', 1)[1].strip()
-
             purchases.append({
-                'id': row_dict['id'],
-                'purchase_date': row_dict['transaction_date'],
-                'seller_name': seller,
-                'seller_contact': contact,
-                'amount_spent': amount,
-                'description': description,
-                'bill_of_sale_path': bill_path,
-                'created_at': row_dict['created_at'] or row_dict['transaction_date']
+                'id': row['id'],
+                'seller_name': row['seller_name'],
+                'seller_contact': row['seller_contact'] or '',
+                'description': row['description'] or '',
+                'bill_of_sale_path': row['bill_of_sale_path'],
+                'status': row['status'],
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at'],
+                'record_count': row['record_count'] or 0,
+                'amount_spent': float(row['amount_spent'] or 0)
             })
 
-        # Total count (without limit/offset)
-        count_query = '''
-            SELECT COUNT(*) as total
-            FROM journal_entries
-            WHERE source_type = 'purchase'
-        '''
+        count_query = 'SELECT COUNT(*) as total FROM purchases WHERE 1=1'
         count_params = []
         if start_date:
-            count_query += ' AND transaction_date >= ?'
+            count_query += ' AND created_at >= ?'
             count_params.append(start_date)
         if end_date:
-            count_query += ' AND transaction_date <= ?'
+            count_query += ' AND created_at <= ?'
             count_params.append(end_date)
         if seller_name:
-            count_query += ' AND description LIKE ?'
+            count_query += ' AND seller_name LIKE ?'
             count_params.append(f'%{seller_name}%')
 
         cursor.execute(count_query, count_params)
@@ -2876,6 +2846,38 @@ def get_inventory_purchases():
         })
     except Exception as e:
         app.logger.error(f"Error getting inventory purchases: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/purchases/<int:purchase_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def delete_purchase(purchase_id):
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get all records linked to this purchase
+        cursor.execute('SELECT id FROM records WHERE batch_id = ?', (purchase_id,))
+        records = cursor.fetchall()
+        
+        # Unlink records (set batch_id to NULL) - don't delete them
+        cursor.execute('UPDATE records SET batch_id = NULL WHERE batch_id = ?', (purchase_id,))
+        unlinked_count = cursor.rowcount
+        
+        # Delete the purchase
+        cursor.execute('DELETE FROM purchases WHERE id = ?', (purchase_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Purchase #{purchase_id} deleted. {unlinked_count} records unlinked.',
+            'unlinked_records': unlinked_count
+        })
+    except Exception as e:
+        app.logger.error(f"Error deleting purchase: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/inventory-purchases', methods=['POST'])
@@ -9972,60 +9974,7 @@ def serve_bill_image(filename):
         app.logger.error(f"Error serving bill image: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
-@app.route('/api/purchases/drafts', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def get_all_drafts():
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT 
-                p.id as draft_id,
-                p.seller_name,
-                p.seller_contact,
-                p.description,
-                p.bill_of_sale_path,
-                p.status,
-                p.created_at,
-                je.id as journal_entry_id,
-                COUNT(r.id) as record_count,
-                EXISTS (SELECT 1 FROM journal_lines jl WHERE jl.journal_entry_id = je.id) as has_journal_lines,
-                COALESCE((SELECT jl.debit_amount / 100.0 
-                         FROM journal_lines jl 
-                         WHERE jl.journal_entry_id = je.id 
-                         AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050') 
-                         LIMIT 1), 0) as offer_amount
-            FROM purchases p
-            JOIN journal_entries je ON je.source_id = p.id AND je.source_type = 'purchase'   -- ← FIXED
-            LEFT JOIN records r ON r.batch_id = je.id
-            GROUP BY p.id
-            ORDER BY p.created_at DESC
-        ''')
-        rows = cursor.fetchall()
-        conn.close()
-
-        result = []
-        for row in rows:
-            result.append({
-                'draft_id': row['draft_id'],
-                'seller_name': row['seller_name'],
-                'seller_contact': row['seller_contact'] or '',
-                'description': row['description'],
-                'bill_of_sale_path': row['bill_of_sale_path'],
-                'status': row['status'],
-                'created_at': row['created_at'],
-                'record_count': row['record_count'] or 0,
-                'offer_amount': float(row['offer_amount'] or 0),
-                'has_journal_lines': bool(row['has_journal_lines'])
-            })
-
-        return jsonify({'status': 'success', 'drafts': result})
-    except Exception as e:
-        app.logger.error(f"Error listing drafts: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
+ 
 @app.route('/api/purchases/draft/<int:draft_id>', methods=['GET'])
 @login_required
 @role_required(['admin'])
