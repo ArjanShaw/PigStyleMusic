@@ -5,10 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="/static/images/PigStyle.ico">
     <title>Item Management - PigStyle Music</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-03HFDR9PV7');
+    </script>
+    
+    <!-- CSS FILES -->
+    <link rel="stylesheet" href="/static/css/index.css">
+    <link rel="stylesheet" href="/static/css/shared.css">
     <link rel="stylesheet" href="/static/css/admin.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+    
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="../static/js/app-config.js"></script>
+    <script src="/static/js/notification-bell.js"></script>
+    <script src="/static/js/shared.js"></script>
 
     <style>
         /* ========== STATUS BADGE STYLES ========== */
@@ -49,10 +66,10 @@
             margin-top: 70px;
         }
         .admin-container h1 {
-            color: white;
+            color: #333;
         }
         .admin-container .subtitle {
-            color: white;
+            color: #666;
             margin-bottom: 20px;
         }
 
@@ -528,66 +545,6 @@
             background: #e9ecef;
         }
 
-        /* ========== NAVBAR STYLES ========== */
-        .navbar {
-            background: #000;
-            padding: 10px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-            border-bottom: 2px solid #ff6b6b;
-        }
-        .navbar a {
-            color: white;
-            text-decoration: none;
-        }
-        .navbar .logo {
-            font-size: 20px;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .navbar .logo img {
-            height: 30px;
-            width: 30px;
-        }
-        .navbar .nav-links {
-            display: flex;
-            gap: 20px;
-            align-items: center;
-        }
-        .navbar .nav-links a {
-            color: white;
-            text-decoration: none;
-            font-size: 14px;
-        }
-        .navbar .nav-links a:hover {
-            text-decoration: underline;
-        }
-        .navbar .nav-links .btn-logout {
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.3);
-            color: white;
-            padding: 6px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        .navbar .nav-links .btn-logout:hover {
-            background: rgba(255,255,255,0.2);
-        }
-        @media (max-width: 768px) {
-            .navbar .nav-links a:not(.logo) {
-                display: none;
-            }
-        }
-
         /* ========== VIEW TOGGLE STYLES ========== */
         .view-toggle {
             display: flex;
@@ -619,6 +576,48 @@
             }
         }
 
+        /* ========== SELECTION STATUS STYLES ========== */
+        .selection-status {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+            background: #f8f9fa;
+            padding: 12px 15px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        .selection-status .status-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .selection-status .status-left .count-badge {
+            font-weight: 600;
+            color: #333;
+        }
+        .selection-status .status-left .count-badge span {
+            color: #28a745;
+        }
+        .selection-status .status-left .view-text {
+            font-size: 13px;
+            color: #666;
+        }
+        .selection-status .status-left .view-text i {
+            margin-right: 4px;
+        }
+        .selection-status .status-right {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .selection-status .status-right .btn-small {
+            padding: 5px 12px;
+            font-size: 12px;
+        }
+
         /* ========== TOAST STYLES ========== */
         @keyframes slideIn {
             from { transform: translateX(100%); opacity: 0; }
@@ -632,24 +631,13 @@
 </head>
 <body>
 
-    <!-- ========== NAVBAR ========== -->
-    <nav class="navbar">
-        <a href="/" class="logo">
-            <img src="/static/images/PigStyle.ico" alt="PigStyle">
-            PigStyle Music
-        </a>
-        <div class="nav-links">
-            <a href="/browse">Browse</a>
-            <a href="/misc">Misc</a>
-            <a href="/connect">Connect</a>
-            <a href="/admin">Admin Panel</a>
-            <a href="/admin/accounting">Accounting</a>
-            <a href="/dashboard">Dashboard</a>
-            <button class="btn-logout" onclick="window.location.href='/logout'">Logout</button>
-        </div>
-    </nav>
+    <!-- ===== NAVBAR PLACEHOLDER ===== -->
+    <div id="navbar-placeholder"></div>
 
-    <!-- ========== MAIN CONTENT ========== -->
+    <!-- ===== SUBSCRIPTION MODAL PLACEHOLDER ===== -->
+    <div id="subscription-modal-placeholder"></div>
+
+    <!-- ===== MAIN CONTENT ===== -->
     <div class="admin-container">
         <h1><i class="fas fa-boxes"></i> Item Management</h1>
         <p class="subtitle">Search for items, select them, and perform Checkout, Delete, or Refund operations.</p>
@@ -723,7 +711,7 @@
                 <button class="btn btn-success" id="execute-action-btn" disabled>
                     <i class="fas fa-play"></i> Execute Action
                 </button>
-                <button class="btn btn-secondary" id="clear-selection-btn">
+                <button class="btn btn-secondary" id="clear-selection-btn" style="display: none;">
                     <i class="fas fa-times"></i> Clear Selection
                 </button>
                 <button class="btn btn-info" id="select-all-btn">
@@ -731,7 +719,44 @@
                 </button>
             </div>
         </div>
- 
+
+        <!-- ========== ACTION BUTTONS (Custom Item, Bernie, Gift Card) ========== -->
+        <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; background: #e3f2fd; padding: 12px 15px; border-radius: 8px; border: 1px solid #b8daff;">
+            <span style="font-weight: 600; color: #004085; display: flex; align-items: center; gap: 8px; margin-right: 10px;">
+                <i class="fas fa-plus-circle"></i> Add to Checkout:
+            </span>
+            <button class="btn btn-info btn-small" onclick="window.showCustomItemModal()" style="background: #17a2b8; color: white; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;">
+                <i class="fas fa-plus-circle"></i> Custom Item
+            </button>
+            <button class="btn btn-warning btn-small" onclick="window.addBernieItem()" style="background: #ffc107; color: #333; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;">
+                <i class="fas fa-donate"></i> Bernie ($0.99)
+            </button>
+            <button class="btn btn-success btn-small" onclick="window.showGiftCardModal()" style="background: #28a745; color: white; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;">
+                <i class="fas fa-gift"></i> Gift Card
+            </button>
+            <span style="font-size: 12px; color: #666; margin-left: 10px; display: flex; align-items: center;">
+                <i class="fas fa-info-circle"></i> Add custom items, Bernie donations, or gift cards
+            </span>
+        </div>
+
+        <!-- ========== SELECTION STATUS ========== -->
+        <div class="selection-status">
+            <div class="status-left">
+                <span class="count-badge">
+                    <i class="fas fa-check-circle" style="color: #28a745;"></i> 
+                    <span id="selection-count-badge">0</span> items selected
+                </span>
+                <span class="view-text">
+                    <i class="fas fa-info-circle"></i> 
+                    <span id="view-status-text">Showing search results</span>
+                </span>
+            </div>
+            <div class="status-right">
+                <button class="btn btn-secondary btn-small" id="clear-selection-btn-top" style="display: none;">
+                    <i class="fas fa-times"></i> Clear Selection
+                </button>
+            </div>
+        </div>
 
         <!-- ========== RECORDS TABLE ========== -->
         <div class="records-table-container">
@@ -797,18 +822,18 @@
                 <div class="change-display" id="change-amount">$0.00</div>
             </div>
             <div class="action-buttons" style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
-                <button class="btn btn-secondary" onclick="closeTenderModal()">Cancel</button>
+                <button class="btn btn-secondary" onclick="window.closeTenderModal()">Cancel</button>
                 <button class="btn btn-success" onclick="window.processCashPayment()" id="complete-payment-btn" disabled><i class="fas fa-check"></i> Complete Payment</button>
             </div>
         </div>
     </div>
 
-    <!-- ========== GIFT CARD MODAL ========== -->
+    <!-- ========== GIFT CARD MODAL (Payment) ========== -->
     <div id="giftcard-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content" style="max-width: 400px;">
             <div class="modal-header">
                 <h3 class="modal-title"><i class="fas fa-gift"></i> Pay with Gift Card</h3>
-                <button class="modal-close" onclick="closeGiftCardModal()">×</button>
+                <button class="modal-close" onclick="window.closeGiftCardModal()">×</button>
             </div>
             <div class="modal-body">
                 <div style="text-align: center; margin-bottom: 20px;">
@@ -838,7 +863,7 @@
                 <div id="giftcard-result" style="margin-top: 15px; display: none;"></div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeGiftCardModal()">Cancel</button>
+                <button class="btn btn-secondary" onclick="window.closeGiftCardModal()">Cancel</button>
             </div>
         </div>
     </div>
@@ -848,7 +873,7 @@
         <div class="modal-content" style="max-width: 450px;">
             <div class="modal-header" style="background: linear-gradient(135deg, #dc3545 0%, #bd2130 100%);">
                 <h3 class="modal-title"><i class="fas fa-exclamation-triangle"></i> Confirm Delete</h3>
-                <button class="modal-close" onclick="closeConfirmDeleteModal()">×</button>
+                <button class="modal-close" onclick="window.closeConfirmDeleteModal()">×</button>
             </div>
             <div class="modal-body">
                 <p style="font-size: 16px; color: #333; margin-bottom: 15px;">
@@ -860,7 +885,7 @@
                 <div id="delete-items-preview" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 10px; font-size: 13px; color: #666;"></div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeConfirmDeleteModal()">Cancel</button>
+                <button class="btn btn-secondary" onclick="window.closeConfirmDeleteModal()">Cancel</button>
                 <button class="btn btn-danger" onclick="window.confirmDeleteRecords()"><i class="fas fa-trash"></i> Delete Permanently</button>
             </div>
         </div>
@@ -871,7 +896,7 @@
         <div class="modal-content" style="max-width: 450px;">
             <div class="modal-header" style="background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);">
                 <h3 class="modal-title"><i class="fas fa-undo"></i> Confirm Refund</h3>
-                <button class="modal-close" onclick="closeConfirmRefundModal()">×</button>
+                <button class="modal-close" onclick="window.closeConfirmRefundModal()">×</button>
             </div>
             <div class="modal-body">
                 <p style="font-size: 16px; color: #333; margin-bottom: 15px;">
@@ -883,14 +908,13 @@
                 <div id="refund-items-preview" style="max-height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 10px; font-size: 13px; color: #666;"></div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeConfirmRefundModal()">Cancel</button>
+                <button class="btn btn-secondary" onclick="window.closeConfirmRefundModal()">Cancel</button>
                 <button class="btn btn-warning" onclick="window.confirmRefundRecords()"><i class="fas fa-undo"></i> Process Refund</button>
             </div>
         </div>
     </div>
 
     <!-- ========== SCRIPTS ========== -->
-    <script src="/static/js/app-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="/static/js/utils.js"></script>
@@ -899,31 +923,35 @@
     <script src="/static/js/item-management.js"></script>
 
     <script>
-        // Global functions for modal access ONLY
-        // These are called directly from HTML onclick attributes
-        
-        function closeTenderModal() {
-            document.getElementById('tender-modal').style.display = 'none';
-            document.getElementById('tender-amount').value = '';
-            document.getElementById('change-display-container').style.display = 'none';
-            document.getElementById('complete-payment-btn').disabled = true;
-        }
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load navbar and subscription modal (functions from shared.js)
+            loadNavbar();
+            loadSubscriptionModal();
 
-        function closeGiftCardModal() {
-            document.getElementById('giftcard-modal').style.display = 'none';
-            document.getElementById('giftcard-code').value = '';
-            document.getElementById('giftcard-info').style.display = 'none';
-            document.getElementById('giftcard-apply-section').style.display = 'none';
-            document.getElementById('giftcard-result').style.display = 'none';
-        }
+            // ===== MODAL CLOSE FUNCTIONS =====
+            window.closeTenderModal = function() {
+                document.getElementById('tender-modal').style.display = 'none';
+                document.getElementById('tender-amount').value = '';
+                document.getElementById('change-display-container').style.display = 'none';
+                document.getElementById('complete-payment-btn').disabled = true;
+            }
 
-        function closeConfirmDeleteModal() {
-            document.getElementById('confirm-delete-modal').style.display = 'none';
-        }
+            window.closeGiftCardModal = function() {
+                document.getElementById('giftcard-modal').style.display = 'none';
+                document.getElementById('giftcard-code').value = '';
+                document.getElementById('giftcard-info').style.display = 'none';
+                document.getElementById('giftcard-apply-section').style.display = 'none';
+                document.getElementById('giftcard-result').style.display = 'none';
+            }
 
-        function closeConfirmRefundModal() {
-            document.getElementById('confirm-refund-modal').style.display = 'none';
-        }
+            window.closeConfirmDeleteModal = function() {
+                document.getElementById('confirm-delete-modal').style.display = 'none';
+            }
+
+            window.closeConfirmRefundModal = function() {
+                document.getElementById('confirm-refund-modal').style.display = 'none';
+            }
+        });
     </script>
 
 </body>

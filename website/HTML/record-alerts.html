@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/images/PigStyle.ico">
+    <title id="page-title">PigStyle Music</title>
+    
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-03HFDR9PV7');
+    </script>
+    
+    <!-- CSS FILES -->
+    <link rel="stylesheet" href="/static/css/shared.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    
+    <script src="/static/js/app-config.js"></script>
+    <script src="/static/js/notification-bell.js"></script>
+    <script src="/static/js/shared.js"></script>
+    
+    <style>
+        /* Background */
+        .background-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+        
+        .background-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .background-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            background: #f4f4f4; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding-top: 70px;
+            padding-bottom: 40px;
+        }
+        
+        .page-container {
+            background: white;
+            max-width: 600px;
+            width: 95%;
+            padding: 40px 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+            margin: 20px auto;
+        }
+        
+        .logo {
+            max-width: 180px;
+            margin-bottom: 15px;
+        }
+        
+        h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 16px;
+            margin-bottom: 25px;
+        }
+        
+        .warning-box {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            border-left: 4px solid #ffc107;
+            padding: 15px 18px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #856404;
+            display: none;
+        }
+        
+        .warning-box strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 6px;
+            font-size: 14px;
+        }
+        
+        .form-group label .required {
+            color: #dc3545;
+        }
+        
+        .form-group label .optional {
+            color: #999;
+            font-weight: normal;
+            font-size: 12px;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 15px;
+            transition: border-color 0.2s;
+            font-family: inherit;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #ff6b6b;
+        }
+        
+        .submit-btn {
+            width: 100%;
+            padding: 16px;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .submit-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+        }
+        
+        .submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            margin-top: 15px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .status.success {
+            display: block;
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            display: block;
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.info {
+            display: block;
+            background: #cce5ff;
+            color: #004085;
+            border: 1px solid #b8daff;
+        }
+        
+        .footer {
+            margin-top: 30px;
+            font-size: 12px;
+            color: #999;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+            text-align: center;
+        }
+        
+        .footer a {
+            color: #ff6b6b;
+            text-decoration: none;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        
+        /* Mode-specific button colors */
+        .mode-alert .submit-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .mode-order .submit-btn {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        }
+        
+        /* Mobile */
+        @media (max-width: 480px) {
+            .page-container {
+                padding: 25px 20px;
+            }
+            h1 {
+                font-size: 22px;
+            }
+            body {
+                padding-top: 60px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Background -->
+    <div class="background-container">
+        <img src="/static/images/background.png" alt="Background" class="background-image">
+        <div class="background-overlay"></div>
+    </div>
+
+    <!-- ===== NAVBAR PLACEHOLDER ===== -->
+    <div id="navbar-placeholder"></div>
+
+    <!-- ===== SUBSCRIPTION MODAL PLACEHOLDER ===== -->
+    <div id="subscription-modal-placeholder"></div>
+
+    <div class="page-container" id="page-container">
+        <img src="/static/images/pigstyle_text.png" alt="PigStyle Music" class="logo">
+        
+        <!-- Dynamic content based on mode -->
+        <h1 id="page-heading">🔔 Record Alerts</h1>
+        <p class="subtitle" id="page-subtitle">Get notified when new records matching your interests arrive</p>
+        
+        <!-- Warning Box - only shown in alert mode -->
+        <div class="warning-box" id="warning-box">
+            <strong><i class="fas fa-exclamation-triangle"></i> IMPORTANT:</strong>
+            Enter <strong>ONE</strong> artist per line. Each line will be matched separately.
+            <div class="example">Example: The Beatles</div>
+        </div>
+        
+        <form id="main-form" onsubmit="handleSubmit(event)">
+            <!-- Email - SAME for both modes -->
+            <div class="form-group">
+                <label for="user-email">Email Address <span class="required">*</span></label>
+                <input type="email" id="user-email" placeholder="your@email.com" required>
+            </div>
+            
+            <!-- Artist - SAME for both modes -->
+            <div class="form-group">
+                <label for="artist">Artist <span class="required" id="artist-required">*</span></label>
+                <input type="text" id="artist" placeholder="e.g., The Beatles" required>
+            </div>
+            
+            <!-- Title - SAME for both modes -->
+            <div class="form-group">
+                <label for="title">Title <span id="title-required" class="optional">(optional)</span></label>
+                <input type="text" id="title" placeholder="e.g., Abbey Road">
+            </div>
+            
+            <button type="submit" class="submit-btn" id="submit-btn">
+                <i class="fas fa-bell" id="btn-icon"></i>
+                <span id="btn-text">Subscribe</span>
+            </button>
+        </form>
+        
+        <div id="status" class="status"></div>
+        
+        <div class="footer">
+            PigStyle Music &bull; 100 E 3rd Loveland CO &bull; <a href="tel:9704925630">970-492-5630</a>
+        </div>
+    </div>
+
+    <script>
+    // ============================================================
+    // DETECT MODE FROM URL
+    // ============================================================
+    
+    function getMode() {
+        const path = window.location.pathname;
+        console.log('📍 Current path:', path);
+        
+        if (path.includes('order-records') || path.includes('order')) {
+            console.log('🔵 Mode: ORDER');
+            return 'order';
+        }
+        console.log('🔵 Mode: ALERT');
+        return 'alert';
+    }
+    
+    const MODE = getMode();
+    console.log('📌 MODE set to:', MODE);
+    
+    // ============================================================
+    // CONFIGURATION BY MODE
+    // ============================================================
+    
+    const config = {
+        alert: {
+            title: '🔔 Record Alerts',
+            subtitle: 'Get notified when new records matching your interests arrive',
+            showWarning: true,
+            buttonIcon: 'fa-bell',
+            buttonText: 'Subscribe',
+            submitUrl: '/api/subscribe',
+            successMessage: '✅ Subscription created successfully!',
+            successNote: '💡 You\'ll receive an email when matching records arrive.',
+            errorMessage: '❌ Failed to subscribe. Please try again.',
+            titleRequired: false,
+            artistRequired: true
+        },
+        order: {
+            title: '🛒 Order Records',
+            subtitle: 'Request new vinyl from our distributor',
+            showWarning: false,
+            buttonIcon: 'fa-box',
+            buttonText: 'Place Order Request',
+            submitUrl: '/api/record-orders',
+            successMessage: '✅ Order request placed successfully!',
+            successNote: '💡 We\'ll contact you when this record arrives.',
+            errorMessage: '❌ Failed to place order. Please try again.',
+            titleRequired: true,
+            artistRequired: true
+        }
+    };
+    
+    const pageConfig = config[MODE];
+    console.log('📄 Page config:', pageConfig);
+    
+    // ============================================================
+    // APPLY CONFIGURATION
+    // ============================================================
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('🟢 DOM loaded, applying mode:', MODE);
+        
+        // Load navbar and subscription modal from shared.js
+        if (typeof loadNavbar === 'function') {
+            loadNavbar();
+        }
+        if (typeof loadSubscriptionModal === 'function') {
+            loadSubscriptionModal();
+        }
+        if (typeof initSubscriptionModal === 'function') {
+            initSubscriptionModal();
+        }
+        
+        // Set page title
+        document.title = pageConfig.title + ' - PigStyle Music';
+        
+        // Set heading and subtitle
+        const heading = document.getElementById('page-heading');
+        const subtitle = document.getElementById('page-subtitle');
+        
+        if (heading) heading.textContent = pageConfig.title;
+        if (subtitle) subtitle.textContent = pageConfig.subtitle;
+        
+        // Show/hide warning
+        const warningBox = document.getElementById('warning-box');
+        if (warningBox) {
+            if (pageConfig.showWarning) {
+                warningBox.style.display = 'block';
+            } else {
+                warningBox.style.display = 'none';
+            }
+        }
+        
+        // Set Title required/optional based on mode
+        const titleRequired = document.getElementById('title-required');
+        const titleInput = document.getElementById('title');
+        if (titleRequired) {
+            if (pageConfig.titleRequired) {
+                titleRequired.textContent = '*';
+                titleRequired.className = 'required';
+                titleInput.required = true;
+            } else {
+                titleRequired.textContent = '(optional)';
+                titleRequired.className = 'optional';
+                titleInput.required = false;
+            }
+        }
+        
+        // Set button
+        const btnIcon = document.getElementById('btn-icon');
+        const btnText = document.getElementById('btn-text');
+        if (btnIcon) btnIcon.className = 'fas ' + pageConfig.buttonIcon;
+        if (btnText) btnText.textContent = pageConfig.buttonText;
+        
+        // Add mode class for styling
+        const container = document.getElementById('page-container');
+        if (container) {
+            container.classList.remove('mode-alert', 'mode-order');
+            container.classList.add('mode-' + MODE);
+        }
+        
+        console.log('✅ Page configured for mode:', MODE);
+    });
+    
+    // ============================================================
+    // HANDLE FORM SUBMIT
+    // ============================================================
+    
+    async function handleSubmit(event) {
+        event.preventDefault();
+        console.log('📤 Form submitted in mode:', MODE);
+        
+        const email = document.getElementById('user-email').value.trim();
+        const artist = document.getElementById('artist').value.trim();
+        const title = document.getElementById('title').value.trim();
+        const statusEl = document.getElementById('status');
+        const submitBtn = document.getElementById('submit-btn');
+        
+        // Validate email
+        if (!email || !email.includes('@') || !email.includes('.')) {
+            showStatus('Please enter a valid email address.', 'error');
+            return;
+        }
+        
+        // Validate artist (required for both modes)
+        if (!artist) {
+            showStatus('Please enter the artist name.', 'error');
+            return;
+        }
+        
+        // Validate title (required for order mode only)
+        if (pageConfig.titleRequired && !title) {
+            showStatus('Please enter the record title.', 'error');
+            return;
+        }
+        
+        // Build payload
+        const payload = {
+            email: email,
+            artist: artist,
+            title: title || null
+        };
+        
+        console.log('📦 Payload:', payload);
+        
+        // Disable button
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+        statusEl.style.display = 'none';
+        
+        try {
+            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const apiUrl = isLocalhost 
+                ? 'http://localhost:5000' + pageConfig.submitUrl
+                : 'https://' + window.location.hostname + pageConfig.submitUrl;
+            
+            console.log('🌐 API URL:', apiUrl);
+            
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+            
+            const data = await response.json();
+            console.log('📨 Response:', data);
+            
+            if (response.ok && data.status === 'success') {
+                showStatus(pageConfig.successMessage + ' ' + pageConfig.successNote, 'success');
+                
+                // Reset form
+                document.getElementById('user-email').value = '';
+                document.getElementById('artist').value = '';
+                document.getElementById('title').value = '';
+                
+                // Refresh notification bell
+                if (typeof checkNotifications === 'function') {
+                    setTimeout(checkNotifications, 1000);
+                }
+                
+            } else {
+                showStatus(data.error || pageConfig.errorMessage, 'error');
+            }
+        } catch (error) {
+            console.error('❌ Submit error:', error);
+            showStatus('Network error. Please try again.', 'error');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fas ' + pageConfig.buttonIcon + '"></i> ' + pageConfig.buttonText;
+        }
+    }
+    
+    // ============================================================
+    // STATUS MESSAGES
+    // ============================================================
+    
+    function showStatus(message, type) {
+        const statusEl = document.getElementById('status');
+        statusEl.textContent = message;
+        statusEl.className = 'status ' + type;
+        statusEl.style.display = 'block';
+        
+        if (type === 'success') {
+            setTimeout(() => {
+                statusEl.style.display = 'none';
+            }, 6000);
+        }
+    }
+    </script>
+</body>
+</html>
