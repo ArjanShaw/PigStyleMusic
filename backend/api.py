@@ -12197,8 +12197,6 @@ def delete_genre(genre_id):
 # ==================== FORMATS ====================
 
 @app.route('/api/formats', methods=['GET'])
-@login_required
-@role_required(['admin'])
 def get_formats():
     """Get all formats"""
     conn = get_db()

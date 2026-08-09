@@ -1,4 +1,4 @@
-browse.html => <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang='en'>
 <head>
     <meta charset='UTF-8'>
@@ -681,16 +681,8 @@ browse.html => <!DOCTYPE html>
         let currentPage = 1;
         let recordsPerPage = 50;
         
-        // Format ID to name mapping - THIS SHOULD MATCH YOUR formats TABLE
-        // Run: SELECT id, name FROM formats ORDER BY id;
-        // Then update this map with your actual format names
-        const FORMAT_MAP = {
-            1: 'Vinyl',
-            2: 'CD',
-            3: 'Cassette',
-            4: 'Shellac',
-            // Add more as needed based on your formats table
-        };
+        // Format ID to name mapping - will be populated from database
+        let FORMAT_MAP = {};
 
         // Load navbar and subscription modal from shared components
         document.addEventListener('DOMContentLoaded', function() {
@@ -709,16 +701,22 @@ browse.html => <!DOCTYPE html>
             initBrowsePage();
         });
 
-        function initBrowsePage() {
+        async function initBrowsePage() {
             if (typeof initSubscriptionModal === 'function') {
                 initSubscriptionModal();
             }
             
-            // Fetch format names from the database
-            fetchFormats();
+            // FIRST: Fetch format names from the database
+            await fetchFormats();
             
+            // THEN: Load catalog data
             loadCatalogData();
             
+            // Setup event listeners
+            setupEventListeners();
+        }
+
+        function setupEventListeners() {
             document.getElementById('clearAllFiltersBtn')?.addEventListener('click', () => { 
                 selectedGenres = []; 
                 selectedFormats = [];
@@ -752,7 +750,6 @@ browse.html => <!DOCTYPE html>
             genreBtn?.addEventListener('click', (e) => { 
                 e.stopPropagation(); 
                 genreDropdown.classList.toggle('show'); 
-                // Close format dropdown
                 document.getElementById('formatDropdown')?.classList.remove('show');
             });
             
@@ -762,7 +759,6 @@ browse.html => <!DOCTYPE html>
             formatBtn?.addEventListener('click', (e) => { 
                 e.stopPropagation(); 
                 formatDropdown.classList.toggle('show');
-                // Close genre dropdown
                 document.getElementById('genreDropdown')?.classList.remove('show');
             });
             
@@ -811,15 +807,42 @@ browse.html => <!DOCTYPE html>
                 if (response.ok) {
                     const data = await response.json();
                     if (data.status === 'success' && data.formats) {
-                        // Update the FORMAT_MAP with the actual names from the database
+                        // Build the FORMAT_MAP from the database
+                        FORMAT_MAP = {};
                         data.formats.forEach(f => {
                             FORMAT_MAP[f.id] = f.name;
                         });
                         console.log('Formats loaded:', FORMAT_MAP);
+                        
+                        // Update availableFormats from the loaded data
+                        availableFormats = data.formats.map(f => f.name).sort();
+                        populateFormatDropdown();
+                        return;
                     }
                 }
+                // If API fails, use default mapping
+                console.warn('Could not fetch formats from API, using default mapping');
+                FORMAT_MAP = {
+                    1: 'Vinyl',
+                    2: 'CD',
+                    3: 'Cassette',
+                    4: 'DVD',
+                    5: 'Blu-ray'
+                };
+                availableFormats = Object.values(FORMAT_MAP).sort();
+                populateFormatDropdown();
             } catch (e) {
-                console.warn('Could not fetch formats, using default mapping:', e);
+                console.warn('Error fetching formats:', e);
+                // Use default mapping
+                FORMAT_MAP = {
+                    1: 'Vinyl',
+                    2: 'CD',
+                    3: 'Cassette',
+                    4: 'DVD',
+                    5: 'Blu-ray'
+                };
+                availableFormats = Object.values(FORMAT_MAP).sort();
+                populateFormatDropdown();
             }
         }
 
@@ -925,12 +948,10 @@ browse.html => <!DOCTYPE html>
             
             let url = `${AppConfig.baseUrl}/records?status_id=2`;
             
-            // IMPORTANT: Always use bypass_date_filter and apply cutoff in JS
-            // This ensures we get all active records and can filter them properly
+            // Always use bypass_date_filter and apply cutoff in JS
             url += `&bypass_date_filter=true`;
-            
             url += `&require_image=true`;
-            url += `&exclude_old_no_location=false`; // Don't exclude, we'll filter
+            url += `&exclude_old_no_location=false`;
         
             if (currentSearchTerm) {
                 url = `${AppConfig.baseUrl}/records?search=${encodeURIComponent(currentSearchTerm)}&status_id=2`;
@@ -949,8 +970,8 @@ browse.html => <!DOCTYPE html>
                 if (data.status === 'success') {
                     let records = data.records || [];
                     
-                    // --- NEW: Get cutoff days from config ---
-                    let cutoffDays = 30; // default
+                    // Get cutoff days from config
+                    let cutoffDays = 30;
                     try {
                         const configResponse = await fetch(`${AppConfig.baseUrl}/config/INVENTORY_CUTOFF_DAYS`);
                         if (configResponse.ok) {
@@ -963,7 +984,7 @@ browse.html => <!DOCTYPE html>
                         console.warn('Could not fetch INVENTORY_CUTOFF_DAYS, using default 30');
                     }
                     
-                    // --- Apply cutoff filter ---
+                    // Apply cutoff filter
                     const cutoffDate = new Date();
                     cutoffDate.setDate(cutoffDate.getDate() - cutoffDays);
                     
@@ -972,7 +993,7 @@ browse.html => <!DOCTYPE html>
                         return createdDate >= cutoffDate;
                     });
                     
-                    // --- Apply genre filter (using discogs_genre_raw) ---
+                    // Apply genre filter
                     if (selectedGenres.length > 0) {
                         records = records.filter(r => {
                             const genre = extractGenreFromDiscogsRaw(r.discogs_genre_raw);
@@ -980,7 +1001,7 @@ browse.html => <!DOCTYPE html>
                         });
                     }
                     
-                    // --- Apply format filter (using format_id) ---
+                    // Apply format filter
                     if (selectedFormats.length > 0) {
                         records = records.filter(r => {
                             const formatName = getFormatName(r.format_id);
@@ -988,12 +1009,12 @@ browse.html => <!DOCTYPE html>
                         });
                     }
                     
-                    // --- Apply new vinyl filter ---
+                    // Apply new vinyl filter
                     if (newVinylActive) {
                         records = records.filter(r => isNewVinyl(r));
                     }
                     
-                    // --- Apply new arrivals filter (7 days) ---
+                    // Apply new arrivals filter (7 days)
                     if (newArrivalsActive) {
                         const sevenDaysAgo = new Date();
                         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -1013,13 +1034,15 @@ browse.html => <!DOCTYPE html>
                         const genre = extractGenreFromDiscogsRaw(r.discogs_genre_raw);
                         if (genre) genreSet.add(genre);
                         
-                        // Get format from format_id
                         const formatName = getFormatName(r.format_id);
                         if (formatName) formatSet.add(formatName);
                     });
                     
                     availableGenres = Array.from(genreSet).sort();
-                    availableFormats = Array.from(formatSet).sort();
+                    // Only update availableFormats from records if not already set from API
+                    if (availableFormats.length === 0) {
+                        availableFormats = Array.from(formatSet).sort();
+                    }
                     
                     populateGenreDropdown();
                     populateFormatDropdown();
