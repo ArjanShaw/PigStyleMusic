@@ -2340,6 +2340,7 @@ def create_record():
         return jsonify({'status': 'error', 'error': f"Database error: {str(e)}"}), 500
 
 
+
 @app.route('/records', methods=['GET'])
 def get_records():
     conn = get_db()
@@ -2367,6 +2368,7 @@ def get_records():
             r.condition_sleeve_id, r.condition_disc_id, r.store_price,
             r.consignor_id, r.commission_rate, r.status_id, r.created_at, r.date_sold,
             r.last_seen, r.notes, r.discogs_genre_raw,
+            r.format_id,
             s.status_name,
             cs.condition_name as sleeve_condition_name, cs.display_name as sleeve_display,
             cs.abbreviation as sleeve_abbr, cs.quality_index as sleeve_quality,
@@ -2400,14 +2402,11 @@ def get_records():
         params.append(status_id)
     
     if search:
-        # If search term is numeric, it could be a record ID (used as barcode for newer records)
         if search.isdigit():
-            # ID and barcode: EXACT match, Artist and Title: partial match
             query += ' AND (r.id = ? OR r.barcode = ? OR r.artist LIKE ? OR r.title LIKE ? OR r.catalog_number LIKE ?)'
             search_term = f'%{search}%'
             params.extend([int(search), search, search_term, search_term, search_term])
         else:
-            # For non-numeric search: barcode EXACT match, Artist and Title: partial match
             query += ' AND (r.barcode = ? OR r.artist LIKE ? OR r.title LIKE ? OR r.catalog_number LIKE ?)'
             search_term = f'%{search}%'
             params.extend([search, search_term, search_term, search_term])

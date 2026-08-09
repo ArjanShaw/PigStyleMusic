@@ -671,18 +671,16 @@
 
     <script>
         let allRecords = [];
-        let availableGenres = [];
-        let availableFormats = [];
+        let selectedFormatIds = [];
         let selectedGenres = [];
-        let selectedFormats = [];
         let currentSearchTerm = '';
         let newArrivalsActive = true;
         let newVinylActive = false;
         let currentPage = 1;
         let recordsPerPage = 50;
         
-        // Format ID to name mapping - will be populated from database
-        let FORMAT_MAP = {};
+        // Store formats from database
+        let allFormats = [];
 
         // Load navbar and subscription modal from shared components
         document.addEventListener('DOMContentLoaded', function() {
@@ -706,10 +704,10 @@
                 initSubscriptionModal();
             }
             
-            // FIRST: Fetch format names from the database
+            // Fetch formats from database
             await fetchFormats();
             
-            // THEN: Load catalog data
+            // Load catalog data
             loadCatalogData();
             
             // Setup event listeners
@@ -719,7 +717,7 @@
         function setupEventListeners() {
             document.getElementById('clearAllFiltersBtn')?.addEventListener('click', () => { 
                 selectedGenres = []; 
-                selectedFormats = [];
+                selectedFormatIds = [];
                 currentSearchTerm = ''; 
                 newArrivalsActive = true; 
                 newVinylActive = false; 
@@ -793,7 +791,7 @@
             });
             
             document.getElementById('applyFormats')?.addEventListener('click', () => { 
-                selectedFormats = Array.from(document.querySelectorAll('#formatList input:checked')).map(cb => cb.value); 
+                selectedFormatIds = Array.from(document.querySelectorAll('#formatList input:checked')).map(cb => parseInt(cb.value));
                 formatDropdown.classList.remove('show'); 
                 currentPage = 1; 
                 loadCatalogData(); 
@@ -807,53 +805,28 @@
                 if (response.ok) {
                     const data = await response.json();
                     if (data.status === 'success' && data.formats) {
-                        // Build the FORMAT_MAP from the database
-                        FORMAT_MAP = {};
-                        data.formats.forEach(f => {
-                            FORMAT_MAP[f.id] = f.name;
-                        });
-                        console.log('Formats loaded:', FORMAT_MAP);
-                        
-                        // Update availableFormats from the loaded data
-                        availableFormats = data.formats.map(f => f.name).sort();
-                        populateFormatDropdown();
+                        allFormats = data.formats;
+                        // Populate format dropdown directly from API
+                        populateFormatDropdown(allFormats);
+                        console.log('Formats loaded from database:', allFormats);
                         return;
                     }
                 }
-                // If API fails, use default mapping
-                console.warn('Could not fetch formats from API, using default mapping');
-                FORMAT_MAP = {
-                    1: 'Vinyl',
-                    2: 'CD',
-                    3: 'Cassette',
-                    4: 'DVD',
-                    5: 'Blu-ray'
-                };
-                availableFormats = Object.values(FORMAT_MAP).sort();
-                populateFormatDropdown();
+                allFormats = [];
             } catch (e) {
-                console.warn('Error fetching formats:', e);
-                // Use default mapping
-                FORMAT_MAP = {
-                    1: 'Vinyl',
-                    2: 'CD',
-                    3: 'Cassette',
-                    4: 'DVD',
-                    5: 'Blu-ray'
-                };
-                availableFormats = Object.values(FORMAT_MAP).sort();
-                populateFormatDropdown();
+                console.error('Error fetching formats:', e);
+                allFormats = [];
             }
         }
 
         function getFormatName(formatId) {
             if (!formatId) return null;
-            return FORMAT_MAP[formatId] || null;
+            const format = allFormats.find(f => f.id === formatId);
+            return format ? format.name : null;
         }
 
         function extractGenreFromDiscogsRaw(discogs_genre_raw) {
             if (!discogs_genre_raw || discogs_genre_raw === 'NULL' || discogs_genre_raw.trim() === '') return null;
-            // If it's comma-separated, take the first one
             const genres = discogs_genre_raw.split(',').map(g => g.trim());
             return genres[0] || null;
         }
@@ -948,7 +921,6 @@
             
             let url = `${AppConfig.baseUrl}/records?status_id=2`;
             
-            // Always use bypass_date_filter and apply cutoff in JS
             url += `&bypass_date_filter=true`;
             url += `&require_image=true`;
             url += `&exclude_old_no_location=false`;
@@ -993,6 +965,15 @@
                         return createdDate >= cutoffDate;
                     });
                     
+                    // Extract genres from records for genre filter
+                    const genreSet = new Set();
+                    records.forEach(r => {
+                        const genre = extractGenreFromDiscogsRaw(r.discogs_genre_raw);
+                        if (genre) genreSet.add(genre);
+                    });
+                    const availableGenres = Array.from(genreSet).sort();
+                    populateGenreDropdown(availableGenres);
+                    
                     // Apply genre filter
                     if (selectedGenres.length > 0) {
                         records = records.filter(r => {
@@ -1001,12 +982,9 @@
                         });
                     }
                     
-                    // Apply format filter
-                    if (selectedFormats.length > 0) {
-                        records = records.filter(r => {
-                            const formatName = getFormatName(r.format_id);
-                            return formatName && selectedFormats.some(s => s.toLowerCase() === formatName.toLowerCase());
-                        });
+                    // Apply format filter - filter by format_id directly
+                    if (selectedFormatIds.length > 0) {
+                        records = records.filter(r => selectedFormatIds.includes(r.format_id));
                     }
                     
                     // Apply new vinyl filter
@@ -1025,43 +1003,23 @@
                     }
                     
                     allRecords = records;
-                    
-                    // Extract unique genres from discogs_genre_raw
-                    const genreSet = new Set();
-                    const formatSet = new Set();
-                    
-                    records.forEach(r => {
-                        const genre = extractGenreFromDiscogsRaw(r.discogs_genre_raw);
-                        if (genre) genreSet.add(genre);
-                        
-                        const formatName = getFormatName(r.format_id);
-                        if (formatName) formatSet.add(formatName);
-                    });
-                    
-                    availableGenres = Array.from(genreSet).sort();
-                    // Only update availableFormats from records if not already set from API
-                    if (availableFormats.length === 0) {
-                        availableFormats = Array.from(formatSet).sort();
-                    }
-                    
-                    populateGenreDropdown();
-                    populateFormatDropdown();
                     displayRecords(allRecords);
                     updateFilterUI();
                 }
             } catch (error) {
+                console.error('Error loading catalog:', error);
                 document.getElementById('catalogContainer').innerHTML = `<div class="error-message"><i class="fas fa-exclamation-triangle"></i><h2>Failed to Load</h2><p>${error.message}</p><button class="retry-btn" onclick="location.reload()">Retry</button></div>`;
             }
         }
 
-        function populateGenreDropdown() {
+        function populateGenreDropdown(genres) {
             const genreList = document.getElementById('genreList');
             if (!genreList) return;
-            if (availableGenres.length === 0) {
+            if (genres.length === 0) {
                 genreList.innerHTML = '<div style="color: #999; text-align: center;">No genres available</div>';
                 return;
             }
-            genreList.innerHTML = availableGenres.map(genre => `
+            genreList.innerHTML = genres.map(genre => `
                 <div class="filter-checkbox-item">
                     <input type="checkbox" id="genre_${escapeHtml(genre)}" value="${escapeHtml(genre)}">
                     <label for="genre_${escapeHtml(genre)}">${escapeHtml(genre)}</label>
@@ -1072,21 +1030,21 @@
             });
         }
 
-        function populateFormatDropdown() {
+        function populateFormatDropdown(formats) {
             const formatList = document.getElementById('formatList');
             if (!formatList) return;
-            if (availableFormats.length === 0) {
+            if (formats.length === 0) {
                 formatList.innerHTML = '<div style="color: #999; text-align: center;">No formats available</div>';
                 return;
             }
-            formatList.innerHTML = availableFormats.map(format => `
+            formatList.innerHTML = formats.map(f => `
                 <div class="filter-checkbox-item">
-                    <input type="checkbox" id="format_${escapeHtml(format)}" value="${escapeHtml(format)}">
-                    <label for="format_${escapeHtml(format)}">${escapeHtml(format)}</label>
+                    <input type="checkbox" id="format_${f.id}" value="${f.id}">
+                    <label for="format_${f.id}">${escapeHtml(f.name)}</label>
                 </div>
             `).join('');
             document.querySelectorAll('#formatList input').forEach(cb => {
-                if (selectedFormats.includes(cb.value)) cb.checked = true;
+                if (selectedFormatIds.includes(parseInt(cb.value))) cb.checked = true;
             });
         }
 
@@ -1111,7 +1069,10 @@
             if (!newArrivalsActive) filters.push(`All Records`);
             if (newVinylActive) filters.push(`New Vinyl Only`);
             if (selectedGenres.length > 0) filters.push(`Genre: ${selectedGenres.join(', ')}`);
-            if (selectedFormats.length > 0) filters.push(`Format: ${selectedFormats.join(', ')}`);
+            if (selectedFormatIds.length > 0) {
+                const formatNames = selectedFormatIds.map(id => getFormatName(id) || `Format ${id}`).join(', ');
+                filters.push(`Format: ${formatNames}`);
+            }
             
             const statusRow = document.getElementById('filterStatusRow');
             const summaryDiv = document.getElementById('filterSummary');
