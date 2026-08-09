@@ -680,6 +680,17 @@ browse.html => <!DOCTYPE html>
         let newVinylActive = false;
         let currentPage = 1;
         let recordsPerPage = 50;
+        
+        // Format ID to name mapping - THIS SHOULD MATCH YOUR formats TABLE
+        // Run: SELECT id, name FROM formats ORDER BY id;
+        // Then update this map with your actual format names
+        const FORMAT_MAP = {
+            1: 'Vinyl',
+            2: 'CD',
+            3: 'Cassette',
+            4: 'Shellac',
+            // Add more as needed based on your formats table
+        };
 
         // Load navbar and subscription modal from shared components
         document.addEventListener('DOMContentLoaded', function() {
@@ -702,6 +713,9 @@ browse.html => <!DOCTYPE html>
             if (typeof initSubscriptionModal === 'function') {
                 initSubscriptionModal();
             }
+            
+            // Fetch format names from the database
+            fetchFormats();
             
             loadCatalogData();
             
@@ -788,6 +802,30 @@ browse.html => <!DOCTYPE html>
                 currentPage = 1; 
                 loadCatalogData(); 
             });
+        }
+        
+        // Fetch format names from the database
+        async function fetchFormats() {
+            try {
+                const response = await fetch(`${AppConfig.baseUrl}/api/formats`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === 'success' && data.formats) {
+                        // Update the FORMAT_MAP with the actual names from the database
+                        data.formats.forEach(f => {
+                            FORMAT_MAP[f.id] = f.name;
+                        });
+                        console.log('Formats loaded:', FORMAT_MAP);
+                    }
+                }
+            } catch (e) {
+                console.warn('Could not fetch formats, using default mapping:', e);
+            }
+        }
+
+        function getFormatName(formatId) {
+            if (!formatId) return null;
+            return FORMAT_MAP[formatId] || null;
         }
 
         function extractGenreFromDiscogsRaw(discogs_genre_raw) {
@@ -929,7 +967,6 @@ browse.html => <!DOCTYPE html>
                     const cutoffDate = new Date();
                     cutoffDate.setDate(cutoffDate.getDate() - cutoffDays);
                     
-                    // NEW: Filter based on created_at if last_seen is not available
                     records = records.filter(r => {
                         const createdDate = new Date(r.created_at);
                         return createdDate >= cutoffDate;
@@ -943,29 +980,11 @@ browse.html => <!DOCTYPE html>
                         });
                     }
                     
-                    // --- Apply format filter (parse from discogs_genre_raw or format_id) ---
+                    // --- Apply format filter (using format_id) ---
                     if (selectedFormats.length > 0) {
                         records = records.filter(r => {
-                            // Try to get format from discogs_genre_raw
-                            let format = '';
-                            if (r.discogs_genre_raw) {
-                                const parts = r.discogs_genre_raw.split('|');
-                                if (parts.length > 1) {
-                                    format = parts[1].trim().toLowerCase();
-                                }
-                            }
-                            // If no format found, try format_id
-                            if (!format && r.format_id) {
-                                // Map format_id to format name
-                                const formatMap = {
-                                    1: 'vinyl',
-                                    2: 'cd',
-                                    3: 'tape',
-                                    4: 'shellac'
-                                };
-                                format = formatMap[r.format_id] || '';
-                            }
-                            return selectedFormats.some(s => format.includes(s.toLowerCase()));
+                            const formatName = getFormatName(r.format_id);
+                            return formatName && selectedFormats.some(s => s.toLowerCase() === formatName.toLowerCase());
                         });
                     }
                     
@@ -994,24 +1013,9 @@ browse.html => <!DOCTYPE html>
                         const genre = extractGenreFromDiscogsRaw(r.discogs_genre_raw);
                         if (genre) genreSet.add(genre);
                         
-                        // Extract format
-                        let format = '';
-                        if (r.discogs_genre_raw) {
-                            const parts = r.discogs_genre_raw.split('|');
-                            if (parts.length > 1) {
-                                format = parts[1].trim();
-                            }
-                        }
-                        if (!format && r.format_id) {
-                            const formatMap = {
-                                1: 'Vinyl',
-                                2: 'CD',
-                                3: 'Tape',
-                                4: 'Shellac'
-                            };
-                            format = formatMap[r.format_id] || '';
-                        }
-                        if (format) formatSet.add(format);
+                        // Get format from format_id
+                        const formatName = getFormatName(r.format_id);
+                        if (formatName) formatSet.add(formatName);
                     });
                     
                     availableGenres = Array.from(genreSet).sort();
@@ -1109,24 +1113,7 @@ browse.html => <!DOCTYPE html>
             
             const genre = extractGenreFromDiscogsRaw(record.discogs_genre_raw);
             const combinedCondition = getCombinedCondition(record.condition_disc_id, record.condition_sleeve_id);
-            
-            // Extract format
-            let format = '';
-            if (record.discogs_genre_raw) {
-                const parts = record.discogs_genre_raw.split('|');
-                if (parts.length > 1) {
-                    format = parts[1].trim();
-                }
-            }
-            if (!format && record.format_id) {
-                const formatMap = {
-                    1: 'Vinyl',
-                    2: 'CD',
-                    3: 'Tape',
-                    4: 'Shellac'
-                };
-                format = formatMap[record.format_id] || '';
-            }
+            const formatName = getFormatName(record.format_id);
             
             const imageHtml = record.image_url ? 
                 `<img src="${record.image_url}" alt="${record.title}" onerror="this.parentElement.classList.add('default-bg'); this.style.display='none';">` : '';
@@ -1148,8 +1135,8 @@ browse.html => <!DOCTYPE html>
                 innerHtml += `<div class="record-card-genre"><i class="fas fa-music"></i> ${escapeHtml(genre)}</div>`;
             }
             
-            if (format) {
-                innerHtml += `<div class="record-card-format"><i class="fas fa-record-vinyl"></i> ${escapeHtml(format)}</div>`;
+            if (formatName) {
+                innerHtml += `<div class="record-card-format"><i class="fas fa-record-vinyl"></i> ${escapeHtml(formatName)}</div>`;
             }
             
             innerHtml += `</div>`;
@@ -1163,24 +1150,7 @@ browse.html => <!DOCTYPE html>
             const genre = extractGenreFromDiscogsRaw(record.discogs_genre_raw);
             const discCondition = getConditionDisplayName(record.condition_disc_id);
             const sleeveCondition = getConditionDisplayName(record.condition_sleeve_id);
-            
-            // Extract format
-            let format = '';
-            if (record.discogs_genre_raw) {
-                const parts = record.discogs_genre_raw.split('|');
-                if (parts.length > 1) {
-                    format = parts[1].trim();
-                }
-            }
-            if (!format && record.format_id) {
-                const formatMap = {
-                    1: 'Vinyl',
-                    2: 'CD',
-                    3: 'Tape',
-                    4: 'Shellac'
-                };
-                format = formatMap[record.format_id] || '';
-            }
+            const formatName = getFormatName(record.format_id);
             
             const modal = document.createElement('div');
             modal.className = 'record-modal-overlay';
@@ -1193,8 +1163,8 @@ browse.html => <!DOCTYPE html>
             if (genre) {
                 detailsHtml += `<div class="detail-row"><span class="detail-label">Genre:</span><span>${escapeHtml(genre)}</span></div>`;
             }
-            if (format) {
-                detailsHtml += `<div class="detail-row"><span class="detail-label">Format:</span><span>${escapeHtml(format)}</span></div>`;
+            if (formatName) {
+                detailsHtml += `<div class="detail-row"><span class="detail-label">Format:</span><span>${escapeHtml(formatName)}</span></div>`;
             }
             
             modal.innerHTML = `
