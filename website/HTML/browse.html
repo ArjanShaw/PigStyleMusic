@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+browse.html => <!DOCTYPE html>
 <html lang='en'>
 <head>
     <meta charset='UTF-8'>
@@ -173,10 +173,10 @@
             margin-top: 8px;
         }
         
-        .record-card-location {
+        .record-card-format {
             font-size: 11px;
             color: #6c5ce7;
-            margin-top: 6px;
+            margin-top: 4px;
             display: flex;
             align-items: center;
             gap: 5px;
@@ -608,6 +608,7 @@
         </div>
         
         <div class="filter-section">
+            <!-- Genre Filter -->
             <div class="filter-group">
                 <button id="genreFilterBtn" class="filter-btn">
                     <i class="fas fa-filter"></i> Genre
@@ -620,6 +621,23 @@
                         <button id="selectAllGenres" class="filter-action-btn">All</button>
                         <button id="clearAllGenres" class="filter-action-btn">Clear</button>
                         <button id="applyGenres" class="filter-action-btn filter-apply">Apply</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Format Filter -->
+            <div class="filter-group">
+                <button id="formatFilterBtn" class="filter-btn">
+                    <i class="fas fa-record-vinyl"></i> Format
+                </button>
+                <div id="formatDropdown" class="filter-checkbox-container">
+                    <div class="filter-checkbox-group" id="formatList">
+                        <div style="color: #999; text-align: center; padding: 20px;">Loading formats...</div>
+                    </div>
+                    <div class="filter-actions">
+                        <button id="selectAllFormats" class="filter-action-btn">All</button>
+                        <button id="clearAllFormats" class="filter-action-btn">Clear</button>
+                        <button id="applyFormats" class="filter-action-btn filter-apply">Apply</button>
                     </div>
                 </div>
             </div>
@@ -654,7 +672,9 @@
     <script>
         let allRecords = [];
         let availableGenres = [];
+        let availableFormats = [];
         let selectedGenres = [];
+        let selectedFormats = [];
         let currentSearchTerm = '';
         let newArrivalsActive = true;
         let newVinylActive = false;
@@ -663,26 +683,22 @@
 
         // Load navbar and subscription modal from shared components
         document.addEventListener('DOMContentLoaded', function() {
-            // Load navbar from shared component
             if (typeof loadNavbar === 'function') {
                 loadNavbar();
             } else {
                 console.warn('loadNavbar function not found, make sure shared.js is loaded');
             }
             
-            // Load subscription modal from shared component
             if (typeof loadSubscriptionModal === 'function') {
                 loadSubscriptionModal();
             } else {
                 console.warn('loadSubscriptionModal function not found, make sure shared.js is loaded');
             }
             
-            // Initialize browse page
             initBrowsePage();
         });
 
         function initBrowsePage() {
-            // Initialize subscription modal using shared function (if available)
             if (typeof initSubscriptionModal === 'function') {
                 initSubscriptionModal();
             }
@@ -691,12 +707,14 @@
             
             document.getElementById('clearAllFiltersBtn')?.addEventListener('click', () => { 
                 selectedGenres = []; 
+                selectedFormats = [];
                 currentSearchTerm = ''; 
                 newArrivalsActive = true; 
                 newVinylActive = false; 
                 currentPage = 1; 
                 document.getElementById('searchBox').value = ''; 
-                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false); 
+                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false);
+                document.querySelectorAll('#formatList input').forEach(cb => cb.checked = false);
                 loadCatalogData(); 
             });
             
@@ -714,16 +732,31 @@
             
             document.getElementById('searchBox')?.addEventListener('input', debounce(() => loadCatalogData(), 500));
             
+            // Genre dropdown
             const genreBtn = document.getElementById('genreFilterBtn');
             const genreDropdown = document.getElementById('genreDropdown');
             genreBtn?.addEventListener('click', (e) => { 
                 e.stopPropagation(); 
                 genreDropdown.classList.toggle('show'); 
+                // Close format dropdown
+                document.getElementById('formatDropdown')?.classList.remove('show');
+            });
+            
+            // Format dropdown
+            const formatBtn = document.getElementById('formatFilterBtn');
+            const formatDropdown = document.getElementById('formatDropdown');
+            formatBtn?.addEventListener('click', (e) => { 
+                e.stopPropagation(); 
+                formatDropdown.classList.toggle('show');
+                // Close genre dropdown
+                document.getElementById('genreDropdown')?.classList.remove('show');
             });
             
             document.addEventListener('click', (e) => { 
                 if (!genreDropdown?.contains(e.target) && e.target !== genreBtn) 
-                    genreDropdown?.classList.remove('show'); 
+                    genreDropdown?.classList.remove('show');
+                if (!formatDropdown?.contains(e.target) && e.target !== formatBtn)
+                    formatDropdown?.classList.remove('show');
             });
             
             document.getElementById('selectAllGenres')?.addEventListener('click', () => { 
@@ -740,19 +773,28 @@
                 currentPage = 1; 
                 loadCatalogData(); 
             });
+            
+            document.getElementById('selectAllFormats')?.addEventListener('click', () => { 
+                document.querySelectorAll('#formatList input').forEach(cb => cb.checked = true); 
+            });
+            
+            document.getElementById('clearAllFormats')?.addEventListener('click', () => { 
+                document.querySelectorAll('#formatList input').forEach(cb => cb.checked = false); 
+            });
+            
+            document.getElementById('applyFormats')?.addEventListener('click', () => { 
+                selectedFormats = Array.from(document.querySelectorAll('#formatList input:checked')).map(cb => cb.value); 
+                formatDropdown.classList.remove('show'); 
+                currentPage = 1; 
+                loadCatalogData(); 
+            });
         }
 
-        function extractGenreFromLocation(location) {
-            if (!location || location === 'NULL') return null;
-            if (location.includes(' | ')) {
-                return location.split(' | ')[0].trim();
-            }
-            return location.trim();
-        }
-        
-        function formatLocationDisplay(location) {
-            if (!location || location === 'NULL') return 'Check with staff';
-            return location;
+        function extractGenreFromDiscogsRaw(discogs_genre_raw) {
+            if (!discogs_genre_raw || discogs_genre_raw === 'NULL' || discogs_genre_raw.trim() === '') return null;
+            // If it's comma-separated, take the first one
+            const genres = discogs_genre_raw.split(',').map(g => g.trim());
+            return genres[0] || null;
         }
 
         function getConditionDisplayName(conditionId) {
@@ -845,20 +887,18 @@
             
             let url = `${AppConfig.baseUrl}/records?status_id=2`;
             
-            if (!newArrivalsActive) {
-                url += `&bypass_date_filter=true`;
-            }
+            // IMPORTANT: Always use bypass_date_filter and apply cutoff in JS
+            // This ensures we get all active records and can filter them properly
+            url += `&bypass_date_filter=true`;
             
             url += `&require_image=true`;
-            url += `&exclude_old_no_location=true`;
-            
+            url += `&exclude_old_no_location=false`; // Don't exclude, we'll filter
+        
             if (currentSearchTerm) {
                 url = `${AppConfig.baseUrl}/records?search=${encodeURIComponent(currentSearchTerm)}&status_id=2`;
-                if (!newArrivalsActive) {
-                    url += `&bypass_date_filter=true`;
-                }
+                url += `&bypass_date_filter=true`;
                 url += `&require_image=true`;
-                url += `&exclude_old_no_location=true`;
+                url += `&exclude_old_no_location=false`;
             }
             
             document.getElementById('catalogContainer').innerHTML = `<div class="loading-indicator"><div class="loading-dots"><div></div><div></div><div></div><div></div></div><p>Loading records...</p></div>`;
@@ -870,24 +910,115 @@
                 
                 if (data.status === 'success') {
                     let records = data.records || [];
-                    if (newVinylActive) records = records.filter(r => isNewVinyl(r));
+                    
+                    // --- NEW: Get cutoff days from config ---
+                    let cutoffDays = 30; // default
+                    try {
+                        const configResponse = await fetch(`${AppConfig.baseUrl}/config/INVENTORY_CUTOFF_DAYS`);
+                        if (configResponse.ok) {
+                            const configData = await configResponse.json();
+                            if (configData.config_value) {
+                                cutoffDays = parseInt(configData.config_value) || 30;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Could not fetch INVENTORY_CUTOFF_DAYS, using default 30');
+                    }
+                    
+                    // --- Apply cutoff filter ---
+                    const cutoffDate = new Date();
+                    cutoffDate.setDate(cutoffDate.getDate() - cutoffDays);
+                    
+                    // NEW: Filter based on created_at if last_seen is not available
+                    records = records.filter(r => {
+                        const createdDate = new Date(r.created_at);
+                        return createdDate >= cutoffDate;
+                    });
+                    
+                    // --- Apply genre filter (using discogs_genre_raw) ---
                     if (selectedGenres.length > 0) {
                         records = records.filter(r => {
-                            const genre = extractGenreFromLocation(r.location);
+                            const genre = extractGenreFromDiscogsRaw(r.discogs_genre_raw);
                             return genre && selectedGenres.some(s => s.toLowerCase() === genre.toLowerCase());
                         });
                     }
-                    allRecords = records;
                     
-                    const genreSet = new Set();
-                    if (data.records) {
-                        data.records.forEach(r => {
-                            const genre = extractGenreFromLocation(r.location);
-                            if (genre) genreSet.add(genre);
+                    // --- Apply format filter (parse from discogs_genre_raw or format_id) ---
+                    if (selectedFormats.length > 0) {
+                        records = records.filter(r => {
+                            // Try to get format from discogs_genre_raw
+                            let format = '';
+                            if (r.discogs_genre_raw) {
+                                const parts = r.discogs_genre_raw.split('|');
+                                if (parts.length > 1) {
+                                    format = parts[1].trim().toLowerCase();
+                                }
+                            }
+                            // If no format found, try format_id
+                            if (!format && r.format_id) {
+                                // Map format_id to format name
+                                const formatMap = {
+                                    1: 'vinyl',
+                                    2: 'cd',
+                                    3: 'tape',
+                                    4: 'shellac'
+                                };
+                                format = formatMap[r.format_id] || '';
+                            }
+                            return selectedFormats.some(s => format.includes(s.toLowerCase()));
                         });
                     }
+                    
+                    // --- Apply new vinyl filter ---
+                    if (newVinylActive) {
+                        records = records.filter(r => isNewVinyl(r));
+                    }
+                    
+                    // --- Apply new arrivals filter (7 days) ---
+                    if (newArrivalsActive) {
+                        const sevenDaysAgo = new Date();
+                        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                        records = records.filter(r => {
+                            const createdDate = new Date(r.created_at);
+                            return createdDate >= sevenDaysAgo;
+                        });
+                    }
+                    
+                    allRecords = records;
+                    
+                    // Extract unique genres from discogs_genre_raw
+                    const genreSet = new Set();
+                    const formatSet = new Set();
+                    
+                    records.forEach(r => {
+                        const genre = extractGenreFromDiscogsRaw(r.discogs_genre_raw);
+                        if (genre) genreSet.add(genre);
+                        
+                        // Extract format
+                        let format = '';
+                        if (r.discogs_genre_raw) {
+                            const parts = r.discogs_genre_raw.split('|');
+                            if (parts.length > 1) {
+                                format = parts[1].trim();
+                            }
+                        }
+                        if (!format && r.format_id) {
+                            const formatMap = {
+                                1: 'Vinyl',
+                                2: 'CD',
+                                3: 'Tape',
+                                4: 'Shellac'
+                            };
+                            format = formatMap[r.format_id] || '';
+                        }
+                        if (format) formatSet.add(format);
+                    });
+                    
                     availableGenres = Array.from(genreSet).sort();
+                    availableFormats = Array.from(formatSet).sort();
+                    
                     populateGenreDropdown();
+                    populateFormatDropdown();
                     displayRecords(allRecords);
                     updateFilterUI();
                 }
@@ -914,6 +1045,24 @@
             });
         }
 
+        function populateFormatDropdown() {
+            const formatList = document.getElementById('formatList');
+            if (!formatList) return;
+            if (availableFormats.length === 0) {
+                formatList.innerHTML = '<div style="color: #999; text-align: center;">No formats available</div>';
+                return;
+            }
+            formatList.innerHTML = availableFormats.map(format => `
+                <div class="filter-checkbox-item">
+                    <input type="checkbox" id="format_${escapeHtml(format)}" value="${escapeHtml(format)}">
+                    <label for="format_${escapeHtml(format)}">${escapeHtml(format)}</label>
+                </div>
+            `).join('');
+            document.querySelectorAll('#formatList input').forEach(cb => {
+                if (selectedFormats.includes(cb.value)) cb.checked = true;
+            });
+        }
+
         function updateFilterUI() {
             const arrivalsBtn = document.getElementById('newArrivalsBtn');
             const vinylBtn = document.getElementById('newVinylBtn');
@@ -935,6 +1084,7 @@
             if (!newArrivalsActive) filters.push(`All Records`);
             if (newVinylActive) filters.push(`New Vinyl Only`);
             if (selectedGenres.length > 0) filters.push(`Genre: ${selectedGenres.join(', ')}`);
+            if (selectedFormats.length > 0) filters.push(`Format: ${selectedFormats.join(', ')}`);
             
             const statusRow = document.getElementById('filterStatusRow');
             const summaryDiv = document.getElementById('filterSummary');
@@ -957,9 +1107,26 @@
             const card = document.createElement('div');
             card.className = 'record-card';
             
-            const genre = extractGenreFromLocation(record.location);
-            const locationDisplay = formatLocationDisplay(record.location);
+            const genre = extractGenreFromDiscogsRaw(record.discogs_genre_raw);
             const combinedCondition = getCombinedCondition(record.condition_disc_id, record.condition_sleeve_id);
+            
+            // Extract format
+            let format = '';
+            if (record.discogs_genre_raw) {
+                const parts = record.discogs_genre_raw.split('|');
+                if (parts.length > 1) {
+                    format = parts[1].trim();
+                }
+            }
+            if (!format && record.format_id) {
+                const formatMap = {
+                    1: 'Vinyl',
+                    2: 'CD',
+                    3: 'Tape',
+                    4: 'Shellac'
+                };
+                format = formatMap[record.format_id] || '';
+            }
             
             const imageHtml = record.image_url ? 
                 `<img src="${record.image_url}" alt="${record.title}" onerror="this.parentElement.classList.add('default-bg'); this.style.display='none';">` : '';
@@ -981,7 +1148,10 @@
                 innerHtml += `<div class="record-card-genre"><i class="fas fa-music"></i> ${escapeHtml(genre)}</div>`;
             }
             
-            innerHtml += `<div class="record-card-location"><i class="fas fa-map-marker-alt"></i> ${escapeHtml(locationDisplay)}</div>`;
+            if (format) {
+                innerHtml += `<div class="record-card-format"><i class="fas fa-record-vinyl"></i> ${escapeHtml(format)}</div>`;
+            }
+            
             innerHtml += `</div>`;
             
             card.innerHTML = innerHtml;
@@ -990,10 +1160,27 @@
         }
 
         function showRecordModal(record) {
-            const genre = extractGenreFromLocation(record.location);
-            const locationDisplay = formatLocationDisplay(record.location);
+            const genre = extractGenreFromDiscogsRaw(record.discogs_genre_raw);
             const discCondition = getConditionDisplayName(record.condition_disc_id);
             const sleeveCondition = getConditionDisplayName(record.condition_sleeve_id);
+            
+            // Extract format
+            let format = '';
+            if (record.discogs_genre_raw) {
+                const parts = record.discogs_genre_raw.split('|');
+                if (parts.length > 1) {
+                    format = parts[1].trim();
+                }
+            }
+            if (!format && record.format_id) {
+                const formatMap = {
+                    1: 'Vinyl',
+                    2: 'CD',
+                    3: 'Tape',
+                    4: 'Shellac'
+                };
+                format = formatMap[record.format_id] || '';
+            }
             
             const modal = document.createElement('div');
             modal.className = 'record-modal-overlay';
@@ -1006,7 +1193,9 @@
             if (genre) {
                 detailsHtml += `<div class="detail-row"><span class="detail-label">Genre:</span><span>${escapeHtml(genre)}</span></div>`;
             }
-            detailsHtml += `<div class="detail-row"><span class="detail-label">Location:</span><span>${escapeHtml(locationDisplay)}</span></div>`;
+            if (format) {
+                detailsHtml += `<div class="detail-row"><span class="detail-label">Format:</span><span>${escapeHtml(format)}</span></div>`;
+            }
             
             modal.innerHTML = `
                 <div class="record-modal">
