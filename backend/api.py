@@ -3448,36 +3448,7 @@ def get_user_records(user_id):
     return jsonify({'status': 'success', 'records': records_list})
 
 
-
-@app.route('/records/status/<int:status_id>', methods=['GET'])
-def get_records_by_status(status_id):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT id FROM d_status WHERE id = ?', (status_id,))
-    if not cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Invalid status ID'}), 400
-    cursor.execute('''
-        SELECT r.*, s.status_name, u.username as consignor_name,
-        cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
-        FROM records r
-        LEFT JOIN d_status s ON r.status_id = s.id
-        LEFT JOIN users u ON r.consignor_id = u.id
-        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-        WHERE r.status_id = ?
-        ORDER BY r.artist, r.title
-    ''', (status_id,))
-    records = cursor.fetchall()
-    conn.close()
-    records_list = []
-    for record in records:
-        record_dict = dict(record)
-        if record_dict.get('sleeve_condition_name'):
-            record_dict['condition'] = record_dict['sleeve_condition_name']
-        records_list.append(record_dict)
-    return jsonify({'status': 'success', 'count': len(records_list), 'status_id': status_id, 'records': records_list})
-
+ 
 
 # ==================== CONDITIONS ENDPOINTS ====================
 
@@ -3748,49 +3719,7 @@ def discogs_search_proxy():
     
     return jsonify({'status': 'success', 'results': results, 'count': len(results)})
 
- 
-@app.route('/catalog/records', methods=['GET'])
-def get_catalog_records():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'INVENTORY_CUTOFF_DAYS'")
-    cutoff_row = cursor.fetchone()
-    cutoff_days = int(cutoff_row['config_value']) if cutoff_row else 30
-    query = """
-        SELECT r.id, r.artist, r.title, r.barcode, r.image_url, r.catalog_number, r.store_price, r.consignor_id,
-        r.commission_rate, r.created_at, r.status_id, ds.status_name as status_name,
-        r.date_sold, r.condition_sleeve_id, cs.condition_name as condition_sleeve,
-        r.condition_disc_id, cd.condition_name as condition_disc, r.last_seen,
-        r.discogs_listing_id, r.discogs_listed_date, r.location, r.discogs_genre_raw
-        FROM records r
-        LEFT JOIN d_status ds ON r.status_id = ds.id
-        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-        WHERE (r.last_seen >= DATE('now', '-' || ? || ' days') OR r.last_seen IS NULL)
-        ORDER BY r.created_at DESC
-    """
-    cursor.execute(query, (cutoff_days,))
-    rows = cursor.fetchall()
-    records = []
-    for row in rows:
-        record = {
-            'id': row['id'], 'artist': row['artist'], 'title': row['title'],
-            'barcode': row['barcode'], 'image_url': row['image_url'],
-            'catalog_number': row['catalog_number'], 'store_price': row['store_price'],
-            'consignor_id': row['consignor_id'],
-            'commission_rate': row['commission_rate'], 'created_at': row['created_at'],
-            'status_id': row['status_id'], 'status_name': row['status_name'],
-            'date_sold': row['date_sold'], 'condition_sleeve_id': row['condition_sleeve_id'],
-            'condition_sleeve': row['condition_sleeve'], 'condition_disc_id': row['condition_disc_id'],
-            'condition_disc': row['condition_disc'], 'last_seen': row['last_seen'],
-            'discogs_listing_id': row['discogs_listing_id'], 'discogs_listed_date': row['discogs_listed_date'],
-            'location': row['location'] if row['location'] else 'Check with staff',
-            'discogs_genre_raw': row['discogs_genre_raw'] or ''
-        }
-        records.append(record)
-    return jsonify({'status': 'success', 'records': records, 'total': len(records), 'cutoff_days': cutoff_days})
-
-
+  
 
 # ==================== COMMISSION RATE ENDPOINT ====================
 
