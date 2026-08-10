@@ -1243,9 +1243,6 @@ def get_sales_over_time_discogs_stats():
     })
 
 
-
-# ==================== CHECKOUT ENDPOINTS ====================
-
 @app.route('/api/checkout/process', methods=['POST'])
 def process_checkout():
     """Create a Square payment link for either records or accessories"""
@@ -1275,16 +1272,6 @@ def process_checkout():
         item_ids = []
         record_descriptions = []
         
-        # ===== GIFT CARD PROCESSING =====
-        gift_cards_to_activate = []
-        regular_items = []
-
-        for item in items:
-            if item.get('type') == 'gift_card':
-                gift_cards_to_activate.append(item)
-            else:
-                regular_items.append(item)
-
         def trim_string(s, max_length=50):
             if not s:
                 return ''
@@ -1293,7 +1280,7 @@ def process_checkout():
                 return s
             return s[:max_length-3] + '...'
         
-        for item in regular_items:
+        for item in items:
             if item_type == 'accessory':
                 item_name = item.get('description') or item.get('title', 'Merchandise')
                 barcode = item.get('bar_code') or 'NO-BARCODE'
@@ -1313,29 +1300,6 @@ def process_checkout():
                     display_name = f"{artist_name} - {item_name}"
                 else:
                     display_name = item_name
-            
-            # Add gift card items to line items
-            if item.get('type') == 'gift_card':
-                display_name = f"Gift Card - {item.get('recipient_name', '')}"
-                if item.get('notes'):
-                    display_name += f" ({item.get('notes')})"
-                display_name = trim_string(display_name, 30)
-                
-                line_items.append({
-                    "name": display_name,
-                    "quantity": "1",
-                    "base_price_money": {"amount": int(round(float(item.get('charge_amount', 0)) * 100)), "currency": "USD"}
-                })
-                
-                # Add to gift card list for activation
-                gift_cards_to_activate.append({
-                    'code': item.get('code', '').upper().strip(),
-                    'card_value': float(item.get('card_value', 0)),
-                    'charge_amount': float(item.get('charge_amount', 0)),
-                    'recipient_name': item.get('recipient_name', '').strip(),
-                    'notes': item.get('notes', '').strip()
-                })
-                continue
             
             line_items.append({
                 "name": display_name,
@@ -1366,21 +1330,7 @@ def process_checkout():
         if len(formatted_note) > 500:
             formatted_note = formatted_note[:497] + "..."
         
-        metadata = {
-            'order_id': str(order_id), 
-            'order_number': order_number, 
-            'item_type': item_type, 
-            'item_ids': json.dumps(item_ids)
-        }
-        
-        # Add gift card metadata if any
-        if gift_cards_to_activate:
-            metadata['gift_cards'] = json.dumps([{
-                'code': gc['code'],
-                'card_value': gc['card_value'],
-                'charge_amount': gc['charge_amount'],
-                'recipient_name': gc['recipient_name']
-            } for gc in gift_cards_to_activate])
+        metadata = {'order_id': str(order_id), 'order_number': order_number, 'item_type': item_type, 'item_ids': json.dumps(item_ids)}
         
         headers = {
             'Authorization': f'Bearer {access_token}',
@@ -1419,13 +1369,7 @@ def process_checkout():
             return jsonify({'status': 'error', 'error': 'Missing required data from Square'}), 500
         
         if item_type == 'accessory':
-            return jsonify({
-                'status': 'success', 
-                'checkout_url': checkout_url, 
-                'order_id': order_id, 
-                'order_number': order_number, 
-                'square_order_id': square_order_id
-            }), 200
+            return jsonify({'status': 'success', 'checkout_url': checkout_url, 'order_id': order_id, 'order_number': order_number, 'square_order_id': square_order_id}), 200
         
         # For records, create order in database
         conn = get_db()
@@ -1436,141 +1380,18 @@ def process_checkout():
         
         try:
             cursor.execute("BEGIN TRANSACTION")
-            
-            # ===== ACTIVATE GIFT CARDS =====
-            gift_card_results = []
-            for gc in gift_cards_to_activate:
-                code = gc.get('code', '').upper().strip()
-                card_value = float(gc.get('card_value', 0))
-                charge_amount = float(gc.get('charge_amount', 0))
-                recipient_name = gc.get('recipient_name', '').strip()
-                notes = gc.get('notes', '').strip()
-                payment_method = data.get('payment_method', 'cash')
-                
-                if not code:
-                    conn.rollback()
-                    conn.close()
-                    return jsonify({'status': 'error', 'error': 'Gift card code required'}), 400
-                
-                if card_value <= 0:
-                    conn.rollback()
-                    conn.close()
-                    return jsonify({'status': 'error', 'error': 'Card value must be greater than 0'}), 400
-                
-                if charge_amount < 0:
-                    conn.rollback()
-                    conn.close()
-                    return jsonify({'status': 'error', 'error': 'Charge amount cannot be negative'}), 400
-                
-                if not recipient_name:
-                    conn.rollback()
-                    conn.close()
-                    return jsonify({'status': 'error', 'error': 'Recipient name required for gift card'}), 400
-                
-                # Check if code already exists
-                cursor.execute('SELECT id FROM journal_entries WHERE source_type = "gift_card" AND source_id = ?', (code,))
-                if cursor.fetchone():
-                    conn.rollback()
-                    conn.close()
-                    return jsonify({'status': 'error', 'error': f'Gift card code {code} already exists'}), 400
-                
-                # Get account IDs
-                cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))  # Store Credit Liability
-                liability = cursor.fetchone()
-                if not liability:
-                    conn.rollback()
-                    conn.close()
-                    return jsonify({'status': 'error', 'error': 'Store Credit Liability account (2015) not found'}), 500
-                
-                # Get payment account based on payment method
-                account_map = {
-                    'cash': '1015',
-                    'square': '1030',
-                    'card': '1015'
-                }
-                payment_account_code = account_map.get(payment_method, '1015')
-                cursor.execute('SELECT id FROM accounts WHERE code = ?', (payment_account_code,))
-                payment_account = cursor.fetchone()
-                if not payment_account:
-                    conn.rollback()
-                    conn.close()
-                    return jsonify({'status': 'error', 'error': f'Payment account {payment_account_code} not found'}), 500
-                
-                # Get promotional expense account (6010)
-                cursor.execute('SELECT id FROM accounts WHERE code = ?', ('6010',))
-                promo_account = cursor.fetchone()
-                
-                card_value_cents = int(round(card_value * 100))
-                charge_amount_cents = int(round(charge_amount * 100))
-                today = datetime.now().strftime('%Y-%m-%d')
-                
-                # Build description
-                description = f"{recipient_name} | {code} | ${card_value:.2f}"
-                if notes:
-                    description += f" | {notes}"
-                if order_number:
-                    description += f" | Order #{order_number}"
-                
-                # Create journal entry
-                cursor.execute('''
-                    INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-                    VALUES (?, ?, ?, ?)
-                ''', (today, description, 'gift_card', code))
-                entry_id = cursor.lastrowid
-                
-                # Debit: Payment account (what customer paid)
-                if charge_amount_cents > 0:
-                    cursor.execute('''
-                        INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                        VALUES (?, ?, ?, ?)
-                    ''', (entry_id, payment_account['id'], charge_amount_cents, 0))
-                
-                # If charge_amount < card_value, debit the difference to promotional expense
-                diff_cents = card_value_cents - charge_amount_cents
-                if diff_cents > 0 and promo_account:
-                    cursor.execute('''
-                        INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                        VALUES (?, ?, ?, ?)
-                    ''', (entry_id, promo_account['id'], diff_cents, 0))
-                
-                # If charge_amount > card_value, credit the excess to revenue
-                if charge_amount_cents > card_value_cents:
-                    excess_cents = charge_amount_cents - card_value_cents
-                    cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4000',))
-                    revenue = cursor.fetchone()
-                    if revenue:
-                        cursor.execute('''
-                            INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                            VALUES (?, ?, ?, ?)
-                        ''', (entry_id, revenue['id'], 0, excess_cents))
-                
-                # Credit: Store Credit Liability (what the card is worth)
-                cursor.execute('''
-                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                    VALUES (?, ?, ?, ?)
-                ''', (entry_id, liability['id'], 0, card_value_cents))
-                
-                gift_card_results.append({
-                    'code': code,
-                    'card_value': card_value,
-                    'charge_amount': charge_amount,
-                    'recipient_name': recipient_name,
-                    'entry_id': entry_id
-                })
-            
-            # Insert order (only if there are regular items or gift cards)
             cursor.execute('''
                 INSERT INTO orders (id, order_number, customer_name, customer_email, shipping_method,
                 shipping_address_line1, shipping_address_line2, shipping_city, shipping_state, shipping_zip,
                 shipping_country, shipping_cost, subtotal, tax, total, square_checkout_id, square_order_id,
-                payment_status, order_status, notes, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                payment_status, order_status, notes, created_at, updated_at, notified, channel)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, 'website')
             ''', (order_id, order_number, data.get('customer_name', 'Walk-in Customer'), data.get('customer_email', ''),
                   shipping_method, data.get('address', ''), data.get('apt', ''), data.get('city', ''),
                   data.get('state', ''), data.get('zip', ''), data.get('country', 'USA'), shipping_cost,
                   subtotal, data.get('tax', 0), total, payment_link.get('id'), square_order_id, 'pending', 'pending', data.get('notes', '')))
             
-            for item in regular_items:
+            for item in items:
                 cursor.execute('''
                     INSERT INTO order_items (order_id, record_id, record_title, record_artist, record_condition, price_at_time, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -1583,19 +1404,11 @@ def process_checkout():
         finally:
             conn.close()
         
-        return jsonify({
-            'status': 'success', 
-            'checkout_url': checkout_url, 
-            'order_id': order_id, 
-            'order_number': order_number, 
-            'square_order_id': square_order_id,
-            'gift_cards_activated': gift_card_results if gift_card_results else None
-        }), 200
+        return jsonify({'status': 'success', 'checkout_url': checkout_url, 'order_id': order_id, 'order_number': order_number, 'square_order_id': square_order_id}), 200
         
     except Exception as e:
         app.logger.error(f"Checkout error: {str(e)}")
         return jsonify({'status': 'error', 'error': f'Server error: {str(e)}'}), 500
-
 
 # ==================== SQUARE TERMINAL ENDPOINTS ====================
 
@@ -2318,7 +2131,6 @@ def create_record():
         conn.close()
         return jsonify({'status': 'error', 'error': f"Database error: {str(e)}"}), 500
 
-
 @app.route('/records', methods=['GET'])
 def get_records():
     conn = get_db()
@@ -2330,10 +2142,10 @@ def get_records():
     status_ids = request.args.get('status_ids', '')
     created_after = request.args.get('created_after')
     search = request.args.get('search', '').strip()
+    last_seen_days = request.args.get('last_seen_days', type=int)
     
     require_image = request.args.get('require_image', 'false').lower() == 'true'
     require_location = request.args.get('require_location', 'false').lower() == 'true'
-    exclude_old_no_location = request.args.get('exclude_old_no_location', 'false').lower() == 'true'
     
     bypass_date_filter = request.args.get('bypass_date_filter', 'false').lower() == 'true'
     
@@ -2404,12 +2216,14 @@ def get_records():
     if require_image:
         query += ' AND r.image_url IS NOT NULL AND r.image_url != \'\''
     
+    # Filter by location_id - only records with a valid location
     if require_location:
         query += ' AND r.location_id IS NOT NULL'
     
-    if exclude_old_no_location:
-        query += ''' AND (r.created_at >= date('now', '-30 days') 
-                     OR r.location_id IS NOT NULL) '''
+    # Filter by last_seen - only records seen in the last X days
+    if last_seen_days:
+        query += ' AND date(r.last_seen) >= date("now", ?)'
+        params.append(f'-{last_seen_days} days')
     
     query += ' ORDER BY r.created_at DESC'
     
@@ -2429,6 +2243,9 @@ def get_records():
         records_list.append(record_dict)
     
     return jsonify({'status': 'success', 'count': len(records_list), 'records': records_list})
+
+    
+
 
 @app.route('/records/<int:record_id>', methods=['GET'])
 def get_record(record_id):
@@ -13334,89 +13151,6 @@ def create_record_order():
 
  
 
-@app.route('/api/record-orders/unread', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def get_unread_orders():
-    """Get all unread orders (notified = 0)"""
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT 
-                id,
-                email,
-                artist,
-                title,
-                status,
-                notified,
-                created_at,
-                updated_at
-            FROM record_orders
-            WHERE notified = 0 OR notified IS NULL
-            ORDER BY created_at DESC
-            LIMIT 50
-        ''')
-        
-        rows = cursor.fetchall()
-        conn.close()
-        
-        orders_list = []
-        for row in rows:
-            orders_list.append({
-                'id': row['id'],
-                'email': row['email'],
-                'artist': row['artist'],
-                'title': row['title'],
-                'status': row['status'],
-                'notified': bool(row['notified']) if row['notified'] is not None else False,
-                'created_at': row['created_at'],
-                'updated_at': row['updated_at']
-            })
-        
-        return jsonify({
-            'status': 'success',
-            'notifications': orders_list,
-            'count': len(orders_list)
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error getting unread orders: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
-@app.route('/api/record-orders/<int:order_id>/mark-read', methods=['POST'])
-@login_required
-@role_required(['admin'])
-def mark_order_read(order_id):
-    """Mark order as read (set notified = 1)"""
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            UPDATE record_orders 
-            SET notified = 1 
-            WHERE id = ?
-        ''', (order_id,))
-        
-        if cursor.rowcount == 0:
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Order not found'}), 404
-        
-        conn.commit()
-        conn.close()
-        
-        return jsonify({
-            'status': 'success',
-            'message': f'Order #{order_id} marked as read'
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error marking order read: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 @app.route('/api/record-orders', methods=['GET'])
 @login_required
@@ -13584,6 +13318,192 @@ def delete_order(order_id):
         app.logger.error(f"Error deleting order: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/orders/unread-count', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_unread_orders_count():
+    """Get count of unread orders (notified = 0)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) as count FROM orders WHERE notified = 0 OR notified IS NULL')
+        result = cursor.fetchone()
+        conn.close()
+        return jsonify({'status': 'success', 'count': result['count'] if result else 0})
+    except Exception as e:
+        app.logger.error(f"Error getting unread orders count: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/orders/unread', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_unread_orders():
+    """Get unread orders (notified = 0) for notification bell"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, order_number, customer_name, total, created_at
+            FROM orders
+            WHERE notified = 0 OR notified IS NULL
+            ORDER BY created_at DESC
+            LIMIT 50
+        ''')
+        orders = cursor.fetchall()
+        conn.close()
+        
+        orders_list = []
+        for order in orders:
+            orders_list.append({
+                'id': order['id'],
+                'order_number': order['order_number'],
+                'customer_name': order['customer_name'],
+                'total': float(order['total']) if order['total'] else 0,
+                'created_at': order['created_at']
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'orders': orders_list,
+            'count': len(orders_list)
+        })
+    except Exception as e:
+        app.logger.error(f"Error getting unread orders: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/orders/<order_id>/mark-read', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def mark_order_read(order_id):
+    """Mark an order as read (set notified = 1)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if order exists
+        cursor.execute('SELECT id FROM orders WHERE id = ?', (order_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Order not found'}), 404
+        
+        cursor.execute('UPDATE orders SET notified = 1 WHERE id = ?', (order_id,))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Order {order_id} marked as read'
+        })
+    except Exception as e:
+        app.logger.error(f"Error marking order read: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/order/complete', methods=['POST'])
+def order_complete():
+    """Update order status and mark records as sold after successful payment."""
+    try:
+        data = request.json
+        transaction_id = data.get('transaction_id')
+        order_id = data.get('order_id')
+        
+        if not transaction_id or not order_id:
+            return jsonify({'status': 'error', 'error': 'Missing transaction_id or order_id'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("BEGIN TRANSACTION")
+            
+            access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+            headers = {'Authorization': f'Bearer {access_token}', 'Square-Version': '2026-01-22'}
+            
+            payment_response = requests.get(f'https://connect.squareup.com/v2/payments/{transaction_id}', headers=headers)
+            
+            if payment_response.status_code == 200:
+                payment_data = payment_response.json()
+                payment = payment_data.get('payment', {})
+                square_total = float(payment.get('amount_money', {}).get('amount', 0)) / 100
+                square_tax = float(payment.get('tax_money', {}).get('amount', 0)) / 100 if payment.get('tax_money') else 0
+                
+                cursor.execute('''
+                    UPDATE orders SET square_payment_id = ?, payment_status = 'paid', order_status = 'confirmed',
+                    total = ?, tax = ?, updated_at = CURRENT_TIMESTAMP, notified = 0
+                    WHERE id = ? AND payment_status = 'pending'
+                ''', (transaction_id, square_total, square_tax, order_id))
+            else:
+                cursor.execute('''
+                    UPDATE orders SET square_payment_id = ?, payment_status = 'paid', order_status = 'confirmed',
+                    updated_at = CURRENT_TIMESTAMP, notified = 0
+                    WHERE id = ? AND payment_status = 'pending'
+                ''', (transaction_id, order_id))
+            
+            # Get record IDs from order items
+            cursor.execute('SELECT record_id FROM order_items WHERE order_id = ?', (order_id,))
+            record_ids = [row['record_id'] for row in cursor.fetchall()]
+            
+            if record_ids:
+                placeholders = ','.join('?' for _ in record_ids)
+                # CHANGED: status_id = 5 (Sold Online) instead of 3
+                cursor.execute(f'UPDATE records SET status_id = 5, date_sold = CURRENT_DATE WHERE id IN ({placeholders})', record_ids)
+            
+            # --- AUTO-ACCOUNTING ---
+            try:
+                cursor.execute('SELECT * FROM orders WHERE id = ?', (order_id,))
+                order_row = cursor.fetchone()
+                if order_row:
+                    process_order_for_accounting(order_row, conn, cursor)
+                    app.logger.info(f"✅ Auto-accounting created for order {order_id}")
+            except Exception as e:
+                app.logger.error(f"Auto-accounting failed for order {order_id}: {str(e)}")
+                # Don't rollback - order still completes
+            
+            conn.commit()
+            
+            # Send order confirmation email
+            try:
+                cursor.execute('SELECT customer_name, customer_email, order_number, total FROM orders WHERE id = ?', (order_id,))
+                order_details = cursor.fetchone()
+                
+                if order_details and order_details['customer_email']:
+                    email_body = f"""Thank you for your order from PigStyle Music!
+
+Order Number: {order_details['order_number']}
+Customer: {order_details['customer_name']}
+Total: ${float(order_details['total']):.2f}
+
+Your order has been confirmed and will be processed soon.
+
+Records purchased:
+"""
+                    cursor.execute('SELECT record_title, record_artist, price_at_time FROM order_items WHERE order_id = ?', (order_id,))
+                    items = cursor.fetchall()
+                    for item in items:
+                        email_body += f"  - {item['record_artist']} - {item['record_title']} (${float(item['price_at_time']):.2f})\n"
+                    
+                    email_body += """
+
+Thank you for shopping at PigStyle Music!
+
+Questions? Reply to this email or contact us at the store.
+
+- PigStyle Music Team
+"""
+                    send_email(order_details['customer_email'], f"Order Confirmation - {order_details['order_number']}", email_body)
+            except Exception as email_error:
+                app.logger.error(f"Failed to send order confirmation email: {str(email_error)}")
+            
+            return jsonify({'status': 'success', 'message': f'Order completed, {len(record_ids)} records marked as sold'})
+            
+        except Exception as e:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+        
+    except Exception as e:
+        app.logger.error(f"Order complete error: {str(e)}")
+        return jsonify({'status': 'error', 'error': f'Server error: {str(e)}'}), 500    
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
