@@ -328,6 +328,35 @@ const TabManager = (function() {
                 document.head.appendChild(script);
             }
         };
+
+        // ============================================================
+        // FEEDBACK TAB (NEW)
+        // ============================================================
+        initializers['feedback'] = () => {
+            console.log('🔵 TabManager: Initializing Feedback tab');
+            if (typeof window.loadFeedback === 'function') {
+                console.log('✅ Found loadFeedback function, calling it...');
+                window.loadFeedback();
+            } else {
+                console.warn('⚠️ loadFeedback function not found - admin-feedback.js may not be loaded');
+                // Try to load the script dynamically
+                console.log('🔄 Attempting to load admin-feedback.js dynamically...');
+                const script = document.createElement('script');
+                script.src = '/static/js/admin-feedback.js';
+                script.onload = function() {
+                    console.log('✅ admin-feedback.js loaded dynamically');
+                    if (typeof window.loadFeedback === 'function') {
+                        window.loadFeedback();
+                    } else {
+                        console.error('❌ Still cannot find loadFeedback after dynamic load');
+                    }
+                };
+                script.onerror = function() {
+                    console.error('❌ Failed to load admin-feedback.js dynamically');
+                };
+                document.head.appendChild(script);
+            }
+        };
     }
     
     // Register cleanup functions
@@ -375,6 +404,15 @@ const TabManager = (function() {
                 const statusModal = document.getElementById('order-status-modal');
                 if (statusModal) {
                     statusModal.classList.remove('active');
+                }
+                document.body.classList.remove('modal-open');
+            },
+            'feedback': () => {
+                console.log('🧹 TabManager: Cleaning up Feedback tab');
+                // Close any open modals
+                const modal = document.getElementById('feedback-detail-modal');
+                if (modal) {
+                    modal.classList.remove('active');
                 }
                 document.body.classList.remove('modal-open');
             }
@@ -493,9 +531,7 @@ const TabManager = (function() {
         console.log(`✅ TabManager: Set up ${tabElements.length} tab click handlers`);
     }
     
-    // ============================================================
-    // FIXED: Handle hash changes (for deep linking)
-    // ============================================================
+    // Handle hash changes (for deep linking)
     function handleHashChange() {
         const hash = window.location.hash.substring(1);
         console.log(`🔗 Hash changed: ${hash}`);
@@ -548,9 +584,6 @@ const TabManager = (function() {
                 console.log(`💾 TabManager: Restoring stored tab: ${initialTab}`);
             }
             
-            // ============================================================
-            // FIXED: Use tabExists() instead of tabs[hash]
-            // ============================================================
             const hash = window.location.hash.substring(1);
             if (hash && tabExists(hash)) {
                 initialTab = hash;

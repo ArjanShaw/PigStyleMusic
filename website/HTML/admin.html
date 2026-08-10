@@ -1997,6 +1997,8 @@
             <div class="tab" data-tab="custom-labels"><i class="fas fa-tag"></i> Custom Labels</div>
             <div class="tab" data-tab="email-subscriptions"><i class="fas fa-envelope"></i> Email Subscriptions</div>
             <div class="tab" data-tab="record-orders"><i class="fas fa-shopping-cart"></i> Record Orders</div>
+            <!-- ===== NEW FEEDBACK TAB ===== -->
+            <div class="tab" data-tab="feedback"><i class="fas fa-comment"></i> Feedback</div>
             <div class="tab" data-tab="db-query"><i class="fas fa-database"></i> DB Query</div>
             <div class="tab" data-tab="sticky-notes"><i class="fas fa-sticky-note"></i> Sticky Notes</div>
             <div class="tab" data-tab="stats"><i class="fas fa-chart-line"></i> Stats</div>
@@ -3098,6 +3100,111 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
             </div>
         </div>
 
+        <!-- ==================== FEEDBACK TAB ==================== -->
+        <div id="feedback-tab" class="tab-content">
+            <h2><i class="fas fa-comment"></i> Feedback Management</h2>
+            <p class="text-muted">View and manage customer feedback submissions.</p>
+            
+            <!-- Stats Row -->
+            <div class="stats-row" style="margin-bottom: 20px;">
+                <div class="stat-card">
+                    <div class="stat-value" id="feedback-total" style="color: #007bff;">0</div>
+                    <div class="stat-label">Total Feedback</div>
+                </div>
+                <div class="stat-card" style="background: #cce5ff; border-left: 4px solid #007bff;">
+                    <div class="stat-value" id="feedback-new" style="color: #004085;">0</div>
+                    <div class="stat-label">📬 New (Unread)</div>
+                </div>
+                <div class="stat-card" style="background: #d4edda; border-left: 4px solid #28a745;">
+                    <div class="stat-value" id="feedback-read" style="color: #28a745;">0</div>
+                    <div class="stat-label">✅ Read</div>
+                </div>
+                <div class="stat-card" style="background: #fff3cd; border-left: 4px solid #ffc107;">
+                    <div class="stat-value" id="feedback-responded" style="color: #856404;">0</div>
+                    <div class="stat-label">📤 Responded</div>
+                </div>
+            </div>
+            
+            <!-- Quick Actions -->
+            <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                <button class="btn btn-success" onclick="loadFeedback()"><i class="fas fa-sync-alt"></i> Refresh</button>
+                <button class="btn btn-warning" onclick="markAllFeedbackRead()"><i class="fas fa-check-double"></i> Mark All as Read</button>
+                <button class="btn btn-secondary" onclick="exportFeedbackCSV()"><i class="fas fa-file-csv"></i> Export CSV</button>
+            </div>
+            
+            <!-- Filters -->
+            <div class="search-section" style="margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                    <div>
+                        <label for="feedback-search" style="font-weight: 500;">Search:</label>
+                        <input type="text" id="feedback-search" class="search-input" placeholder="Search content, contact info..." style="width: 250px; padding: 8px 12px;">
+                    </div>
+                    <div>
+                        <label for="feedback-status-filter" style="font-weight: 500;">Status:</label>
+                        <select id="feedback-status-filter" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;">
+                            <option value="all">All</option>
+                            <option value="new">New</option>
+                            <option value="read">Read</option>
+                            <option value="responded">Responded</option>
+                            <option value="archived">Archived</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="feedback-type-filter" style="font-weight: 500;">Type:</label>
+                        <select id="feedback-type-filter" class="filter-select" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px;">
+                            <option value="all">All Types</option>
+                            <option value="general">General</option>
+                            <option value="event">Event</option>
+                            <option value="suggestion">Suggestion</option>
+                            <option value="complaint">Complaint</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" onclick="applyFeedbackFilters()"><i class="fas fa-search"></i> Apply Filters</button>
+                        <button class="btn btn-secondary" onclick="clearFeedbackFilters()"><i class="fas fa-times"></i> Clear</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Feedback Table -->
+            <div class="records-table-container">
+                <table class="records-table" id="feedback-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;">ID</th>
+                            <th style="min-width: 100px;">Type</th>
+                            <th style="min-width: 200px;">Content</th>
+                            <th style="min-width: 150px;">Contact Info</th>
+                            <th style="min-width: 100px;">Event</th>
+                            <th style="width: 100px;">Status</th>
+                            <th style="width: 130px;">Created</th>
+                            <th style="width: 200px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="feedback-body">
+                        <tr><td colspan="8" style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin" style="font-size: 24px;"></i> Loading feedback...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            <div class="pagination-container">
+                <div class="pagination-info">
+                    Showing <span id="feedback-showing-start">0</span>-<span id="feedback-showing-end">0</span> of <span id="feedback-total-filtered">0</span> feedback items
+                </div>
+                <div class="pagination-controls">
+                    <button class="pagination-btn" id="feedback-prev-page" disabled><i class="fas fa-chevron-left"></i></button>
+                    <span>Page <span id="feedback-current-page">1</span> of <span id="feedback-total-pages">1</span></span>
+                    <button class="pagination-btn" id="feedback-next-page" disabled><i class="fas fa-chevron-right"></i></button>
+                    <select id="feedback-page-size" style="padding: 4px; border: 1px solid #ddd; border-radius: 4px;">
+                        <option value="25">25</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
         <!-- ==================== DB QUERY TAB ==================== -->
         <div id="db-query-tab" class="tab-content">
             <h2><i class="fas fa-database"></i> Database Query Tool</h2>
@@ -3723,6 +3830,8 @@ Example: SELECT * FROM records LIMIT 10;" onkeydown="handleQueryKeydown(event)">
     <script src="/static/js/admin-creditors.js"></script>
     <script src="/static/js/email-subscriptions.js"></script>
     <script src="/static/js/order-management.js"></script>
+    <!-- ===== NEW: Feedback Management Script ===== -->
+    <script src="/static/js/admin-feedback.js"></script>
 
     <script>
     window.dbConfigValues = window.dbConfigValues || {};
