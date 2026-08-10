@@ -797,7 +797,7 @@
             color: #333;
         }
 
-        /* ========== NEW: Scan Mode Styles ========== */
+        /* ========== SCAN MODE STYLES ========== */
         .scan-location-builder {
             background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
             border-radius: 12px;
@@ -814,36 +814,6 @@
             opacity: 0.85;
             margin-bottom: 20px;
             font-size: 14px;
-        }
-        .selection-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-        .selection-group label {
-            display: block;
-            font-weight: 600;
-            margin-bottom: 4px;
-            font-size: 13px;
-            opacity: 0.9;
-        }
-        .selection-group select {
-            width: 100%;
-            padding: 10px 12px;
-            border: none;
-            border-radius: 6px;
-            background: white;
-            color: #333;
-            font-size: 14px;
-        }
-        .selection-group select:focus {
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(255,255,255,0.3);
-        }
-        .selection-group select:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
         }
         .location-preview {
             background: rgba(0,0,0,0.2);
@@ -912,8 +882,33 @@
             opacity: 0.4;
             cursor: not-allowed;
         }
+        .scan-location-select {
+            width: 100%;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 6px;
+            background: white;
+            color: #000000 !important;
+            font-size: 16px;
+            margin-bottom: 15px;
+            -webkit-appearance: menulist;
+            appearance: menulist;
+        }
+        .scan-location-select option {
+            background: white !important;
+            color: #000000 !important;
+            padding: 8px;
+        }
+        .scan-location-select:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(255,255,255,0.3);
+        }
+        .scan-location-select:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
 
-        /* ========== NEW: Recent Scans Styles ========== */
+        /* ========== RECENT SCANS STYLES ========== */
         .recent-scans {
             background: #f8f9fa;
             border: 1px solid #ddd;
@@ -1001,85 +996,7 @@
             font-style: italic;
         }
 
-        /* ========== NEW: Domain Management Styles ========== */
-        .domain-section {
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 25px;
-        }
-        .domain-section .domain-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-        .domain-section .domain-header h3 {
-            margin: 0;
-            color: #333;
-        }
-        .domain-section .add-form {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        .domain-section .add-form input,
-        .domain-section .add-form select {
-            padding: 8px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 13px;
-            background: white;
-            color: #333;
-        }
-        .domain-section .add-form input:focus,
-        .domain-section .add-form select:focus {
-            outline: none;
-            border-color: #007bff;
-        }
-        .domain-section .add-form .btn {
-            padding: 8px 16px;
-        }
-        .domain-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 14px;
-        }
-        .domain-table th {
-            text-align: left;
-            padding: 10px 12px;
-            background: #f8f9fa;
-            border-bottom: 2px solid #ddd;
-            color: #333;
-        }
-        .domain-table td {
-            padding: 8px 12px;
-            border-bottom: 1px solid #eee;
-            color: #333;
-        }
-        .domain-table tr:hover {
-            background: #f8f9fa;
-        }
-        .domain-table .btn {
-            padding: 4px 10px;
-            font-size: 12px;
-        }
-        .domain-table .btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-        .empty-message {
-            color: #999;
-            text-align: center;
-            padding: 20px;
-            font-style: italic;
-        }
-
-        /* ========== NEW: Filter Styles ========== */
+        /* ========== FILTER STYLES ========== */
         .filter-section {
             background: #f8f9fa;
             border: 1px solid #ddd;
@@ -2052,6 +1969,13 @@
         .order-row-unread td {
             background-color: #fff5f5 !important;
         }
+
+        /* Force dropdown text to be visible */
+        select.scan-location-select,
+        select.scan-location-select option {
+            color: #000000 !important;
+            background-color: white !important;
+        }
     </style>
 </head>
 <body>
@@ -2067,7 +1991,6 @@
         
         <div class="tab-container">
             <div class="tab active" data-tab="add-records"><i class="fas fa-plus-circle"></i> Inventory operations</div>
-            <div class="tab" data-tab="domain-management"><i class="fas fa-tags"></i> Location Management</div>
             <div class="tab" data-tab="accessories"><i class="fas fa-tshirt"></i> Accessories</div>
             <div class="tab" data-tab="users"><i class="fas fa-users"></i> Users</div>
             <div class="tab" data-tab="admin-config"><i class="fas fa-sliders-h"></i> Admin Config</div>
@@ -2119,7 +2042,6 @@
         </div>
 
         <!-- ========== MODE CONTAINERS ========== -->
-        <!-- Each mode has ONE container that contains ALL its content -->
         
         <!-- ADD MODE CONTAINER -->
         <div id="mode-container-add" style="display: block;">
@@ -2280,40 +2202,17 @@
             <!-- Location Builder -->
             <div class="scan-location-builder">
                 <h3><i class="fas fa-map-pin"></i> Location Setup</h3>
-                <p class="text-muted">All selections required before scanning. Selections reset on page load.</p>
+                <p class="text-muted">Select a location and start scanning. The index will auto-increment.</p>
                 
-                <div class="selection-grid">
-                    <div class="selection-group">
-                        <label>Genre *</label>
-                        <select id="scan-genre-select" onchange="onScanSelectionChange()">
-                            <option value="">-- Select Genre --</option>
-                        </select>
-                    </div>
-                    
-                    <div class="selection-group">
-                        <label>Format *</label>
-                        <select id="scan-format-select" onchange="onScanSelectionChange()">
-                            <option value="">-- Select Format --</option>
-                        </select>
-                    </div>
-                    
-                    <div class="selection-group">
-                        <label>Area *</label>
-                        <select id="scan-area-select" onchange="onScanSelectionChange()">
-                            <option value="">-- Select Area --</option>
-                        </select>
-                    </div>
-                    
-                    <div class="selection-group">
-                        <label>Sublocation *</label>
-                        <select id="scan-sublocation-select" onchange="onScanSelectionChange()">
-                            <option value="">-- Select Sublocation --</option>
-                        </select>
-                    </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 8px; color: white;">Select Location:</label>
+                    <select id="scan-location-select" class="scan-location-select" style="background:white !important; color:#000000 !important;">
+                        <option value="" style="background:white !important; color:#000000 !important;">-- Select Location --</option>
+                    </select>
                 </div>
                 
                 <div class="location-preview">
-                    <span class="location-text" id="scan-location-display">-- Please select all location components --</span>
+                    <span class="location-text" id="scan-location-display">-- Please select a location --</span>
                     <span class="index-text" id="scan-index-display">📍 Index: 0</span>
                 </div>
                 
@@ -2508,79 +2407,6 @@
     </div>
 </div>
 <!-- ========== END ADD RECORDS TAB ========== -->
-
-        <!-- ==================== DOMAIN MANAGEMENT TAB ==================== -->
-        <div id="domain-management-tab" class="tab-content">
-            <h2><i class="fas fa-tags"></i> Location Management2</h2>
-            <p class="text-muted">Manage genres, formats, areas, and sublocations for record locations.</p>
-            
-            <!-- Genres Section -->
-            <div class="domain-section">
-                <div class="domain-header">
-                    <h3><i class="fas fa-music"></i> Genres</h3>
-                    <div class="add-form">
-                        <input type="text" id="new-genre" placeholder="New genre name">
-                        <button class="btn btn-success" id="add-genre-btn"><i class="fas fa-plus"></i> Add</button>
-                    </div>
-                </div>
-                <div id="genres-list">
-                    <div class="empty-message">Loading genres...</div>
-                </div>
-            </div>
-            
-            <!-- Formats Section -->
-            <div class="domain-section">
-                <div class="domain-header">
-                    <h3><i class="fas fa-record-vinyl"></i> Formats</h3>
-                    <div class="add-form">
-                        <input type="text" id="new-format" placeholder="New format name">
-                        <button class="btn btn-success" id="add-format-btn"><i class="fas fa-plus"></i> Add</button>
-                    </div>
-                </div>
-                <div id="formats-list">
-                    <div class="empty-message">Loading formats...</div>
-                </div>
-            </div>
-            
-            <!-- Areas Section -->
-            <div class="domain-section">
-                <div class="domain-header">
-                    <h3><i class="fas fa-map-marker-alt"></i> Areas</h3>
-                    <div class="add-form">
-                        <input type="text" id="new-area" placeholder="New area name">
-                        <button class="btn btn-success" id="add-area-btn"><i class="fas fa-plus"></i> Add</button>
-                    </div>
-                </div>
-                <div id="areas-list">
-                    <div class="empty-message">Loading areas...</div>
-                </div>
-            </div>
-            
-            <!-- Sublocations Section -->
-            <div class="domain-section">
-                <div class="domain-header">
-                    <h3><i class="fas fa-th-large"></i> Sublocations</h3>
-                    <div class="add-form">
-                        <select id="new-sublocation-area">
-                            <option value="">Select Area</option>
-                        </select>
-                        <input type="text" id="new-sublocation-name" placeholder="Name">
-                        <input type="text" id="new-sublocation-abbr" placeholder="Abbr (e.g., LT)" maxlength="5">
-                        <button class="btn btn-success" id="add-sublocation-btn"><i class="fas fa-plus"></i> Add</button>
-                    </div>
-                </div>
-                <div style="margin-bottom: 10px;">
-                    <label style="font-size: 12px; color: #666;">Filter by Area:</label>
-                    <select id="sublocation-area-filter">
-                        <option value="">All Areas</option>
-                    </select>
-                </div>
-                <div id="sublocations-list">
-                    <div class="empty-message">Loading sublocations...</div>
-                </div>
-            </div>
-        </div>
-        <!-- ========== END DOMAIN MANAGEMENT TAB ========== -->
 
         <!-- ==================== ACCESSORIES TAB ==================== -->
         <div id="accessories-tab" class="tab-content">

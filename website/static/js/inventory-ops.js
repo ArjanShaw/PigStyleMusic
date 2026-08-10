@@ -28,7 +28,6 @@
     const lastPageBtn = document.getElementById('record-last-page');
 
     const selectedCountSpan = document.getElementById('selected-count');
-    const completeActionBtn = document.getElementById('complete-action-btn');
     const printBtn = document.getElementById('print-btn');
     const cancelRangeBtn = document.getElementById('cancel-range-btn');
 
@@ -38,11 +37,8 @@
     const discogsModeContainer = document.getElementById('mode-container-discogs');
     const discogsOrdersModeContainer = document.getElementById('mode-container-discogs_orders');
 
-    // ========== Scan Location Builder Elements ==========
-    const scanGenreSelect = document.getElementById('scan-genre-select');
-    const scanFormatSelect = document.getElementById('scan-format-select');
-    const scanAreaSelect = document.getElementById('scan-area-select');
-    const scanSublocationSelect = document.getElementById('scan-sublocation-select');
+    // ========== Scan Location Elements ==========
+    const scanLocationSelect = document.getElementById('scan-location-select');
     const scanInput = document.getElementById('scan-input');
     const scanSubmitBtn = document.getElementById('scan-submit-btn');
     const scanLocationDisplay = document.getElementById('scan-location-display');
@@ -106,8 +102,7 @@
     let accounts = [];
     let genres = [];
     let formats = [];
-    let areas = [];
-    let sublocations = [];
+    let locations = [];
     let _initialized = false;
 
     let allRecords = [];
@@ -155,6 +150,7 @@
     const MAX_RECENT_SCANS = 10;
     let scanCounter = 0;
     let scanIndex = 0;
+    let selectedLocationId = null;
 
     // ========== Purchase State ==========
     let selectedPurchaseId = null;
@@ -401,28 +397,44 @@
         }
     }
 
-    async function loadAreas() {
-        console.log('📥 loadAreas: Fetching areas from server...');
+    async function loadLocations() {
+        console.log('📥 loadLocations: Fetching locations from server...');
         try {
-            var data = await apiRequest('GET', '/api/areas');
-            areas = data.areas || [];
-            console.log('✅ Loaded ' + areas.length + ' areas from server:', areas);
+            var data = await apiRequest('GET', '/api/locations');
+            locations = data.locations || [];
+            console.log('✅ Loaded ' + locations.length + ' locations from server:', locations);
+            populateLocationDropdown(locations);
         } catch (e) {
-            console.warn('Could not load areas:', e);
-            areas = [];
+            console.warn('Could not load locations:', e);
+            locations = [];
         }
     }
 
-    async function loadSublocations() {
-        console.log('📥 loadSublocations: Fetching sublocations from server...');
-        try {
-            var data = await apiRequest('GET', '/api/sublocations');
-            sublocations = data.sublocations || [];
-            console.log('✅ Loaded ' + sublocations.length + ' sublocations from server:', sublocations);
-        } catch (e) {
-            console.warn('Could not load sublocations:', e);
-            sublocations = [];
+    function populateLocationDropdown(locationsList) {
+        console.log('📥 populateLocationDropdown called with:', locationsList);
+        if (!scanLocationSelect) {
+            console.warn('scanLocationSelect element not found');
+            return;
         }
+        
+        var currentVal = scanLocationSelect.value;
+        scanLocationSelect.innerHTML = '<option value="">-- Select Location --</option>';
+        
+        if (!locationsList || locationsList.length === 0) {
+            console.warn('No locations to populate');
+            return;
+        }
+        
+        locationsList.forEach(function(loc) {
+            var opt = document.createElement('option');
+            opt.value = loc.id;
+            opt.textContent = loc.name;
+            console.log('Adding location:', loc.id, loc.name);
+            scanLocationSelect.appendChild(opt);
+        });
+        
+        if (currentVal) scanLocationSelect.value = currentVal;
+        updateScanLocationPreview();
     }
 
     async function loadStats() {
@@ -631,7 +643,6 @@
             });
             if (currentVal) defaultFormatSelect.value = currentVal;
         }
-        // Purchase dropdown populated separately
         loadDefaultParamsFromStorage();
     }
 
@@ -736,15 +747,16 @@
                 showAllStatuses = false,
                 format = null,
                 excludeBatch = false,
-                batchId = null
+                batchId = null,
+                locationId = null
             } = options;
 
             var url = '/records';
             var params = new URLSearchParams();
 
-            if (location) {
+            if (locationId) {
                 url = '/api/records/by-location';
-                params.append('location', location);
+                params.append('location_id', locationId);
             } else {
                 if (showAllStatuses) {
                     // no status filter
@@ -904,10 +916,8 @@
             });
             purchasesBody.innerHTML = html;
 
-            // Populate dropdown AFTER table rows are rendered
             populateDefaultPurchaseDropdown();
 
-            // Update current purchase display
             if (selectedPurchaseId) {
                 const row = purchasesBody.querySelector(`tr[data-id="${selectedPurchaseId}"]`);
                 if (row) row.classList.add('record-selected');
@@ -936,7 +946,6 @@
         if (metadataPanel) metadataPanel.style.display = 'block';
         if (purchaseIdDisplay) purchaseIdDisplay.textContent = '#' + id;
 
-        // Update current purchase display
         if (currentPurchaseDisplay) {
             currentPurchaseDisplay.style.display = 'block';
             const row = document.querySelector(`#purchases-body tr[data-id="${id}"]`);
@@ -947,7 +956,6 @@
             }
         }
 
-        // Update dropdown to match
         if (defaultPurchaseSelect) {
             defaultPurchaseSelect.value = id;
         }
@@ -1946,406 +1954,386 @@
     }
 
     // ========== RENDER TABLE PAGE ==========
-function renderTablePage() {
-    console.log('🔄 renderTablePage() – mode: ' + currentSearchMode + ', records: ' + filteredRecords.length);
-    var start = (currentPage - 1) * pageSize;
-    var end = Math.min(start + pageSize, filteredRecords.length);
-    var pageRecords = filteredRecords.slice(start, end);
+    function renderTablePage() {
+        console.log('🔄 renderTablePage() – mode: ' + currentSearchMode + ', records: ' + filteredRecords.length);
+        var start = (currentPage - 1) * pageSize;
+        var end = Math.min(start + pageSize, filteredRecords.length);
+        var pageRecords = filteredRecords.slice(start, end);
 
-    var theadHtml = '';
-    
-    if (currentSearchMode === 'add') {
-        var isSearchResult = currentMode === 'search' && currentResults.length > 0;
-        if (isSearchResult) {
-            var condOptions = conditions.map(function(c) {
-                return '<option value="' + c.id + '">' + (c.display_name || c.condition_name) + '</option>';
-            }).join('');
-            var consignorOptions = consignors.map(function(c) {
-                return '<option value="' + c.id + '" ' + (c.id === selectedConsignorId ? 'selected' : '') + '>' + c.username + '</option>';
-            }).join('');
-            var formatOptions = formats.map(function(f) {
-                return '<option value="' + f.id + '">' + f.name + '</option>';
-            }).join('');
+        var theadHtml = '';
+        
+        if (currentSearchMode === 'add') {
+            var isSearchResult = currentMode === 'search' && currentResults.length > 0;
+            if (isSearchResult) {
+                var condOptions = conditions.map(function(c) {
+                    return '<option value="' + c.id + '">' + (c.display_name || c.condition_name) + '</option>';
+                }).join('');
+                var consignorOptions = consignors.map(function(c) {
+                    return '<option value="' + c.id + '" ' + (c.id === selectedConsignorId ? 'selected' : '') + '>' + c.username + '</option>';
+                }).join('');
+                var formatOptions = formats.map(function(f) {
+                    return '<option value="' + f.id + '">' + f.name + '</option>';
+                }).join('');
 
-            // Individual default checks - defined ONCE here
-            var hideSleeve = defaultParams.sleeveConditionId !== null && defaultParams.sleeveConditionId !== undefined;
-            var hideDisc = defaultParams.discConditionId !== null && defaultParams.discConditionId !== undefined;
-            var hidePrice = defaultParams.price !== null && defaultParams.price !== undefined;
-            var hideConsignor = defaultParams.consignorId !== null && defaultParams.consignorId !== undefined;
-            var hideFormat = defaultParams.formatId !== null && defaultParams.formatId !== undefined;
-
-            // Build thead with conditional columns
-            theadHtml = '<tr><th style="width:60px;">Range</th><th style="width:60px;">Image</th><th>Artist</th><th>Title</th><th>Catalog #</th>';
-            if (!hideSleeve) theadHtml += '<th>Sleeve</th>';
-            if (!hideDisc) theadHtml += '<th>Disc</th>';
-            if (!hidePrice) theadHtml += '<th>Price</th>';
-            if (!hideConsignor) theadHtml += '<th>Consignor</th>';
-            if (!hideFormat) theadHtml += '<th>Format</th>';
-            theadHtml += '<th>Notes</th><th>Action</th></tr>';
-        } else {
-            if (selectedPurchaseId && currentPurchaseRecords.length > 0) {
-                theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Catalog #</th><th>Sleeve</th><th>Disc</th><th>Barcode</th><th>Created At</th><th>Action</th></tr>';
-            } else {
-                theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Catalog #</th><th>Sleeve</th><th>Disc</th><th>Barcode</th><th>Created At</th></tr>';
-            }
-        }
-    } else if (currentSearchMode === 'scan') {
-        theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Barcode</th><th>Last Seen</th></tr>';
-    } else if (currentSearchMode === 'discogs') {
-        theadHtml = '<tr><th style="width:60px;">Range</th><th>Image</th><th>ID</th><th>Artist</th><th>Title</th><th>Catalog #</th><th>Media Cond</th><th>Sleeve Cond</th><th>Store Price</th><th>Discogs Price</th><th>Markup %</th><th>Location</th><th>Post</th></tr>';
-    } else if (currentSearchMode === 'discogs_orders') {
-        theadHtml = '<tr><th>#</th><th>Artist</th><th>Title</th><th>Catalog</th><th>Barcode</th><th>Price</th><th>Condition</th><th>PigStyle ID</th><th>Status</th><th>Action</th></tr>';
-    }
-
-    recordsTableHead.innerHTML = theadHtml;
-
-    var tbodyHtml = '';
-
-    if (pageRecords.length === 0) {
-        var msg = 'No records found';
-        if (currentSearchMode === 'add' && currentMode !== 'search') {
-            if (selectedPurchaseId) {
-                msg = 'No records linked to this purchase. Search Discogs to add records.';
-            } else {
-                msg = 'No purchase selected. Click a row in the purchases table above.';
-            }
-        }
-        if (currentSearchMode === 'scan') msg = 'Scan barcodes to add records.';
-        if (currentSearchMode === 'discogs') msg = 'No records found. Check filters or add records in "Add Record" mode.';
-        if (currentSearchMode === 'discogs_orders') {
-            if (ordersList.length === 0) msg = 'No Discogs orders found. Click Refresh Orders.';
-            else if (!selectedOrderId) msg = 'Select an order from the dropdown.';
-            else msg = 'This order has no items.';
-        }
-        var colCount = currentSearchMode === 'discogs_orders' ? 10 :
-                         (currentSearchMode === 'add' ? (currentMode === 'search' ? 12 : (selectedPurchaseId ? 11 : 10)) :
-                         (currentSearchMode === 'scan' ? 7 :
-                         (currentSearchMode === 'discogs' ? 13 : 7)));
-        tbodyHtml = '<tr><td colspan="' + colCount + '" style="text-align:center;padding:40px;">' + msg + '</td></tr>';
-    } else {
-        for (var idx = 0; idx < pageRecords.length; idx++) {
-            var record = pageRecords[idx];
-            var globalIndex = start + idx;
-            var isSelected = (rangeFromIndex !== null && rangeToIndex !== null &&
-                                globalIndex >= Math.min(rangeFromIndex, rangeToIndex) &&
-                                globalIndex <= Math.max(rangeFromIndex, rangeToIndex));
-
-            var rowClass = isSelected ? 'record-selected' : '';
-            var rangeButtons = '';
-            var showRange = currentSearchMode !== 'discogs_orders';
-            
-            if (showRange) {
-                if (!isRangeMode) {
-                    rangeButtons = '<button class="btn-from" data-index="' + globalIndex + '" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button><span style="color:#999; margin:0 4px;">to</span>';
-                } else {
-                    if (rangeFromIndex === globalIndex && rangeToIndex === globalIndex) {
-                        rangeButtons = '<span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">FROM ✓</span><span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">TO ✓</span>';
-                    } else if (rangeFromIndex === globalIndex) {
-                        rangeButtons = '<span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">FROM ✓</span><button class="btn-to" data-index="' + globalIndex + '" style="padding:2px 6px; font-size:11px; background:#28a745; color:white; border:none; border-radius:3px; cursor:pointer;">to</button>';
-                    } else if (rangeToIndex === globalIndex) {
-                        rangeButtons = '<button class="btn-from" data-index="' + globalIndex + '" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button><span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">TO ✓</span>';
-                    } else {
-                        rangeButtons = '<button class="btn-from" data-index="' + globalIndex + '" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button><button class="btn-to" data-index="' + globalIndex + '" style="padding:2px 6px; font-size:11px; background:#28a745; color:white; border:none; border-radius:3px; cursor:pointer;">to</button>';
-                    }
-                }
-            }
-
-            var rowHtml = '<tr class="' + rowClass + '" data-index="' + globalIndex + '">';
-
-            if (currentSearchMode === 'add' && currentMode === 'search' && currentResults.length > 0) {
-                var artist = record.artist || 'Unknown';
-                var title = record.title || 'Unknown';
-                var catalog = record.catalog_number || '';
-                
-                // Re-define hide flags here so they're in scope for the tbody
                 var hideSleeve = defaultParams.sleeveConditionId !== null && defaultParams.sleeveConditionId !== undefined;
                 var hideDisc = defaultParams.discConditionId !== null && defaultParams.discConditionId !== undefined;
                 var hidePrice = defaultParams.price !== null && defaultParams.price !== undefined;
                 var hideConsignor = defaultParams.consignorId !== null && defaultParams.consignorId !== undefined;
                 var hideFormat = defaultParams.formatId !== null && defaultParams.formatId !== undefined;
 
-                var imageUrl = record.image_url || record.thumb || '';
-                var imageHtml = imageUrl ?
-                    '<img src="' + escapeHtml(imageUrl) + '" style="width:80px; height:80px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="expandImage(\'' + escapeHtml(imageUrl) + '\', \'' + escapeHtml(artist) + ' - ' + escapeHtml(title) + '\')" title="Click to expand">' :
-                    '<div style="width:80px; height:80px; background:#eee; border-radius:4px;"></div>';
-
-                // Get default values for display if hidden
-                var sleeveDefaultName = hideSleeve ? (conditions.find(function(c) { return c.id === defaultParams.sleeveConditionId; })?.display_name || '—') : '';
-                var discDefaultName = hideDisc ? (conditions.find(function(c) { return c.id === defaultParams.discConditionId; })?.display_name || '—') : '';
-                var priceDefaultDisplay = hidePrice ? '$' + defaultParams.price : '';
-                var consignorDefaultDisplay = hideConsignor ? (consignors.find(function(c) { return c.id === defaultParams.consignorId; })?.username || 'None') : '';
-                var formatDefaultDisplay = hideFormat ? (formats.find(function(f) { return f.id === defaultParams.formatId; })?.name || '—') : '';
-
-                rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
-                rowHtml += '<td style="text-align:center;">' + imageHtml + '</td>';
-                rowHtml += '<td>' + escapeHtml(artist) + '</td>';
-                rowHtml += '<td>' + escapeHtml(title) + '</td>';
-                rowHtml += '<td>' + escapeHtml(catalog) + '</td>';
-                
-                // Sleeve column - show dropdown or default value (only if not hidden)
-                if (!hideSleeve) {
-                    rowHtml += '<td><select class="sleeve-condition-select" style="width:100px; padding:4px;"><option value="">Select...</option>' + condOptions + '</select></td>';
-                }
-
-                // Disc column - show dropdown or default value (only if not hidden)
-                if (!hideDisc) {
-                    rowHtml += '<td><select class="disc-condition-select" style="width:100px; padding:4px;"><option value="">Select...</option>' + condOptions + '</select></td>';
-                }
-
-                // Price column - show input or default value (only if not hidden)
-                if (!hidePrice) {
-                    rowHtml += '<td><input type="number" class="price-input" step="1" min="' + (minimumPrice !== null ? minimumPrice : 0) + '" value="" style="width:80px; padding:4px;"></td>';
-                }
-
-                // Consignor column - show dropdown or default value (only if not hidden)
-                if (!hideConsignor) {
-                    rowHtml += '<td><select class="consignor-select" style="width:100px; padding:4px;"><option value="">None</option>' + consignorOptions + '</select></td>';
-                }
-
-                // Format column - show dropdown or default value (only if not hidden)
-                if (!hideFormat) {
-                    rowHtml += '<td><select class="format-select" style="width:100px; padding:4px;"><option value="">Select...</option>' + formatOptions + '</select></td>';
-                }
-
-                rowHtml += '<td><input type="text" class="notes-input" placeholder="Optional note..." style="width:120px; padding:4px; font-size:12px;"></td>';
-                rowHtml += '<td><button class="btn-add-record-from-search" data-index="' + globalIndex + '" style="background:#28a745; color:white; border:none; border-radius:4px; padding:4px 8px; cursor:pointer;"><i class="fas fa-plus"></i> Add</button></td>';
-            } else if (currentSearchMode === 'add' && currentMode !== 'search') {
-                var id = record.id;
-                var artist = record.artist || 'Unknown';
-                var title = record.title || 'Unknown';
-                var price = record.store_price ? '$' + record.store_price.toFixed(2) : 'N/A';
-                var catalog = record.catalog_number || '—';
-                var sleeveCondition = record.sleeve_condition_name || '—';
-                var discCondition = record.disc_condition_name || '—';
-                var barcode = record.barcode || record.id;
-                var created = record.created_at ? new Date(record.created_at).toLocaleString() : 'Unknown';
-                
-                rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
-                rowHtml += '<td>' + id + '</td>';
-                rowHtml += '<td>' + escapeHtml(artist) + '</td>';
-                rowHtml += '<td>' + escapeHtml(title) + '</td>';
-                rowHtml += '<td>' + price + '</td>';
-                rowHtml += '<td>' + escapeHtml(catalog) + '</td>';
-                rowHtml += '<td>' + escapeHtml(sleeveCondition) + '</td>';
-                rowHtml += '<td>' + escapeHtml(discCondition) + '</td>';
-                rowHtml += '<td><span class="barcode-value">' + barcode + '</span></td>';
-                rowHtml += '<td>' + created + '</td>';
-                
-                if (selectedPurchaseId) {
-                    rowHtml += '<td><button class="btn btn-sm btn-danger" onclick="removeRecordFromPurchase(' + id + ')"><i class="fas fa-times"></i></button></td>';
+                theadHtml = '<tr><th style="width:60px;">Range</th><th style="width:60px;">Image</th><th>Artist</th><th>Title</th><th>Catalog #</th>';
+                if (!hideSleeve) theadHtml += '<th>Sleeve</th>';
+                if (!hideDisc) theadHtml += '<th>Disc</th>';
+                if (!hidePrice) theadHtml += '<th>Price</th>';
+                if (!hideConsignor) theadHtml += '<th>Consignor</th>';
+                if (!hideFormat) theadHtml += '<th>Format</th>';
+                theadHtml += '<th>Notes</th><th>Action</th></tr>';
+            } else {
+                if (selectedPurchaseId && currentPurchaseRecords.length > 0) {
+                    theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Catalog #</th><th>Sleeve</th><th>Disc</th><th>Barcode</th><th>Created At</th><th>Action</th></tr>';
                 } else {
-                    rowHtml += '<td></td>';
+                    theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Catalog #</th><th>Sleeve</th><th>Disc</th><th>Barcode</th><th>Created At</th></tr>';
                 }
-            } else if (currentSearchMode === 'scan') {
-                var id = record.id;
-                var artist = record.artist || 'Unknown';
-                var title = record.title || 'Unknown';
-                var price = record.store_price ? '$' + record.store_price.toFixed(2) : 'N/A';
-                var barcode = record.barcode || record.id;
-                var lastSeen = record.last_seen ? new Date(record.last_seen).toLocaleDateString() : 'Never';
-                rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
-                rowHtml += '<td>' + id + '</td>';
-                rowHtml += '<td>' + escapeHtml(artist) + '</td>';
-                rowHtml += '<td>' + escapeHtml(title) + '</td>';
-                rowHtml += '<td>' + price + '</td>';
-                rowHtml += '<td><span class="barcode-value">' + barcode + '</span></td>';
-                rowHtml += '<td>' + lastSeen + '</td>';
-            } else if (currentSearchMode === 'discogs') {
-                var id = record.id;
-                var artist = record.artist || 'Unknown';
-                var title = record.title || 'Unknown';
-                var catalog = record.catalog_number || '—';
-                var mediaCond = record.disc_condition_name || '—';
-                var sleeveCond = record.sleeve_condition_name || '—';
-                var storePrice = record.store_price ? '$' + parseFloat(record.store_price).toFixed(2) : '—';
-                var imageUrl = record.image_url && record.image_url !== '' && record.image_url !== 'None' ? record.image_url : null;
-                var location = record.location || '—';
-                var discogsPrice = record._discogsPrice !== undefined ? record._discogsPrice : null;
-                var markupPercent = record._markupPercent !== undefined ? record._markupPercent : null;
-                var displayDiscogsPrice = discogsPrice ? '$' + discogsPrice.toFixed(2) : '—';
-                var markupClass = (markupPercent > 0) ? 'positive' : ((markupPercent < 0) ? 'negative' : 'zero');
-                var displayMarkup = (markupPercent !== null) ? (markupPercent > 0 ? '+' : '') + markupPercent + '%' : '—';
-
-                var imgHtml = imageUrl ? 
-                    '<img src="' + escapeHtml(imageUrl) + '" style="width:80px; height:80px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="expandImage(\'' + escapeHtml(imageUrl) + '\', \'' + escapeHtml(artist) + ' - ' + escapeHtml(title) + '\')" title="Click to expand">' : 
-                    '<div style="width:80px; height:80px; background:#e0e0e0; border-radius:4px;"></div>';
-
-                rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
-                rowHtml += '<td style="text-align:center;">' + imgHtml + '</td>';
-                rowHtml += '<td>' + id + '</td>';
-                rowHtml += '<td><strong>' + escapeHtml(artist) + '</strong></td>';
-                rowHtml += '<td>' + escapeHtml(title) + '</td>';
-                rowHtml += '<td>' + escapeHtml(catalog) + '</td>';
-                rowHtml += '<td>' + escapeHtml(mediaCond) + '</td>';
-                rowHtml += '<td>' + escapeHtml(sleeveCond) + '</td>';
-                rowHtml += '<td>' + storePrice + '</td>';
-                rowHtml += '<td class="discogs-price-cell" style="' + (discogsPrice ? 'color: #28a745; font-weight: bold;' : 'color: #999;') + '">' + displayDiscogsPrice + '</td>';
-                rowHtml += '<td class="markup-cell ' + markupClass + '">' + displayMarkup + '</td>';
-                rowHtml += '<td title="' + escapeHtml(location) + '" style="font-size: 12px;">' + escapeHtml(location.length > 30 ? location.substring(0,27)+'...' : location) + '</td>';
-                rowHtml += '<td style="text-align: center;">' + (discogsPrice ? '<button class="post-single-btn" data-record-id="' + record.id + '" data-artist="' + escapeHtml(artist) + '" data-title="' + escapeHtml(title) + '" data-price="' + record.store_price + '" data-discogs-price="' + discogsPrice + '" data-markup-percent="' + markupPercent + '" data-media-condition="' + mediaCond + '" data-sleeve-condition="' + sleeveCond + '" data-catalog="' + escapeHtml(catalog) + '" data-location="' + escapeHtml(location) + '" data-notes="' + escapeHtml(record.notes || '') + '"><i class="fab fa-discogs"></i> Post</button>' : '<span style="color: #999;">—</span>') + '</td>';
-            } else if (currentSearchMode === 'discogs_orders') {
-                var orderItem = record;
-                var idxNum = globalIndex + 1;
-                var artist = orderItem.artist || 'Unknown';
-                var title = orderItem.title || 'Unknown';
-                var catalog = orderItem.catalog_number || '—';
-                var barcode = orderItem.barcode || '—';
-                var price = orderItem.price || 0;
-                var condition = orderItem.media_condition || '—';
-                var pigstyleId = orderItem.pigstyle_id || '';
-                var recordStatus = orderItem.record_status_id;
-                var statusText = '—';
-                var statusClass = '';
-                if (recordStatus === 2) { statusText = 'Active'; statusClass = 'active'; }
-                else if (recordStatus === 3 || recordStatus === 4) { statusText = 'Sold'; statusClass = 'sold'; }
-                else if (recordStatus === 1) { statusText = 'New'; statusClass = 'new'; }
-                else { statusText = 'Not found'; statusClass = ''; }
-
-                var actionButton = '';
-                if (pigstyleId && recordStatus !== 3 && recordStatus !== 4) {
-                    actionButton = '<button class="btn btn-sm btn-success mark-discogs-sold-btn" data-record-id="' + pigstyleId + '" style="padding:2px 6px; font-size:11px; margin-top:4px;"><i class="fab fa-discogs"></i> Mark Sold</button>';
-                }
-
-                rowHtml += '<td>' + idxNum + '</td>';
-                rowHtml += '<td>' + escapeHtml(artist) + '</td>';
-                rowHtml += '<td>' + escapeHtml(title) + '</td>';
-                rowHtml += '<td>' + escapeHtml(catalog) + '</td>';
-                rowHtml += '<td>' + escapeHtml(barcode) + '</td>';
-                rowHtml += '<td>$' + price.toFixed(2) + '</td>';
-                rowHtml += '<td>' + escapeHtml(condition) + '</td>';
-                rowHtml += '<td><input type="text" class="pigstyle-id-input" value="' + escapeHtml(pigstyleId) + '" placeholder="ID or barcode" style="width:100px; padding:4px; border:1px solid #ddd; border-radius:4px;"><button class="btn btn-sm btn-secondary scan-pigstyle-btn" style="padding:2px 6px; font-size:12px;"><i class="fas fa-qrcode"></i></button></td>';
-                rowHtml += '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>';
-                rowHtml += '<td>' + actionButton + '</td>';
             }
-
-            rowHtml += '</tr>';
-            tbodyHtml += rowHtml;
+        } else if (currentSearchMode === 'scan') {
+            theadHtml = '<tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Barcode</th><th>Last Seen</th></tr>';
+        } else if (currentSearchMode === 'discogs') {
+            theadHtml = '<tr><th style="width:60px;">Range</th><th>Image</th><th>ID</th><th>Artist</th><th>Title</th><th>Catalog #</th><th>Media Cond</th><th>Sleeve Cond</th><th>Store Price</th><th>Discogs Price</th><th>Markup %</th><th>Location</th><th>Post</th></tr>';
+        } else if (currentSearchMode === 'discogs_orders') {
+            theadHtml = '<tr><th>#</th><th>Artist</th><th>Title</th><th>Catalog</th><th>Barcode</th><th>Price</th><th>Condition</th><th>PigStyle ID</th><th>Status</th><th>Action</th></tr>';
         }
-    }
-    recordsTableBody.innerHTML = tbodyHtml;
 
-    // Event listeners for range buttons
-    document.querySelectorAll('.btn-from').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var index = parseInt(this.dataset.index);
-            startRangeFrom(index);
-        });
-    });
-    document.querySelectorAll('.btn-to').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var index = parseInt(this.dataset.index);
-            endRangeTo(index);
-        });
-    });
+        recordsTableHead.innerHTML = theadHtml;
 
-    // Add record from Discogs search results
-    if (currentSearchMode === 'add' && currentMode === 'search' && currentResults.length > 0) {
-        document.querySelectorAll('.btn-add-record-from-search').forEach(function(btn) {
+        var tbodyHtml = '';
+
+        if (pageRecords.length === 0) {
+            var msg = 'No records found';
+            if (currentSearchMode === 'add' && currentMode !== 'search') {
+                if (selectedPurchaseId) {
+                    msg = 'No records linked to this purchase. Search Discogs to add records.';
+                } else {
+                    msg = 'No purchase selected. Click a row in the purchases table above.';
+                }
+            }
+            if (currentSearchMode === 'scan') msg = 'Select a location and scan barcodes to add records.';
+            if (currentSearchMode === 'discogs') msg = 'No records found. Check filters or add records in "Add Record" mode.';
+            if (currentSearchMode === 'discogs_orders') {
+                if (ordersList.length === 0) msg = 'No Discogs orders found. Click Refresh Orders.';
+                else if (!selectedOrderId) msg = 'Select an order from the dropdown.';
+                else msg = 'This order has no items.';
+            }
+            var colCount = currentSearchMode === 'discogs_orders' ? 10 :
+                             (currentSearchMode === 'add' ? (currentMode === 'search' ? 12 : (selectedPurchaseId ? 11 : 10)) :
+                             (currentSearchMode === 'scan' ? 7 :
+                             (currentSearchMode === 'discogs' ? 13 : 7)));
+            tbodyHtml = '<tr><td colspan="' + colCount + '" style="text-align:center;padding:40px;">' + msg + '</td></tr>';
+        } else {
+            for (var idx = 0; idx < pageRecords.length; idx++) {
+                var record = pageRecords[idx];
+                var globalIndex = start + idx;
+                var isSelected = (rangeFromIndex !== null && rangeToIndex !== null &&
+                                    globalIndex >= Math.min(rangeFromIndex, rangeToIndex) &&
+                                    globalIndex <= Math.max(rangeFromIndex, rangeToIndex));
+
+                var rowClass = isSelected ? 'record-selected' : '';
+                var rangeButtons = '';
+                var showRange = currentSearchMode !== 'discogs_orders';
+                
+                if (showRange) {
+                    if (!isRangeMode) {
+                        rangeButtons = '<button class="btn-from" data-index="' + globalIndex + '" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button><span style="color:#999; margin:0 4px;">to</span>';
+                    } else {
+                        if (rangeFromIndex === globalIndex && rangeToIndex === globalIndex) {
+                            rangeButtons = '<span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">FROM ✓</span><span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">TO ✓</span>';
+                        } else if (rangeFromIndex === globalIndex) {
+                            rangeButtons = '<span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">FROM ✓</span><button class="btn-to" data-index="' + globalIndex + '" style="padding:2px 6px; font-size:11px; background:#28a745; color:white; border:none; border-radius:3px; cursor:pointer;">to</button>';
+                        } else if (rangeToIndex === globalIndex) {
+                            rangeButtons = '<button class="btn-from" data-index="' + globalIndex + '" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button><span style="background:#28a745; color:white; padding:2px 6px; border-radius:3px; font-size:11px;">TO ✓</span>';
+                        } else {
+                            rangeButtons = '<button class="btn-from" data-index="' + globalIndex + '" style="padding:2px 6px; font-size:11px; background:#007bff; color:white; border:none; border-radius:3px; cursor:pointer;">from</button><button class="btn-to" data-index="' + globalIndex + '" style="padding:2px 6px; font-size:11px; background:#28a745; color:white; border:none; border-radius:3px; cursor:pointer;">to</button>';
+                        }
+                    }
+                }
+
+                var rowHtml = '<tr class="' + rowClass + '" data-index="' + globalIndex + '">';
+
+                if (currentSearchMode === 'add' && currentMode === 'search' && currentResults.length > 0) {
+                    var artist = record.artist || 'Unknown';
+                    var title = record.title || 'Unknown';
+                    var catalog = record.catalog_number || '';
+                    
+                    var hideSleeve = defaultParams.sleeveConditionId !== null && defaultParams.sleeveConditionId !== undefined;
+                    var hideDisc = defaultParams.discConditionId !== null && defaultParams.discConditionId !== undefined;
+                    var hidePrice = defaultParams.price !== null && defaultParams.price !== undefined;
+                    var hideConsignor = defaultParams.consignorId !== null && defaultParams.consignorId !== undefined;
+                    var hideFormat = defaultParams.formatId !== null && defaultParams.formatId !== undefined;
+
+                    var imageUrl = record.image_url || record.thumb || '';
+                    var imageHtml = imageUrl ?
+                        '<img src="' + escapeHtml(imageUrl) + '" style="width:80px; height:80px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="expandImage(\'' + escapeHtml(imageUrl) + '\', \'' + escapeHtml(artist) + ' - ' + escapeHtml(title) + '\')" title="Click to expand">' :
+                        '<div style="width:80px; height:80px; background:#eee; border-radius:4px;"></div>';
+
+                    rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
+                    rowHtml += '<td style="text-align:center;">' + imageHtml + '</td>';
+                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(catalog) + '</td>';
+                    
+                    if (!hideSleeve) {
+                        rowHtml += '<td><select class="sleeve-condition-select" style="width:100px; padding:4px;"><option value="">Select...</option>' + condOptions + '</select></td>';
+                    }
+
+                    if (!hideDisc) {
+                        rowHtml += '<td><select class="disc-condition-select" style="width:100px; padding:4px;"><option value="">Select...</option>' + condOptions + '</select></td>';
+                    }
+
+                    if (!hidePrice) {
+                        rowHtml += '<td><input type="number" class="price-input" step="1" min="' + (minimumPrice !== null ? minimumPrice : 0) + '" value="" style="width:80px; padding:4px;"></td>';
+                    }
+
+                    if (!hideConsignor) {
+                        rowHtml += '<td><select class="consignor-select" style="width:100px; padding:4px;"><option value="">None</option>' + consignorOptions + '</select></td>';
+                    }
+
+                    if (!hideFormat) {
+                        rowHtml += '<td><select class="format-select" style="width:100px; padding:4px;"><option value="">Select...</option>' + formatOptions + '</select></td>';
+                    }
+
+                    rowHtml += '<td><input type="text" class="notes-input" placeholder="Optional note..." style="width:120px; padding:4px; font-size:12px;"></td>';
+                    rowHtml += '<td><button class="btn-add-record-from-search" data-index="' + globalIndex + '" style="background:#28a745; color:white; border:none; border-radius:4px; padding:4px 8px; cursor:pointer;"><i class="fas fa-plus"></i> Add</button></td>';
+                } else if (currentSearchMode === 'add' && currentMode !== 'search') {
+                    var id = record.id;
+                    var artist = record.artist || 'Unknown';
+                    var title = record.title || 'Unknown';
+                    var price = record.store_price ? '$' + record.store_price.toFixed(2) : 'N/A';
+                    var catalog = record.catalog_number || '—';
+                    var sleeveCondition = record.sleeve_condition_name || '—';
+                    var discCondition = record.disc_condition_name || '—';
+                    var barcode = record.barcode || record.id;
+                    var created = record.created_at ? new Date(record.created_at).toLocaleString() : 'Unknown';
+                    
+                    rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
+                    rowHtml += '<td>' + id + '</td>';
+                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + price + '</td>';
+                    rowHtml += '<td>' + escapeHtml(catalog) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(sleeveCondition) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(discCondition) + '</td>';
+                    rowHtml += '<td><span class="barcode-value">' + barcode + '</span></td>';
+                    rowHtml += '<td>' + created + '</td>';
+                    
+                    if (selectedPurchaseId) {
+                        rowHtml += '<td><button class="btn btn-sm btn-danger" onclick="removeRecordFromPurchase(' + id + ')"><i class="fas fa-times"></i></button></td>';
+                    } else {
+                        rowHtml += '<td></td>';
+                    }
+                } else if (currentSearchMode === 'scan') {
+                    var id = record.id;
+                    var artist = record.artist || 'Unknown';
+                    var title = record.title || 'Unknown';
+                    var price = record.store_price ? '$' + record.store_price.toFixed(2) : 'N/A';
+                    var barcode = record.barcode || record.id;
+                    var lastSeen = record.last_seen ? new Date(record.last_seen).toLocaleDateString() : 'Never';
+                    var locationName = record.location_name || '—';
+                    rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
+                    rowHtml += '<td>' + id + '</td>';
+                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + price + '</td>';
+                    rowHtml += '<td><span class="barcode-value">' + barcode + '</span></td>';
+                    rowHtml += '<td>' + lastSeen + '</td>';
+                } else if (currentSearchMode === 'discogs') {
+                    var id = record.id;
+                    var artist = record.artist || 'Unknown';
+                    var title = record.title || 'Unknown';
+                    var catalog = record.catalog_number || '—';
+                    var mediaCond = record.disc_condition_name || '—';
+                    var sleeveCond = record.sleeve_condition_name || '—';
+                    var storePrice = record.store_price ? '$' + parseFloat(record.store_price).toFixed(2) : '—';
+                    var imageUrl = record.image_url && record.image_url !== '' && record.image_url !== 'None' ? record.image_url : null;
+                    var location = record.location || '—';
+                    var discogsPrice = record._discogsPrice !== undefined ? record._discogsPrice : null;
+                    var markupPercent = record._markupPercent !== undefined ? record._markupPercent : null;
+                    var displayDiscogsPrice = discogsPrice ? '$' + discogsPrice.toFixed(2) : '—';
+                    var markupClass = (markupPercent > 0) ? 'positive' : ((markupPercent < 0) ? 'negative' : 'zero');
+                    var displayMarkup = (markupPercent !== null) ? (markupPercent > 0 ? '+' : '') + markupPercent + '%' : '—';
+
+                    var imgHtml = imageUrl ? 
+                        '<img src="' + escapeHtml(imageUrl) + '" style="width:80px; height:80px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="expandImage(\'' + escapeHtml(imageUrl) + '\', \'' + escapeHtml(artist) + ' - ' + escapeHtml(title) + '\')" title="Click to expand">' : 
+                        '<div style="width:80px; height:80px; background:#e0e0e0; border-radius:4px;"></div>';
+
+                    rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
+                    rowHtml += '<td style="text-align:center;">' + imgHtml + '</td>';
+                    rowHtml += '<td>' + id + '</td>';
+                    rowHtml += '<td><strong>' + escapeHtml(artist) + '</strong></td>';
+                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(catalog) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(mediaCond) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(sleeveCond) + '</td>';
+                    rowHtml += '<td>' + storePrice + '</td>';
+                    rowHtml += '<td class="discogs-price-cell" style="' + (discogsPrice ? 'color: #28a745; font-weight: bold;' : 'color: #999;') + '">' + displayDiscogsPrice + '</td>';
+                    rowHtml += '<td class="markup-cell ' + markupClass + '">' + displayMarkup + '</td>';
+                    rowHtml += '<td title="' + escapeHtml(location) + '" style="font-size: 12px;">' + escapeHtml(location.length > 30 ? location.substring(0,27)+'...' : location) + '</td>';
+                    rowHtml += '<td style="text-align: center;">' + (discogsPrice ? '<button class="post-single-btn" data-record-id="' + record.id + '" data-artist="' + escapeHtml(artist) + '" data-title="' + escapeHtml(title) + '" data-price="' + record.store_price + '" data-discogs-price="' + discogsPrice + '" data-markup-percent="' + markupPercent + '" data-media-condition="' + mediaCond + '" data-sleeve-condition="' + sleeveCond + '" data-catalog="' + escapeHtml(catalog) + '" data-location="' + escapeHtml(location) + '" data-notes="' + escapeHtml(record.notes || '') + '"><i class="fab fa-discogs"></i> Post</button>' : '<span style="color: #999;">—</span>') + '</td>';
+                } else if (currentSearchMode === 'discogs_orders') {
+                    var orderItem = record;
+                    var idxNum = globalIndex + 1;
+                    var artist = orderItem.artist || 'Unknown';
+                    var title = orderItem.title || 'Unknown';
+                    var catalog = orderItem.catalog_number || '—';
+                    var barcode = orderItem.barcode || '—';
+                    var price = orderItem.price || 0;
+                    var condition = orderItem.media_condition || '—';
+                    var pigstyleId = orderItem.pigstyle_id || '';
+                    var recordStatus = orderItem.record_status_id;
+                    var statusText = '—';
+                    var statusClass = '';
+                    if (recordStatus === 2) { statusText = 'Active'; statusClass = 'active'; }
+                    else if (recordStatus === 3 || recordStatus === 4) { statusText = 'Sold'; statusClass = 'sold'; }
+                    else if (recordStatus === 1) { statusText = 'New'; statusClass = 'new'; }
+                    else { statusText = 'Not found'; statusClass = ''; }
+
+                    var actionButton = '';
+                    if (pigstyleId && recordStatus !== 3 && recordStatus !== 4) {
+                        actionButton = '<button class="btn btn-sm btn-success mark-discogs-sold-btn" data-record-id="' + pigstyleId + '" style="padding:2px 6px; font-size:11px; margin-top:4px;"><i class="fab fa-discogs"></i> Mark Sold</button>';
+                    }
+
+                    rowHtml += '<td>' + idxNum + '</td>';
+                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(catalog) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(barcode) + '</td>';
+                    rowHtml += '<td>$' + price.toFixed(2) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(condition) + '</td>';
+                    rowHtml += '<td><input type="text" class="pigstyle-id-input" value="' + escapeHtml(pigstyleId) + '" placeholder="ID or barcode" style="width:100px; padding:4px; border:1px solid #ddd; border-radius:4px;"><button class="btn btn-sm btn-secondary scan-pigstyle-btn" style="padding:2px 6px; font-size:12px;"><i class="fas fa-qrcode"></i></button></td>';
+                    rowHtml += '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>';
+                    rowHtml += '<td>' + actionButton + '</td>';
+                }
+
+                rowHtml += '</tr>';
+                tbodyHtml += rowHtml;
+            }
+        }
+        recordsTableBody.innerHTML = tbodyHtml;
+
+        document.querySelectorAll('.btn-from').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 var index = parseInt(this.dataset.index);
-                var row = this.closest('tr');
-                var record = currentResults[index];
-                if (record) addRecordFromDiscogs(row, record);
+                startRangeFrom(index);
+            });
+        });
+        document.querySelectorAll('.btn-to').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var index = parseInt(this.dataset.index);
+                endRangeTo(index);
             });
         });
 
-        if (!defaultParamsActive) {
-            document.querySelectorAll('.sleeve-condition-select').forEach(function(sel) {
-                sel.addEventListener('change', function() {
+        if (currentSearchMode === 'add' && currentMode === 'search' && currentResults.length > 0) {
+            document.querySelectorAll('.btn-add-record-from-search').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var index = parseInt(this.dataset.index);
                     var row = this.closest('tr');
-                    var discSelect = row.querySelector('.disc-condition-select');
-                    if (this.value) discSelect.value = this.value;
-                    var catalog = row.querySelector('td:nth-child(4)')?.textContent?.trim() || '';
-                    estimatePriceForRow(row, catalog);
+                    var record = currentResults[index];
+                    if (record) addRecordFromDiscogs(row, record);
                 });
             });
-            document.querySelectorAll('.disc-condition-select').forEach(function(sel) {
-                sel.addEventListener('change', function() {
-                    var row = this.closest('tr');
-                    var catalog = row.querySelector('td:nth-child(4)')?.textContent?.trim() || '';
-                    estimatePriceForRow(row, catalog);
+
+            if (!defaultParamsActive) {
+                document.querySelectorAll('.sleeve-condition-select').forEach(function(sel) {
+                    sel.addEventListener('change', function() {
+                        var row = this.closest('tr');
+                        var discSelect = row.querySelector('.disc-condition-select');
+                        if (this.value) discSelect.value = this.value;
+                        var catalog = row.querySelector('td:nth-child(4)')?.textContent?.trim() || '';
+                        estimatePriceForRow(row, catalog);
+                    });
+                });
+                document.querySelectorAll('.disc-condition-select').forEach(function(sel) {
+                    sel.addEventListener('change', function() {
+                        var row = this.closest('tr');
+                        var catalog = row.querySelector('td:nth-child(4)')?.textContent?.trim() || '';
+                        estimatePriceForRow(row, catalog);
+                    });
+                });
+            }
+        }
+
+        if (currentSearchMode === 'discogs') {
+            document.querySelectorAll('.post-single-btn').forEach(function(btn) {
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    var recordId = parseInt(this.dataset.recordId);
+                    var artist = this.dataset.artist;
+                    var title = this.dataset.title;
+                    var price = parseFloat(this.dataset.price);
+                    var discogsPrice = parseFloat(this.dataset.discogsPrice);
+                    var markupPercent = parseFloat(this.dataset.markupPercent);
+                    var mediaCondition = this.dataset.mediaCondition;
+                    var sleeveCondition = this.dataset.sleeveCondition;
+                    var catalog = this.dataset.catalog;
+                    var location = this.dataset.location;
+                    var notes = this.dataset.notes;
+                    postSingleRecordToDiscogs(recordId, artist, title, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalog, location, notes);
                 });
             });
         }
-    }
 
-    // Post single record to Discogs
-    if (currentSearchMode === 'discogs') {
-        document.querySelectorAll('.post-single-btn').forEach(function(btn) {
-            btn.addEventListener('click', function(e) {
-                e.preventDefault();
-                var recordId = parseInt(this.dataset.recordId);
-                var artist = this.dataset.artist;
-                var title = this.dataset.title;
-                var price = parseFloat(this.dataset.price);
-                var discogsPrice = parseFloat(this.dataset.discogsPrice);
-                var markupPercent = parseFloat(this.dataset.markupPercent);
-                var mediaCondition = this.dataset.mediaCondition;
-                var sleeveCondition = this.dataset.sleeveCondition;
-                var catalog = this.dataset.catalog;
-                var location = this.dataset.location;
-                var notes = this.dataset.notes;
-                postSingleRecordToDiscogs(recordId, artist, title, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalog, location, notes);
-            });
-        });
-    }
-
-    // Discogs orders pigstyle ID assignment
-    if (currentSearchMode === 'discogs_orders') {
-        document.querySelectorAll('.pigstyle-id-input').forEach(function(input) {
-            input.addEventListener('change', function() {
-                var row = this.closest('tr');
-                var index = parseInt(row.dataset.index);
-                var item = filteredRecords[index];
-                if (item) {
-                    var val = this.value.trim();
-                    var newId = parseInt(val);
-                    if (!isNaN(newId)) {
-                        item.pigstyle_id = newId;
-                        fetchRecordForOrderItem(item, row);
-                    } else {
-                        item.pigstyle_id = null;
+        if (currentSearchMode === 'discogs_orders') {
+            document.querySelectorAll('.pigstyle-id-input').forEach(function(input) {
+                input.addEventListener('change', function() {
+                    var row = this.closest('tr');
+                    var index = parseInt(row.dataset.index);
+                    var item = filteredRecords[index];
+                    if (item) {
+                        var val = this.value.trim();
+                        var newId = parseInt(val);
+                        if (!isNaN(newId)) {
+                            item.pigstyle_id = newId;
+                            fetchRecordForOrderItem(item, row);
+                        } else {
+                            item.pigstyle_id = null;
+                        }
                     }
-                }
-            });
-            input.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    var val = this.value.trim();
-                    if (val.length > 0) {
-                        lookupBarcodeForOrderItem(this, val);
+                });
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        var val = this.value.trim();
+                        if (val.length > 0) {
+                            lookupBarcodeForOrderItem(this, val);
+                        }
                     }
-                }
+                });
             });
-        });
 
-        document.querySelectorAll('.scan-pigstyle-btn').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var input = this.closest('td').querySelector('.pigstyle-id-input');
-                if (input) {
-                    var barcode = prompt('Enter or scan barcode:');
-                    if (barcode && barcode.trim().length > 0) {
-                        input.value = barcode.trim();
-                        var event = new Event('change');
-                        input.dispatchEvent(event);
-                        lookupBarcodeForOrderItem(input, barcode.trim());
+            document.querySelectorAll('.scan-pigstyle-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var input = this.closest('td').querySelector('.pigstyle-id-input');
+                    if (input) {
+                        var barcode = prompt('Enter or scan barcode:');
+                        if (barcode && barcode.trim().length > 0) {
+                            input.value = barcode.trim();
+                            var event = new Event('change');
+                            input.dispatchEvent(event);
+                            lookupBarcodeForOrderItem(input, barcode.trim());
+                        }
                     }
-                }
+                });
             });
-        });
 
-        document.querySelectorAll('.mark-discogs-sold-btn').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var recordId = parseInt(this.dataset.recordId);
-                markRecordSoldOnDiscogs(recordId);
+            document.querySelectorAll('.mark-discogs-sold-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var recordId = parseInt(this.dataset.recordId);
+                    markRecordSoldOnDiscogs(recordId);
+                });
             });
-        });
+        }
+
+        updateSelectionCount();
     }
-
-    updateSelectionCount();
-}
-
-
 
     // ========== Remove Record from Purchase ==========
     async function removeRecordFromPurchase(recordId) {
@@ -2431,112 +2419,31 @@ function renderTablePage() {
         }
     }
 
-    // ========== Scan Location Builder Functions ==========
-    function populateScanGenreDropdown() {
-        if (!scanGenreSelect) return;
-        var currentVal = scanGenreSelect.value;
-        scanGenreSelect.innerHTML = '<option value="">-- Select Genre --</option>';
-        genres.forEach(function(g) {
-            var opt = document.createElement('option');
-            opt.value = g;
-            opt.textContent = g;
-            scanGenreSelect.appendChild(opt);
-        });
-        if (currentVal && genres.includes(currentVal)) {
-            scanGenreSelect.value = currentVal;
-        }
-        updateScanLocationPreview();
-    }
-
-    function populateScanFormatDropdown() {
-        if (!scanFormatSelect) return;
-        var currentVal = scanFormatSelect.value;
-        scanFormatSelect.innerHTML = '<option value="">-- Select Format --</option>';
-        formats.forEach(function(f) {
-            var opt = document.createElement('option');
-            opt.value = f.id;
-            opt.textContent = f.name;
-            scanFormatSelect.appendChild(opt);
-        });
-        if (currentVal) scanFormatSelect.value = currentVal;
-    }
-
-    function populateScanAreaDropdown() {
-        if (!scanAreaSelect) return;
-        var currentVal = scanAreaSelect.value;
-        scanAreaSelect.innerHTML = '<option value="">-- Select Area --</option>';
-        areas.forEach(function(a) {
-            var opt = document.createElement('option');
-            opt.value = a.id;
-            opt.textContent = a.name;
-            scanAreaSelect.appendChild(opt);
-        });
-        if (currentVal) scanAreaSelect.value = currentVal;
-    }
-
-    function populateScanSublocationDropdown(areaId) {
-        if (!scanSublocationSelect) return;
-        var currentVal = scanSublocationSelect.value;
-        scanSublocationSelect.innerHTML = '<option value="">-- Select Sublocation --</option>';
-        var filtered = sublocations.filter(function(s) { return s.area_id == areaId; });
-        filtered.forEach(function(s) {
-            var opt = document.createElement('option');
-            opt.value = s.id;
-            opt.textContent = s.name + (s.abbreviation ? ' (' + s.abbreviation + ')' : '');
-            scanSublocationSelect.appendChild(opt);
-        });
-        if (currentVal && filtered.some(function(s) { return s.id == currentVal; })) {
-            scanSublocationSelect.value = currentVal;
-        }
-        updateScanLocationPreview();
-    }
-
+    // ========== Scan Location Functions ==========
     function updateScanLocationPreview() {
-        var genre = scanGenreSelect ? scanGenreSelect.value : '';
-        var formatId = scanFormatSelect ? parseInt(scanFormatSelect.value) : null;
-        var areaId = scanAreaSelect ? parseInt(scanAreaSelect.value) : null;
-        var sublocationId = scanSublocationSelect ? parseInt(scanSublocationSelect.value) : null;
-
-        var formatName = formatId ? formats.find(function(f) { return f.id === formatId; })?.name : '';
-        var areaName = areaId ? areas.find(function(a) { return a.id === areaId; })?.name : '';
-        var sublocationName = sublocationId ? sublocations.find(function(s) { return s.id === sublocationId; })?.name : '';
-
-        var parts = [];
-        if (genre) parts.push(genre);
-        if (formatName) parts.push(formatName);
-        if (areaName) parts.push(areaName);
-        if (sublocationName) parts.push(sublocationName);
+        var locationId = scanLocationSelect ? parseInt(scanLocationSelect.value) : null;
+        var locationName = locationId ? locations.find(function(l) { return l.id === locationId; })?.name : '';
 
         if (scanLocationDisplay) {
-            scanLocationDisplay.textContent = parts.length > 0 ? parts.join(' | ') : '-- Please select all location components --';
+            scanLocationDisplay.textContent = locationName || '-- Please select a location --';
         }
 
-        // Update index
         if (scanIndexDisplay) {
             scanIndexDisplay.textContent = '📍 Index: ' + scanIndex;
         }
 
-        // Enable/disable scan input
-        var allSelected = genre && formatId && areaId && sublocationId;
+        var allSelected = locationId;
         if (scanInput) scanInput.disabled = !allSelected;
         if (scanSubmitBtn) scanSubmitBtn.disabled = !allSelected;
     }
 
     function onScanSelectionChange() {
-        var areaId = scanAreaSelect ? parseInt(scanAreaSelect.value) : null;
-        if (areaId) {
-            populateScanSublocationDropdown(areaId);
-        } else {
-            if (scanSublocationSelect) {
-                scanSublocationSelect.innerHTML = '<option value="">-- Select Sublocation --</option>';
-            }
-        }
         updateScanLocationPreview();
     }
 
     function updateScanCounter() {
-        if (scanCounterDisplay) {
-            scanCounterDisplay.textContent = scanCounter || filteredRecords.length;
+        if (document.getElementById('scan-counter-display')) {
+            document.getElementById('scan-counter-display').textContent = scanCounter || filteredRecords.length;
         }
     }
 
@@ -2547,83 +2454,6 @@ function renderTablePage() {
         if (scanIndexDisplay) {
             scanIndexDisplay.textContent = '📍 Index: 0';
         }
-        updateScanLocationPreview();
-    }
-
-    function applyScanLocation() {
-        var records = filteredRecords;
-        if (records.length === 0) {
-            showStatus('No scanned records to process.', 'warning');
-            return;
-        }
-
-        var genre = scanGenreSelect ? scanGenreSelect.value : '';
-        var formatId = scanFormatSelect ? parseInt(scanFormatSelect.value) : null;
-        var areaId = scanAreaSelect ? parseInt(scanAreaSelect.value) : null;
-        var sublocationId = scanSublocationSelect ? parseInt(scanSublocationSelect.value) : null;
-
-        if (!genre) {
-            showStatus('Please select a genre.', 'warning');
-            return;
-        }
-        if (!formatId) {
-            showStatus('Please select a format.', 'warning');
-            return;
-        }
-        if (!areaId) {
-            showStatus('Please select an area.', 'warning');
-            return;
-        }
-        if (!sublocationId) {
-            showStatus('Please select a sublocation.', 'warning');
-            return;
-        }
-
-        var today = getLocalMSTDate();
-
-        // Apply to all records
-        var updated = 0;
-        for (var i = records.length - 1; i >= 0; i--) {
-            var record = records[i];
-            var counter = records.length - i;
-            var locationIndex = counter;
-
-            try {
-                apiRequest('PUT', '/records/' + record.id, {
-                    genre_id: genre,
-                    format_id: formatId,
-                    area_id: areaId,
-                    sublocation_id: sublocationId,
-                    location_index: locationIndex,
-                    last_seen: today
-                }).then(function() {
-                    record.last_seen = today;
-                }).catch(function(e) {
-                    console.error('Failed to update record', record.id, e);
-                });
-                updated++;
-            } catch (e) {
-                console.error('Failed to update record', record.id, e);
-            }
-        }
-
-        if (updated > 0) {
-            // Calculate next index
-            scanIndex += records.length;
-            if (scanIndexDisplay) {
-                scanIndexDisplay.textContent = '📍 Index: ' + scanIndex;
-            }
-        }
-
-        filteredRecords = [];
-        totalRecords = 0;
-        currentPage = 1;
-        renderPagination();
-        renderTablePage();
-
-        showStatus('✅ Applied location to ' + updated + ' of ' + records.length + ' scanned records.', 'success');
-        playSound('success');
-        updateScanCounter();
         updateScanLocationPreview();
     }
 
@@ -2911,19 +2741,16 @@ function renderTablePage() {
     }
 
     async function performScanSearch(term) {
+        var locationId = scanLocationSelect ? parseInt(scanLocationSelect.value) : null;
+        var locationName = locationId ? locations.find(function(l) { return l.id === locationId; })?.name : '';
+
+        if (!locationId || !locationName) {
+            showStatus('Please select a location before scanning.', 'warning');
+            playSound('error');
+            return;
+        }
+
         try {
-            // Check if all selections are made
-            var genre = scanGenreSelect ? scanGenreSelect.value : '';
-            var formatId = scanFormatSelect ? parseInt(scanFormatSelect.value) : null;
-            var areaId = scanAreaSelect ? parseInt(scanAreaSelect.value) : null;
-            var sublocationId = scanSublocationSelect ? parseInt(scanSublocationSelect.value) : null;
-
-            if (!genre || !formatId || !areaId || !sublocationId) {
-                showStatus('Please select all location components before scanning.', 'warning');
-                playSound('error');
-                return;
-            }
-
             var data = await apiRequest('GET', '/records/search?q=' + encodeURIComponent(term));
             if (!data.records || !data.records.length) {
                 playSound('error');
@@ -2999,32 +2826,75 @@ function renderTablePage() {
     }
 
     async function processScannedRecord(record) {
+        var locationId = scanLocationSelect ? parseInt(scanLocationSelect.value) : null;
+        var locationName = locationId ? locations.find(function(l) { return l.id === locationId; })?.name : '';
+
+        // Check if record already exists in the scanned list
         var existing = filteredRecords.find(function(r) { return r.id === record.id; });
+        
+        var today = getLocalMSTDate();
+        var index = scanIndex + 1;
+        
         if (existing) {
-            var today = getLocalMSTDate();
-            existing.last_seen = today;
+            // Update existing record in database
+            try {
+                await apiRequest('PUT', '/records/' + record.id, {
+                    location_id: locationId,
+                    location_index: existing.location_index || index,
+                    last_seen: today
+                });
+                existing.last_seen = today;
+                existing.location_name = locationName;
+                
+                renderPagination();
+                renderTablePage();
+                playSound('success');
+                showStatus('✅ Updated #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
+                if (scanInput) scanInput.value = '';
+                addToRecentScans(record, locationName || record.location_name || '');
+                updateRecentScansUI();
+                return;
+            } catch (error) {
+                showStatus('Error updating record: ' + error.message, 'error');
+                playSound('error');
+                return;
+            }
+        }
+
+        // New record - add to database with location
+        try {
+            await apiRequest('PUT', '/records/' + record.id, {
+                location_id: locationId,
+                location_index: index,
+                last_seen: today
+            });
+            
+            // Update the local record object
+            record.location_id = locationId;
+            record.location_index = index;
+            record.last_seen = today;
+            record.location_name = locationName;
+            
+            filteredRecords.unshift(record);
+            totalRecords = filteredRecords.length;
+            scanIndex = index;
+            currentPage = 1;
+            
             renderPagination();
             renderTablePage();
             playSound('success');
-            showStatus('✅ Updated last_seen for #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
+            showStatus('✅ Added #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
+            updateSelectionCount();
             if (scanInput) scanInput.value = '';
-            addToRecentScans(record, record.location || '');
+            addToRecentScans(record, locationName || '');
+            updateScanCounter();
             updateRecentScansUI();
-            return;
+            updateScanLocationPreview();
+            
+        } catch (error) {
+            showStatus('Error adding record: ' + error.message, 'error');
+            playSound('error');
         }
-
-        filteredRecords.unshift(record);
-        totalRecords = filteredRecords.length;
-        currentPage = 1;
-        renderPagination();
-        renderTablePage();
-        playSound('success');
-        showStatus('✅ Added #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
-        updateSelectionCount();
-        if (scanInput) scanInput.value = '';
-        addToRecentScans(record, record.location || '');
-        updateScanCounter();
-        updateRecentScansUI();
     }
 
     // ========== Discogs search, etc. ==========
@@ -3120,7 +2990,7 @@ function renderTablePage() {
         var searchTerm = searchInput.value.trim().toLowerCase();
         var records = currentLocationRecords.length > 0 ? currentLocationRecords : allRecords;
         records = records.filter(function(r) {
-            return r.status_id === 2 && !hasConsignor(r) && meetsLastSeenFilter(r) && r.created_at && r.location && r.location.trim() !== '';
+            return r.status_id === 2 && !hasConsignor(r) && meetsLastSeenFilter(r) && r.created_at && r.location_id && r.location_id !== null;
         });
         if (searchTerm) {
             records = records.filter(function(r) {
@@ -3852,30 +3722,8 @@ function renderTablePage() {
         generatePDF(records);
     }
 
-    // ========== Complete Action Handler ==========
-    function handleCompleteAction() {
-        var mode = currentSearchMode;
-        console.log('🔵 handleCompleteAction called for mode: ' + mode);
-        console.log('🔵 completeActionBtn element:', completeActionBtn);
-        
-        if (mode === 'add') {
-            console.log('🔵 Add mode - showing info');
-            showStatus('Use Print button.', 'info');
-        } else if (mode === 'scan') {
-            console.log('🔵 Scan mode - applying location');
-            applyScanLocation();
-        } else if (mode === 'discogs') {
-            console.log('🔵 Discogs mode - showing post modal');
-            console.log('🔵 handleCompleteAction: calling showDiscogsPostModal');
-            showDiscogsPostModal();
-        } else if (mode === 'discogs_orders') {
-            console.log('🔵 Discogs Orders mode - processing order');
-            processDiscogsOrder();
-        } else {
-            console.log('🔵 Unknown mode: ' + mode);
-            showStatus('No action available for this mode', 'warning');
-        }
-    }
+    // ========== Complete Action Handler - REMOVED ==========
+    // handleCompleteAction function has been removed
 
     // ========== Pagination ==========
     function renderPagination() {
@@ -3939,22 +3787,7 @@ function renderTablePage() {
             printBtn.style.display = 'none';
         }
 
-        if (completeActionBtn && mode !== 'add') {
-            if (mode === 'scan') {
-                var genre = scanGenreSelect ? scanGenreSelect.value : '';
-                var formatId = scanFormatSelect ? parseInt(scanFormatSelect.value) : null;
-                var areaId = scanAreaSelect ? parseInt(scanAreaSelect.value) : null;
-                var sublocationId = scanSublocationSelect ? parseInt(scanSublocationSelect.value) : null;
-                var isValid = genre && formatId && areaId && sublocationId && hasRecords;
-                completeActionBtn.disabled = !isValid;
-            } else if (mode === 'discogs') {
-                completeActionBtn.disabled = !hasSelection;
-            } else if (mode === 'discogs_orders') {
-                var hasOrder = selectedOrderId !== null;
-                var hasItems = filteredRecords.length > 0;
-                completeActionBtn.disabled = !(hasOrder && hasItems);
-            }
-        }
+        // Complete action button logic removed for scan mode
 
         cancelRangeBtn.style.display = (rangeFromIndex !== null && rangeToIndex !== null) ? 'inline-block' : 'none';
     }
@@ -4099,13 +3932,9 @@ function renderTablePage() {
             currentPage = 1;
             renderPagination();
             renderTablePage();
-            showStatus('Scan mode: Scan barcodes to build the list.', 'info');
+            showStatus('Scan mode: Select a location and scan barcodes to build the list.', 'info');
             resetScanCounter();
-            // Populate dropdowns
-            populateScanGenreDropdown();
-            populateScanFormatDropdown();
-            populateScanAreaDropdown();
-            populateScanSublocationDropdown();
+            loadLocations();
             updateScanLocationPreview();
         } else if (newMode === 'discogs') {
             filteredRecords = [];
@@ -4250,251 +4079,24 @@ function renderTablePage() {
         container.innerHTML = html;
     }
 
-    async function loadDomainAreas() {
-        try {
-            var response = await fetch(window.AppConfig.baseUrl + '/api/areas', {
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            var data = await response.json();
-            if (data.status === 'success') {
-                areas = data.areas || [];
-                renderDomainAreas(areas);
-                populateSublocationAreaSelects(areas);
-            }
-        } catch (error) {
-            console.error('Error loading areas:', error);
-        }
-    }
-
-    function renderDomainAreas(areasList) {
-        var container = document.getElementById('areas-list');
-        if (!container) return;
-        
-        if (!areasList || areasList.length === 0) {
-            container.innerHTML = '<div class="empty-message">No areas found.</div>';
-            return;
-        }
-        
-        var html = '<table class="domain-table"><thead><tr><th>ID</th><th>Name</th><th>Actions</th></tr></thead><tbody>';
-        areasList.forEach(function(a) {
-            html += '<tr>';
-            html += '<td>' + a.id + '</td>';
-            html += '<td>' + escapeHtml(a.name) + '</td>';
-            html += '<td><button class="btn btn-sm btn-danger" onclick="deleteDomainArea(' + a.id + ', \'' + escapeHtml(a.name) + '\')"><i class="fas fa-trash"></i></button></td>';
-            html += '</tr>';
-        });
-        html += '</tbody></table>';
-        container.innerHTML = html;
-    }
-
-    function populateSublocationAreaSelects(areasList) {
-        var selects = document.querySelectorAll('#new-sublocation-area, #sublocation-area-filter');
-        selects.forEach(function(select) {
-            if (!select) return;
-            var currentVal = select.value;
-            select.innerHTML = '<option value="">' + (select.id === 'sublocation-area-filter' ? 'All Areas' : 'Select Area') + '</option>';
-            areasList.forEach(function(a) {
-                var opt = document.createElement('option');
-                opt.value = a.id;
-                opt.textContent = a.name;
-                select.appendChild(opt);
-            });
-            if (currentVal) select.value = currentVal;
-        });
-    }
-
-    async function loadDomainSublocations() {
-        try {
-            var filterSelect = document.getElementById('sublocation-area-filter');
-            var areaId = filterSelect ? parseInt(filterSelect.value) : null;
-            var url = '/api/sublocations' + (areaId ? '?area_id=' + areaId : '');
-            
-            var response = await fetch(window.AppConfig.baseUrl + url, {
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            var data = await response.json();
-            if (data.status === 'success') {
-                sublocations = data.sublocations || [];
-                renderDomainSublocations(sublocations);
-                // Also update scan dropdown
-                var scanAreaId = scanAreaSelect ? parseInt(scanAreaSelect.value) : null;
-                if (scanAreaId) {
-                    populateScanSublocationDropdown(scanAreaId);
-                }
-            }
-        } catch (error) {
-            console.error('Error loading sublocations:', error);
-        }
-    }
-
-    function renderDomainSublocations(sublocationsList) {
-        var container = document.getElementById('sublocations-list');
-        if (!container) return;
-        
-        if (!sublocationsList || sublocationsList.length === 0) {
-            container.innerHTML = '<div class="empty-message">No sublocations found.</div>';
-            return;
-        }
-        
-        var html = '<table class="domain-table"><thead><tr><th>ID</th><th>Area</th><th>Name</th><th>Abbr</th><th>Actions</th></tr></thead><tbody>';
-        sublocationsList.forEach(function(s) {
-            html += '<tr>';
-            html += '<td>' + s.id + '</td>';
-            html += '<td>' + escapeHtml(s.area_name || '—') + '</td>';
-            html += '<td>' + escapeHtml(s.name) + '</td>';
-            html += '<td>' + escapeHtml(s.abbreviation || '—') + '</td>';
-            html += '<td><button class="btn btn-sm btn-danger" onclick="deleteDomainSublocation(' + s.id + ', \'' + escapeHtml(s.name) + '\')"><i class="fas fa-trash"></i></button></td>';
-            html += '</tr>';
-        });
-        html += '</tbody></table>';
-        container.innerHTML = html;
-    }
-
-    // ========== DOMAIN MANAGEMENT DELETE FUNCTIONS ==========
+    // ========== DOMAIN MANAGEMENT DELETE FUNCTIONS (REMOVED - no longer needed) ==========
+    // These functions are kept for compatibility but do nothing
 
     async function deleteDomainGenre(id, name) {
-        if (!confirm('Delete genre "' + name + '"?')) return;
-        try {
-            var response = await fetch(window.AppConfig.baseUrl + '/api/genres/' + id, {
-                method: 'DELETE',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            var data = await response.json();
-            if (data.status === 'success') {
-                showStatus('✅ Genre "' + name + '" deleted.', 'success');
-                loadDomainGenres();
-            } else {
-                throw new Error(data.error || 'Delete failed');
-            }
-        } catch (error) {
-            showStatus('❌ Error deleting genre: ' + error.message, 'error');
-        }
+        showStatus('Genre management is no longer available.', 'info');
     }
 
     async function deleteDomainFormat(id, name) {
-        if (!confirm('Delete format "' + name + '"?')) return;
-        try {
-            var response = await fetch(window.AppConfig.baseUrl + '/api/formats/' + id, {
-                method: 'DELETE',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            var data = await response.json();
-            if (data.status === 'success') {
-                showStatus('✅ Format "' + name + '" deleted.', 'success');
-                loadDomainFormats();
-            } else {
-                throw new Error(data.error || 'Delete failed');
-            }
-        } catch (error) {
-            showStatus('❌ Error deleting format: ' + error.message, 'error');
-        }
-    }
-
-    async function deleteDomainArea(id, name) {
-        if (!confirm('Delete area "' + name + '"?')) return;
-        try {
-            var response = await fetch(window.AppConfig.baseUrl + '/api/areas/' + id, {
-                method: 'DELETE',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            var data = await response.json();
-            if (data.status === 'success') {
-                showStatus('✅ Area "' + name + '" deleted.', 'success');
-                loadDomainAreas();
-            } else {
-                throw new Error(data.error || 'Delete failed');
-            }
-        } catch (error) {
-            showStatus('❌ Error deleting area: ' + error.message, 'error');
-        }
-    }
-
-    async function deleteDomainSublocation(id, name) {
-        if (!confirm('Delete sublocation "' + name + '"?')) return;
-        try {
-            var response = await fetch(window.AppConfig.baseUrl + '/api/sublocations/' + id, {
-                method: 'DELETE',
-                credentials: 'include',
-                headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
-            });
-            var data = await response.json();
-            if (data.status === 'success') {
-                showStatus('✅ Sublocation "' + name + '" deleted.', 'success');
-                loadDomainSublocations();
-            } else {
-                throw new Error(data.error || 'Delete failed');
-            }
-        } catch (error) {
-            showStatus('❌ Error deleting sublocation: ' + error.message, 'error');
-        }
+        showStatus('Format management is no longer available.', 'info');
     }
 
     // ========== DOMAIN MANAGEMENT ADD HANDLERS ==========
+    // Simplified - only handles formats now
 
     function setupDomainManagementHandlers() {
-        // Add Genre
-        var domainAddGenreBtn = document.getElementById('add-genre-btn');
-        if (domainAddGenreBtn) {
-            console.log('✅ Found Location Management add-genre-btn');
-            domainAddGenreBtn.addEventListener('click', async function() {
-                console.log('🟢 Add Genre button clicked');
-                
-                var inputField = document.getElementById('new-genre');
-                if (!inputField) {
-                    showStatus('Error: Input field not found.', 'error');
-                    return;
-                }
-                
-                var genreName = inputField.value.trim();
-                if (!genreName) {
-                    showStatus('Please enter a genre name.', 'warning');
-                    inputField.focus();
-                    return;
-                }
-                
-                if (genres.includes(genreName)) {
-                    showStatus('Genre "' + genreName + '" already exists.', 'warning');
-                    inputField.value = '';
-                    return;
-                }
-                
-                try {
-                    var response = await fetch(window.AppConfig.baseUrl + '/api/genres', {
-                        method: 'POST',
-                        credentials: 'include',
-                        headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name: genreName })
-                    });
-                    
-                    var data = await response.json();
-                    if (data.status !== 'success') {
-                        throw new Error(data.error || 'Server rejected genre');
-                    }
-                    
-                    genres.push(genreName);
-                    genres.sort();
-                    inputField.value = '';
-                    showStatus('✅ Genre "' + genreName + '" added!', 'success');
-                    playSound('success');
-                    loadDomainGenres();
-                    
-                } catch (error) {
-                    console.error('Error adding genre:', error);
-                    showStatus('❌ Failed to add genre: ' + error.message, 'error');
-                    playSound('error');
-                }
-            });
-        }
-
         // Add Format
         var domainAddFormatBtn = document.getElementById('add-format-btn');
         if (domainAddFormatBtn) {
-            console.log('✅ Found Location Management add-format-btn');
             domainAddFormatBtn.addEventListener('click', async function() {
                 var inputField = document.getElementById('new-format');
                 if (!inputField) return;
@@ -4532,128 +4134,14 @@ function renderTablePage() {
             });
         }
 
-        // Add Area
-        var domainAddAreaBtn = document.getElementById('add-area-btn');
-        if (domainAddAreaBtn) {
-            console.log('✅ Found Location Management add-area-btn');
-            domainAddAreaBtn.addEventListener('click', async function() {
-                var inputField = document.getElementById('new-area');
-                if (!inputField) return;
-                
-                var areaName = inputField.value.trim();
-                if (!areaName) {
-                    showStatus('Please enter an area name.', 'warning');
-                    inputField.focus();
-                    return;
-                }
-                
-                try {
-                    var response = await fetch(window.AppConfig.baseUrl + '/api/areas', {
-                        method: 'POST',
-                        credentials: 'include',
-                        headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name: areaName })
-                    });
-                    
-                    var data = await response.json();
-                    if (data.status !== 'success') {
-                        throw new Error(data.error || 'Server rejected area');
-                    }
-                    
-                    inputField.value = '';
-                    showStatus('✅ Area "' + areaName + '" added!', 'success');
-                    playSound('success');
-                    loadDomainAreas();
-                    
-                } catch (error) {
-                    console.error('Error adding area:', error);
-                    showStatus('❌ Failed to add area: ' + error.message, 'error');
-                    playSound('error');
-                }
-            });
-        }
-
-        // Add Sublocation
-        var domainAddSublocationBtn = document.getElementById('add-sublocation-btn');
-        if (domainAddSublocationBtn) {
-            console.log('✅ Found Location Management add-sublocation-btn');
-            domainAddSublocationBtn.addEventListener('click', async function() {
-                var areaSelect = document.getElementById('new-sublocation-area');
-                var nameInput = document.getElementById('new-sublocation-name');
-                var abbrInput = document.getElementById('new-sublocation-abbr');
-                
-                if (!areaSelect || !nameInput) return;
-                
-                var areaId = parseInt(areaSelect.value);
-                var name = nameInput.value.trim();
-                var abbreviation = abbrInput ? abbrInput.value.trim() : '';
-                
-                if (!areaId) {
-                    showStatus('Please select an area.', 'warning');
-                    return;
-                }
-                if (!name) {
-                    showStatus('Please enter a sublocation name.', 'warning');
-                    nameInput.focus();
-                    return;
-                }
-                
-                try {
-                    var response = await fetch(window.AppConfig.baseUrl + '/api/sublocations', {
-                        method: 'POST',
-                        credentials: 'include',
-                        headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            area_id: areaId, 
-                            name: name, 
-                            abbreviation: abbreviation,
-                            sort_order: 0
-                        })
-                    });
-                    
-                    var data = await response.json();
-                    if (data.status !== 'success') {
-                        throw new Error(data.error || 'Server rejected sublocation');
-                    }
-                    
-                    nameInput.value = '';
-                    if (abbrInput) abbrInput.value = '';
-                    showStatus('✅ Sublocation "' + name + '" added!', 'success');
-                    playSound('success');
-                    loadDomainSublocations();
-                    
-                } catch (error) {
-                    console.error('Error adding sublocation:', error);
-                    showStatus('❌ Failed to add sublocation: ' + error.message, 'error');
-                    playSound('error');
-                }
-            });
-        }
-
-        // Sublocation area filter
-        var sublocationFilter = document.getElementById('sublocation-area-filter');
-        if (sublocationFilter) {
-            sublocationFilter.addEventListener('change', function() {
-                loadDomainSublocations();
-            });
-        }
-
-        // Scan area selection change
-        if (scanAreaSelect) {
-            scanAreaSelect.addEventListener('change', function() {
-                var areaId = parseInt(this.value);
-                if (areaId) {
-                    populateScanSublocationDropdown(areaId);
-                } else {
-                    if (scanSublocationSelect) {
-                        scanSublocationSelect.innerHTML = '<option value="">-- Select Sublocation --</option>';
-                    }
-                }
+        // Scan location select change
+        if (scanLocationSelect) {
+            scanLocationSelect.addEventListener('change', function() {
                 updateScanLocationPreview();
             });
         }
 
-        // Scan scan submit
+        // Scan submit
         if (scanSubmitBtn) {
             scanSubmitBtn.addEventListener('click', function() {
                 var term = scanInput ? scanInput.value.trim() : '';
@@ -4725,36 +4213,22 @@ function renderTablePage() {
         await loadGenres();
         console.log('📥 Loading formats...');
         await loadFormats();
-        console.log('📥 Loading areas...');
-        await loadAreas();
-        console.log('📥 Loading sublocations...');
-        await loadSublocations();
+        console.log('📥 Loading locations...');
+        await loadLocations();
 
         console.log('📥 Populating default param selects...');
         populateDefaultParamSelects();
 
-        // Setup scan dropdowns
-        populateScanGenreDropdown();
-        populateScanFormatDropdown();
-        populateScanAreaDropdown();
-        if (scanAreaSelect) {
-            var areaId = parseInt(scanAreaSelect.value);
-            if (areaId) {
-                populateScanSublocationDropdown(areaId);
-            }
-        }
         updateScanLocationPreview();
         loadRecentScansFromStorage();
         updateRecentScansUI();
 
-        // Setup Domain Management handlers
+        // Setup Domain Management handlers (simplified)
         setupDomainManagementHandlers();
 
         // Load Domain Management data
         loadDomainGenres();
         loadDomainFormats();
-        loadDomainAreas();
-        loadDomainSublocations();
 
         searchModeSelect.addEventListener('change', onModeChange);
 
@@ -4816,14 +4290,6 @@ function renderTablePage() {
 
         // Load purchases table first
         await loadPurchasesTable();
-
-        // Set up complete action button with null check
-        if (completeActionBtn) {
-            completeActionBtn.addEventListener('click', handleCompleteAction);
-            console.log('🔘 completeActionBtn click handler attached after table load');
-        } else {
-            console.warn('⚠️ completeActionBtn element not found - skipping');
-        }
 
         if (discogsLocationSelect) {
             discogsLocationSelect.addEventListener('change', function() {
@@ -4889,40 +4355,6 @@ function renderTablePage() {
 
         _initialized = true;
         console.log('✅ inventory-ops.js initialized');
-    }
-
-    function showScanGenreStatus(message, type) {
-        var el = document.getElementById('scan-genre-status');
-        if (!el) return;
-        type = type || 'info';
-        var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-        el.innerHTML = (icons[type] || 'ℹ️') + ' ' + escapeHtml(message);
-        el.className = 'status-message status-' + type;
-        el.style.display = 'block';
-        setTimeout(function() { el.style.display = 'none'; }, 3000);
-    }
-
-    // ========== EXPOSE INIT FUNCTION FOR TABMANAGER ==========
-    window.initAddRecordsTab = function() {
-        console.log('🔵 TabManager called initAddRecordsTab');
-        if (!_initialized) {
-            init();
-        } else {
-            console.log('🔄 initAddRecordsTab: already initialized');
-        }
-    };
-
-    window.initInventoryOpsTab = window.initAddRecordsTab;
-
-    console.log('✅ initAddRecordsTab exposed to window');
-
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        setTimeout(function() {
-            if (!_initialized) {
-                console.log('🔄 Auto-initializing inventory-ops (fallback)');
-                init();
-            }
-        }, 1000);
     }
 
     // ========== BILL MODAL FUNCTIONS ==========
@@ -5032,20 +4464,36 @@ function renderTablePage() {
     window.removeRecordFromPurchase = removeRecordFromPurchase;
     window.togglePurchaseTable = togglePurchaseTable;
     window.toggleMetadataPanel = toggleMetadataPanel;
-    window.onScanSelectionChange = onScanSelectionChange;
 
     window.loadDomainGenres = loadDomainGenres;
     window.loadDomainFormats = loadDomainFormats;
-    window.loadDomainAreas = loadDomainAreas;
-    window.loadDomainSublocations = loadDomainSublocations;
     window.deleteDomainGenre = deleteDomainGenre;
     window.deleteDomainFormat = deleteDomainFormat;
-    window.deleteDomainArea = deleteDomainArea;
-    window.deleteDomainSublocation = deleteDomainSublocation;
 
-    // ===== EXPOSE applyDefaultParams and clearDefaultParams =====
     window.applyDefaultParams = applyDefaultParams;
     window.clearDefaultParams = clearDefaultParams;
+
+    window.initAddRecordsTab = function() {
+        console.log('🔵 TabManager called initAddRecordsTab');
+        if (!_initialized) {
+            init();
+        } else {
+            console.log('🔄 initAddRecordsTab: already initialized');
+        }
+    };
+
+    window.initInventoryOpsTab = window.initAddRecordsTab;
+
+    console.log('✅ initAddRecordsTab exposed to window');
+
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(function() {
+            if (!_initialized) {
+                console.log('🔄 Auto-initializing inventory-ops (fallback)');
+                init();
+            }
+        }, 1000);
+    }
 
     console.log('✅ All functions exposed to window');
     console.log('✅ applyDefaultParams and clearDefaultParams are now globally available.');
