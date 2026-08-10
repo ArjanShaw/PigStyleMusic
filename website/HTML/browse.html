@@ -26,7 +26,6 @@
     <script src="/static/js/shared.js"></script>
     
     <style>
-        /* OVERRIDE FILTER ALIGNMENT - FORCED */
         .filter-section {
             display: flex !important;
             align-items: center !important;
@@ -62,14 +61,15 @@
             box-sizing: border-box !important;
             line-height: 1 !important;
             margin: 0 !important;
+            transition: background 0.2s, transform 0.2s !important;
         }
         
         .filter-btn i {
             font-size: 14px !important;
         }
         
-        .filter-btn:hover {
-            background: #1e2a36 !important;
+        .filter-btn:hover:not(.active) {
+            background: #3d566e !important;
             transform: translateY(-1px) !important;
         }
         
@@ -82,6 +82,99 @@
             color: white !important;
         }
         
+        .filter-btn.active:hover {
+            background: #e55555 !important;
+        }
+        
+        .filter-checkbox-container {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 10px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+            z-index: 100;
+            min-width: 220px;
+            display: none;
+        }
+        
+        .filter-checkbox-container.show {
+            display: block;
+        }
+        
+        .filter-checkbox-group {
+            max-height: 250px;
+            overflow-y: auto;
+            padding: 12px;
+        }
+        
+        .filter-checkbox-item {
+            margin-bottom: 8px;
+        }
+        
+        .filter-checkbox-item input {
+            margin-right: 8px;
+        }
+        
+        .filter-actions {
+            display: flex;
+            gap: 8px;
+            padding: 8px 12px 12px;
+            border-top: 1px solid #eee;
+        }
+        
+        .filter-action-btn {
+            flex: 1;
+            padding: 6px;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            background: #f0f0f0;
+        }
+        
+        .filter-apply {
+            background: #ff6b6b;
+            color: white;
+        }
+        
+        .filter-status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 10px 0 15px;
+            padding: 8px 12px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 30px;
+            backdrop-filter: blur(4px);
+        }
+        
+        .filter-summary {
+            font-size: 13px;
+            color: #f0f0f0;
+        }
+        
+        .result-count-badge {
+            background: #ff6b6b;
+            padding: 2px 10px;
+            border-radius: 30px;
+            font-size: 12px;
+            margin-left: 10px;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .clear-filters-link {
+            background: none;
+            border: none;
+            color: #ffb3b3;
+            cursor: pointer;
+            font-size: 12px;
+            text-decoration: underline;
+            padding: 4px 8px;
+        }
+
         .records-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -182,6 +275,21 @@
             gap: 5px;
         }
         
+        .record-card-location {
+            font-size: 11px;
+            color: #28a745;
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-family: monospace;
+            background: #f0f8f0;
+            padding: 3px 10px;
+            border-radius: 12px;
+            border: 1px solid #d4edda;
+            width: fit-content;
+        }
+        
         .pagination-btn {
             background: #2c3e50;
             color: white;
@@ -245,95 +353,6 @@
         @keyframes bounce {
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(-10px); }
-        }
-        
-        .filter-checkbox-container {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            margin-top: 10px;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
-            z-index: 100;
-            min-width: 220px;
-            display: none;
-        }
-        
-        .filter-checkbox-container.show {
-            display: block;
-        }
-        
-        .filter-checkbox-group {
-            max-height: 250px;
-            overflow-y: auto;
-            padding: 12px;
-        }
-        
-        .filter-checkbox-item {
-            margin-bottom: 8px;
-        }
-        
-        .filter-checkbox-item input {
-            margin-right: 8px;
-        }
-        
-        .filter-actions {
-            display: flex;
-            gap: 8px;
-            padding: 8px 12px 12px;
-            border-top: 1px solid #eee;
-        }
-        
-        .filter-action-btn {
-            flex: 1;
-            padding: 6px;
-            border: none;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 12px;
-            background: #f0f0f0;
-        }
-        
-        .filter-apply {
-            background: #ff6b6b;
-            color: white;
-        }
-        
-        .filter-status-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin: 10px 0 15px;
-            padding: 8px 12px;
-            background: rgba(0,0,0,0.5);
-            border-radius: 30px;
-            backdrop-filter: blur(4px);
-        }
-        
-        .filter-summary {
-            font-size: 13px;
-            color: #f0f0f0;
-        }
-        
-        .result-count-badge {
-            background: #ff6b6b;
-            padding: 2px 10px;
-            border-radius: 30px;
-            font-size: 12px;
-            margin-left: 10px;
-            color: white;
-            font-weight: bold;
-        }
-        
-        .clear-filters-link {
-            background: none;
-            border: none;
-            color: #ffb3b3;
-            cursor: pointer;
-            font-size: 12px;
-            text-decoration: underline;
-            padding: 4px 8px;
         }
         
         .record-modal-overlay {
@@ -441,21 +460,6 @@
             cursor: pointer;
         }
         
-        .notification {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            padding: 12px 20px;
-            border-radius: 8px;
-            z-index: 3500;
-            color: white;
-        }
-        
-        .required {
-            color: #ff6b6b;
-        }
-        
-        /* Navbar styles for browse page */
         nav {
             background: #000;
             padding: 10px 20px;
@@ -608,26 +612,9 @@
         </div>
         
         <div class="filter-section">
-            <!-- Genre Filter -->
-            <div class="filter-group">
-                <button id="genreFilterBtn" class="filter-btn">
-                    <i class="fas fa-filter"></i> Genre
-                </button>
-                <div id="genreDropdown" class="filter-checkbox-container">
-                    <div class="filter-checkbox-group" id="genreList">
-                        <div style="color: #999; text-align: center; padding: 20px;">Loading genres...</div>
-                    </div>
-                    <div class="filter-actions">
-                        <button id="selectAllGenres" class="filter-action-btn">All</button>
-                        <button id="clearAllGenres" class="filter-action-btn">Clear</button>
-                        <button id="applyGenres" class="filter-action-btn filter-apply">Apply</button>
-                    </div>
-                </div>
-            </div>
-            
             <!-- Format Filter -->
             <div class="filter-group">
-                <button id="formatFilterBtn" class="filter-btn">
+                <button id="formatFilterBtn" class="filter-btn active">
                     <i class="fas fa-record-vinyl"></i> Format
                 </button>
                 <div id="formatDropdown" class="filter-checkbox-container">
@@ -642,10 +629,12 @@
                 </div>
             </div>
             
+            <!-- New Arrivals Filter -->
             <button id="newArrivalsBtn" class="filter-btn active">
                 <i class="fas fa-calendar-week"></i> New Arrivals
             </button>
             
+            <!-- New Vinyl Filter -->
             <button id="newVinylBtn" class="filter-btn">
                 <i class="fas fa-record-vinyl"></i> New Vinyl
             </button>
@@ -672,28 +661,23 @@
     <script>
         let allRecords = [];
         let selectedFormatIds = [];
-        let selectedGenres = [];
+        let allFormatIds = [];
         let currentSearchTerm = '';
         let newArrivalsActive = true;
         let newVinylActive = false;
         let currentPage = 1;
         let recordsPerPage = 50;
         
-        // Store formats from database
         let allFormats = [];
+        let allLocations = [];
 
-        // Load navbar and subscription modal from shared components
         document.addEventListener('DOMContentLoaded', function() {
             if (typeof loadNavbar === 'function') {
                 loadNavbar();
-            } else {
-                console.warn('loadNavbar function not found, make sure shared.js is loaded');
             }
             
             if (typeof loadSubscriptionModal === 'function') {
                 loadSubscriptionModal();
-            } else {
-                console.warn('loadSubscriptionModal function not found, make sure shared.js is loaded');
             }
             
             initBrowsePage();
@@ -704,82 +688,61 @@
                 initSubscriptionModal();
             }
             
-            // Fetch formats from database
             await fetchFormats();
+            await fetchLocations();
             
-            // Load catalog data
+            // After formats load, select all by default
+            if (allFormatIds.length > 0) {
+                selectedFormatIds = [...allFormatIds];
+                document.querySelectorAll('#formatList input').forEach(cb => {
+                    cb.checked = true;
+                });
+            }
+            
             loadCatalogData();
             
-            // Setup event listeners
+            document.getElementById('searchBox')?.addEventListener('input', debounce(() => loadCatalogData(), 500));
+            
             setupEventListeners();
         }
 
         function setupEventListeners() {
             document.getElementById('clearAllFiltersBtn')?.addEventListener('click', () => { 
-                selectedGenres = []; 
-                selectedFormatIds = [];
+                selectedFormatIds = [...allFormatIds];
                 currentSearchTerm = ''; 
-                newArrivalsActive = true; 
-                newVinylActive = false; 
+                newArrivalsActive = true;
+                newVinylActive = false;
                 currentPage = 1; 
                 document.getElementById('searchBox').value = ''; 
-                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false);
-                document.querySelectorAll('#formatList input').forEach(cb => cb.checked = false);
+                document.querySelectorAll('#formatList input').forEach(cb => cb.checked = true);
+                updateButtonStates();
                 loadCatalogData(); 
             });
             
             document.getElementById('newArrivalsBtn')?.addEventListener('click', () => { 
                 newArrivalsActive = !newArrivalsActive; 
                 currentPage = 1; 
+                updateButtonStates();
                 loadCatalogData(); 
             });
             
             document.getElementById('newVinylBtn')?.addEventListener('click', () => { 
                 newVinylActive = !newVinylActive; 
                 currentPage = 1; 
+                updateButtonStates();
                 loadCatalogData(); 
             });
             
-            document.getElementById('searchBox')?.addEventListener('input', debounce(() => loadCatalogData(), 500));
-            
-            // Genre dropdown
-            const genreBtn = document.getElementById('genreFilterBtn');
-            const genreDropdown = document.getElementById('genreDropdown');
-            genreBtn?.addEventListener('click', (e) => { 
-                e.stopPropagation(); 
-                genreDropdown.classList.toggle('show'); 
-                document.getElementById('formatDropdown')?.classList.remove('show');
-            });
-            
-            // Format dropdown
             const formatBtn = document.getElementById('formatFilterBtn');
             const formatDropdown = document.getElementById('formatDropdown');
             formatBtn?.addEventListener('click', (e) => { 
                 e.stopPropagation(); 
                 formatDropdown.classList.toggle('show');
-                document.getElementById('genreDropdown')?.classList.remove('show');
             });
             
             document.addEventListener('click', (e) => { 
-                if (!genreDropdown?.contains(e.target) && e.target !== genreBtn) 
-                    genreDropdown?.classList.remove('show');
                 if (!formatDropdown?.contains(e.target) && e.target !== formatBtn)
                     formatDropdown?.classList.remove('show');
-            });
-            
-            document.getElementById('selectAllGenres')?.addEventListener('click', () => { 
-                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = true); 
-            });
-            
-            document.getElementById('clearAllGenres')?.addEventListener('click', () => { 
-                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false); 
-            });
-            
-            document.getElementById('applyGenres')?.addEventListener('click', () => { 
-                selectedGenres = Array.from(document.querySelectorAll('#genreList input:checked')).map(cb => cb.value); 
-                genreDropdown.classList.remove('show'); 
-                currentPage = 1; 
-                loadCatalogData(); 
             });
             
             document.getElementById('selectAllFormats')?.addEventListener('click', () => { 
@@ -797,8 +760,28 @@
                 loadCatalogData(); 
             });
         }
+
+        function updateButtonStates() {
+            const arrivalsBtn = document.getElementById('newArrivalsBtn');
+            const vinylBtn = document.getElementById('newVinylBtn');
+            
+            if (newArrivalsActive) {
+                arrivalsBtn.classList.add('active');
+                arrivalsBtn.innerHTML = '<i class="fas fa-calendar-week"></i> New Arrivals';
+            } else {
+                arrivalsBtn.classList.remove('active');
+                arrivalsBtn.innerHTML = '<i class="fas fa-list"></i> All Records';
+            }
+            
+            if (newVinylActive) {
+                vinylBtn.classList.add('active');
+                vinylBtn.innerHTML = '<i class="fas fa-record-vinyl"></i> New Vinyl ON';
+            } else {
+                vinylBtn.classList.remove('active');
+                vinylBtn.innerHTML = '<i class="fas fa-record-vinyl"></i> New Vinyl';
+            }
+        }
         
-        // Fetch format names from the database
         async function fetchFormats() {
             try {
                 const response = await fetch(`${AppConfig.baseUrl}/api/formats`);
@@ -806,17 +789,53 @@
                     const data = await response.json();
                     if (data.status === 'success' && data.formats) {
                         allFormats = data.formats;
-                        // Populate format dropdown directly from API
+                        allFormatIds = allFormats.map(f => f.id);
                         populateFormatDropdown(allFormats);
-                        console.log('Formats loaded from database:', allFormats);
+                        console.log('Formats loaded:', allFormats.length);
                         return;
                     }
                 }
                 allFormats = [];
+                allFormatIds = [];
             } catch (e) {
                 console.error('Error fetching formats:', e);
                 allFormats = [];
+                allFormatIds = [];
             }
+        }
+
+        async function fetchLocations() {
+            try {
+                const response = await fetch(`${AppConfig.baseUrl}/api/locations`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === 'success' && data.locations) {
+                        allLocations = data.locations;
+                        console.log('Locations loaded:', allLocations.length);
+                        return;
+                    }
+                }
+                allLocations = [];
+            } catch (e) {
+                console.error('Error fetching locations:', e);
+                allLocations = [];
+            }
+        }
+
+        function getLocationName(locationId) {
+            if (!locationId) return null;
+            const location = allLocations.find(l => l.id === locationId);
+            return location ? location.name : null;
+        }
+
+        function getFullLocationString(record) {
+            if (!record.location_id) return null;
+            const locationName = getLocationName(record.location_id);
+            if (!locationName) return null;
+            if (record.location_index) {
+                return `${locationName} #${record.location_index}`;
+            }
+            return locationName;
         }
 
         function getFormatName(formatId) {
@@ -847,6 +866,52 @@
             return record.condition_disc_id === 1 && record.condition_sleeve_id === 1;
         }
 
+        function populateFormatDropdown(formats) {
+            const formatList = document.getElementById('formatList');
+            if (!formatList) return;
+            if (formats.length === 0) {
+                formatList.innerHTML = '<div style="color: #999; text-align: center;">No formats available</div>';
+                return;
+            }
+            formatList.innerHTML = formats.map(f => `
+                <div class="filter-checkbox-item">
+                    <input type="checkbox" id="format_${f.id}" value="${f.id}">
+                    <label for="format_${f.id}">${escapeHtml(f.name)}</label>
+                </div>
+            `).join('');
+            document.querySelectorAll('#formatList input').forEach(cb => {
+                cb.checked = true;
+            });
+            selectedFormatIds = [...allFormatIds];
+        }
+
+        function updateFilterUI() {
+            const filters = [];
+            if (currentSearchTerm) filters.push(`Search: "${currentSearchTerm}"`);
+            if (selectedFormatIds.length > 0 && selectedFormatIds.length < allFormatIds.length) {
+                const formatNames = selectedFormatIds.map(id => getFormatName(id) || `Format ${id}`).join(', ');
+                filters.push(`Format: ${formatNames}`);
+            }
+            if (newArrivalsActive) {
+                filters.push(`New Arrivals (last 7 days)`);
+            } else {
+                filters.push(`All Records`);
+            }
+            if (newVinylActive) {
+                filters.push(`New Vinyl Only`);
+            }
+            
+            const statusRow = document.getElementById('filterStatusRow');
+            const summaryDiv = document.getElementById('filterSummary');
+            
+            if (filters.length > 0) {
+                statusRow.style.display = 'flex';
+                summaryDiv.innerHTML = `${filters.join(' · ')} <span class="result-count-badge">${allRecords.length} results</span>`;
+            } else {
+                statusRow.style.display = 'none';
+            }
+        }
+
         function displayRecords(records) {
             const container = document.getElementById('catalogContainer');
             const totalRecords = records.length;
@@ -858,7 +923,7 @@
             container.innerHTML = '';
             
             if (!pageRecords || pageRecords.length === 0) {
-                container.innerHTML = `<div class="no-records-message"><i class="fas fa-search"></i><p>No records match your filters.</p></div>`;
+                container.innerHTML = `<div class="no-records-message"><i class="fas fa-search"></i><p>No records found.</p></div>`;
                 return;
             }
             
@@ -920,16 +985,15 @@
             currentPage = 1;
             
             let url = `${AppConfig.baseUrl}/records?status_id=2`;
-            
             url += `&bypass_date_filter=true`;
             url += `&require_image=true`;
-            url += `&exclude_old_no_location=false`;
+            url += `&require_location=true`;
         
             if (currentSearchTerm) {
                 url = `${AppConfig.baseUrl}/records?search=${encodeURIComponent(currentSearchTerm)}&status_id=2`;
                 url += `&bypass_date_filter=true`;
                 url += `&require_image=true`;
-                url += `&exclude_old_no_location=false`;
+                url += `&require_location=true`;
             }
             
             document.getElementById('catalogContainer').innerHTML = `<div class="loading-indicator"><div class="loading-dots"><div></div><div></div><div></div><div></div></div><p>Loading records...</p></div>`;
@@ -942,54 +1006,19 @@
                 if (data.status === 'success') {
                     let records = data.records || [];
                     
-                    // Get cutoff days from config
-                    let cutoffDays = 30;
-                    try {
-                        const configResponse = await fetch(`${AppConfig.baseUrl}/config/INVENTORY_CUTOFF_DAYS`);
-                        if (configResponse.ok) {
-                            const configData = await configResponse.json();
-                            if (configData.config_value) {
-                                cutoffDays = parseInt(configData.config_value) || 30;
-                            }
-                        }
-                    } catch (e) {
-                        console.warn('Could not fetch INVENTORY_CUTOFF_DAYS, using default 30');
-                    }
+                    // ONLY records with location_id AND format_id
+                    records = records.filter(r => 
+                        r.location_id !== null && 
+                        r.location_id !== undefined &&
+                        r.format_id !== null &&
+                        r.format_id !== undefined
+                    );
                     
-                    // Apply cutoff filter
-                    const cutoffDate = new Date();
-                    cutoffDate.setDate(cutoffDate.getDate() - cutoffDays);
-                    
-                    records = records.filter(r => {
-                        const createdDate = new Date(r.created_at);
-                        return createdDate >= cutoffDate;
-                    });
-                    
-                    // Extract genres from records for genre filter
-                    const genreSet = new Set();
-                    records.forEach(r => {
-                        const genre = extractGenreFromDiscogsRaw(r.discogs_genre_raw);
-                        if (genre) genreSet.add(genre);
-                    });
-                    const availableGenres = Array.from(genreSet).sort();
-                    populateGenreDropdown(availableGenres);
-                    
-                    // Apply genre filter
-                    if (selectedGenres.length > 0) {
-                        records = records.filter(r => {
-                            const genre = extractGenreFromDiscogsRaw(r.discogs_genre_raw);
-                            return genre && selectedGenres.some(s => s.toLowerCase() === genre.toLowerCase());
-                        });
-                    }
-                    
-                    // Apply format filter - filter by format_id directly
-                    if (selectedFormatIds.length > 0) {
+                    // Apply format filter - if no formats selected, show nothing
+                    if (selectedFormatIds.length === 0) {
+                        records = [];
+                    } else {
                         records = records.filter(r => selectedFormatIds.includes(r.format_id));
-                    }
-                    
-                    // Apply new vinyl filter
-                    if (newVinylActive) {
-                        records = records.filter(r => isNewVinyl(r));
                     }
                     
                     // Apply new arrivals filter (7 days)
@@ -1002,6 +1031,11 @@
                         });
                     }
                     
+                    // Apply new vinyl filter
+                    if (newVinylActive) {
+                        records = records.filter(r => isNewVinyl(r));
+                    }
+                    
                     allRecords = records;
                     displayRecords(allRecords);
                     updateFilterUI();
@@ -1012,85 +1046,6 @@
             }
         }
 
-        function populateGenreDropdown(genres) {
-            const genreList = document.getElementById('genreList');
-            if (!genreList) return;
-            if (genres.length === 0) {
-                genreList.innerHTML = '<div style="color: #999; text-align: center;">No genres available</div>';
-                return;
-            }
-            genreList.innerHTML = genres.map(genre => `
-                <div class="filter-checkbox-item">
-                    <input type="checkbox" id="genre_${escapeHtml(genre)}" value="${escapeHtml(genre)}">
-                    <label for="genre_${escapeHtml(genre)}">${escapeHtml(genre)}</label>
-                </div>
-            `).join('');
-            document.querySelectorAll('#genreList input').forEach(cb => {
-                if (selectedGenres.includes(cb.value)) cb.checked = true;
-            });
-        }
-
-        function populateFormatDropdown(formats) {
-            const formatList = document.getElementById('formatList');
-            if (!formatList) return;
-            if (formats.length === 0) {
-                formatList.innerHTML = '<div style="color: #999; text-align: center;">No formats available</div>';
-                return;
-            }
-            formatList.innerHTML = formats.map(f => `
-                <div class="filter-checkbox-item">
-                    <input type="checkbox" id="format_${f.id}" value="${f.id}">
-                    <label for="format_${f.id}">${escapeHtml(f.name)}</label>
-                </div>
-            `).join('');
-            document.querySelectorAll('#formatList input').forEach(cb => {
-                if (selectedFormatIds.includes(parseInt(cb.value))) cb.checked = true;
-            });
-        }
-
-        function updateFilterUI() {
-            const arrivalsBtn = document.getElementById('newArrivalsBtn');
-            const vinylBtn = document.getElementById('newVinylBtn');
-            
-            if (newArrivalsActive) {
-                arrivalsBtn.classList.add('active');
-                arrivalsBtn.innerHTML = '<i class="fas fa-calendar-week"></i> New Arrivals';
-            } else {
-                arrivalsBtn.classList.remove('active');
-                arrivalsBtn.innerHTML = '<i class="fas fa-list"></i> All Records';
-            }
-            
-            if (newVinylActive) vinylBtn.classList.add('active');
-            else vinylBtn.classList.remove('active');
-            
-            const filters = [];
-            if (currentSearchTerm) filters.push(`Search: "${currentSearchTerm}"`);
-            if (newArrivalsActive) filters.push(`New Arrivals (last 7 days)`);
-            if (!newArrivalsActive) filters.push(`All Records`);
-            if (newVinylActive) filters.push(`New Vinyl Only`);
-            if (selectedGenres.length > 0) filters.push(`Genre: ${selectedGenres.join(', ')}`);
-            if (selectedFormatIds.length > 0) {
-                const formatNames = selectedFormatIds.map(id => getFormatName(id) || `Format ${id}`).join(', ');
-                filters.push(`Format: ${formatNames}`);
-            }
-            
-            const statusRow = document.getElementById('filterStatusRow');
-            const summaryDiv = document.getElementById('filterSummary');
-            
-            if (filters.length === 0 && newArrivalsActive) {
-                statusRow.style.display = 'flex';
-                summaryDiv.innerHTML = `New Arrivals (last 7 days) <span class="result-count-badge">${allRecords.length} results</span>`;
-            } else if (filters.length === 0 && !newArrivalsActive) {
-                statusRow.style.display = 'flex';
-                summaryDiv.innerHTML = `All Records <span class="result-count-badge">${allRecords.length} results</span>`;
-            } else if (filters.length > 0) {
-                statusRow.style.display = 'flex';
-                summaryDiv.innerHTML = `${filters.join(' · ')} <span class="result-count-badge">${allRecords.length} results</span>`;
-            } else {
-                statusRow.style.display = 'none';
-            }
-        }
-
         function createRecordCard(record) {
             const card = document.createElement('div');
             card.className = 'record-card';
@@ -1098,6 +1053,7 @@
             const genre = extractGenreFromDiscogsRaw(record.discogs_genre_raw);
             const combinedCondition = getCombinedCondition(record.condition_disc_id, record.condition_sleeve_id);
             const formatName = getFormatName(record.format_id);
+            const fullLocation = getFullLocationString(record);
             
             const imageHtml = record.image_url ? 
                 `<img src="${record.image_url}" alt="${record.title}" onerror="this.parentElement.classList.add('default-bg'); this.style.display='none';">` : '';
@@ -1123,6 +1079,10 @@
                 innerHtml += `<div class="record-card-format"><i class="fas fa-record-vinyl"></i> ${escapeHtml(formatName)}</div>`;
             }
             
+            if (fullLocation) {
+                innerHtml += `<div class="record-card-location"><i class="fas fa-map-pin"></i> ${escapeHtml(fullLocation)}</div>`;
+            }
+            
             innerHtml += `</div>`;
             
             card.innerHTML = innerHtml;
@@ -1135,6 +1095,7 @@
             const discCondition = getConditionDisplayName(record.condition_disc_id);
             const sleeveCondition = getConditionDisplayName(record.condition_sleeve_id);
             const formatName = getFormatName(record.format_id);
+            const fullLocation = getFullLocationString(record);
             
             const modal = document.createElement('div');
             modal.className = 'record-modal-overlay';
@@ -1149,6 +1110,9 @@
             }
             if (formatName) {
                 detailsHtml += `<div class="detail-row"><span class="detail-label">Format:</span><span>${escapeHtml(formatName)}</span></div>`;
+            }
+            if (fullLocation) {
+                detailsHtml += `<div class="detail-row"><span class="detail-label">Location:</span><span>${escapeHtml(fullLocation)}</span></div>`;
             }
             
             modal.innerHTML = `
@@ -1177,15 +1141,6 @@
             modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
         }
 
-        function showNotification(msg, type) {
-            const n = document.createElement('div');
-            n.className = 'notification';
-            n.textContent = msg;
-            n.style.background = type === 'error' ? '#dc3545' : '#28a745';
-            document.body.appendChild(n);
-            setTimeout(() => n.remove(), 3000);
-        }
-        
         function escapeHtml(text) { 
             if(!text) return ''; 
             const div = document.createElement('div'); 
