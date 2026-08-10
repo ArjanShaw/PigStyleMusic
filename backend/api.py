@@ -2318,6 +2318,7 @@ def create_record():
         conn.close()
         return jsonify({'status': 'error', 'error': f"Database error: {str(e)}"}), 500
 
+
 @app.route('/records', methods=['GET'])
 def get_records():
     conn = get_db()
@@ -2428,7 +2429,6 @@ def get_records():
         records_list.append(record_dict)
     
     return jsonify({'status': 'success', 'count': len(records_list), 'records': records_list})
-
 
 @app.route('/records/<int:record_id>', methods=['GET'])
 def get_record(record_id):
@@ -2657,7 +2657,7 @@ def get_markup_analysis():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-        
+
 # Create upload folder for bills of sale if not exists
 BILLS_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'bills')
 os.makedirs(BILLS_UPLOAD_FOLDER, exist_ok=True)
