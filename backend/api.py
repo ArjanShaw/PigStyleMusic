@@ -2124,9 +2124,6 @@ def get_artists():
     conn.close()
     return jsonify({'status': 'success', 'artists': [dict(artist) for artist in artists]})
 
-
-# ==================== RECORDS ENDPOINTS (ALL MODIFIED - NO GENRE JOINS) ====================
-
 @app.route('/records', methods=['POST'])
 def create_record():
     data = request.get_json()
@@ -2163,22 +2160,19 @@ def create_record():
         discogs_genre_raw = data.get('discogs_genre_raw', '')
         notes = data.get('notes', '')
         
-        # Location fields - new
-        genre_id = data.get('genre_id')
-        format_id = data.get('format_id')
-        area_id = data.get('area_id')
-        sublocation_id = data.get('sublocation_id')
+        # Location fields - only location_id and location_index
+        location_id = data.get('location_id')
         location_index = data.get('location_index')
+        format_id = data.get('format_id')
         
         cursor.execute('''
             INSERT INTO records (
                 artist, title, barcode, image_url, catalog_number,
                 condition_sleeve_id, condition_disc_id, store_price,
                 consignor_id, commission_rate, status_id, discogs_genre_raw, notes,
-                batch_id, 
-                genre_id, format_id, area_id, sublocation_id, location_index,
+                batch_id, format_id, location_id, location_index,
                 created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ''', (
             data.get('artist'), 
             data.get('title'), 
@@ -2194,17 +2188,14 @@ def create_record():
             discogs_genre_raw,
             notes,
             batch_id,
-            genre_id,
             format_id,
-            area_id,
-            sublocation_id,
+            location_id,
             location_index
         ))
         
         record_id = cursor.lastrowid
         
         # ===== STORE CREDIT / GIFT CARD TRADE-IN LOGIC =====
-        # Check if store credit option is selected
         store_credit = data.get('store_credit', False)
         gift_card_code = data.get('gift_card_code', '').strip().upper()
         debtor_name = data.get('debtor_name', '').strip()
@@ -2226,13 +2217,11 @@ def create_record():
                 conn.close()
                 return jsonify({'status': 'error', 'error': 'Total offer must be greater than 0'}), 400
             
-            # Calculate store credit value (50% bonus)
             store_credit_value = total_offer * 1.5
             
-            # Get account IDs
-            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1050',))  # Inventory Asset
+            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1050',))
             inventory = cursor.fetchone()
-            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))  # Store Credit Liability
+            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
             liability = cursor.fetchone()
             
             if not inventory or not liability:
@@ -2240,7 +2229,6 @@ def create_record():
                 conn.close()
                 return jsonify({'status': 'error', 'error': 'Required accounts not found'}), 500
             
-            # Check if gift card code already exists
             cursor.execute('SELECT id FROM journal_entries WHERE source_type = "gift_card" AND source_id = ?', (gift_card_code,))
             if cursor.fetchone():
                 conn.rollback()
@@ -2251,7 +2239,6 @@ def create_record():
             today = datetime.now().strftime('%Y-%m-%d')
             trade_notes = data.get('trade_notes', f'Trade-in: {data.get("record_count", 0)} records')
             
-            # Create journal entry for trade-in store credit
             description = f"{debtor_name} | {gift_card_code} | ${store_credit_value:.2f} | Trade-in: {trade_notes}"
             
             cursor.execute('''
@@ -2260,13 +2247,11 @@ def create_record():
             ''', (today, description, 'gift_card', gift_card_code))
             entry_id = cursor.lastrowid
             
-            # Debit: Inventory Asset
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
             ''', (entry_id, inventory['id'], value_cents, 0))
             
-            # Credit: Store Credit Liability
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
@@ -2275,22 +2260,19 @@ def create_record():
             conn.commit()
             conn.close()
             
-            # Get the created record
             conn2 = get_db()
             cursor2 = conn2.cursor()
             cursor2.execute('''
                 SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name,
                 cd.condition_name as disc_condition_name,
-                g.name as genre_name, f.name as format_name,
-                a.name as area_name, sl.name as sublocation_name
+                f.name as format_name,
+                l.name as location_name
                 FROM records r 
                 LEFT JOIN d_status s ON r.status_id = s.id
                 LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
                 LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id 
-                LEFT JOIN genres g ON r.genre_id = g.id
                 LEFT JOIN formats f ON r.format_id = f.id
-                LEFT JOIN areas a ON r.area_id = a.id
-                LEFT JOIN sublocations sl ON r.sublocation_id = sl.id
+                LEFT JOIN locations l ON r.location_id = l.id
                 WHERE r.id = ?
             ''', (record_id,))
             record = cursor2.fetchone()
@@ -2306,22 +2288,19 @@ def create_record():
                 'entry_id': entry_id
             })
         
-        # ===== NORMAL RECORD CREATION (NO STORE CREDIT) =====
         conn.commit()
         
         cursor.execute('''
             SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name,
             cd.condition_name as disc_condition_name,
-            g.name as genre_name, f.name as format_name,
-            a.name as area_name, sl.name as sublocation_name
+            f.name as format_name,
+            l.name as location_name
             FROM records r 
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
             LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id 
-            LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN formats f ON r.format_id = f.id
-            LEFT JOIN areas a ON r.area_id = a.id
-            LEFT JOIN sublocations sl ON r.sublocation_id = sl.id
+            LEFT JOIN locations l ON r.location_id = l.id
             WHERE r.id = ?
         ''', (record_id,))
         
@@ -2338,8 +2317,6 @@ def create_record():
         conn.rollback()
         conn.close()
         return jsonify({'status': 'error', 'error': f"Database error: {str(e)}"}), 500
-
-
 
 @app.route('/records', methods=['GET'])
 def get_records():
@@ -2368,16 +2345,20 @@ def get_records():
             r.condition_sleeve_id, r.condition_disc_id, r.store_price,
             r.consignor_id, r.commission_rate, r.status_id, r.created_at, r.date_sold,
             r.last_seen, r.notes, r.discogs_genre_raw,
-            r.format_id,
+            r.format_id, r.location_id, r.location_index,
             s.status_name,
             cs.condition_name as sleeve_condition_name, cs.display_name as sleeve_display,
             cs.abbreviation as sleeve_abbr, cs.quality_index as sleeve_quality,
             cd.condition_name as disc_condition_name, cd.display_name as disc_display,
-            cd.abbreviation as disc_abbr, cd.quality_index as disc_quality
+            cd.abbreviation as disc_abbr, cd.quality_index as disc_quality,
+            f.name as format_name,
+            l.name as location_name
         FROM records r
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
         LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+        LEFT JOIN formats f ON r.format_id = f.id
+        LEFT JOIN locations l ON r.location_id = l.id
         WHERE r.artist IS NOT NULL AND r.title IS NOT NULL 
         AND r.artist != '' AND r.title != ''
     '''
@@ -2423,11 +2404,11 @@ def get_records():
         query += ' AND r.image_url IS NOT NULL AND r.image_url != \'\''
     
     if require_location:
-        query += ' AND r.location IS NOT NULL AND r.location != \'\' AND r.location != \'NULL\''
+        query += ' AND r.location_id IS NOT NULL'
     
     if exclude_old_no_location:
         query += ''' AND (r.created_at >= date('now', '-30 days') 
-                     OR (r.location IS NOT NULL AND r.location != '' AND r.location != 'NULL')) '''
+                     OR r.location_id IS NOT NULL) '''
     
     query += ' ORDER BY r.created_at DESC'
     
@@ -2448,6 +2429,7 @@ def get_records():
     
     return jsonify({'status': 'success', 'count': len(records_list), 'records': records_list})
 
+
 @app.route('/records/<int:record_id>', methods=['GET'])
 def get_record(record_id):
     conn = get_db()
@@ -2455,17 +2437,14 @@ def get_record(record_id):
     cursor.execute('''
         SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name,
         cd.condition_name as disc_condition_name,
-        g.name as genre_name, f.name as format_name,
-        a.name as area_name, sl.name as sublocation_name,
-        sl.abbreviation as sublocation_abbr
+        f.name as format_name,
+        l.name as location_name
         FROM records r
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
         LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-        LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN formats f ON r.format_id = f.id
-        LEFT JOIN areas a ON r.area_id = a.id
-        LEFT JOIN sublocations sl ON r.sublocation_id = sl.id
+        LEFT JOIN locations l ON r.location_id = l.id
         WHERE r.id = ?
     ''', (record_id,))
     record = cursor.fetchone()
@@ -2473,7 +2452,6 @@ def get_record(record_id):
     if not record:
         return jsonify({'status': 'error', 'error': 'Record not found'}), 404
     return jsonify(dict(record))
-
 
 @app.route('/api/stats/last-seen-distribution', methods=['GET'])
 def get_last_seen_distribution_stats():
@@ -2540,7 +2518,6 @@ def get_last_seen_distribution_stats():
     })
  
 # ==================== MARKUP ANALYSIS ENDPOINT ====================
-
 @app.route('/api/markup-analysis', methods=['GET'])
 def get_markup_analysis():
     """Get data for markup curve and distribution charts - filtered like posting."""
@@ -2568,7 +2545,6 @@ def get_markup_analysis():
                 'warning': 'No markup rules configured'
             })
 
-        # --- Get cutoff date from query param (default = 30 days ago) ---
         cutoff_param = request.args.get('cutoff')
         if cutoff_param:
             try:
@@ -2580,7 +2556,6 @@ def get_markup_analysis():
 
         cutoff_str = cutoff_date.strftime('%Y-%m-%d')
 
-        # --- Fetch active, store-owned records with location and recent last_seen ---
         cursor.execute('''
             SELECT created_at, store_price 
             FROM records 
@@ -2588,10 +2563,7 @@ def get_markup_analysis():
               AND (consignor_id IS NULL OR consignor_id = 1)
               AND last_seen IS NOT NULL
               AND date(last_seen) >= ?
-              AND location IS NOT NULL 
-              AND location != '' 
-              AND location != 'null' 
-              AND location != 'None'
+              AND location_id IS NOT NULL
               AND created_at IS NOT NULL
         ''', (cutoff_str,))
         records = cursor.fetchall()
@@ -2620,7 +2592,6 @@ def get_markup_analysis():
             record_ages.append(days_old)
             total_days += days_old
 
-        # Age stats
         age_stats = {
             'min_days': min(record_ages) if record_ages else 0,
             'max_days': max(record_ages) if record_ages else 0,
@@ -2630,7 +2601,6 @@ def get_markup_analysis():
 
         chart_max_days = max(max(record_ages) if record_ages else 0, max_rule_days, 365) + 30
 
-        # --- Interpolation (inlined) ---
         def get_markup(days):
             if days <= rules_list[0][0]:
                 return rules_list[0][1]
@@ -2646,7 +2616,6 @@ def get_markup_analysis():
                     return y1 + t * (y2 - y1)
             return rules_list[-1][1]
 
-        # Curve points
         curve_points = []
         for d in range(0, chart_max_days + 1):
             curve_points.append({
@@ -2654,7 +2623,6 @@ def get_markup_analysis():
                 'markup_percent': round(get_markup(d), 1)
             })
 
-        # Distribution by 5% buckets
         distribution = {}
         for age in record_ages:
             markup = get_markup(age)
@@ -2662,7 +2630,6 @@ def get_markup_analysis():
             label = f"+{bucket}%" if bucket >= 0 else f"{bucket}%"
             distribution[label] = distribution.get(label, 0) + 1
 
-        # Age distribution by 30-day buckets
         age_distribution = {}
         for age in record_ages:
             bucket_start = (age // 30) * 30
@@ -2681,7 +2648,7 @@ def get_markup_analysis():
             'max_rule_days': max_rule_days,
             'chart_max_days': chart_max_days,
             'age_stats': age_stats,
-            'cutoff_date': cutoff_str,   # include for debugging
+            'cutoff_date': cutoff_str,
             'records_with_data': len(record_ages)
         })
 
@@ -2690,6 +2657,7 @@ def get_markup_analysis():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+        
 # Create upload folder for bills of sale if not exists
 BILLS_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'bills')
 os.makedirs(BILLS_UPLOAD_FOLDER, exist_ok=True)
@@ -3275,13 +3243,13 @@ def update_record(record_id):
     update_fields = []
     update_values = []
     
-    # Allowed fields for update (including new location fields)
+    # Allowed fields for update
     allowed_fields = [
         'artist', 'title', 'barcode', 'image_url', 'catalog_number',
         'condition_sleeve_id', 'condition_disc_id', 'store_price',
         'consignor_id', 'commission_rate', 'status_id', 'notes',
-        'discogs_genre_raw', 'actual_sale_price', 'date_sold', 'last_seen',
-        'genre_id', 'format_id', 'area_id', 'sublocation_id', 'location_index'
+        'discogs_genre_raw', 'date_sold', 'last_seen',
+        'format_id', 'location_id', 'location_index'
     ]
     
     for key, value in data.items():
@@ -3299,7 +3267,6 @@ def update_record(record_id):
     conn.close()
     return jsonify({'status': 'success', 'message': 'Record updated'})
 
-
 @app.route('/records/<int:record_id>', methods=['DELETE'])
 def delete_record(record_id):
     conn = get_db()
@@ -3308,7 +3275,6 @@ def delete_record(record_id):
     conn.commit()
     conn.close()
     return jsonify({'status': 'success', 'message': 'Record deleted'})
-
 
 @app.route('/records/search', methods=['GET'])
 def search_records():
@@ -3326,16 +3292,14 @@ def search_records():
         
         cursor.execute('''
             SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name,
-            g.name as genre_name, f.name as format_name,
-            a.name as area_name, sl.name as sublocation_name
+            f.name as format_name,
+            l.name as location_name
             FROM records r
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
             LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-            LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN formats f ON r.format_id = f.id
-            LEFT JOIN areas a ON r.area_id = a.id
-            LEFT JOIN sublocations sl ON r.sublocation_id = sl.id
+            LEFT JOIN locations l ON r.location_id = l.id
             WHERE r.id = ? OR r.barcode = ?
             ORDER BY 
                 CASE 
@@ -3351,16 +3315,14 @@ def search_records():
         
         cursor.execute('''
             SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name,
-            g.name as genre_name, f.name as format_name,
-            a.name as area_name, sl.name as sublocation_name
+            f.name as format_name,
+            l.name as location_name
             FROM records r
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
             LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-            LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN formats f ON r.format_id = f.id
-            LEFT JOIN areas a ON r.area_id = a.id
-            LEFT JOIN sublocations sl ON r.sublocation_id = sl.id
+            LEFT JOIN locations l ON r.location_id = l.id
             WHERE r.artist LIKE ? OR r.title LIKE ? OR r.catalog_number LIKE ?
             ORDER BY r.created_at DESC
         ''', (search_term, search_term, search_term))
@@ -3380,6 +3342,8 @@ def search_records():
         'records': records_list, 
         'count': len(records_list)
     })
+
+
 
 @app.route('/records/count', methods=['GET'])
 def get_records_count():
@@ -3525,7 +3489,6 @@ def get_statuses():
     return jsonify({'status': 'success', 'count': len(statuses), 'statuses': [dict(s) for s in statuses]})
 
 
-# ==================== CONSIGNMENT ENDPOINTS ====================
 
 @app.route('/api/consignor/records', methods=['GET'])
 @role_required(['consignor', 'admin'])
@@ -3535,23 +3498,31 @@ def get_consignor_records():
     if session.get('role') == 'admin':
         cursor.execute('''
             SELECT r.*, s.status_name, u.username as consignor_name,
-            cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
+            cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name,
+            f.name as format_name,
+            l.name as location_name
             FROM records r
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN users u ON r.consignor_id = u.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
             LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            LEFT JOIN formats f ON r.format_id = f.id
+            LEFT JOIN locations l ON r.location_id = l.id
             WHERE r.consignor_id IS NOT NULL
             ORDER BY r.created_at DESC
         ''')
     else:
         cursor.execute('''
             SELECT r.*, s.status_name,
-            cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
+            cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name,
+            f.name as format_name,
+            l.name as location_name
             FROM records r
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
             LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            LEFT JOIN formats f ON r.format_id = f.id
+            LEFT JOIN locations l ON r.location_id = l.id
             WHERE r.consignor_id = ?
             ORDER BY r.created_at DESC
         ''', (session['user_id'],))
@@ -3565,7 +3536,6 @@ def get_consignor_records():
         records_list.append(record_dict)
     return jsonify({'status': 'success', 'count': len(records_list), 'records': records_list})
 
-
 @app.route('/api/genres', methods=['GET'])
 def get_genres():
     """Get all genres from the genres table"""
@@ -3577,8 +3547,6 @@ def get_genres():
     return jsonify({'status': 'success', 'genres': [dict(g) for g in genres]})
 
 
-
-
 @app.route('/consignment/records', methods=['GET'])
 def get_consignment_records():
     user_id = request.args.get('user_id')
@@ -3587,24 +3555,32 @@ def get_consignment_records():
     if user_id:
         cursor.execute('''
             SELECT r.*, s.status_name, u.username as consignor_name,
-            cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
+            cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name,
+            f.name as format_name,
+            l.name as location_name
             FROM records r
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN users u ON r.consignor_id = u.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
             LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            LEFT JOIN formats f ON r.format_id = f.id
+            LEFT JOIN locations l ON r.location_id = l.id
             WHERE r.consignor_id = ?
             ORDER BY CASE r.status_id WHEN 1 THEN 1 WHEN 2 THEN 2 WHEN 3 THEN 3 WHEN 4 THEN 4 ELSE 5 END, r.artist, r.title
         ''', (user_id,))
     else:
         cursor.execute('''
             SELECT r.*, s.status_name, u.username as consignor_name,
-            cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name
+            cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name,
+            f.name as format_name,
+            l.name as location_name
             FROM records r
             LEFT JOIN d_status s ON r.status_id = s.id
             LEFT JOIN users u ON r.consignor_id = u.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
             LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            LEFT JOIN formats f ON r.format_id = f.id
+            LEFT JOIN locations l ON r.location_id = l.id
             WHERE r.consignor_id IS NOT NULL
             ORDER BY CASE r.status_id WHEN 1 THEN 1 WHEN 2 THEN 2 WHEN 3 THEN 3 WHEN 4 THEN 4 ELSE 5 END, r.consignor_id, r.artist, r.title
         ''')
@@ -3629,7 +3605,6 @@ def get_consignment_records():
             record_dict['condition'] = record_dict['sleeve_condition_name']
         records_list.append(record_dict)
     return jsonify({'status': 'success', 'count': len(records_list), 'records': records_list})
-
 
 
 @app.route('/api/discogs/search', methods=['GET'])
@@ -4918,63 +4893,54 @@ def get_sales_over_time_daily_stats():
         'revenue': revenue
     })
 
-# ==================== LOCATION-BASED ENDPOINTS FOR DISCOGS TAB ====================
+
 @app.route('/api/locations', methods=['GET'])
-def get_unique_locations():
-    """Get unique bins (genre + bin, ignoring sublocation and counter)"""
+def get_locations():
+    """Get all locations from the locations table"""
     try:
         conn = get_db()
         cursor = conn.cursor()
         
-        cursor.execute('''
-            SELECT DISTINCT location 
-            FROM records 
-            WHERE location IS NOT NULL AND location != ''
-        ''')
+        # Check if locations table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='locations'")
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({
+                'status': 'success',
+                'locations': [],
+                'count': 0
+            })
         
+        cursor.execute('SELECT id, name FROM locations ORDER BY name')
         locations = cursor.fetchall()
         conn.close()
         
-        # REMOVE ALL print statements - use app.logger.debug instead if needed
-        unique_bins = set()
-        
+        locations_list = []
         for row in locations:
-            location = row['location']
-            
-            # Split by " | " separator
-            if ' | ' in location:
-                parts = location.split(' | ')
-                
-                # Keep only the first two parts (Genre and Bin)
-                if len(parts) >= 2:
-                    bin_location = ' | '.join(parts[:2])
-                    unique_bins.add(bin_location)
-            else:
-                unique_bins.add(location)
-        
-        # Sort alphabetically
-        bin_list = sorted(list(unique_bins))
+            locations_list.append({
+                'id': row['id'],
+                'name': row['name']
+            })
         
         return jsonify({
             'status': 'success',
-            'locations': bin_list,
-            'count': len(bin_list)
+            'locations': locations_list,
+            'count': len(locations_list)
         })
         
     except Exception as e:
         app.logger.error(f"Error getting locations: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
 @app.route('/api/records/by-location', methods=['GET'])
 def get_records_by_location():
-    """Get all records matching a location (genre + area + sublocation)"""
+    """Get all records matching a location ID"""
     try:
-        genre_id = request.args.get('genre_id', type=int)
-        area_id = request.args.get('area_id', type=int)
-        sublocation_id = request.args.get('sublocation_id', type=int)
+        location_id = request.args.get('location_id', type=int)
         
-        # For backward compatibility, also support old location string
-        location_pattern = request.args.get('location', '').strip()
+        if not location_id:
+            return jsonify({'status': 'error', 'error': 'location_id is required'}), 400
         
         conn = get_db()
         cursor = conn.cursor()
@@ -4983,48 +4949,23 @@ def get_records_by_location():
             SELECT 
                 r.id, r.artist, r.title, r.barcode, r.image_url, 
                 r.catalog_number, r.store_price, r.status_id, r.notes, r.created_at, r.last_seen,
+                r.location_id, r.location_index,
                 COALESCE(cs.condition_name, '') as sleeve_condition_name,
                 COALESCE(cd.condition_name, '') as disc_condition_name,
                 COALESCE(s.status_name, '') as status_name,
-                g.name as genre_name, f.name as format_name,
-                a.name as area_name, sl.name as sublocation_name,
-                r.location_index
+                COALESCE(f.name, '') as format_name,
+                COALESCE(l.name, '') as location_name
             FROM records r
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
             LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
             LEFT JOIN d_status s ON r.status_id = s.id
-            LEFT JOIN genres g ON r.genre_id = g.id
             LEFT JOIN formats f ON r.format_id = f.id
-            LEFT JOIN areas a ON r.area_id = a.id
-            LEFT JOIN sublocations sl ON r.sublocation_id = sl.id
-            WHERE 1=1
+            LEFT JOIN locations l ON r.location_id = l.id
+            WHERE r.location_id = ?
+            ORDER BY r.location_index, r.created_at DESC
         '''
-        params = []
         
-        if genre_id:
-            query += ' AND r.genre_id = ?'
-            params.append(genre_id)
-        
-        if area_id:
-            query += ' AND r.area_id = ?'
-            params.append(area_id)
-        
-        if sublocation_id:
-            query += ' AND r.sublocation_id = ?'
-            params.append(sublocation_id)
-        
-        # Legacy support for old location string
-        if location_pattern and not any([genre_id, area_id, sublocation_id]):
-            # Try to match by location pattern (if we still have location column)
-            # This is a fallback - should be removed once all data is migrated
-            query += ' AND (r.genre_id IS NULL OR r.area_id IS NULL OR r.sublocation_id IS NULL)'
-            # Keep this for backward compatibility with old calls
-            # The old endpoint would have used location LIKE pattern
-            # We'll just return empty results for now since location column is gone
-        
-        query += ' ORDER BY r.location_index, r.created_at DESC'
-        
-        cursor.execute(query, params)
+        cursor.execute(query, (location_id,))
         records = cursor.fetchall()
         conn.close()
         
@@ -5043,10 +4984,8 @@ def get_records_by_location():
                 'notes': record['notes'],
                 'created_at': record['created_at'],
                 'last_seen': record['last_seen'],
-                'genre_name': record['genre_name'],
-                'format_name': record['format_name'],
-                'area_name': record['area_name'],
-                'sublocation_name': record['sublocation_name'],
+                'location_id': record['location_id'],
+                'location_name': record['location_name'],
                 'location_index': record['location_index'],
                 'sleeve_condition_name': record['sleeve_condition_name'],
                 'disc_condition_name': record['disc_condition_name']
@@ -5061,7 +5000,6 @@ def get_records_by_location():
     except Exception as e:
         app.logger.error(f"Error getting records by location: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 
 # ==================== MARKUP RULES ENDPOINTS ====================
@@ -7618,7 +7556,6 @@ def accounting_delete_journal_entry(entry_id):
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
-
 @app.route('/api/records/<int:record_id>/mark-discogs-sold', methods=['POST'])
 @login_required
 @role_required(['admin'])
@@ -7776,23 +7713,22 @@ def mark_discogs_sold(record_id):
                          f'Make sure the record has been sold on Discogs and the PIGSTYLE ID is correct.'
             }), 404
         
-        # 9. Update the record
+        # 9. Update the record - removed actual_sale_price
         app.logger.info(f"🔄 [DISOOGS_SOLD] Updating record #{record_id} with sale price ${sale_price}")
         cursor.execute('''
             UPDATE records 
             SET status_id = 4, 
                 store_price = ?,
-                actual_sale_price = ?,
                 date_sold = CURRENT_DATE
             WHERE id = ?
-        ''', (sale_price, sale_price, record_id))
+        ''', (sale_price, record_id))
         
         conn.commit()
         app.logger.info(f"✅ [DISOOGS_SOLD] Record #{record_id} updated in database")
         
         # 10. Get updated record
         cursor.execute('''
-            SELECT id, artist, title, store_price, actual_sale_price, date_sold, status_id
+            SELECT id, artist, title, store_price, date_sold, status_id
             FROM records 
             WHERE id = ?
         ''', (record_id,))
@@ -7812,7 +7748,6 @@ def mark_discogs_sold(record_id):
                 'artist': updated_record['artist'],
                 'title': updated_record['title'],
                 'store_price': float(updated_record['store_price']),
-                'actual_sale_price': float(updated_record['actual_sale_price']) if updated_record['actual_sale_price'] else None,
                 'date_sold': updated_record['date_sold'],
                 'status_id': updated_record['status_id']
             },
@@ -7824,7 +7759,6 @@ def mark_discogs_sold(record_id):
         app.logger.error(f"❌ [DISOOGS_SOLD] Error marking record as sold: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 # ==================== ACCOUNTING: CREATE/UPDATE ACCOUNT ====================
 
@@ -12102,99 +12036,6 @@ def get_plaid_balance():
 
 # ==================== GENRES ====================
  
-@app.route('/api/genres', methods=['POST'])
-@login_required
-@role_required(['admin'])
-def create_genre():
-    data = request.json
-    name = data.get('name', '').strip()
- 
-    if not name:
-        return jsonify({'status': 'error', 'error': 'Name is required'}), 400
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # Check if it already exists (case-insensitive)
-    cursor.execute('SELECT id FROM genres WHERE LOWER(name) = LOWER(?)', (name,))
-    existing = cursor.fetchone()
-    
-    if existing:
-        conn.close()
-        return jsonify({
-            'status': 'success', 
-            'id': existing['id'], 
-            'name': name,
-            'already_exists': True,
-            'message': 'Genre already exists'
-        })
-    
-    try:
-        cursor.execute('INSERT INTO genres (name) VALUES (?)', (name,))
-        genre_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return jsonify({
-            'status': 'success', 
-            'id': genre_id, 
-            'name': name,
-            'already_exists': False
-        })
-    except Exception as e:
-        conn.close()
-        app.logger.error(f"Error creating genre: {e}")
-        return jsonify({'status': 'error', 'error': str(e)}), 400
-
-
-@app.route('/api/genres/<int:genre_id>', methods=['PUT'])
-@login_required
-@role_required(['admin'])
-def update_genre(genre_id):
-    """Update a genre name"""
-    data = request.json
-    name = data.get('name', '').strip()
-    if not name:
-        return jsonify({'status': 'error', 'error': 'Name is required'}), 400
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # Check if in use
-    cursor.execute('SELECT id FROM records WHERE genre_id = ?', (genre_id,))
-    if cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Genre is in use by records and cannot be renamed'}), 400
-    
-    try:
-        cursor.execute('UPDATE genres SET name = ? WHERE id = ?', (name, genre_id))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'success', 'message': 'Genre updated'})
-    except sqlite3.IntegrityError:
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Genre name already exists'}), 400
-
-@app.route('/api/genres/<int:genre_id>', methods=['DELETE'])
-@login_required
-@role_required(['admin'])
-def delete_genre(genre_id):
-    """Delete a genre"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # Check if in use
-    cursor.execute('SELECT id FROM records WHERE genre_id = ?', (genre_id,))
-    if cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Genre is in use by records and cannot be deleted'}), 400
-    
-    cursor.execute('DELETE FROM genres WHERE id = ?', (genre_id,))
-    conn.commit()
-    conn.close()
-    return jsonify({'status': 'success', 'message': 'Genre deleted'})
-
-# ==================== FORMATS ====================
-
 @app.route('/api/formats', methods=['GET'])
 def get_formats():
     """Get all formats"""
@@ -12288,219 +12129,6 @@ def get_areas():
     conn.close()
     return jsonify({'status': 'success', 'areas': [dict(a) for a in areas]})
 
-@app.route('/api/areas', methods=['POST'])
-@login_required
-@role_required(['admin'])
-def create_area():
-    """Create a new area"""
-    data = request.json
-    name = data.get('name', '').strip()
-    if not name:
-        return jsonify({'status': 'error', 'error': 'Name is required'}), 400
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    try:
-        cursor.execute('INSERT INTO areas (name) VALUES (?)', (name,))
-        area_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'success', 'id': area_id, 'name': name})
-    except sqlite3.IntegrityError:
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Area already exists'}), 400
-
-@app.route('/api/areas/<int:area_id>', methods=['PUT'])
-@login_required
-@role_required(['admin'])
-def update_area(area_id):
-    """Update an area name"""
-    data = request.json
-    name = data.get('name', '').strip()
-    if not name:
-        return jsonify({'status': 'error', 'error': 'Name is required'}), 400
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # Check if in use
-    cursor.execute('SELECT id FROM records WHERE area_id = ?', (area_id,))
-    if cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Area is in use by records and cannot be renamed'}), 400
-    
-    # Check if has sublocations
-    cursor.execute('SELECT id FROM sublocations WHERE area_id = ?', (area_id,))
-    if cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Area has sublocations and cannot be renamed'}), 400
-    
-    try:
-        cursor.execute('UPDATE areas SET name = ? WHERE id = ?', (name, area_id))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'success', 'message': 'Area updated'})
-    except sqlite3.IntegrityError:
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Area name already exists'}), 400
-
-@app.route('/api/areas/<int:area_id>', methods=['DELETE'])
-@login_required
-@role_required(['admin'])
-def delete_area(area_id):
-    """Delete an area"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # Check if in use
-    cursor.execute('SELECT id FROM records WHERE area_id = ?', (area_id,))
-    if cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Area is in use by records and cannot be deleted'}), 400
-    
-    # Check if has sublocations
-    cursor.execute('SELECT id FROM sublocations WHERE area_id = ?', (area_id,))
-    if cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Area has sublocations and cannot be deleted'}), 400
-    
-    cursor.execute('DELETE FROM areas WHERE id = ?', (area_id,))
-    conn.commit()
-    conn.close()
-    return jsonify({'status': 'success', 'message': 'Area deleted'})
-
-# ==================== SUBLOCATIONS ====================
-
-@app.route('/api/sublocations', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def get_sublocations():
-    """Get all sublocations, optionally filtered by area_id"""
-    area_id = request.args.get('area_id', type=int)
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    if area_id:
-        cursor.execute('''
-            SELECT s.*, a.name as area_name 
-            FROM sublocations s
-            JOIN areas a ON s.area_id = a.id
-            WHERE s.area_id = ?
-            ORDER BY s.sort_order, s.name
-        ''', (area_id,))
-    else:
-        cursor.execute('''
-            SELECT s.*, a.name as area_name 
-            FROM sublocations s
-            JOIN areas a ON s.area_id = a.id
-            ORDER BY a.name, s.sort_order, s.name
-        ''')
-    
-    sublocations = cursor.fetchall()
-    conn.close()
-    return jsonify({'status': 'success', 'sublocations': [dict(s) for s in sublocations]})
-
-@app.route('/api/sublocations', methods=['POST'])
-@login_required
-@role_required(['admin'])
-def create_sublocation():
-    """Create a new sublocation"""
-    data = request.json
-    area_id = data.get('area_id')
-    name = data.get('name', '').strip()
-    abbreviation = data.get('abbreviation', '').strip()
-    sort_order = data.get('sort_order', 0)
-    
-    if not area_id:
-        return jsonify({'status': 'error', 'error': 'area_id is required'}), 400
-    if not name:
-        return jsonify({'status': 'error', 'error': 'Name is required'}), 400
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # Verify area exists
-    cursor.execute('SELECT id FROM areas WHERE id = ?', (area_id,))
-    if not cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Area not found'}), 404
-    
-    try:
-        cursor.execute('''
-            INSERT INTO sublocations (area_id, name, abbreviation, sort_order)
-            VALUES (?, ?, ?, ?)
-        ''', (area_id, name, abbreviation, sort_order))
-        sublocation_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'success', 'id': sublocation_id})
-    except sqlite3.IntegrityError:
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Sublocation already exists for this area'}), 400
-
-@app.route('/api/sublocations/<int:sublocation_id>', methods=['PUT'])
-@login_required
-@role_required(['admin'])
-def update_sublocation(sublocation_id):
-    """Update a sublocation"""
-    data = request.json
-    name = data.get('name', '').strip()
-    abbreviation = data.get('abbreviation', '').strip()
-    sort_order = data.get('sort_order')
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # Check if in use
-    cursor.execute('SELECT id FROM records WHERE sublocation_id = ?', (sublocation_id,))
-    if cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Sublocation is in use by records and cannot be modified'}), 400
-    
-    updates = []
-    params = []
-    
-    if name:
-        updates.append('name = ?')
-        params.append(name)
-    if abbreviation is not None:
-        updates.append('abbreviation = ?')
-        params.append(abbreviation)
-    if sort_order is not None:
-        updates.append('sort_order = ?')
-        params.append(sort_order)
-    
-    if not updates:
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'No fields to update'}), 400
-    
-    params.append(sublocation_id)
-    cursor.execute(f'UPDATE sublocations SET {", ".join(updates)} WHERE id = ?', params)
-    conn.commit()
-    conn.close()
-    return jsonify({'status': 'success', 'message': 'Sublocation updated'})
-
-@app.route('/api/sublocations/<int:sublocation_id>', methods=['DELETE'])
-@login_required
-@role_required(['admin'])
-def delete_sublocation(sublocation_id):
-    """Delete a sublocation"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # Check if in use
-    cursor.execute('SELECT id FROM records WHERE sublocation_id = ?', (sublocation_id,))
-    if cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Sublocation is in use by records and cannot be deleted'}), 400
-    
-    cursor.execute('DELETE FROM sublocations WHERE id = ?', (sublocation_id,))
-    conn.commit()
-    conn.close()
-    return jsonify({'status': 'success', 'message': 'Sublocation deleted'})
-
-# ==================== SCAN - APPLY LOCATION ====================
 
 @app.route('/api/scan/apply-location', methods=['POST'])
 @login_required
@@ -12510,50 +12138,29 @@ def apply_scan_location():
     Apply location to multiple records at once.
     Expects: {
         "record_ids": [1, 2, 3],
-        "genre_id": 5,
-        "format_id": 1,
-        "area_id": 3,
-        "sublocation_id": 7,
+        "location_id": 5,
         "location_index_start": 1
     }
     """
     data = request.json
     record_ids = data.get('record_ids', [])
-    genre_id = data.get('genre_id')
-    format_id = data.get('format_id')
-    area_id = data.get('area_id')
-    sublocation_id = data.get('sublocation_id')
+    location_id = data.get('location_id')
     location_index_start = data.get('location_index_start', 1)
     
     if not record_ids:
         return jsonify({'status': 'error', 'error': 'record_ids required'}), 400
     
-    if not all([genre_id, format_id, area_id, sublocation_id]):
-        return jsonify({'status': 'error', 'error': 'genre_id, format_id, area_id, and sublocation_id required'}), 400
+    if not location_id:
+        return jsonify({'status': 'error', 'error': 'location_id required'}), 400
     
     conn = get_db()
     cursor = conn.cursor()
     
-    # Verify all IDs exist
-    cursor.execute('SELECT id FROM genres WHERE id = ?', (genre_id,))
+    # Verify location exists
+    cursor.execute('SELECT id FROM locations WHERE id = ?', (location_id,))
     if not cursor.fetchone():
         conn.close()
-        return jsonify({'status': 'error', 'error': 'Invalid genre_id'}), 400
-    
-    cursor.execute('SELECT id FROM formats WHERE id = ?', (format_id,))
-    if not cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Invalid format_id'}), 400
-    
-    cursor.execute('SELECT id FROM areas WHERE id = ?', (area_id,))
-    if not cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Invalid area_id'}), 400
-    
-    cursor.execute('SELECT id FROM sublocations WHERE id = ? AND area_id = ?', (sublocation_id, area_id))
-    if not cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Invalid sublocation_id for this area'}), 400
+        return jsonify({'status': 'error', 'error': 'Invalid location_id'}), 400
     
     today = datetime.now().strftime('%Y-%m-%d')
     updated_count = 0
@@ -12562,14 +12169,11 @@ def apply_scan_location():
         location_index = location_index_start + i
         cursor.execute('''
             UPDATE records 
-            SET genre_id = ?,
-                format_id = ?,
-                area_id = ?,
-                sublocation_id = ?,
+            SET location_id = ?,
                 location_index = ?,
                 last_seen = ?
             WHERE id = ?
-        ''', (genre_id, format_id, area_id, sublocation_id, location_index, today, record_id))
+        ''', (location_id, location_index, today, record_id))
         updated_count += cursor.rowcount
     
     conn.commit()
@@ -12582,8 +12186,6 @@ def apply_scan_location():
     })
 
 
-# ==================== RECORDS FILTER ====================
-
 @app.route('/api/records/filter', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -12592,18 +12194,14 @@ def filter_records():
     Filter records by location and date.
     Query params:
         last_seen_after: YYYY-MM-DD
-        genre_id: integer
-        format_id: integer
-        area_id: integer
-        sublocation_id: integer
+        location_id: integer
+        format_id: integer (optional)
         status_id: integer (optional)
         search: string (optional)
     """
     last_seen_after = request.args.get('last_seen_after')
-    genre_id = request.args.get('genre_id', type=int)
+    location_id = request.args.get('location_id', type=int)
     format_id = request.args.get('format_id', type=int)
-    area_id = request.args.get('area_id', type=int)
-    sublocation_id = request.args.get('sublocation_id', type=int)
     status_id = request.args.get('status_id', type=int)
     search = request.args.get('search', '').strip()
     
@@ -12616,19 +12214,14 @@ def filter_records():
             s.status_name,
             cs.condition_name as sleeve_condition_name,
             cd.condition_name as disc_condition_name,
-            g.name as genre_name,
             f.name as format_name,
-            a.name as area_name,
-            sl.name as sublocation_name,
-            sl.abbreviation as sublocation_abbr
+            l.name as location_name
         FROM records r
         LEFT JOIN d_status s ON r.status_id = s.id
         LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
         LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-        LEFT JOIN genres g ON r.genre_id = g.id
         LEFT JOIN formats f ON r.format_id = f.id
-        LEFT JOIN areas a ON r.area_id = a.id
-        LEFT JOIN sublocations sl ON r.sublocation_id = sl.id
+        LEFT JOIN locations l ON r.location_id = l.id
         WHERE 1=1
     '''
     params = []
@@ -12637,21 +12230,13 @@ def filter_records():
         query += ' AND date(r.last_seen) >= date(?)'
         params.append(last_seen_after)
     
-    if genre_id:
-        query += ' AND r.genre_id = ?'
-        params.append(genre_id)
+    if location_id:
+        query += ' AND r.location_id = ?'
+        params.append(location_id)
     
     if format_id:
         query += ' AND r.format_id = ?'
         params.append(format_id)
-    
-    if area_id:
-        query += ' AND r.area_id = ?'
-        params.append(area_id)
-    
-    if sublocation_id:
-        query += ' AND r.sublocation_id = ?'
-        params.append(sublocation_id)
     
     if status_id:
         query += ' AND r.status_id = ?'
@@ -12673,6 +12258,7 @@ def filter_records():
         'records': [dict(r) for r in records],
         'count': len(records)
     })
+
 
 @app.route('/api/gift-card/create', methods=['POST'])
 @login_required
