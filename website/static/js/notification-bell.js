@@ -18,6 +18,7 @@
     let unreadCount = 0;
     let notificationInterval = null;
     let initialized = false;
+    let notifications = [];
 
     // ========== Configuration ==========
     const POLL_INTERVAL = 30000; // 30 seconds
@@ -146,7 +147,7 @@
             background: #f8f9fa;
         `;
         dropdownFooter.innerHTML = `
-            <a href="/admin#notifications" style="
+            <a href="/admin#record-orders" style="
                 color: #666;
                 text-decoration: none;
                 font-size: 12px;
@@ -218,7 +219,7 @@
                 getUnreadOrders()
             ]);
             
-            const notifications = [];
+            notifications = [];
             
             // Format feedback notifications
             feedback.forEach(item => {
@@ -228,7 +229,7 @@
                     title: '📝 New Feedback',
                     message: item.content ? item.content.substring(0, 100) : 'New feedback received',
                     created_at: item.created_at,
-                    link: '/admin#feedback',
+                    link: '/admin#record-orders',  // FIXED: goes to Record Orders tab
                     markRead: () => markFeedbackRead(item.id)
                 });
             });
@@ -241,7 +242,7 @@
                     title: '🔔 New Record Alert',
                     message: `${item.email} wants "${item.artist} - ${item.title || 'Any'}"`,
                     created_at: item.created_at,
-                    link: '/admin#email-subscriptions',
+                    link: '/admin#email-subscriptions',  // FIXED: goes to Email Subscriptions tab
                     markRead: () => markSubscriptionRead(item.id)
                 });
             });
@@ -254,7 +255,7 @@
                     title: '🛒 New Order!',
                     message: `Order #${item.order_number} - ${item.customer_name} - $${parseFloat(item.total).toFixed(2)}`,
                     created_at: item.created_at,
-                    link: `/admin#record-orders`,
+                    link: `/admin#record-orders`,  // FIXED: goes to Record Orders tab
                     markRead: () => markOrderRead(item.id)
                 });
             });
@@ -341,14 +342,14 @@
             });
         });
 
-        // Click on notification item
+        // Click on notification item - goes to the link
         list.querySelectorAll('.notification-item').forEach(item => {
             item.addEventListener('click', function() {
                 const id = this.dataset.id;
                 const type = this.dataset.type;
-                const link = notifications.find(n => n.id == id)?.link;
-                if (link) {
-                    window.location.href = link;
+                const notification = notifications.find(n => n.id == id);
+                if (notification && notification.link) {
+                    window.location.href = notification.link;
                 }
             });
         });

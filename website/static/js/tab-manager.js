@@ -493,11 +493,21 @@ const TabManager = (function() {
         console.log(`✅ TabManager: Set up ${tabElements.length} tab click handlers`);
     }
     
-    // Handle hash changes (for deep linking)
+    // ============================================================
+    // FIXED: Handle hash changes (for deep linking)
+    // ============================================================
     function handleHashChange() {
         const hash = window.location.hash.substring(1);
-        if (hash && tabs[hash]) {
-            activateTab(hash);
+        console.log(`🔗 Hash changed: ${hash}`);
+        if (hash) {
+            // Check if tab exists using getAvailableTabs()
+            const availableTabs = getAvailableTabs();
+            if (availableTabs.includes(hash)) {
+                console.log(`✅ Hash matches available tab: ${hash}`);
+                activateTab(hash);
+            } else {
+                console.warn(`⚠️ Tab "${hash}" not found in available tabs:`, availableTabs);
+            }
         }
     }
     
@@ -538,6 +548,9 @@ const TabManager = (function() {
                 console.log(`💾 TabManager: Restoring stored tab: ${initialTab}`);
             }
             
+            // ============================================================
+            // FIXED: Use tabExists() instead of tabs[hash]
+            // ============================================================
             const hash = window.location.hash.substring(1);
             if (hash && tabExists(hash)) {
                 initialTab = hash;
