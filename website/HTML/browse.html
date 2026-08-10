@@ -16,47 +16,591 @@
     </script>
     
     <!-- CSS FILES -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="/static/css/browse.css">
-    
-    <!-- ============================================================
-         NOTE: DO NOT ADD CSS IN THIS HTML FILE!
-         All styles must go in /static/css/browse.css
-         ============================================================ -->
+    <link rel="stylesheet" href="/static/css/shared.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     
     <script src="/static/js/app-config.js"></script>
     <script src="/static/js/config-value-manager.js"></script>
     <script src="/static/js/notification-bell.js"></script>
     <script src="/static/js/shared.js"></script>
+    
+    <style>
+        /* OVERRIDE FILTER ALIGNMENT - FORCED */
+        .filter-section {
+            display: flex !important;
+            align-items: center !important;
+            gap: 15px !important;
+            flex-wrap: wrap !important;
+            background: transparent !important;
+            padding: 0 !important;
+            margin-top: 15px !important;
+            margin-bottom: 15px !important;
+            box-shadow: none !important;
+        }
+        
+        .filter-group {
+            display: inline-block !important;
+            margin-bottom: 0 !important;
+            position: relative !important;
+        }
+        
+        .filter-btn {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            height: 40px !important;
+            padding: 0 20px !important;
+            font-size: 14px !important;
+            font-weight: 600 !important;
+            border-radius: 40px !important;
+            border: none !important;
+            cursor: pointer !important;
+            gap: 8px !important;
+            background: #2c3e50 !important;
+            color: white !important;
+            box-sizing: border-box !important;
+            line-height: 1 !important;
+            margin: 0 !important;
+        }
+        
+        .filter-btn i {
+            font-size: 14px !important;
+        }
+        
+        .filter-btn:hover {
+            background: #1e2a36 !important;
+            transform: translateY(-1px) !important;
+        }
+        
+        .filter-btn.active {
+            background: #ff6b6b !important;
+            color: white !important;
+        }
+        
+        .filter-btn.active i {
+            color: white !important;
+        }
+        
+        .records-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 25px;
+            padding: 20px;
+        }
+        
+        .record-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: default;
+        }
+        
+        .record-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+        
+        .record-card-image {
+            height: 200px;
+            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        
+        .record-card-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .record-card-image.default-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            color: white;
+        }
+        
+        .record-card-info {
+            padding: 15px;
+        }
+        
+        .record-card-artist {
+            font-size: 16px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .record-card-title {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .record-card-price {
+            font-size: 20px;
+            font-weight: bold;
+            color: #ff6b6b;
+            margin: 10px 0;
+        }
+        
+        .record-card-condition {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            background: #3498db;
+            color: white;
+        }
+        
+        .record-card-genre {
+            font-size: 12px;
+            color: #888;
+            margin-top: 8px;
+        }
+        
+        .record-card-format {
+            font-size: 11px;
+            color: #6c5ce7;
+            margin-top: 4px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .pagination-btn {
+            background: #2c3e50;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 40px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            margin: 0 5px;
+        }
+        
+        .pagination-btn:hover:not(:disabled) {
+            background: #ff6b6b;
+        }
+        
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .pagination-info {
+            color: white;
+            font-size: 14px;
+            padding: 0 15px;
+        }
+        
+        #pagination-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 30px 0;
+            padding: 20px;
+        }
+        
+        .loading-indicator {
+            text-align: center;
+            padding: 50px;
+        }
+        
+        .loading-dots {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+        
+        .loading-dots div {
+            width: 12px;
+            height: 12px;
+            background: #ff6b6b;
+            border-radius: 50%;
+            animation: bounce 0.5s ease-in-out infinite;
+        }
+        
+        .loading-dots div:nth-child(1) { animation-delay: 0s; }
+        .loading-dots div:nth-child(2) { animation-delay: 0.1s; }
+        .loading-dots div:nth-child(3) { animation-delay: 0.2s; }
+        .loading-dots div:nth-child(4) { animation-delay: 0.3s; }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        .filter-checkbox-container {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 10px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+            z-index: 100;
+            min-width: 220px;
+            display: none;
+        }
+        
+        .filter-checkbox-container.show {
+            display: block;
+        }
+        
+        .filter-checkbox-group {
+            max-height: 250px;
+            overflow-y: auto;
+            padding: 12px;
+        }
+        
+        .filter-checkbox-item {
+            margin-bottom: 8px;
+        }
+        
+        .filter-checkbox-item input {
+            margin-right: 8px;
+        }
+        
+        .filter-actions {
+            display: flex;
+            gap: 8px;
+            padding: 8px 12px 12px;
+            border-top: 1px solid #eee;
+        }
+        
+        .filter-action-btn {
+            flex: 1;
+            padding: 6px;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            background: #f0f0f0;
+        }
+        
+        .filter-apply {
+            background: #ff6b6b;
+            color: white;
+        }
+        
+        .filter-status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 10px 0 15px;
+            padding: 8px 12px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 30px;
+            backdrop-filter: blur(4px);
+        }
+        
+        .filter-summary {
+            font-size: 13px;
+            color: #f0f0f0;
+        }
+        
+        .result-count-badge {
+            background: #ff6b6b;
+            padding: 2px 10px;
+            border-radius: 30px;
+            font-size: 12px;
+            margin-left: 10px;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .clear-filters-link {
+            background: none;
+            border: none;
+            color: #ffb3b3;
+            cursor: pointer;
+            font-size: 12px;
+            text-decoration: underline;
+            padding: 4px 8px;
+        }
+        
+        .record-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.9);
+            backdrop-filter: blur(8px);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .record-modal {
+            background: white;
+            border-radius: 20px;
+            max-width: 500px;
+            width: 90%;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        }
+        
+        .record-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            background: #2c3e50;
+            color: white;
+        }
+        
+        .record-modal-close {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: white;
+        }
+        
+        .record-modal-image {
+            width: 100%;
+            height: 250px;
+            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        
+        .record-modal-info {
+            padding: 24px;
+        }
+        
+        .record-modal-title {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 15px;
+        }
+        
+        .record-modal-details {
+            margin: 15px 0;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 12px;
+        }
+        
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 14px;
+        }
+        
+        .detail-label {
+            font-weight: 600;
+            color: #555;
+        }
+        
+        .record-modal-price {
+            font-size: 28px;
+            font-weight: bold;
+            color: #ff6b6b;
+            margin: 15px 0;
+            text-align: center;
+        }
+        
+        .record-modal-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        
+        .close-modal-btn {
+            flex: 1;
+            background: #e9ecef;
+            color: #495057;
+            border: none;
+            padding: 14px;
+            border-radius: 40px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        
+        .notification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            z-index: 3500;
+            color: white;
+        }
+        
+        .required {
+            color: #ff6b6b;
+        }
+        
+        /* Navbar styles for browse page */
+        nav {
+            background: #000;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            border-bottom: 2px solid #ff6b6b;
+        }
+        
+        nav a {
+            color: white;
+            text-decoration: none;
+        }
+        
+        nav > a {
+            font-size: 20px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        nav > a img {
+            height: 30px;
+            width: 30px;
+        }
+        
+        nav > div {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        
+        .background-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+        
+        .background-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .background-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+        }
+        
+        .header-section {
+            max-width: 1400px;
+            margin: 80px auto 20px;
+            padding: 0 20px;
+        }
+        
+        .search-wrapper {
+            position: relative;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .search-wrapper input {
+            width: 100%;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 50px;
+            font-size: 16px;
+            background: rgba(255,255,255,0.95);
+            color: #333;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .search-wrapper input:focus {
+            outline: none;
+            box-shadow: 0 4px 20px rgba(255,107,107,0.3);
+        }
+        
+        .catalog-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px 40px;
+            min-height: 400px;
+        }
+        
+        .no-records-message {
+            text-align: center;
+            padding: 60px 20px;
+            color: #ccc;
+        }
+        
+        .no-records-message i {
+            font-size: 48px;
+            margin-bottom: 20px;
+            display: block;
+        }
+        
+        .error-message {
+            text-align: center;
+            padding: 60px 20px;
+            color: #ff6b6b;
+        }
+        
+        .error-message i {
+            font-size: 48px;
+            margin-bottom: 20px;
+            display: block;
+        }
+        
+        .retry-btn {
+            margin-top: 20px;
+            padding: 12px 30px;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
-    <nav>
-        <a href="/">
-            <img src="/static/images/PigStyle.ico" alt="PigStyle">
-        </a>
-        <div>
-            <a href="/browse" style="color: #ff6b6b; text-decoration: none;">Browse</a>
-            <a href="/misc" style="color: white; text-decoration: none;">Misc</a>
-            <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
-            <a href="#" id="subscribe-alert-link" style="color: white; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
-                <i class="fas fa-bell"></i> Record Alerts
-            </a>
-            <div id="auth-section"></div>
-            <div id="cartToggleContainer" style="display: none;">
-                <div class="cart-icon-wrapper" id="cartToggle">
-                    <i class="fas fa-shopping-cart" style="color: white;"></i>
-                    <span id="cartBadge" class="cart-badge">0</span>
-                </div>
-            </div>
-        </div>
-    </nav>
-
-    <div style="padding-top: 60px;"></div>
-
+    <!-- Background -->
     <div class="background-container">
         <img src="/static/images/background.png" alt="Background" class="background-image">
         <div class="background-overlay"></div>
     </div>
+    
+    <!-- ===== NAVBAR PLACEHOLDER ===== -->
+    <div id="navbar-placeholder"></div>
+    
+    <!-- ===== SUBSCRIPTION MODAL PLACEHOLDER ===== -->
+    <div id="subscription-modal-placeholder"></div>
 
     <div class="header-section">
         <div class='search-wrapper'>
@@ -64,6 +608,7 @@
         </div>
         
         <div class="filter-section">
+            <!-- Genre Filter -->
             <div class="filter-group">
                 <button id="genreFilterBtn" class="filter-btn">
                     <i class="fas fa-filter"></i> Genre
@@ -76,6 +621,23 @@
                         <button id="selectAllGenres" class="filter-action-btn">All</button>
                         <button id="clearAllGenres" class="filter-action-btn">Clear</button>
                         <button id="applyGenres" class="filter-action-btn filter-apply">Apply</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Format Filter -->
+            <div class="filter-group">
+                <button id="formatFilterBtn" class="filter-btn">
+                    <i class="fas fa-record-vinyl"></i> Format
+                </button>
+                <div id="formatDropdown" class="filter-checkbox-container">
+                    <div class="filter-checkbox-group" id="formatList">
+                        <div style="color: #999; text-align: center; padding: 20px;">Loading formats...</div>
+                    </div>
+                    <div class="filter-actions">
+                        <button id="selectAllFormats" class="filter-action-btn">All</button>
+                        <button id="clearAllFormats" class="filter-action-btn">Clear</button>
+                        <button id="applyFormats" class="filter-action-btn filter-apply">Apply</button>
                     </div>
                 </div>
             </div>
@@ -107,259 +669,164 @@
         </div>
     </div>
 
-    <!-- ===== CART DRAWER ===== -->
-    <div class="cart-drawer" id="cartDrawer">
-        <div class="cart-drawer-header">
-            <h3><i class="fas fa-shopping-cart"></i> Your Cart</h3>
-            <button class="cart-drawer-close" id="closeCartDrawer">&times;</button>
-        </div>
-        <div class="cart-drawer-items" id="cartItems">
-            <div class="empty-cart-message">
-                <i class="fas fa-shopping-bag"></i>
-                <p>Your cart is empty</p>
-            </div>
-        </div>
-        <div class="cart-drawer-footer" id="cartFooter" style="display: none;"></div>
-    </div>
-
-    <div class="cart-overlay" id="cartOverlay"></div>
-
-    <!-- ===== SUBSCRIPTION MODAL ===== -->
-    <div id="subscribe-modal" class="subscribe-modal" style="display: none;">
-        <div style="background: white; border-radius: 12px; max-width: 500px; width: 90%; max-height: 90%; overflow-y: auto;">
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px 12px 0 0; display: flex; justify-content: space-between; align-items: center;">
-                <h3 style="margin: 0;"><i class="fas fa-bell"></i> Get Notified When We Get Records You Want!</h3>
-                <button class="subscribe-modal-close" style="background: none; border: none; color: white; font-size: 28px; cursor: pointer;">&times;</button>
-            </div>
-            <div style="padding: 25px;">
-                <p>Enter your email and what you're looking for. We'll email you when matching records arrive!</p>
-                
-                <form id="subscribe-form">
-                    <div style="margin-bottom: 20px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;"><i class="fas fa-envelope"></i> Your Email *</label>
-                        <input type="email" id="subscribe-email" required placeholder="you@example.com" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box;">
-                    </div>
-                    
-                    <div style="margin-bottom: 20px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;"><i class="fas fa-microphone"></i> Artist</label>
-                        <input type="text" id="subscribe-artist" placeholder="e.g., Bruce Springsteen" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box;">
-                    </div>
-                    
-                    <div style="margin-bottom: 20px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;"><i class="fas fa-music"></i> Album Title</label>
-                        <input type="text" id="subscribe-title" placeholder="e.g., Born to Run" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box;">
-                    </div>
-                    
-                    <div style="margin-bottom: 20px;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;"><i class="fas fa-barcode"></i> Catalog Number</label>
-                        <input type="text" id="subscribe-catalog" placeholder="e.g., JC 33795" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box;">
-                    </div>
-                    
-                    <div style="font-size: 12px; color: #666; margin-bottom: 20px; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-                        <i class="fas fa-info-circle"></i> Enter at least one search term (artist, title, or catalog number)
-                    </div>
-                    
-                    <button type="submit" class="subscribe-submit-btn" style="width: 100%; padding: 14px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer;">
-                        <i class="fas fa-bell"></i> Subscribe
-                    </button>
-                </form>
-                
-                <div id="subscribe-message" style="display: none; margin-top: 15px; padding: 12px; border-radius: 4px;"></div>
-            </div>
-        </div>
-    </div>
-
     <script>
         let allRecords = [];
         let availableGenres = [];
         let selectedGenres = [];
+        let selectedFormatIds = [];
         let currentSearchTerm = '';
         let newArrivalsActive = true;
         let newVinylActive = false;
         let currentPage = 1;
         let recordsPerPage = 50;
-        let cart = { items: [], total: 0 };
-        let shippingCost = 0;
-        let taxRate = 0;
+        
+        let allFormats = [];
 
-        // Show order confirmation modal
-        function showOrderConfirmation() {
-            const overlay = document.createElement('div');
-            overlay.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: rgba(0,0,0,0.7);
-                z-index: 9999;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                backdrop-filter: blur(4px);
-            `;
-            overlay.innerHTML = `
-                <div style="
-                    background: white;
-                    border-radius: 16px;
-                    padding: 40px;
-                    max-width: 450px;
-                    width: 90%;
-                    text-align: center;
-                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                ">
-                    <div style="font-size: 64px; margin-bottom: 15px;">🎉</div>
-                    <h2 style="margin: 0 0 10px 0; color: #28a745;">Order Confirmed!</h2>
-                    <p style="color: #666; margin-bottom: 20px;">Thank you for your purchase! You will receive a confirmation email shortly.</p>
-                    <button onclick="this.closest('div[style]').parentElement.remove()" style="
-                        background: #28a745;
-                        color: white;
-                        border: none;
-                        padding: 12px 40px;
-                        border-radius: 30px;
-                        font-size: 16px;
-                        font-weight: 600;
-                        cursor: pointer;
-                    ">Continue Shopping</button>
-                </div>
-            `;
-            document.body.appendChild(overlay);
-        }
-
-        // Check if returning from payment
+        // Load navbar and subscription modal from shared components
         document.addEventListener('DOMContentLoaded', function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const status = urlParams.get('status');
-            const orderId = urlParams.get('order_id');
-            
-            if (status === 'completed' && orderId) {
-                // Clear the cart
-                cart.items = [];
-                cart.total = 0;
-                saveCart();
-                updateCartDisplay();
-                showOrderConfirmation();
-                window.history.replaceState({}, document.title, window.location.pathname);
+            if (typeof loadNavbar === 'function') {
+                loadNavbar();
+            } else {
+                console.warn('loadNavbar function not found, make sure shared.js is loaded');
             }
+            
+            if (typeof loadSubscriptionModal === 'function') {
+                loadSubscriptionModal();
+            } else {
+                console.warn('loadSubscriptionModal function not found, make sure shared.js is loaded');
+            }
+            
+            initBrowsePage();
         });
 
-        // Subscription Modal Functions
-        const subscribeModal = document.getElementById('subscribe-modal');
-        const subscribeLink = document.getElementById('subscribe-alert-link');
-        const subscribeClose = document.querySelector('.subscribe-modal-close');
-        const subscribeForm = document.getElementById('subscribe-form');
-        const subscribeMessage = document.getElementById('subscribe-message');
-
-        function openSubscribeModal() {
-            if (subscribeModal) {
-                subscribeModal.style.display = 'flex';
-                document.body.style.overflow = 'hidden';
+        async function initBrowsePage() {
+            if (typeof initSubscriptionModal === 'function') {
+                initSubscriptionModal();
             }
+            
+            // Fetch formats from database
+            await fetchFormats();
+            
+            // Load catalog data
+            await loadCatalogData();
+            
+            // Setup event listeners
+            setupEventListeners();
         }
 
-        function closeSubscribeModal() {
-            if (subscribeModal) {
-                subscribeModal.style.display = 'none';
-                document.body.style.overflow = '';
-                if (subscribeMessage) subscribeMessage.style.display = 'none';
-                if (subscribeForm) subscribeForm.reset();
-            }
-        }
-
-        if (subscribeLink) {
-            subscribeLink.addEventListener('click', function(e) {
-                e.preventDefault();
-                openSubscribeModal();
+        function setupEventListeners() {
+            document.getElementById('clearAllFiltersBtn')?.addEventListener('click', () => { 
+                selectedGenres = []; 
+                selectedFormatIds = [];
+                currentSearchTerm = ''; 
+                newArrivalsActive = true; 
+                newVinylActive = false; 
+                currentPage = 1; 
+                document.getElementById('searchBox').value = ''; 
+                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false);
+                document.querySelectorAll('#formatList input').forEach(cb => cb.checked = false);
+                loadCatalogData(); 
+            });
+            
+            document.getElementById('newArrivalsBtn')?.addEventListener('click', () => { 
+                newArrivalsActive = !newArrivalsActive; 
+                currentPage = 1; 
+                loadCatalogData(); 
+            });
+            
+            document.getElementById('newVinylBtn')?.addEventListener('click', () => { 
+                newVinylActive = !newVinylActive; 
+                currentPage = 1; 
+                loadCatalogData(); 
+            });
+            
+            document.getElementById('searchBox')?.addEventListener('input', debounce(() => loadCatalogData(), 500));
+            
+            // Genre dropdown
+            const genreBtn = document.getElementById('genreFilterBtn');
+            const genreDropdown = document.getElementById('genreDropdown');
+            genreBtn?.addEventListener('click', (e) => { 
+                e.stopPropagation(); 
+                genreDropdown.classList.toggle('show'); 
+                document.getElementById('formatDropdown')?.classList.remove('show');
+            });
+            
+            // Format dropdown
+            const formatBtn = document.getElementById('formatFilterBtn');
+            const formatDropdown = document.getElementById('formatDropdown');
+            formatBtn?.addEventListener('click', (e) => { 
+                e.stopPropagation(); 
+                formatDropdown.classList.toggle('show');
+                document.getElementById('genreDropdown')?.classList.remove('show');
+            });
+            
+            document.addEventListener('click', (e) => { 
+                if (!genreDropdown?.contains(e.target) && e.target !== genreBtn) 
+                    genreDropdown?.classList.remove('show');
+                if (!formatDropdown?.contains(e.target) && e.target !== formatBtn)
+                    formatDropdown?.classList.remove('show');
+            });
+            
+            document.getElementById('selectAllGenres')?.addEventListener('click', () => { 
+                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = true); 
+            });
+            
+            document.getElementById('clearAllGenres')?.addEventListener('click', () => { 
+                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false); 
+            });
+            
+            document.getElementById('applyGenres')?.addEventListener('click', () => { 
+                selectedGenres = Array.from(document.querySelectorAll('#genreList input:checked')).map(cb => cb.value); 
+                genreDropdown.classList.remove('show'); 
+                currentPage = 1; 
+                loadCatalogData(); 
+            });
+            
+            document.getElementById('selectAllFormats')?.addEventListener('click', () => { 
+                document.querySelectorAll('#formatList input').forEach(cb => cb.checked = true); 
+            });
+            
+            document.getElementById('clearAllFormats')?.addEventListener('click', () => { 
+                document.querySelectorAll('#formatList input').forEach(cb => cb.checked = false); 
+            });
+            
+            document.getElementById('applyFormats')?.addEventListener('click', () => { 
+                selectedFormatIds = Array.from(document.querySelectorAll('#formatList input:checked')).map(cb => parseInt(cb.value));
+                formatDropdown.classList.remove('show'); 
+                currentPage = 1; 
+                loadCatalogData(); 
             });
         }
-
-        if (subscribeClose) {
-            subscribeClose.addEventListener('click', closeSubscribeModal);
-        }
-
-        if (subscribeModal) {
-            subscribeModal.addEventListener('click', function(e) {
-                if (e.target === subscribeModal) closeSubscribeModal();
-            });
-        }
-
-        function showSubscribeMessage(message, type) {
-            if (!subscribeMessage) return;
-            subscribeMessage.textContent = message;
-            subscribeMessage.style.display = 'block';
-            subscribeMessage.style.background = type === 'success' ? '#d4edda' : (type === 'info' ? '#cce5ff' : '#f8d7da');
-            subscribeMessage.style.color = type === 'success' ? '#155724' : (type === 'info' ? '#004085' : '#721c24');
-            subscribeMessage.style.border = type === 'success' ? '1px solid #c3e6cb' : (type === 'info' ? '1px solid #b8daff' : '1px solid #f5c6cb');
-        }
-
-        if (subscribeForm) {
-            subscribeForm.addEventListener('submit', async function(e) {
-                e.preventDefault();
-                
-                const email = document.getElementById('subscribe-email').value.trim();
-                const artist = document.getElementById('subscribe-artist').value.trim();
-                const title = document.getElementById('subscribe-title').value.trim();
-                const catalog_number = document.getElementById('subscribe-catalog').value.trim();
-                
-                if (!artist && !title && !catalog_number) {
-                    showSubscribeMessage('Please enter at least one search term (artist, title, or catalog number)', 'error');
-                    return;
-                }
-                
-                if (!email || !email.includes('@') || !email.includes('.')) {
-                    showSubscribeMessage('Please enter a valid email address', 'error');
-                    return;
-                }
-                
-                const submitBtn = subscribeForm.querySelector('.subscribe-submit-btn');
-                submitBtn.disabled = true;
-                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subscribing...';
-                
-                try {
-                    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                    const apiUrl = isLocalhost 
-                        ? 'http://localhost:5000/api/subscribe'
-                        : `https://${window.location.hostname}/api/subscribe`;
-                    
-                    const response = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            email: email,
-                            artist: artist,
-                            title: title,
-                            catalog_number: catalog_number
-                        })
-                    });
-                    
+        
+        // Fetch format names from the database
+        async function fetchFormats() {
+            try {
+                console.log('Fetching formats from API...');
+                const response = await fetch(`${AppConfig.baseUrl}/api/formats`);
+                console.log('Formats response status:', response.status);
+                if (response.ok) {
                     const data = await response.json();
-                    
-                    if (response.ok && data.status === 'success') {
-                        if (data.already_subscribed) {
-                            showSubscribeMessage(data.message, 'info');
-                        } else {
-                            showSubscribeMessage('Thank you for subscribing! We\'ll email you when matching records arrive.', 'success');
-                        }
-                        subscribeForm.reset();
-                        
-                        setTimeout(() => {
-                            closeSubscribeModal();
-                        }, 3000);
-                    } else {
-                        showSubscribeMessage(data.error || 'Something went wrong. Please try again.', 'error');
+                    console.log('Formats data:', data);
+                    if (data.status === 'success' && data.formats) {
+                        allFormats = data.formats;
+                        // Populate format dropdown directly from API
+                        populateFormatDropdown(allFormats);
+                        console.log('Formats loaded from database:', allFormats);
+                        return;
                     }
-                    
-                } catch (error) {
-                    console.error('Subscription error:', error);
-                    showSubscribeMessage('Network error. Please try again.', 'error');
-                } finally {
-                    submitBtn.disabled = false;
-                    submitBtn.innerHTML = '<i class="fas fa-bell"></i> Subscribe';
                 }
-            });
+                console.warn('Failed to fetch formats, status:', response.status);
+                allFormats = [];
+            } catch (e) {
+                console.error('Error fetching formats:', e);
+                allFormats = [];
+            }
+        }
+
+        function getFormatName(formatId) {
+            if (!formatId) return null;
+            const format = allFormats.find(f => f.id === formatId);
+            return format ? format.name : null;
         }
 
         function extractGenreFromDiscogsRaw(discogs_genre_raw) {
@@ -457,17 +924,16 @@
             currentPage = 1;
             
             let url = `${AppConfig.baseUrl}/records?status_id=2`;
+            
             url += `&bypass_date_filter=true`;
             url += `&require_image=true`;
-            url += `&require_location=true`;
-            url += `&last_seen_days=90`;
-            
+            url += `&exclude_old_no_location=false`;
+        
             if (currentSearchTerm) {
                 url = `${AppConfig.baseUrl}/records?search=${encodeURIComponent(currentSearchTerm)}&status_id=2`;
                 url += `&bypass_date_filter=true`;
                 url += `&require_image=true`;
-                url += `&require_location=true`;
-                url += `&last_seen_days=90`;
+                url += `&exclude_old_no_location=false`;
             }
             
             document.getElementById('catalogContainer').innerHTML = `<div class="loading-indicator"><div class="loading-dots"><div></div><div></div><div></div><div></div></div><p>Loading records...</p></div>`;
@@ -480,14 +946,28 @@
                 if (data.status === 'success') {
                     let records = data.records || [];
                     
-                    // Extract genres from records for genre filter
-                    const genreSet = new Set();
-                    records.forEach(r => {
-                        const genre = extractGenreFromDiscogsRaw(r.discogs_genre_raw);
-                        if (genre) genreSet.add(genre);
+                    // Get cutoff days from config
+                    let cutoffDays = 30;
+                    try {
+                        const configResponse = await fetch(`${AppConfig.baseUrl}/config/INVENTORY_CUTOFF_DAYS`);
+                        if (configResponse.ok) {
+                            const configData = await configResponse.json();
+                            if (configData.config_value) {
+                                cutoffDays = parseInt(configData.config_value) || 30;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Could not fetch INVENTORY_CUTOFF_DAYS, using default 30');
+                    }
+                    
+                    // Apply cutoff filter
+                    const cutoffDate = new Date();
+                    cutoffDate.setDate(cutoffDate.getDate() - cutoffDays);
+                    
+                    records = records.filter(r => {
+                        const createdDate = new Date(r.created_at);
+                        return createdDate >= cutoffDate;
                     });
-                    availableGenres = Array.from(genreSet).sort();
-                    populateGenreDropdown(availableGenres);
                     
                     // Apply genre filter
                     if (selectedGenres.length > 0) {
@@ -495,6 +975,11 @@
                             const genre = extractGenreFromDiscogsRaw(r.discogs_genre_raw);
                             return genre && selectedGenres.some(s => s.toLowerCase() === genre.toLowerCase());
                         });
+                    }
+                    
+                    // Apply format filter - filter by format_id directly
+                    if (selectedFormatIds.length > 0) {
+                        records = records.filter(r => selectedFormatIds.includes(r.format_id));
                     }
                     
                     // Apply new vinyl filter
@@ -513,6 +998,16 @@
                     }
                     
                     allRecords = records;
+                    
+                    // Extract unique genres from discogs_genre_raw
+                    const genreSet = new Set();
+                    records.forEach(r => {
+                        const genre = extractGenreFromDiscogsRaw(r.discogs_genre_raw);
+                        if (genre) genreSet.add(genre);
+                    });
+                    
+                    availableGenres = Array.from(genreSet).sort();
+                    populateGenreDropdown();
                     displayRecords(allRecords);
                     updateFilterUI();
                 }
@@ -522,14 +1017,14 @@
             }
         }
 
-        function populateGenreDropdown(genres) {
+        function populateGenreDropdown() {
             const genreList = document.getElementById('genreList');
             if (!genreList) return;
-            if (genres.length === 0) {
+            if (availableGenres.length === 0) {
                 genreList.innerHTML = '<div style="color: #999; text-align: center;">No genres available</div>';
                 return;
             }
-            genreList.innerHTML = genres.map(genre => `
+            genreList.innerHTML = availableGenres.map(genre => `
                 <div class="filter-checkbox-item">
                     <input type="checkbox" id="genre_${escapeHtml(genre)}" value="${escapeHtml(genre)}">
                     <label for="genre_${escapeHtml(genre)}">${escapeHtml(genre)}</label>
@@ -537,6 +1032,24 @@
             `).join('');
             document.querySelectorAll('#genreList input').forEach(cb => {
                 if (selectedGenres.includes(cb.value)) cb.checked = true;
+            });
+        }
+
+        function populateFormatDropdown(formats) {
+            const formatList = document.getElementById('formatList');
+            if (!formatList) return;
+            if (formats.length === 0) {
+                formatList.innerHTML = '<div style="color: #999; text-align: center;">No formats available</div>';
+                return;
+            }
+            formatList.innerHTML = formats.map(f => `
+                <div class="filter-checkbox-item">
+                    <input type="checkbox" id="format_${f.id}" value="${f.id}">
+                    <label for="format_${f.id}">${escapeHtml(f.name)}</label>
+                </div>
+            `).join('');
+            document.querySelectorAll('#formatList input').forEach(cb => {
+                if (selectedFormatIds.includes(parseInt(cb.value))) cb.checked = true;
             });
         }
 
@@ -561,6 +1074,10 @@
             if (!newArrivalsActive) filters.push(`All Records`);
             if (newVinylActive) filters.push(`New Vinyl Only`);
             if (selectedGenres.length > 0) filters.push(`Genre: ${selectedGenres.join(', ')}`);
+            if (selectedFormatIds.length > 0) {
+                const formatNames = selectedFormatIds.map(id => getFormatName(id) || `Format ${id}`).join(', ');
+                filters.push(`Format: ${formatNames}`);
+            }
             
             const statusRow = document.getElementById('filterStatusRow');
             const summaryDiv = document.getElementById('filterSummary');
@@ -585,9 +1102,7 @@
             
             const genre = extractGenreFromDiscogsRaw(record.discogs_genre_raw);
             const combinedCondition = getCombinedCondition(record.condition_disc_id, record.condition_sleeve_id);
-            const alreadyInCart = cart.items.some(item => item.copyId === record.id);
-            const locationName = record.location_name || 'Check with staff';
-            const locationDisplay = record.location_index ? `${locationName} #${record.location_index}` : locationName;
+            const formatName = getFormatName(record.format_id);
             
             const imageHtml = record.image_url ? 
                 `<img src="${record.image_url}" alt="${record.title}" onerror="this.parentElement.classList.add('default-bg'); this.style.display='none';">` : '';
@@ -602,7 +1117,6 @@
                     <div class="record-card-price">$${parseFloat(record.store_price).toFixed(2)}</div>
                     <div>
                         <span class="record-card-condition">${escapeHtml(combinedCondition)}</span>
-                        ${alreadyInCart ? '<span class="in-cart-badge"><i class="fas fa-check"></i> In Cart</span>' : ''}
                     </div>
             `;
             
@@ -610,7 +1124,10 @@
                 innerHtml += `<div class="record-card-genre"><i class="fas fa-music"></i> ${escapeHtml(genre)}</div>`;
             }
             
-            innerHtml += `<div class="record-card-location"><i class="fas fa-map-marker-alt"></i> ${escapeHtml(locationDisplay)}</div>`;
+            if (formatName) {
+                innerHtml += `<div class="record-card-format"><i class="fas fa-record-vinyl"></i> ${escapeHtml(formatName)}</div>`;
+            }
+            
             innerHtml += `</div>`;
             
             card.innerHTML = innerHtml;
@@ -619,12 +1136,10 @@
         }
 
         function showRecordModal(record) {
-            const alreadyInCart = cart.items.some(item => item.copyId === record.id);
             const genre = extractGenreFromDiscogsRaw(record.discogs_genre_raw);
             const discCondition = getConditionDisplayName(record.condition_disc_id);
             const sleeveCondition = getConditionDisplayName(record.condition_sleeve_id);
-            const locationName = record.location_name || 'Check with staff';
-            const locationDisplay = record.location_index ? `${locationName} #${record.location_index}` : locationName;
+            const formatName = getFormatName(record.format_id);
             
             const modal = document.createElement('div');
             modal.className = 'record-modal-overlay';
@@ -637,7 +1152,9 @@
             if (genre) {
                 detailsHtml += `<div class="detail-row"><span class="detail-label">Genre:</span><span>${escapeHtml(genre)}</span></div>`;
             }
-            detailsHtml += `<div class="detail-row"><span class="detail-label">Location:</span><span>${escapeHtml(locationDisplay)}</span></div>`;
+            if (formatName) {
+                detailsHtml += `<div class="detail-row"><span class="detail-label">Format:</span><span>${escapeHtml(formatName)}</span></div>`;
+            }
             
             modal.innerHTML = `
                 <div class="record-modal">
@@ -653,7 +1170,6 @@
                         </div>
                         <div class="record-modal-price">$${parseFloat(record.store_price).toFixed(2)}</div>
                         <div class="record-modal-actions">
-                            <button class="add-to-cart-modal-btn" ${alreadyInCart ? 'disabled' : ''}><i class="fas ${alreadyInCart ? 'fa-check' : 'fa-cart-plus'}"></i> ${alreadyInCart ? 'In Cart' : 'Add to Cart'}</button>
                             <button class="close-modal-btn">Close</button>
                         </div>
                     </div>
@@ -664,91 +1180,8 @@
             modal.querySelector('.record-modal-close').onclick = () => modal.remove();
             modal.querySelector('.close-modal-btn').onclick = () => modal.remove();
             modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-            
-            const addBtn = modal.querySelector('.add-to-cart-modal-btn');
-            if (addBtn && !addBtn.disabled) {
-                addBtn.onclick = () => { addToCart(record); modal.remove(); };
-            }
         }
 
-        function addToCart(record) {
-            if (cart.items.some(item => item.copyId === record.id)) {
-                showNotification('Already in cart', 'error');
-                return;
-            }
-            const combinedCondition = getCombinedCondition(record.condition_disc_id, record.condition_sleeve_id);
-            const locationName = record.location_name || 'Check with staff';
-            const locationDisplay = record.location_index ? `${locationName} #${record.location_index}` : locationName;
-            
-            cart.items.push({
-                copyId: record.id, 
-                title: record.title, 
-                artist: record.artist,
-                condition: combinedCondition,
-                price: parseFloat(record.store_price), 
-                image_url: record.image_url,
-                location: locationDisplay, 
-                quantity: 1
-            });
-            cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            saveCart();
-            showNotification(`Added ${record.title} to cart!`, 'success');
-            displayRecords(allRecords);
-        }
-        
-        function removeFromCart(index) {
-            cart.items.splice(index, 1);
-            cart.total = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            saveCart();
-            showNotification('Removed from cart', 'success');
-            if (cart.items.length === 0) closeCartDrawer();
-            displayRecords(allRecords);
-        }
-        
-        function saveCart() { 
-            localStorage.setItem('pigstyle_cart', JSON.stringify(cart)); 
-            updateCartDisplay(); 
-        }
-        
-        function loadCart() { 
-            const saved = localStorage.getItem('pigstyle_cart'); 
-            if (saved) { 
-                cart = JSON.parse(saved); 
-                updateCartDisplay(); 
-            } 
-        }
-        
-        function updateCartDisplay() {
-            const count = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-            document.getElementById('cartBadge').textContent = count;
-            document.getElementById('cartToggleContainer').style.display = count > 0 ? 'block' : 'none';
-            updateCartDrawer();
-        }
-        
-        function updateCartDrawer() {
-            const itemsDiv = document.getElementById('cartItems'); 
-            const footer = document.getElementById('cartFooter'); 
-            if(cart.items.length===0){ 
-                itemsDiv.innerHTML='<div class="empty-cart-message"><i class="fas fa-shopping-bag"></i><p>Your cart is empty</p></div>'; 
-                footer.style.display='none'; 
-                return; 
-            } 
-            let subtotal = cart.items.reduce((s,i)=>s+(i.price*i.quantity),0); 
-            let taxAmt = subtotal * (taxRate/100); 
-            let html = `
-                <table class="cart-items-table">
-                    <thead><tr><th>Item</th><th>Price</th><th>Qty</th><th>Total</th><th></th></tr></thead>
-                    <tbody>
-            `;
-            cart.items.forEach((item, idx) => {
-                html += `<tr><td><strong>${escapeHtml(item.artist)} - ${escapeHtml(item.title)}</strong><br><small>${item.condition}</small><br><small><i class="fas fa-map-marker-alt"></i> ${escapeHtml(item.location)}</small></td><td>$${item.price.toFixed(2)}</td><td>${item.quantity}</td><td>$${(item.price * item.quantity).toFixed(2)}</td><td><button class="remove-item-btn" onclick="removeFromCart(${idx})"><i class="fas fa-trash"></i></button></td></tr>`;
-            });
-            html += `</tbody></table><div style="margin-top:15px"><div>Subtotal: $${subtotal.toFixed(2)}</div><div>Tax: $${taxAmt.toFixed(2)}</div><div><strong>Total: $${(subtotal + taxAmt).toFixed(2)}</strong></div><button class="checkout-btn" id="checkoutBtn"><i class="fas fa-shopping-cart"></i> Proceed to Checkout</button></div>`;
-            itemsDiv.innerHTML = html;
-            footer.style.display = 'block';
-            document.getElementById('checkoutBtn')?.addEventListener('click', showCheckoutModal);
-        }
-        
         function showNotification(msg, type) {
             const n = document.createElement('div');
             n.className = 'notification';
@@ -756,17 +1189,6 @@
             n.style.background = type === 'error' ? '#dc3545' : '#28a745';
             document.body.appendChild(n);
             setTimeout(() => n.remove(), 3000);
-        }
-        
-        function openCartDrawer() { 
-            document.getElementById('cartDrawer').classList.add('open'); 
-            document.getElementById('cartOverlay').classList.add('active'); 
-            updateCartDrawer(); 
-        }
-        
-        function closeCartDrawer() { 
-            document.getElementById('cartDrawer').classList.remove('open'); 
-            document.getElementById('cartOverlay').classList.remove('active'); 
         }
         
         function escapeHtml(text) { 
@@ -783,135 +1205,6 @@
                 setTimeout(()=>fn(...a), delay); 
             }; 
         }
-
-        function showCheckoutModal() {
-            closeCartDrawer();
-            const subtotal = cart.total;
-            const taxAmount = subtotal * (taxRate / 100);
-            const baseTotal = subtotal + taxAmount;
-            const modal = document.createElement('div');
-            modal.className = 'checkout-modal-overlay';
-            modal.innerHTML = `<div class="checkout-modal"><div class="checkout-modal-header" style="padding:20px;background:#2c3e50;color:white;display:flex;justify-content:space-between"><h3>Checkout</h3><button class="checkout-modal-close" style="background:none;border:none;color:white;font-size:24px">&times;</button></div><div style="padding:20px"><div>Subtotal: $${subtotal.toFixed(2)}</div><div>Tax: $${taxAmount.toFixed(2)}</div><div><strong>Total: $${baseTotal.toFixed(2)}</strong></div><div style="margin:20px 0"><label><input type="radio" name="type" value="pickup" checked> In-Store Pickup</label><label style="margin-left:20px"><input type="radio" name="type" value="shipping"> Ship to Me ($${shippingCost.toFixed(2)} shipping)</label></div><div id="shippingFields" style="display:none"><input type="text" id="shippingName" placeholder="Full Name" style="width:100%;padding:8px;margin:5px 0"><input type="email" id="shippingEmail" placeholder="Email" style="width:100%;padding:8px;margin:5px 0"><input type="text" id="shippingAddress" placeholder="Address" style="width:100%;padding:8px;margin:5px 0"><input type="text" id="shippingCity" placeholder="City" style="width:100%;padding:8px;margin:5px 0"><input type="text" id="shippingZip" placeholder="ZIP" style="width:100%;padding:8px;margin:5px 0"></div><div id="pickupFields"><input type="text" id="pickupName" placeholder="Your Name" style="width:100%;padding:8px;margin:5px 0"><input type="email" id="pickupEmail" placeholder="Email" style="width:100%;padding:8px;margin:5px 0"></div><button id="confirmCheckoutBtn" style="width:100%;padding:12px;background:#28a745;color:white;border:none;border-radius:6px;margin-top:20px">Continue to Payment</button></div></div>`;
-            document.body.appendChild(modal);
-            const closeBtn = modal.querySelector('.checkout-modal-close');
-            closeBtn.onclick = () => modal.remove();
-            const radios = modal.querySelectorAll('input[name="type"]');
-            const shippingFields = modal.querySelector('#shippingFields');
-            const pickupFields = modal.querySelector('#pickupFields');
-            radios.forEach(r => r.onchange = () => { 
-                shippingFields.style.display = r.value === 'shipping' ? 'block' : 'none'; 
-                pickupFields.style.display = r.value === 'pickup' ? 'block' : 'none'; 
-            });
-            modal.querySelector('#confirmCheckoutBtn').onclick = async () => {
-                const isShipping = modal.querySelector('input[value="shipping"]').checked;
-                let customerName, customerEmail;
-                if (isShipping) {
-                    customerName = modal.querySelector('#shippingName').value.trim();
-                    customerEmail = modal.querySelector('#shippingEmail').value.trim();
-                    if (!customerName || !customerEmail) { showNotification('Please fill all fields', 'error'); return; }
-                } else {
-                    customerName = modal.querySelector('#pickupName').value.trim();
-                    customerEmail = modal.querySelector('#pickupEmail').value.trim();
-                    if (!customerName) { showNotification('Please enter your name', 'error'); return; }
-                }
-                
-                // Disable button to prevent double submission
-                const btn = modal.querySelector('#confirmCheckoutBtn');
-                btn.disabled = true;
-                btn.textContent = 'Processing...';
-                
-                const finalTotal = isShipping ? baseTotal + shippingCost : baseTotal;
-                const response = await fetch(`${AppConfig.baseUrl}/api/checkout/process`, {
-                    method: 'POST', 
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        items: cart.items.map(i => ({ 
-                            copy_id: i.copyId, 
-                            title: i.title, 
-                            artist: i.artist, 
-                            price: i.price, 
-                            condition: i.condition, 
-                            quantity: i.quantity 
-                        })), 
-                        item_type: 'record', 
-                        shipping: { 
-                            method: isShipping ? 'shipping' : 'pickup', 
-                            amount: isShipping ? shippingCost : 0 
-                        }, 
-                        subtotal: subtotal, 
-                        total: finalTotal, 
-                        tax: taxAmount, 
-                        customer_name: customerName, 
-                        customer_email: customerEmail 
-                    })
-                });
-                const data = await response.json();
-                if (data.status === 'success' && data.checkout_url) {
-                    // Store order ID to clear cart after successful payment
-                    localStorage.setItem('pending_order_id', data.order_id);
-                    window.location.href = data.checkout_url;
-                } else {
-                    showNotification('Checkout failed: ' + (data.error || 'Unknown error'), 'error');
-                    btn.disabled = false;
-                    btn.textContent = 'Continue to Payment';
-                }
-            };
-            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-        }
-        
-        document.addEventListener('DOMContentLoaded', async () => {
-            shippingCost = parseFloat(await getConfigValue('SHIPPING_COST')) || 0;
-            taxRate = parseFloat(await getConfigValue('TAX_RATE')) || 0;
-            loadCart();
-            await loadCatalogData();
-            document.getElementById('cartToggle')?.addEventListener('click', openCartDrawer);
-            document.getElementById('closeCartDrawer')?.addEventListener('click', closeCartDrawer);
-            document.getElementById('cartOverlay')?.addEventListener('click', closeCartDrawer);
-            document.getElementById('clearAllFiltersBtn')?.addEventListener('click', () => { 
-                selectedGenres = []; 
-                currentSearchTerm = ''; 
-                newArrivalsActive = true; 
-                newVinylActive = false; 
-                currentPage = 1; 
-                document.getElementById('searchBox').value = ''; 
-                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false); 
-                loadCatalogData(); 
-            });
-            document.getElementById('newArrivalsBtn')?.addEventListener('click', () => { 
-                newArrivalsActive = !newArrivalsActive; 
-                currentPage = 1; 
-                loadCatalogData(); 
-            });
-            document.getElementById('newVinylBtn')?.addEventListener('click', () => { 
-                newVinylActive = !newVinylActive; 
-                currentPage = 1; 
-                loadCatalogData(); 
-            });
-            document.getElementById('searchBox')?.addEventListener('input', debounce(() => loadCatalogData(), 500));
-            const genreBtn = document.getElementById('genreFilterBtn');
-            const genreDropdown = document.getElementById('genreDropdown');
-            genreBtn?.addEventListener('click', (e) => { 
-                e.stopPropagation(); 
-                genreDropdown.classList.toggle('show'); 
-            });
-            document.addEventListener('click', (e) => { 
-                if (!genreDropdown?.contains(e.target) && e.target !== genreBtn) 
-                    genreDropdown?.classList.remove('show'); 
-            });
-            document.getElementById('selectAllGenres')?.addEventListener('click', () => { 
-                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = true); 
-            });
-            document.getElementById('clearAllGenres')?.addEventListener('click', () => { 
-                document.querySelectorAll('#genreList input').forEach(cb => cb.checked = false); 
-            });
-            document.getElementById('applyGenres')?.addEventListener('click', () => { 
-                selectedGenres = Array.from(document.querySelectorAll('#genreList input:checked')).map(cb => cb.value); 
-                genreDropdown.classList.remove('show'); 
-                currentPage = 1; 
-                loadCatalogData(); 
-            });
-            window.removeFromCart = removeFromCart;
-        });
     </script>
 </body>
 </html>
