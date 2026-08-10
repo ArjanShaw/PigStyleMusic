@@ -1,514 +1,666 @@
-// static/js/notification-bell.js
-// Shared notification bell functionality for all pages
-// Supports: Subscriptions, Feedback, Orders
+// ============================================================================
+// notification-bell.js - Unified Notification Bell
+// ============================================================================
 
-// ============================================================
-// NOTIFICATION TYPES
-// ============================================================
-const NOTIFICATION_TYPES = {
-    SUBSCRIPTION: 'subscription',
-    FEEDBACK: 'feedback',
-    ORDER: 'order'
-};
+(function() {
+    'use strict';
 
-// ============================================================
-// MAIN INITIALIZATION
-// ============================================================
+    console.log('🔔 notification-bell.js loading...');
 
-function initNotificationBell() {
-    const notificationContainer = document.getElementById('navbar-notification-container');
-    const notificationBadge = document.getElementById('navbar-notification-badge');
-    const notificationBtn = document.getElementById('navbar-notification-btn');
-    
-    if (!notificationContainer || !notificationBtn) {
-        console.warn('Notification bell elements not found');
-        return;
+    // ========== DOM Elements ==========
+    let bellContainer = null;
+    let bellButton = null;
+    let bellBadge = null;
+    let bellDropdown = null;
+
+    // ========== State ==========
+    let isOpen = false;
+    let unreadCount = 0;
+    let notificationInterval = null;
+    let initialized = false;
+
+    // ========== Configuration ==========
+    const POLL_INTERVAL = 30000; // 30 seconds
+
+    // ========== Initialize ==========
+    function initNotificationBell() {
+        console.log('🔔 Initializing notification bell...');
+        
+        if (initialized) {
+            console.log('🔔 Notification bell already initialized');
+            return;
+        }
+
+        // Create bell container
+        bellContainer = document.createElement('div');
+        bellContainer.id = 'notification-bell-container';
+        bellContainer.className = 'notification-bell-container';
+        bellContainer.style.cssText = `
+            position: relative;
+            display: inline-block;
+            margin-left: 15px;
+            cursor: pointer;
+        `;
+
+        // Create bell button
+        bellButton = document.createElement('button');
+        bellButton.id = 'notification-bell-button';
+        bellButton.className = 'notification-bell-button';
+        bellButton.style.cssText = `
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 5px 8px;
+            position: relative;
+            transition: color 0.2s;
+        `;
+        bellButton.innerHTML = '<i class="fas fa-bell"></i>';
+        bellButton.setAttribute('aria-label', 'Notifications');
+        bellButton.title = 'Notifications';
+
+        // Create badge
+        bellBadge = document.createElement('span');
+        bellBadge.id = 'notification-bell-badge';
+        bellBadge.className = 'notification-bell-badge';
+        bellBadge.style.cssText = `
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #ff6b6b;
+            color: white;
+            border-radius: 50%;
+            padding: 2px 6px;
+            font-size: 10px;
+            font-weight: 600;
+            min-width: 18px;
+            text-align: center;
+            display: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        `;
+        bellBadge.textContent = '0';
+
+        // Create dropdown
+        bellDropdown = document.createElement('div');
+        bellDropdown.id = 'notification-bell-dropdown';
+        bellDropdown.className = 'notification-bell-dropdown';
+        bellDropdown.style.cssText = `
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 10px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+            width: 380px;
+            max-height: 450px;
+            overflow: hidden;
+            display: none;
+            z-index: 9999;
+            border: 1px solid rgba(0,0,0,0.05);
+        `;
+
+        // Dropdown header
+        const dropdownHeader = document.createElement('div');
+        dropdownHeader.style.cssText = `
+            padding: 15px 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8f9fa;
+        `;
+        dropdownHeader.innerHTML = `
+            <span style="font-weight: 600; color: #333; font-size: 14px;">
+                <i class="fas fa-bell" style="color: #ff6b6b;"></i> Notifications
+            </span>
+            <button id="notification-mark-all-read" style="
+                background: none;
+                border: none;
+                color: #007bff;
+                font-size: 12px;
+                cursor: pointer;
+                padding: 4px 8px;
+                border-radius: 4px;
+            ">Mark all as read</button>
+        `;
+        bellDropdown.appendChild(dropdownHeader);
+
+        // Dropdown list container
+        const dropdownList = document.createElement('div');
+        dropdownList.id = 'notification-bell-list';
+        dropdownList.style.cssText = `
+            max-height: 350px;
+            overflow-y: auto;
+            padding: 5px 0;
+        `;
+        bellDropdown.appendChild(dropdownList);
+
+        // Dropdown footer
+        const dropdownFooter = document.createElement('div');
+        dropdownFooter.style.cssText = `
+            padding: 10px 20px;
+            border-top: 1px solid #eee;
+            text-align: center;
+            background: #f8f9fa;
+        `;
+        dropdownFooter.innerHTML = `
+            <a href="/admin#notifications" style="
+                color: #666;
+                text-decoration: none;
+                font-size: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 5px;
+            ">
+                <i class="fas fa-cog"></i> Manage notifications
+            </a>
+        `;
+        bellDropdown.appendChild(dropdownFooter);
+
+        // Assemble
+        bellContainer.appendChild(bellButton);
+        bellContainer.appendChild(bellBadge);
+        bellContainer.appendChild(bellDropdown);
+        
+        // Find where to insert - look for navbar-right or auth-section
+        const navbar = document.querySelector('nav > div');
+        if (navbar) {
+            navbar.appendChild(bellContainer);
+            console.log('✅ Notification bell added to navbar');
+        } else {
+            // Fallback: add to body
+            document.body.appendChild(bellContainer);
+            console.log('⚠️ Navbar not found, notification bell added to body');
+        }
+
+        // Event listeners
+        bellButton.addEventListener('click', toggleDropdown);
+        document.addEventListener('click', closeDropdownOnOutsideClick);
+        document.getElementById('notification-mark-all-read')?.addEventListener('click', markAllRead);
+
+        // Start polling
+        startPolling();
+
+        // Initial load
+        loadNotifications();
+
+        initialized = true;
+        console.log('✅ Notification bell initialized');
     }
 
-    // ============================================================
-    // LOGIN STATUS CHECK
-    // ============================================================
-
-    async function checkLoginStatus() {
-        try {
-            const response = await fetch('/session/check', {
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                }
-            });
-            
-            if (!response.ok) {
-                console.warn('Session check failed:', response.status);
-                return;
-            }
-            
-            const data = await response.json();
-            
-            if (data.logged_in) {
-                notificationContainer.classList.remove('hidden');
-                notificationContainer.style.display = 'inline-block';
-                checkNotifications();
-                if (window.notificationInterval) {
-                    clearInterval(window.notificationInterval);
-                }
-                window.notificationInterval = setInterval(checkNotifications, 30000);
-            } else {
-                notificationContainer.classList.add('hidden');
-                notificationContainer.style.display = 'none';
-                if (window.notificationInterval) {
-                    clearInterval(window.notificationInterval);
-                    window.notificationInterval = null;
-                }
-                if (notificationBadge) {
-                    notificationBadge.style.display = 'none';
-                    notificationBadge.classList.remove('show');
-                }
-            }
-        } catch (error) {
-            console.error('Error checking login status:', error);
+    // ========== Toggle Dropdown ==========
+    function toggleDropdown(event) {
+        event.stopPropagation();
+        isOpen = !isOpen;
+        bellDropdown.style.display = isOpen ? 'block' : 'none';
+        
+        if (isOpen) {
+            loadNotifications();
         }
     }
 
-    // ============================================================
-    // CHECK NOTIFICATIONS (ALL TYPES)
-    // ============================================================
-
-    async function checkNotifications() {
-        try {
-            if (notificationContainer.classList.contains('hidden')) {
-                return;
-            }
-            
-            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const baseUrl = isLocalhost ? 'http://localhost:5000' : `https://${window.location.hostname}`;
-            
-            // Get all unread notification counts from different sources
-            const endpoints = [
-                { url: `${baseUrl}/api/subscriptions/notifications/count`, type: 'subscription' },
-                { url: `${baseUrl}/api/feedback/unread-count`, type: 'feedback' },
-                { url: `${baseUrl}/api/record-orders/unread-count`, type: 'order' }
-            ];
-            
-            let totalCount = 0;
-            const counts = {};
-            
-            for (const endpoint of endpoints) {
-                try {
-                    const response = await fetch(endpoint.url, {
-                        credentials: 'include',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        }
-                    });
-                    
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.status === 'success' && data.count > 0) {
-                            counts[endpoint.type] = data.count;
-                            totalCount += data.count;
-                        }
-                    }
-                } catch (e) {
-                    console.warn(`Failed to fetch ${endpoint.type} notifications:`, e);
-                }
-            }
-            
-            // Update badge
-            if (totalCount > 0) {
-                if (notificationBadge) {
-                    notificationBadge.textContent = totalCount > 99 ? '99+' : totalCount;
-                    notificationBadge.style.display = 'block';
-                    notificationBadge.classList.add('show');
-                }
-                if (notificationBtn) {
-                    notificationBtn.classList.add('has-notifications');
-                }
-            } else {
-                if (notificationBadge) {
-                    notificationBadge.style.display = 'none';
-                    notificationBadge.classList.remove('show');
-                }
-                if (notificationBtn) {
-                    notificationBtn.classList.remove('has-notifications');
-                }
-            }
-        } catch (error) {
-            console.error('Error checking notifications:', error);
+    function closeDropdownOnOutsideClick(event) {
+        if (bellContainer && !bellContainer.contains(event.target)) {
+            isOpen = false;
+            bellDropdown.style.display = 'none';
         }
     }
 
-    // ============================================================
-    // LOAD NOTIFICATIONS (ALL TYPES)
-    // ============================================================
-
+    // ========== Load Notifications ==========
     async function loadNotifications() {
         try {
-            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const baseUrl = isLocalhost ? 'http://localhost:5000' : `https://${window.location.hostname}`;
-            const list = document.getElementById('navbar-notification-list');
+            const [feedback, subscriptions, orders] = await Promise.all([
+                getUnreadFeedback(),
+                getUnreadSubscriptions(),
+                getUnreadOrders()
+            ]);
             
-            if (!list) return;
+            const notifications = [];
             
-            // Fetch all types of notifications
-            const endpoints = [
-                { url: `${baseUrl}/api/subscriptions/notifications`, type: 'subscription', icon: 'fa-envelope', label: 'Record Alert' },
-                { url: `${baseUrl}/api/feedback/unread`, type: 'feedback', icon: 'fa-comment', label: 'Feedback' },
-                { url: `${baseUrl}/api/record-orders/unread`, type: 'order', icon: 'fa-shopping-cart', label: 'Order' }
-            ];
-            
-            let allNotifications = [];
-            
-            for (const endpoint of endpoints) {
-                try {
-                    const response = await fetch(endpoint.url, {
-                        credentials: 'include',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        }
-                    });
-                    
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.status === 'success' && data.notifications) {
-                            // Add type metadata to each notification
-                            const typed = data.notifications.map(n => ({
-                                ...n,
-                                type: endpoint.type,
-                                icon: endpoint.icon,
-                                label: endpoint.label
-                            }));
-                            allNotifications = allNotifications.concat(typed);
-                        }
-                    }
-                } catch (e) {
-                    console.warn(`Failed to fetch ${endpoint.type} notifications:`, e);
-                }
-            }
-            
-            // Sort by created_at descending (newest first)
-            allNotifications.sort((a, b) => {
-                return new Date(b.created_at) - new Date(a.created_at);
+            // Format feedback notifications
+            feedback.forEach(item => {
+                notifications.push({
+                    id: item.id,
+                    type: 'feedback',
+                    title: '📝 New Feedback',
+                    message: item.content ? item.content.substring(0, 100) : 'New feedback received',
+                    created_at: item.created_at,
+                    link: '/admin#feedback',
+                    markRead: () => markFeedbackRead(item.id)
+                });
             });
             
-            if (allNotifications.length > 0) {
-                let html = '';
-                allNotifications.forEach(n => {
-                    const timeAgo = getTimeAgo(n.created_at);
-                    const iconClass = n.icon || 'fa-bell';
-                    const label = n.label || 'Notification';
-                    
-                    // Build detail text based on type
-                    let detailText = '';
-                    if (n.type === 'subscription') {
-                        const parts = [];
-                        if (n.artist) parts.push(`Artist: ${escapeHtml(n.artist)}`);
-                        if (n.title) parts.push(`Title: ${escapeHtml(n.title)}`);
-                        if (n.catalog_number) parts.push(`Catalog: ${escapeHtml(n.catalog_number)}`);
-                        detailText = parts.join(' | ') || 'New subscription';
-                    } else if (n.type === 'feedback') {
-                        detailText = n.content ? escapeHtml(n.content.substring(0, 100)) : 'New feedback';
-                        if (n.content && n.content.length > 100) detailText += '...';
-                    } else if (n.type === 'order') {
-                        const parts = [];
-                        if (n.artist) parts.push(`Artist: ${escapeHtml(n.artist)}`);
-                        if (n.title) parts.push(`Title: ${escapeHtml(n.title)}`);
-                        detailText = parts.join(' | ') || 'New order request';
-                    }
-                    
-                    const idAttr = n.type === 'subscription' ? `data-subscription-id="${n.id}"` : 
-                                   n.type === 'feedback' ? `data-feedback-id="${n.id}"` : 
-                                   `data-order-id="${n.id}"`;
-                    
-                    html += `
-                        <div class="navbar-notification-item unread" ${idAttr} data-type="${n.type}">
-                            <div class="navbar-notification-icon" style="background: ${getIconColor(n.type)};">
-                                <i class="fas ${iconClass}"></i>
-                            </div>
-                            <div class="navbar-notification-content">
-                                <div class="navbar-notification-email">
-                                    ${escapeHtml(n.email || 'User')}
-                                    <span style="font-weight: normal; font-size: 11px; color: #888; margin-left: 6px;">${label}</span>
-                                </div>
-                                <div class="navbar-notification-details">${detailText}</div>
-                                <div class="navbar-notification-time">${timeAgo}</div>
-                            </div>
-                            <button class="navbar-notification-mark-read" onclick="markNotificationRead(${n.id}, '${n.type}')">Mark Read</button>
-                        </div>
-                    `;
+            // Format subscription notifications
+            subscriptions.forEach(item => {
+                notifications.push({
+                    id: item.id,
+                    type: 'subscription',
+                    title: '🔔 New Record Alert',
+                    message: `${item.email} wants "${item.artist} - ${item.title || 'Any'}"`,
+                    created_at: item.created_at,
+                    link: '/admin#email-subscriptions',
+                    markRead: () => markSubscriptionRead(item.id)
                 });
-                list.innerHTML = html;
-            } else {
-                list.innerHTML = `
-                    <div class="navbar-notification-empty">
-                        <i class="fas fa-bell-slash"></i>
-                        No new notifications
-                    </div>
-                `;
-            }
+            });
+            
+            // Format order notifications
+            orders.forEach(item => {
+                notifications.push({
+                    id: item.id,
+                    type: 'order',
+                    title: '🛒 New Order!',
+                    message: `Order #${item.order_number} - ${item.customer_name} - $${parseFloat(item.total).toFixed(2)}`,
+                    created_at: item.created_at,
+                    link: `/admin#record-orders`,
+                    markRead: () => markOrderRead(item.id)
+                });
+            });
+            
+            // Sort by created_at desc (newest first)
+            notifications.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            
+            renderNotifications(notifications);
+            
         } catch (error) {
             console.error('Error loading notifications:', error);
         }
     }
 
-    // ============================================================
-    // ICON COLOR HELPER
-    // ============================================================
+    // ========== Render Notifications ==========
+    function renderNotifications(notifications) {
+        const list = document.getElementById('notification-bell-list');
+        if (!list) return;
 
-    function getIconColor(type) {
-        switch(type) {
-            case 'subscription': return '#007bff';
-            case 'feedback': return '#28a745';
-            case 'order': return '#ff6b6b';
-            default: return '#6c757d';
+        const totalUnread = notifications.length;
+        updateBadge(totalUnread);
+
+        if (notifications.length === 0) {
+            list.innerHTML = `
+                <div style="
+                    text-align: center;
+                    padding: 40px 20px;
+                    color: #999;
+                ">
+                    <i class="fas fa-check-circle" style="font-size: 32px; display: block; margin-bottom: 10px; color: #28a745;"></i>
+                    <p style="margin: 0; font-size: 14px;">All caught up!</p>
+                    <p style="margin: 5px 0 0; font-size: 12px;">No new notifications</p>
+                </div>
+            `;
+            return;
         }
-    }
 
-    // ============================================================
-    // MARK NOTIFICATION READ
-    // ============================================================
+        let html = '';
+        notifications.forEach(item => {
+            html += `
+                <div class="notification-item" data-id="${item.id}" data-type="${item.type}" style="
+                    padding: 12px 16px;
+                    border-bottom: 1px solid #f0f0f0;
+                    cursor: pointer;
+                    transition: background 0.2s;
+                    ${item.isNew ? 'background: #f0f7ff;' : ''}
+                " onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='${item.isNew ? '#f0f7ff' : 'white'}'">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-weight: 600; font-size: 13px; color: #333; margin-bottom: 2px;">
+                                ${item.title}
+                            </div>
+                            <div style="font-size: 12px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                ${escapeHtml(item.message)}
+                            </div>
+                            <div style="font-size: 10px; color: #999; margin-top: 4px;">
+                                ${formatTime(item.created_at)}
+                            </div>
+                        </div>
+                        <button class="notification-mark-read" data-id="${item.id}" data-type="${item.type}" style="
+                            background: none;
+                            border: none;
+                            color: #007bff;
+                            font-size: 12px;
+                            cursor: pointer;
+                            padding: 2px 6px;
+                            border-radius: 4px;
+                            flex-shrink: 0;
+                        ">✕</button>
+                    </div>
+                </div>
+            `;
+        });
 
-    window.markNotificationRead = async function(id, type) {
-        try {
-            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const baseUrl = isLocalhost ? 'http://localhost:5000' : `https://${window.location.hostname}`;
-            
-            let url;
-            if (type === 'subscription') {
-                url = `${baseUrl}/api/subscriptions/${id}`;
-                await fetch(url, {
-                    method: 'PUT',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ mark_read: true })
-                });
-            } else if (type === 'feedback') {
-                url = `${baseUrl}/api/feedback/${id}/mark-read`;
-                await fetch(url, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    }
-                });
-            } else if (type === 'order') {
-                url = `${baseUrl}/api/record-orders/${id}/mark-read`;
-                await fetch(url, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    }
-                });
-            }
-            
-            loadNotifications();
-            checkNotifications();
-        } catch (error) {
-            console.error('Error marking notification read:', error);
-        }
-    };
+        list.innerHTML = html;
 
-    // ============================================================
-    // MARK ALL NOTIFICATIONS READ
-    // ============================================================
-
-    window.markAllNotificationsRead = async function() {
-        try {
-            const items = document.querySelectorAll('.navbar-notification-item.unread');
-            
-            if (items.length === 0) return;
-            
-            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const baseUrl = isLocalhost ? 'http://localhost:5000' : `https://${window.location.hostname}`;
-            
-            // Process each notification type separately
-            const subscriptionIds = [];
-            const feedbackIds = [];
-            const orderIds = [];
-            
-            items.forEach(item => {
-                const type = item.dataset.type;
-                const id = parseInt(item.dataset.subscriptionId || item.dataset.feedbackId || item.dataset.orderId);
-                if (!id) return;
-                
-                if (type === 'subscription') subscriptionIds.push(id);
-                else if (type === 'feedback') feedbackIds.push(id);
-                else if (type === 'order') orderIds.push(id);
+        // Event listeners for mark read buttons
+        list.querySelectorAll('.notification-mark-read').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const id = this.dataset.id;
+                const type = this.dataset.type;
+                markNotificationRead(id, type);
             });
-            
-            // Mark each type as read
-            for (const id of subscriptionIds) {
-                await fetch(`${baseUrl}/api/subscriptions/${id}`, {
-                    method: 'PUT',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ mark_read: true })
-                });
-            }
-            
-            for (const id of feedbackIds) {
-                await fetch(`${baseUrl}/api/feedback/${id}/mark-read`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    }
-                });
-            }
-            
-            for (const id of orderIds) {
-                await fetch(`${baseUrl}/api/record-orders/${id}/mark-read`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    }
-                });
-            }
-            
-            loadNotifications();
-            checkNotifications();
-        } catch (error) {
-            console.error('Error marking all notifications read:', error);
-        }
-    };
+        });
 
-    // ============================================================
-    // TOGGLE DROPDOWN
-    // ============================================================
-
-    window.toggleNotificationDropdown = function() {
-        const dropdown = document.getElementById('navbar-notification-dropdown');
-        if (dropdown.classList.contains('show')) {
-            dropdown.classList.remove('show');
-        } else {
-            dropdown.classList.add('show');
-            loadNotifications();
-        }
-    };
-
-    // ============================================================
-    // EVENT LISTENERS
-    // ============================================================
-
-    if (notificationBtn) {
-        notificationBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            toggleNotificationDropdown();
+        // Click on notification item
+        list.querySelectorAll('.notification-item').forEach(item => {
+            item.addEventListener('click', function() {
+                const id = this.dataset.id;
+                const type = this.dataset.type;
+                const link = notifications.find(n => n.id == id)?.link;
+                if (link) {
+                    window.location.href = link;
+                }
+            });
         });
     }
 
-    document.addEventListener('click', function(e) {
-        const container = document.getElementById('navbar-notification-container');
-        if (container && !container.contains(e.target)) {
-            const dropdown = document.getElementById('navbar-notification-dropdown');
-            if (dropdown) {
-                dropdown.classList.remove('show');
-            }
-        }
-    });
-
-    const markAllBtn = document.getElementById('navbar-mark-all-read');
-    if (markAllBtn) {
-        markAllBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            window.markAllNotificationsRead();
-        });
-    }
-
-    // ============================================================
-    // VISIBILITY MANAGEMENT
-    // ============================================================
-
-    function updateBellVisibility() {
-        if (typeof Auth !== 'undefined' && Auth.isLoggedIn) {
-            notificationContainer.classList.remove('hidden');
-            notificationContainer.style.display = 'inline-block';
-            checkNotifications();
-            
-            if (window.notificationInterval) {
-                clearInterval(window.notificationInterval);
-            }
-            window.notificationInterval = setInterval(checkNotifications, 30000);
-        } else if (typeof Auth !== 'undefined' && !Auth.isLoggedIn) {
-            notificationContainer.classList.add('hidden');
-            notificationContainer.style.display = 'none';
-            if (window.notificationInterval) {
-                clearInterval(window.notificationInterval);
-                window.notificationInterval = null;
-            }
-        } else {
-            checkLoginStatus();
-        }
-    }
-
-    updateBellVisibility();
-
-    document.addEventListener('authStateChanged', function(e) {
-        updateBellVisibility();
-    });
-
-    let authCheckAttempts = 0;
-    const maxAuthChecks = 20;
-    const authCheckInterval = setInterval(function() {
-        authCheckAttempts++;
-        if (typeof Auth !== 'undefined') {
-            clearInterval(authCheckInterval);
-            updateBellVisibility();
-        } else if (authCheckAttempts >= maxAuthChecks) {
-            clearInterval(authCheckInterval);
-            checkLoginStatus();
-        }
-    }, 500);
-
-    document.addEventListener('visibilitychange', function() {
-        if (!document.hidden) {
-            updateBellVisibility();
-        }
-    });
-}
-
-// ============================================================
-// HELPER FUNCTIONS (if not defined elsewhere)
-// ============================================================
-
-if (typeof getTimeAgo === 'undefined') {
-    function getTimeAgo(dateStr) {
-        if (!dateStr) return 'N/A';
-        const date = new Date(dateStr);
-        const now = new Date();
-        const diffMs = now - date;
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMs / 3600000);
-        const diffDays = Math.floor(diffMs / 86400000);
+    // ========== Mark Notification Read ==========
+    async function markNotificationRead(id, type) {
+        let success = false;
         
-        if (diffMins < 1) return 'Just now';
-        if (diffMins < 60) return `${diffMins}m ago`;
-        if (diffHours < 24) return `${diffHours}h ago`;
-        if (diffDays < 7) return `${diffDays}d ago`;
-        return date.toLocaleDateString();
+        if (type === 'feedback') {
+            success = await markFeedbackRead(id);
+        } else if (type === 'subscription') {
+            success = await markSubscriptionRead(id);
+        } else if (type === 'order') {
+            success = await markOrderRead(id);
+        }
+        
+        if (success) {
+            loadNotifications();
+            updateTotalCount();
+        }
     }
-}
 
-if (typeof escapeHtml === 'undefined') {
+    // ========== API Calls ==========
+    async function getUnreadFeedback() {
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/api/feedback/unread`, {
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+            });
+            const data = await response.json();
+            return data.notifications || [];
+        } catch (error) {
+            console.error('Error fetching unread feedback:', error);
+            return [];
+        }
+    }
+
+    async function getUnreadSubscriptions() {
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/api/subscriptions/notifications`, {
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+            });
+            const data = await response.json();
+            return data.notifications || [];
+        } catch (error) {
+            console.error('Error fetching unread subscriptions:', error);
+            return [];
+        }
+    }
+
+    async function getUnreadOrders() {
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/api/orders/unread`, {
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+            });
+            const data = await response.json();
+            if (data.status === 'success') {
+                return data.orders || [];
+            }
+            return [];
+        } catch (error) {
+            console.error('Error fetching unread orders:', error);
+            return [];
+        }
+    }
+
+    async function getUnreadOrdersCount() {
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/api/orders/unread-count`, {
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+            });
+            const data = await response.json();
+            return data.count || 0;
+        } catch (error) {
+            console.error('Error fetching unread orders count:', error);
+            return 0;
+        }
+    }
+
+    async function getUnreadFeedbackCount() {
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/api/feedback/unread-count`, {
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+            });
+            const data = await response.json();
+            return data.count || 0;
+        } catch (error) {
+            console.error('Error fetching unread feedback count:', error);
+            return 0;
+        }
+    }
+
+    async function getUnreadSubscriptionCount() {
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/api/subscriptions/notifications/count`, {
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+            });
+            const data = await response.json();
+            return data.count || 0;
+        } catch (error) {
+            console.error('Error fetching unread subscriptions count:', error);
+            return 0;
+        }
+    }
+
+    async function markFeedbackRead(id) {
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/api/feedback/${id}/mark-read`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+            });
+            return response.ok;
+        } catch (error) {
+            console.error('Error marking feedback read:', error);
+            return false;
+        }
+    }
+
+    async function markSubscriptionRead(id) {
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/api/subscriptions/${id}/mark-read`, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mark_read: true })
+            });
+            return response.ok;
+        } catch (error) {
+            console.error('Error marking subscription read:', error);
+            return false;
+        }
+    }
+
+    async function markOrderRead(id) {
+        try {
+            const response = await fetch(`${AppConfig.baseUrl}/api/orders/${id}/mark-read`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+            });
+            return response.ok;
+        } catch (error) {
+            console.error('Error marking order read:', error);
+            return false;
+        }
+    }
+
+    // ========== Update Badge ==========
+    function updateBadge(count) {
+        unreadCount = count;
+        if (bellBadge) {
+            if (count > 0) {
+                bellBadge.textContent = count > 99 ? '99+' : count;
+                bellBadge.style.display = 'block';
+            } else {
+                bellBadge.style.display = 'none';
+            }
+        }
+    }
+
+    async function updateTotalCount() {
+        try {
+            const [feedbackCount, subscriptionCount, orderCount] = await Promise.all([
+                getUnreadFeedbackCount(),
+                getUnreadSubscriptionCount(),
+                getUnreadOrdersCount()
+            ]);
+            const total = feedbackCount + subscriptionCount + orderCount;
+            updateBadge(total);
+        } catch (error) {
+            console.error('Error updating total count:', error);
+        }
+    }
+
+    // ========== Mark All Read ==========
+    async function markAllRead() {
+        // Mark all feedback as read
+        try {
+            const feedbackResponse = await fetch(`${AppConfig.baseUrl}/api/feedback/mark-all-read`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+            });
+            if (!feedbackResponse.ok) {
+                console.error('Failed to mark all feedback as read');
+            }
+        } catch (error) {
+            console.error('Error marking all feedback as read:', error);
+        }
+
+        // Mark all subscriptions as read
+        try {
+            const subResponse = await fetch(`${AppConfig.baseUrl}/api/subscriptions/mark-all-read`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+            });
+            if (!subResponse.ok) {
+                console.error('Failed to mark all subscriptions as read');
+            }
+        } catch (error) {
+            console.error('Error marking all subscriptions as read:', error);
+        }
+
+        // Mark all orders as read
+        try {
+            const orderResponse = await fetch(`${AppConfig.baseUrl}/api/orders/mark-all-read`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+            });
+            if (!orderResponse.ok) {
+                console.error('Failed to mark all orders as read');
+            }
+        } catch (error) {
+            console.error('Error marking all orders as read:', error);
+        }
+
+        // Reload notifications
+        updateTotalCount();
+        loadNotifications();
+    }
+
+    // ========== Polling ==========
+    function startPolling() {
+        if (notificationInterval) {
+            clearInterval(notificationInterval);
+        }
+        notificationInterval = setInterval(() => {
+            updateTotalCount();
+        }, POLL_INTERVAL);
+        console.log(`🔔 Notification polling started (${POLL_INTERVAL/1000}s interval)`);
+    }
+
+    function stopPolling() {
+        if (notificationInterval) {
+            clearInterval(notificationInterval);
+            notificationInterval = null;
+            console.log('🔔 Notification polling stopped');
+        }
+    }
+
+    // ========== Utility Functions ==========
     function escapeHtml(text) {
         if (!text) return '';
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
     }
-}
+
+    function formatTime(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        const now = new Date();
+        const diff = now - date;
+        
+        if (diff < 60000) return 'Just now';
+        if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+        if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+        if (diff < 172800000) return 'Yesterday';
+        return date.toLocaleDateString();
+    }
+
+    // ========== Expose Functions ==========
+    window.notificationBell = {
+        init: initNotificationBell,
+        loadNotifications: loadNotifications,
+        updateTotalCount: updateTotalCount,
+        startPolling: startPolling,
+        stopPolling: stopPolling
+    };
+
+    // Auto-initialize on DOM ready
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(initNotificationBell, 500);
+    } else {
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(initNotificationBell, 500);
+        });
+    }
+
+    // Also check for navbar after load
+    document.addEventListener('DOMContentLoaded', function() {
+        // Check if navbar is loaded dynamically
+        const observer = new MutationObserver(function(mutations) {
+            const navbar = document.querySelector('nav > div');
+            if (navbar && !initialized) {
+                console.log('🔔 Navbar detected, initializing notification bell...');
+                initNotificationBell();
+                observer.disconnect();
+            }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        
+        // Also try after a delay
+        setTimeout(function() {
+            if (!initialized) {
+                const navbar = document.querySelector('nav > div');
+                if (navbar) {
+                    console.log('🔔 Navbar found after delay, initializing...');
+                    initNotificationBell();
+                }
+            }
+        }, 2000);
+    });
+
+    console.log('✅ notification-bell.js loaded');
+})();
