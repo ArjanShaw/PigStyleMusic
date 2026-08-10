@@ -229,7 +229,7 @@
                     title: '📝 New Feedback',
                     message: item.content ? item.content.substring(0, 100) : 'New feedback received',
                     created_at: item.created_at,
-                    link: '/admin#record-orders',  // FIXED: goes to Record Orders tab
+                    link: '/admin#feedback',  // CHANGED: Now goes to Feedback tab
                     markRead: () => markFeedbackRead(item.id)
                 });
             });
@@ -242,7 +242,7 @@
                     title: '🔔 New Record Alert',
                     message: `${item.email} wants "${item.artist} - ${item.title || 'Any'}"`,
                     created_at: item.created_at,
-                    link: '/admin#email-subscriptions',  // FIXED: goes to Email Subscriptions tab
+                    link: '/admin#email-subscriptions',
                     markRead: () => markSubscriptionRead(item.id)
                 });
             });
@@ -255,7 +255,7 @@
                     title: '🛒 New Order!',
                     message: `Order #${item.order_number} - ${item.customer_name} - $${parseFloat(item.total).toFixed(2)}`,
                     created_at: item.created_at,
-                    link: `/admin#record-orders`,  // FIXED: goes to Record Orders tab
+                    link: '/admin#record-orders',
                     markRead: () => markOrderRead(item.id)
                 });
             });
