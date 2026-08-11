@@ -20,11 +20,10 @@
     <link rel="stylesheet" href="/static/css/shared.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     
-    <script src="../static/js/app-config.js"></script>
+    <script src="/static/js/app-config.js"></script>
     <script src="/static/js/notification-bell.js"></script>
     <script src="/static/js/shared.js"></script>
     
-    <!-- Additional CSS for sticky notes -->
     <style>
         /* Sticky notes container */
         .sticky-notes-container {
@@ -275,6 +274,12 @@
 </head>
 
 <body>
+    <!-- Background Container - consistent with other pages -->
+    <div class="background-container">
+        <img src="/static/images/background.png" alt="Background" class="background-image">
+        <div class="background-overlay"></div>
+    </div>
+    
     <!-- Navbar placeholder -->
     <div id="navbar-placeholder"></div>
     
@@ -283,24 +288,6 @@
 
     <!-- Sticky Notes Container -->
     <div class="sticky-notes-container"></div>
-
-    <!-- Add padding to account for fixed navbar -->
-    <div style="padding-top: 60px;"></div>
-
-    <!-- Background Image -->
-    <div class="background-container">
-        <img src="/static/images/background.png" alt="Background" class="background-image">
-        <div class="background-overlay"></div>
-    </div>
-
-    <!-- Expandable Image Modal -->
-    <div class="expandable-modal">
-        <div class="expanded-image-container">
-            <button class="close-modal">&times;</button>
-            <img class="expanded-image" src="" alt="Expanded view">
-            <div class="image-caption"></div>
-        </div>
-    </div>
 
     <!-- Main Content Container -->
     <div class="container">
