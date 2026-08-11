@@ -129,6 +129,11 @@ def serve_images(path):
 def serve_fonts(path):
     return send_from_directory('static/fonts', path)
 
+@app.route('/calendar')
+def calendar():
+    return send_from_directory('HTML', 'calendar.html')
+
+
 @app.route('/<path:filename>')
 def serve_file(filename):
     static_path = os.path.join('static', filename)

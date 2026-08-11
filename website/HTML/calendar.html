@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/images/PigStyle.ico">
+    <title>Event Calendar - PigStyle Music</title>
+    
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-03HFDR9PV7');
+    </script>
+    
+    <!-- CSS FILES -->
+    <link rel="stylesheet" href="/static/css/calendar.css">
+    <link rel="stylesheet" href="/static/css/shared.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    
+    <script src="/static/js/app-config.js"></script>
+    <script src="/static/js/notification-bell.js"></script>
+    <script src="/static/js/shared.js"></script>
+    
+    <style>
+        .calendar-iframe-wrapper {
+            position: relative;
+            overflow: hidden;
+            width: 100%;
+            padding-top: 56.25%; /* 16:9 Aspect Ratio */
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .calendar-iframe-wrapper iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: 0;
+        }
+        
+        .calendar-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .calendar-header h1 {
+            font-size: 2.5rem;
+            color: #fff;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            margin-bottom: 10px;
+        }
+        
+        .calendar-header .subtitle {
+            font-size: 1.1rem;
+            color: #ccc;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 80px auto 0;
+            padding: 20px;
+            min-height: calc(100vh - 100px);
+        }
+    </style>
+</head>
+<body>
+    <!-- Background Container -->
+    <div class="background-container">
+        <img src="/static/images/background.png" alt="Background" class="background-image">
+        <div class="background-overlay"></div>
+    </div>
+    
+    <!-- Navbar placeholder -->
+    <div id="navbar-placeholder"></div>
+    
+    <!-- Subscription Modal placeholder -->
+    <div id="subscription-modal-placeholder"></div>
+
+    <!-- Main Content -->
+    <div class="container">
+        <div class="calendar-header">
+            <h1>📅 Event Calendar</h1>
+            <p class="subtitle">Check out our upcoming events at PigStyle Music</p>
+        </div>
+
+        <!-- Google Calendar Embed -->
+        <div class="calendar-iframe-wrapper">
+            <iframe 
+                src="https://calendar.google.com/calendar/embed?src=pigstyle.loveland%40gmail.com&ctz=America%2FDenver" 
+                style="border: 0" 
+                width="800" 
+                height="600" 
+                frameborder="0" 
+                scrolling="no">
+            </iframe>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load navbar and subscription modal from shared.js
+            if (typeof loadNavbar === 'function') {
+                loadNavbar();
+            }
+            if (typeof loadSubscriptionModal === 'function') {
+                loadSubscriptionModal();
+            }
+        });
+    </script>
+</body>
+</html>
