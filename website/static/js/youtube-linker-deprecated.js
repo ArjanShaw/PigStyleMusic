@@ -147,32 +147,248 @@ class YouTubeLinker {
         }
     }
     
-    async loadRecords() {
-        try {
-            console.log('Loading records...');
+    // ========== Unified Record Loader ==========
+async function loadRecords(options) {
+    options = options || {};
+    console.log('🔵 loadRecords called with options:', options);
+    try {
+        var {
+            // Status filters
+            statusIds,
             
-            const response = await fetch(`${AppConfig.baseUrl}/records?status_id=2&limit=10000`, {
-                credentials: 'include'
-            });
+            // Search filters (individual fields)
+            artist,
+            title,
+            catalogNumber,
+            barcode,
             
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            // Location filter
+            locationId,
             
-            const data = await response.json();
-            this.state.allRecords = data.records || [];
+            // Format filter
+            formatIds,
             
-            console.log(`Loaded ${this.state.allRecords.length} total active records`);
+            // Genre filter
+            genres,
             
-            // Update stats
-            this.updateStats();
+            // Media filters
+            requireImage = false,
             
-            // Apply current filter
-            this._applyFilters();
+            // Date filters
+            createdAfter,
+            lastSeenAfter,
+            lastSeenBefore,
             
-        } catch (error) {
-            console.error('Error loading records:', error);
-            this._showMessage(`Error loading records: ${error.message}`, 'error');
+            // Pagination
+            limit,
+            
+            // Batch filter
+            batchId,
+            
+            // Ordering
+            orderBy = 'created_at',
+            orderDir = 'DESC',
+            
+            // Legacy/compatibility options (deprecated)
+            search,           // DEPRECATED - use artist/title/catalogNumber/barcode
+            location,         // DEPRECATED - use locationId
+            format,           // DEPRECATED - use formatIds
+            requireLocation,  // DEPRECATED - use locationId with null check
+            excludeOldNoLocation, // DEPRECATED - removed
+            bypassDateFilter, // DEPRECATED - removed
+            random,           // DEPRECATED - removed
+            hasYoutube,       // DEPRECATED - removed
+            showAllStatuses,  // DEPRECATED - removed
+            filterBySearch,   // DEPRECATED - removed
+            excludeBatch,     // DEPRECATED - use batchId = -1
+            mode              // Used for UI mode only, not filtering
+        } = options;
+
+        // Build URL and params
+        var url = '/records';
+        var params = new URLSearchParams();
+
+        // --- Status Filter ---
+        if (statusIds && statusIds.length > 0) {
+            params.append('status_ids', statusIds.join(','));
         }
+        // If no status filter, show all (default)
+
+        // --- Search Filters (individual fields) ---
+        // If legacy 'search' is provided, use it as combined search
+        if (search && !artist && !title && !catalogNumber && !barcode) {
+            // For backward compatibility, use search as combined
+            // But we should encourage using specific fields
+            console.warn('⚠️ Using deprecated "search" parameter. Please use artist, title, catalogNumber, or barcode instead.');
+            params.append('artist', search);
+            params.append('title', search);
+        } else {
+            if (artist) params.append('artist', artist);
+            if (title) params.append('title', title);
+            if (catalogNumber) params.append('catalog_number', catalogNumber);
+            if (barcode) params.append('barcode', barcode);
+        }
+
+        // --- Location Filter ---
+        if (locationId) {
+            params.append('location_id', locationId);
+        }
+        // DEPRECATED: location parameter - try to convert to locationId
+        if (location && !locationId) {
+            console.warn('⚠️ Using deprecated "location" parameter. Please use locationId instead.');
+            // Try to find location by name (this would need a lookup)
+            // For now, just pass it as-is and let the backend handle it
+            params.append('location', location);
+        }
+
+        // --- Format Filter ---
+        if (formatIds && formatIds.length > 0) {
+            params.append('format_ids', formatIds.join(','));
+        }
+        // DEPRECATED: single format
+        if (format && !formatIds) {
+            console.warn('⚠️ Using deprecated "format" parameter. Please use formatIds instead.');
+            params.append('format_ids', format);
+        }
+
+        // --- Genre Filter ---
+        if (genres && genres.length > 0) {
+            params.append('genres', genres.join(','));
+        }
+
+        // --- Media Filters ---
+        if (requireImage) {
+            params.append('require_image', 'true');
+        }
+
+        // DEPRECATED: requireLocation - use locationId with null check
+        if (requireLocation) {
+            console.warn('⚠️ Using deprecated "requireLocation" parameter. Please use locationId instead.');
+            // The backend handles this by checking location_id IS NOT NULL
+            // when locationId is provided with a special value
+            params.append('location_id', 'null');
+        }
+
+        // --- Date Filters ---
+        if (createdAfter) {
+            params.append('created_after', createdAfter);
+        }
+        if (lastSeenAfter) {
+            params.append('last_seen_after', lastSeenAfter);
+        }
+        if (lastSeenBefore) {
+            params.append('last_seen_before', lastSeenBefore);
+        }
+
+        // --- Batch Filter ---
+        if (batchId !== undefined && batchId !== null) {
+            params.append('batch_id', batchId);
+        }
+        // DEPRECATED: excludeBatch - use batchId = -1
+        if (excludeBatch) {
+            console.warn('⚠️ Using deprecated "excludeBatch" parameter. Please use batchId = -1 instead.');
+            params.append('batch_id', '-1');
+        }
+
+        // --- Pagination ---
+        if (limit) {
+            params.append('limit', limit);
+        }
+
+        // --- Ordering ---
+        if (orderBy) {
+            params.append('order_by', orderBy);
+        }
+        if (orderDir) {
+            params.append('order_dir', orderDir);
+        }
+
+        // --- DEPRECATED: bypassDateFilter ---
+        if (bypassDateFilter) {
+            console.warn('⚠️ Using deprecated "bypassDateFilter" parameter. This is now the default behavior.');
+            // Do nothing - default is no date filter
+        }
+
+        // --- DEPRECATED: random ---
+        if (random) {
+            console.warn('⚠️ Using deprecated "random" parameter. This feature is no longer supported.');
+            // Ignored
+        }
+
+        // --- DEPRECATED: hasYoutube ---
+        if (hasYoutube) {
+            console.warn('⚠️ Using deprecated "hasYoutube" parameter. This feature is no longer supported.');
+            // Ignored
+        }
+
+        // --- DEPRECATED: showAllStatuses ---
+        if (showAllStatuses) {
+            console.warn('⚠️ Using deprecated "showAllStatuses" parameter. This is now the default behavior.');
+            // Do nothing - default is show all statuses
+        }
+
+        // --- DEPRECATED: excludeOldNoLocation ---
+        if (excludeOldNoLocation) {
+            console.warn('⚠️ Using deprecated "excludeOldNoLocation" parameter. Use createdAfter and lastSeenAfter instead.');
+            // Ignored - use date filters instead
+        }
+
+        var queryString = params.toString();
+        var fullUrl = window.AppConfig.baseUrl + url + (queryString ? '?' + queryString : '');
+        console.log('🔵 loadRecords: fetching ' + fullUrl);
+
+        var response = await fetch(fullUrl, {
+            credentials: 'include',
+            headers: window.AppConfig.getHeaders ? window.AppConfig.getHeaders() : {}
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        var data = await response.json();
+        if (data.status !== 'success') throw new Error(data.error || 'Failed to load records');
+
+        var records = data.records || [];
+        console.log('🔵 loadRecords: API returned ' + records.length + ' records');
+
+        // Store records
+        allRecords = records;
+        filteredRecords = records;
+        totalRecords = filteredRecords.length;
+        currentPage = 1;
+        currentMode = mode || 'inventory';
+
+        if (mode === 'add' && !search && !artist && !title && !catalogNumber && !barcode) {
+            currentResults = [];
+        }
+
+        console.log('🔵 loadRecords: about to render with ' + filteredRecords.length + ' records');
+        renderPagination();
+        renderTablePage();
+
+        var statusMsg = 'Showing ' + totalRecords + ' records';
+        if (statusIds && statusIds.length === 1) statusMsg += ' with status_id=' + statusIds[0];
+        else if (statusIds && statusIds.length > 1) statusMsg += ' with status_ids ' + statusIds.join(', ');
+        if (locationId) statusMsg += ' in location_id=' + locationId;
+        if (search) statusMsg += ' matching "' + search + '"';
+        if (batchId === -1) statusMsg += ' (excluding batch)';
+        else if (batchId) statusMsg += ' (purchase ' + batchId + ')';
+        showStatus(statusMsg, 'info');
+        updateSelectionCount();
+
+        if (mode === 'discogs') {
+            if (locationId) {
+                currentLocationRecords = records;
+            }
+            console.log('🔵 loadRecords: calling populateDiscogsPrices for ' + records.length + ' records');
+            await populateDiscogsPrices(records);
+        }
+
+        return records;
+    } catch (error) {
+        console.error('❌ loadRecords error:', error);
+        showStatus('Error loading records: ' + error.message, 'error');
+        return [];
     }
+}
+
     
     handleFilterType() {
         if (!this.elements.filterType) return;
