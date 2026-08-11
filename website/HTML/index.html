@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
     <link rel="icon" href="/static/images/PigStyle.ico">
     <title>PigStyle Music Loveland</title>
     
@@ -20,37 +20,2162 @@
     <link rel="stylesheet" href="/static/css/shared.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     
+    <!-- Keep on Truckin' Font -->
+    <style>
+        @font-face {
+            font-family: 'KeepOnTruckin';
+            src: url('/static/fonts/KEEPT___.TTF') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+        }
+    </style>
+    
+    <!-- JS FILES -->
     <script src="/static/js/app-config.js"></script>
     <script src="/static/js/notification-bell.js"></script>
     <script src="/static/js/shared.js"></script>
+    <script src="/static/js/merchandise-store.js"></script>
+    <script src="/static/js/index.js"></script>
+    <script src="/static/js/browse-component.js"></script>
+    <script src="/static/js/merch-component.js"></script>
+    <script src="/static/js/events-component.js"></script>
+    <script src="/static/js/connect-component.js"></script>
+    <script src="/static/js/alerts-component.js"></script>
+    <script src="/static/js/order-component.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
     <style>
-        /* Sticky notes container */
-        .sticky-notes-container {
-            position: fixed;
-            top: 80px;
-            left: 20px;
-            z-index: 1001;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            max-width: 250px;
+        /* ============================================================
+           KEEP ON TRUCKIN' FONT
+           ============================================================ */
+        
+        @font-face {
+            font-family: 'KeepOnTruckin';
+            src: url('/static/fonts/KEEPT___.TTF') format('truetype');
+            font-weight: normal;
+            font-style: normal;
         }
         
-        /* Individual sticky note styles */
+        /* ============================================================
+           FLIP-CARD TILE LANDING PAGE
+           ============================================================ */
+        
+        /* Background */
+        .background-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+        
+        .background-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .background-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+        }
+        
+        /* Hide navbar placeholder */
+        #navbar-placeholder {
+            display: none;
+        }
+        
+        /* ============================================================
+           WELCOME TILE - HOME FRONT
+           ============================================================ */
+        
+        .welcome-front {
+            background: rgba(0, 0, 0, 0.3);
+            background-image: url('/static/images/pig_before_storefront.png');
+            background-size: contain;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-blend-mode: overlay;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+            position: relative;
+        }
+        
+        .welcome-front::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.4) 100%);
+            pointer-events: none;
+        }
+        
+        .welcome-text {
+            position: relative;
+            z-index: 2;
+            text-align: center;
+            padding: 20px 40px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 20px;
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            max-width: 90%;
+        }
+        
+        .welcome-title {
+            font-family: 'KeepOnTruckin', cursive;
+            font-size: 2.5rem;
+            color: #000000;
+            text-shadow: 
+                0 2px 10px rgba(255,255,255,0.5),
+                0 2px 4px rgba(0,0,0,0.3);
+            letter-spacing: 4px;
+            margin: 0;
+            line-height: 1.2;
+        }
+        
+        .welcome-pigstyle {
+            font-family: 'KeepOnTruckin', cursive;
+            font-size: 5rem;
+            color: #4CAF50;
+            text-shadow: 
+                0 0 30px rgba(76, 175, 80, 0.4),
+                0 2px 10px rgba(0,0,0,0.5);
+            margin: -10px 0 0 0;
+            letter-spacing: 10px;
+            line-height: 1.1;
+        }
+        
+        /* Flip hint on welcome tile */
+        .welcome-front .flip-hint {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 3;
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.5);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            animation: pulse 2s ease-in-out infinite;
+            background: rgba(0,0,0,0.3);
+            padding: 6px 16px;
+            border-radius: 20px;
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 1; }
+        }
+        
+        /* ============================================================
+           FIXED HEADER - NO LOGO, JUST MENU
+           ============================================================ */
+        
+        .fixed-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 4px 16px 4px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        
+        .fixed-header .mini-nav {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            flex-wrap: nowrap;
+            padding: 2px 0;
+            width: 100%;
+            background: transparent;
+            border: none;
+            backdrop-filter: none;
+            border-radius: 0;
+        }
+        
+        .fixed-header .mini-nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-decoration: none;
+            color: #888;
+            font-size: 0.7rem;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: all 0.2s;
+            min-width: 40px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            white-space: nowrap;
+        }
+        
+        .fixed-header .mini-nav-item i {
+            font-size: 1.5rem;
+            margin-bottom: 2px;
+            color: #777;
+            transition: color 0.2s;
+        }
+        
+        .fixed-header .mini-nav-item span {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #777;
+        }
+        
+        .fixed-header .mini-nav-item:hover i,
+        .fixed-header .mini-nav-item.active i {
+            color: #ff6b6b;
+        }
+        
+        .fixed-header .mini-nav-item:hover span,
+        .fixed-header .mini-nav-item.active span {
+            color: #fff;
+        }
+        
+        .fixed-header .mini-nav-item.active {
+            background: rgba(255, 107, 107, 0.12);
+        }
+        
+        /* ============================================================
+           CAROUSEL CONTAINER
+           ============================================================ */
+        
+        .carousel-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            z-index: 1;
+            padding-top: 70px;
+            box-sizing: border-box;
+        }
+        
+        .tiles-wrapper {
+            display: flex;
+            transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            width: 100%;
+            height: 100%;
+            touch-action: pan-y;
+            align-items: center;
+            will-change: transform;
+        }
+        
+        .tile {
+            min-width: 100vw;
+            height: 100%;
+            padding: 0;
+            box-sizing: border-box;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            perspective: 1000px;
+        }
+        
+        /* ============================================================
+           FLIP CARD
+           ============================================================ */
+        
+        .flip-card {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-style: preserve-3d;
+            cursor: pointer;
+        }
+        
+        .flip-card.flipped {
+            transform: rotateY(180deg);
+        }
+        
+        .flip-card-front,
+        .flip-card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        
+        .flip-card-front {
+            background: rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: none;
+            box-shadow: none;
+            color: white;
+            transform: rotateY(0deg);
+        }
+        
+        /* Override for welcome tile front - uses background image */
+        .flip-card-front.welcome-front {
+            background: rgba(0, 0, 0, 0.3);
+            background-image: url('/static/images/pig_before_storefront.png');
+            background-size: contain;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-blend-mode: overlay;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+        }
+        
+        .flip-card-back {
+            background: rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: none;
+            box-shadow: none;
+            color: white;
+            transform: rotateY(180deg);
+            overflow-y: auto;
+            justify-content: flex-start;
+            padding: 20px;
+        }
+        
+        /* Hide scrollbar on flip-card-back */
+        .flip-card-back::-webkit-scrollbar {
+            width: 4px;
+        }
+        .flip-card-back::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+        .flip-card-back::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        /* ============================================================
+           FRONT SIDE CONTENT (non-welcome tiles)
+           ============================================================ */
+        
+        .front-icon {
+            font-size: 4.5rem;
+            color: #ff6b6b;
+            margin-bottom: 15px;
+            display: block;
+            text-shadow: 0 2px 20px rgba(255, 107, 107, 0.3);
+        }
+        
+        .front-title {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+        
+        .front-description {
+            font-size: 1rem;
+            color: #ccc;
+            line-height: 1.5;
+            max-width: 320px;
+            margin: 0 auto;
+        }
+        
+        .front-action {
+            margin-top: 18px;
+            display: inline-block;
+            padding: 10px 30px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            border-radius: 30px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        
+        .front-action:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        /* Flip hint - small text at bottom (non-welcome tiles) */
+        .flip-hint {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.4);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 1; }
+        }
+        
+        /* ============================================================
+           BACK SIDE CONTENT
+           ============================================================ */
+        
+        .back-header {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            flex-shrink: 0;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .back-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .back-title i {
+            color: #ff6b6b;
+        }
+        
+        .flip-back-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .flip-back-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .back-content {
+            width: 100%;
+            flex: 1;
+            overflow-y: auto;
+            padding-top: 15px;
+        }
+        
+        /* ============================================================
+           BROWSER COMPONENT STYLES
+           ============================================================ */
+        
+        .browse-container {
+            width: 100%;
+            height: 100%;
+            overflow-y: auto;
+            padding: 0 5px;
+        }
+        
+        .browse-container::-webkit-scrollbar {
+            width: 4px;
+        }
+        .browse-container::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+        .browse-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .browse-search-wrapper {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .browse-search-wrapper input {
+            flex: 1;
+            min-width: 150px;
+            padding: 8px 14px;
+            border-radius: 30px;
+            border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.08);
+            color: white;
+            font-size: 13px;
+            outline: none;
+        }
+        
+        .browse-search-wrapper input::placeholder {
+            color: #888;
+        }
+        
+        .browse-search-wrapper input:focus {
+            border-color: #ff6b6b;
+        }
+        
+        .browse-filter-section {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        
+        .browse-filter-btn {
+            padding: 5px 14px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.05);
+            color: #aaa;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .browse-filter-btn:hover {
+            background: rgba(255,255,255,0.12);
+            color: #fff;
+        }
+        
+        .browse-filter-btn.active {
+            background: rgba(255, 107, 107, 0.2);
+            border-color: #ff6b6b;
+            color: #fff;
+        }
+        
+        .browse-filter-group {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .browse-filter-checkbox-container {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: rgba(20, 20, 30, 0.95);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 10px 12px;
+            min-width: 160px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 200;
+            margin-top: 4px;
+        }
+        
+        .browse-filter-checkbox-container.show {
+            display: block;
+        }
+        
+        .browse-filter-checkbox-container::-webkit-scrollbar {
+            width: 3px;
+        }
+        .browse-filter-checkbox-container::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.3);
+            border-radius: 4px;
+        }
+        
+        .browse-filter-checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 3px 0;
+            color: #ccc;
+            font-size: 12px;
+        }
+        
+        .browse-filter-checkbox-item input[type="checkbox"] {
+            accent-color: #ff6b6b;
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+        }
+        
+        .browse-filter-checkbox-item label {
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .browse-filter-actions {
+            display: flex;
+            gap: 5px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            flex-wrap: wrap;
+        }
+        
+        .browse-filter-action-btn {
+            padding: 3px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.05);
+            color: #aaa;
+            font-size: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .browse-filter-action-btn:hover {
+            background: rgba(255,255,255,0.12);
+            color: #fff;
+        }
+        
+        .browse-filter-action-btn.filter-apply {
+            background: #ff6b6b;
+            border-color: #ff6b6b;
+            color: #fff;
+        }
+        
+        .browse-filter-action-btn.filter-apply:hover {
+            background: #ff5252;
+        }
+        
+        .browse-filter-status-row {
+            display: none;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 10px;
+            margin: 4px 0 8px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 6px;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        
+        .browse-filter-status-row.visible {
+            display: flex;
+        }
+        
+        .browse-filter-summary {
+            color: #aaa;
+            font-size: 11px;
+        }
+        
+        .browse-filter-summary .result-count-badge {
+            background: rgba(255,107,107,0.2);
+            color: #ff6b6b;
+            padding: 1px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            margin-left: 4px;
+        }
+        
+        .browse-clear-filters-link {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 11px;
+            cursor: pointer;
+            padding: 2px 8px;
+        }
+        
+        .browse-clear-filters-link:hover {
+            color: #fff;
+        }
+        
+        /* Records Grid */
+        .browse-records-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 12px;
+            padding: 5px 0;
+        }
+        
+        .browse-record-card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        
+        .browse-record-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(255,107,107,0.2);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+        
+        .browse-record-card-image {
+            height: 140px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.05);
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .browse-record-card-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .browse-record-card-image.default-bg {
+            background: rgba(255,107,107,0.1);
+        }
+        
+        .browse-record-card-image.default-bg i {
+            font-size: 2.5rem;
+            color: rgba(255,255,255,0.2);
+        }
+        
+        .browse-record-card-info {
+            padding: 8px 10px 10px;
+        }
+        
+        .browse-record-card-artist {
+            font-weight: bold;
+            color: #fff;
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .browse-record-card-title {
+            color: #aaa;
+            font-size: 11px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .browse-record-card-price {
+            color: #ff6b6b;
+            font-size: 15px;
+            font-weight: bold;
+            margin: 3px 0;
+        }
+        
+        .browse-record-card-condition {
+            font-size: 10px;
+            color: #888;
+            background: rgba(255,255,255,0.05);
+            padding: 1px 8px;
+            border-radius: 10px;
+            display: inline-block;
+        }
+        
+        .browse-record-card-genre,
+        .browse-record-card-format {
+            font-size: 9px;
+            color: #666;
+            margin-top: 2px;
+        }
+        
+        .browse-record-card-genre i,
+        .browse-record-card-format i {
+            margin-right: 3px;
+        }
+        
+        /* Pagination */
+        .browse-pagination-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 0;
+            margin-top: 8px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+        
+        .browse-pagination-btn {
+            padding: 4px 16px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.05);
+            color: #aaa;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .browse-pagination-btn:hover:not(:disabled) {
+            background: rgba(255,255,255,0.12);
+            color: #fff;
+        }
+        
+        .browse-pagination-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        
+        .browse-pagination-info {
+            color: #888;
+            font-size: 11px;
+        }
+        
+        .browse-loading-indicator {
+            text-align: center;
+            padding: 30px 0;
+            color: #888;
+        }
+        
+        .browse-loading-dots {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        
+        .browse-loading-dots div {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ff6b6b;
+            animation: browseDotPulse 1.2s ease-in-out infinite;
+        }
+        
+        .browse-loading-dots div:nth-child(2) { animation-delay: 0.2s; }
+        .browse-loading-dots div:nth-child(3) { animation-delay: 0.4s; }
+        .browse-loading-dots div:nth-child(4) { animation-delay: 0.6s; }
+        
+        @keyframes browseDotPulse {
+            0%, 100% { transform: scale(0.6); opacity: 0.3; }
+            50% { transform: scale(1); opacity: 1; }
+        }
+        
+        .browse-no-records-message {
+            text-align: center;
+            padding: 30px 0;
+            color: #888;
+        }
+        
+        .browse-no-records-message i {
+            font-size: 2.5rem;
+            color: #555;
+            margin-bottom: 10px;
+            display: block;
+        }
+        
+        .browse-error-message {
+            text-align: center;
+            padding: 30px 0;
+            color: #888;
+        }
+        
+        .browse-error-message i {
+            font-size: 2.5rem;
+            color: #ff6b6b;
+            margin-bottom: 10px;
+            display: block;
+        }
+        
+        /* Record Modal */
+        .browse-record-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .browse-record-modal {
+            background: rgba(30, 30, 40, 0.95);
+            border-radius: 12px;
+            max-width: 400px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        
+        .browse-record-modal::-webkit-scrollbar {
+            width: 4px;
+        }
+        .browse-record-modal::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.3);
+            border-radius: 4px;
+        }
+        
+        .browse-record-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        
+        .browse-record-modal-header h3 {
+            color: #fff;
+            font-size: 1rem;
+            margin: 0;
+        }
+        
+        .browse-record-modal-close {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0 4px;
+        }
+        
+        .browse-record-modal-close:hover {
+            color: #fff;
+        }
+        
+        .browse-record-modal-image {
+            height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.05);
+        }
+        
+        .browse-record-modal-image img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        .browse-record-modal-image.default-bg i {
+            font-size: 3rem;
+            color: rgba(255,255,255,0.2);
+        }
+        
+        .browse-record-modal-info {
+            padding: 14px 16px 16px;
+        }
+        
+        .browse-record-modal-title {
+            color: #aaa;
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+        }
+        
+        .browse-record-modal-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px 16px;
+            margin: 8px 0;
+        }
+        
+        .browse-detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 0;
+            font-size: 12px;
+            color: #ccc;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+        
+        .browse-detail-row .detail-label {
+            color: #888;
+        }
+        
+        .browse-record-modal-price {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #ff6b6b;
+            margin: 10px 0;
+            text-align: center;
+        }
+        
+        .browse-record-modal-actions {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 12px;
+        }
+        
+        .browse-record-modal-actions .close-modal-btn {
+            padding: 8px 30px;
+            border-radius: 30px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.05);
+            color: #aaa;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .browse-record-modal-actions .close-modal-btn:hover {
+            background: rgba(255,255,255,0.12);
+            color: #fff;
+        }
+        
+        /* ============================================================
+           MERCHANDISE + GIFT CARDS STYLES
+           ============================================================ */
+        
+        .merch-container {
+            width: 100%;
+            height: 100%;
+            overflow-y: auto;
+            padding: 0 5px;
+        }
+        
+        .merch-container::-webkit-scrollbar {
+            width: 4px;
+        }
+        .merch-container::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+        .merch-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .merch-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 15px;
+            padding: 5px 0;
+        }
+        
+        .merch-card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            overflow: hidden;
+            transition: all 0.3s;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        
+        .merch-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(255,107,107,0.2);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+        
+        .merch-image {
+            height: 160px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.03);
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .merch-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .merch-image.default-merch-bg {
+            background: rgba(255,107,107,0.05);
+        }
+        
+        .merch-image.default-merch-bg::after {
+            content: '\f001';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            font-size: 3rem;
+            color: rgba(255,255,255,0.1);
+        }
+        
+        .merch-info {
+            padding: 10px 12px 12px;
+        }
+        
+        .merch-info h3 {
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            margin: 0 0 4px 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .merch-price {
+            color: #ff6b6b;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        
+        .merch-description {
+            color: #888;
+            font-size: 11px;
+            margin-top: 3px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        
+        .merch-loading {
+            text-align: center;
+            padding: 30px 0;
+            color: #888;
+        }
+        
+        .merch-loading-dots {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        
+        .merch-loading-dots div {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ff6b6b;
+            animation: merchDotPulse 1.2s ease-in-out infinite;
+        }
+        
+        .merch-loading-dots div:nth-child(2) { animation-delay: 0.2s; }
+        .merch-loading-dots div:nth-child(3) { animation-delay: 0.4s; }
+        .merch-loading-dots div:nth-child(4) { animation-delay: 0.6s; }
+        
+        @keyframes merchDotPulse {
+            0%, 100% { transform: scale(0.6); opacity: 0.3; }
+            50% { transform: scale(1); opacity: 1; }
+        }
+        
+        .error-message {
+            text-align: center;
+            padding: 30px 20px;
+            color: #ccc;
+        }
+        
+        .error-message i {
+            font-size: 3rem;
+            color: #ff6b6b;
+            margin-bottom: 15px;
+            display: block;
+        }
+        
+        .error-message h2 {
+            color: #fff;
+            margin-bottom: 10px;
+        }
+        
+        .error-message p {
+            color: #888;
+            max-width: 400px;
+            margin: 0 auto 20px;
+            line-height: 1.5;
+        }
+        
+        .retry-btn {
+            padding: 8px 24px;
+            border-radius: 30px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.05);
+            color: #aaa;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+        
+        .retry-btn:hover {
+            background: rgba(255,255,255,0.12);
+            color: #fff;
+        }
+        
+        .retry-btn i {
+            display: inline;
+            font-size: 13px;
+            margin-right: 6px;
+        }
+        
+        /* Gift Card Styles */
+        .gift-card-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .gift-card-section .section-title {
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .gift-card-section .section-title i {
+            color: #ff6b6b;
+        }
+        
+        .gift-card-form {
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            padding: 15px;
+        }
+        
+        .gift-card-form .form-group {
+            margin-bottom: 10px;
+        }
+        
+        .gift-card-form label {
+            display: block;
+            color: #aaa;
+            font-size: 12px;
+            margin-bottom: 3px;
+        }
+        
+        .gift-card-form input,
+        .gift-card-form textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            font-size: 13px;
+            outline: none;
+        }
+        
+        .gift-card-form input:focus,
+        .gift-card-form textarea:focus {
+            border-color: #ff6b6b;
+        }
+        
+        .gift-card-form textarea {
+            resize: vertical;
+            min-height: 40px;
+        }
+        
+        .gift-card-form .amount-selector {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        
+        .gift-card-form .amount-btn {
+            padding: 6px 16px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.05);
+            color: #aaa;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+        
+        .gift-card-form .amount-btn:hover {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+        }
+        
+        .gift-card-form .amount-btn.active {
+            background: rgba(255,107,107,0.2);
+            border-color: #ff6b6b;
+            color: #fff;
+        }
+        
+        .gift-card-form .custom-amount {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        
+        .gift-card-form .custom-amount span {
+            color: #aaa;
+            font-size: 16px;
+        }
+        
+        .gift-card-form .custom-amount input {
+            flex: 1;
+            min-width: 80px;
+        }
+        
+        .gift-card-form .pay-btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .gift-card-form .pay-btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .gift-card-form .pay-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .gift-card-form .status-message {
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 10px;
+            display: none;
+            font-size: 13px;
+        }
+        
+        .gift-card-form .status-message.success {
+            display: block;
+            background: rgba(40,167,69,0.15);
+            color: #4caf50;
+            border: 1px solid rgba(40,167,69,0.2);
+        }
+        
+        .gift-card-form .status-message.error {
+            display: block;
+            background: rgba(220,53,69,0.15);
+            color: #dc3545;
+            border: 1px solid rgba(220,53,69,0.2);
+        }
+        
+        .gift-card-form .status-message.info {
+            display: block;
+            background: rgba(23,162,184,0.15);
+            color: #17a2b8;
+            border: 1px solid rgba(23,162,184,0.2);
+        }
+        
+        /* Gift Card Balance Check */
+        .gift-card-check {
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px;
+        }
+        
+        .gift-card-check .check-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .gift-card-check .check-row input {
+            flex: 1;
+            min-width: 120px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            font-size: 13px;
+            outline: none;
+        }
+        
+        .gift-card-check .check-row input:focus {
+            border-color: #ff6b6b;
+        }
+        
+        .gift-card-check .check-btn {
+            padding: 8px 20px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.05);
+            color: #aaa;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .gift-card-check .check-btn:hover {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+        }
+        
+        .gift-card-check .balance-result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 6px;
+            display: none;
+            font-size: 13px;
+        }
+        
+        .gift-card-check .balance-result.show {
+            display: block;
+        }
+        
+        /* ============================================================
+           CONNECT COMPONENT STYLES
+           ============================================================ */
+        
+        .connect-container {
+            width: 100%;
+            height: 100%;
+            overflow-y: auto;
+            padding: 0 5px;
+        }
+        
+        .connect-container::-webkit-scrollbar {
+            width: 4px;
+        }
+        .connect-container::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+        .connect-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .connect-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .connect-info-card,
+        .connect-feedback-card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            padding: 20px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        
+        .connect-info-card h3,
+        .connect-feedback-card h3 {
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #ff6b6b;
+            padding-bottom: 8px;
+            display: inline-block;
+        }
+        
+        .connect-info-card h3 i,
+        .connect-feedback-card h3 i {
+            color: #ff6b6b;
+            margin-right: 8px;
+        }
+        
+        .connect-contact-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 10px;
+            margin-bottom: 8px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        
+        .connect-contact-item:hover {
+            background: rgba(255,255,255,0.06);
+            transform: translateX(3px);
+        }
+        
+        .connect-contact-item i {
+            color: #ff6b6b;
+            font-size: 16px;
+            width: 25px;
+            text-align: center;
+        }
+        
+        .connect-contact-item span,
+        .connect-contact-item a {
+            color: #ccc;
+            text-decoration: none;
+            font-size: 13px;
+        }
+        
+        .connect-contact-item a:hover {
+            color: #fff;
+        }
+        
+        .connect-hours {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+        
+        .connect-hours h4 {
+            color: #aaa;
+            font-size: 13px;
+            margin-bottom: 5px;
+        }
+        
+        .connect-hours h4 i {
+            color: #ff6b6b;
+            margin-right: 6px;
+        }
+        
+        .connect-hours-text {
+            color: #ccc;
+            font-size: 13px;
+        }
+        
+        .connect-social {
+            display: flex;
+            gap: 15px;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+        
+        .connect-social a {
+            color: #888;
+            font-size: 22px;
+            transition: all 0.2s;
+        }
+        
+        .connect-social a:hover {
+            color: #ff6b6b;
+            transform: scale(1.1);
+        }
+        
+        .connect-feedback-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .connect-feedback-form .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .connect-feedback-form .form-group label {
+            color: #aaa;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .connect-feedback-form .form-group label .optional {
+            color: #666;
+            font-weight: normal;
+            font-size: 11px;
+        }
+        
+        .connect-feedback-form .form-group label .required {
+            color: #ff6b6b;
+        }
+        
+        .connect-feedback-form .form-group input,
+        .connect-feedback-form .form-group textarea {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            font-size: 13px;
+            outline: none;
+            font-family: inherit;
+        }
+        
+        .connect-feedback-form .form-group input:focus,
+        .connect-feedback-form .form-group textarea:focus {
+            border-color: #ff6b6b;
+        }
+        
+        .connect-feedback-form .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        
+        .connect-submit-btn {
+            padding: 10px;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 5px;
+        }
+        
+        .connect-submit-btn:hover {
+            background: #ff5252;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255,107,107,0.3);
+        }
+        
+        .connect-message {
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 10px;
+            display: none;
+            font-size: 13px;
+            text-align: center;
+        }
+        
+        .connect-message.success {
+            display: block;
+            background: rgba(40,167,69,0.15);
+            color: #4caf50;
+            border: 1px solid rgba(40,167,69,0.2);
+        }
+        
+        .connect-message.error {
+            display: block;
+            background: rgba(220,53,69,0.15);
+            color: #dc3545;
+            border: 1px solid rgba(220,53,69,0.2);
+        }
+        
+        /* ============================================================
+           EVENTS COMPONENT STYLES
+           ============================================================ */
+        
+        .events-container {
+            width: 100%;
+            height: 100%;
+            overflow-y: auto;
+            padding: 0 5px;
+        }
+        
+        .events-container::-webkit-scrollbar {
+            width: 4px;
+        }
+        .events-container::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+        .events-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .events-header {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        
+        .events-header h2 {
+            color: #fff;
+            font-size: 1.1rem;
+            margin-bottom: 4px;
+        }
+        
+        .events-header p {
+            color: #aaa;
+            font-size: 0.85rem;
+        }
+        
+        .calendar-iframe-wrapper {
+            position: relative;
+            overflow: hidden;
+            width: 100%;
+            padding-top: 56.25%;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        
+        .calendar-iframe-wrapper iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: 0;
+        }
+        
+        /* ============================================================
+           ALERTS & ORDER COMPONENT STYLES
+           ============================================================ */
+        
+        .alert-container,
+        .order-container {
+            width: 100%;
+            height: 100%;
+            overflow-y: auto;
+            padding: 0 5px;
+        }
+        
+        .alert-container::-webkit-scrollbar,
+        .order-container::-webkit-scrollbar {
+            width: 4px;
+        }
+        .alert-container::-webkit-scrollbar-thumb,
+        .order-container::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+        .alert-container::-webkit-scrollbar-track,
+        .order-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .alert-header,
+        .order-header {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        
+        .alert-header h2,
+        .order-header h2 {
+            color: #fff;
+            font-size: 1.1rem;
+            margin-bottom: 4px;
+        }
+        
+        .alert-header p,
+        .order-header p {
+            color: #aaa;
+            font-size: 0.85rem;
+        }
+        
+        .alert-warning-box {
+            background: rgba(255,193,7,0.1);
+            border: 1px solid rgba(255,193,7,0.2);
+            border-left: 4px solid #ffc107;
+            padding: 10px 14px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 12px;
+            color: #ffc107;
+        }
+        
+        .alert-warning-box strong {
+            display: block;
+            margin-bottom: 3px;
+        }
+        
+        .alert-warning-box .example {
+            color: #aaa;
+            font-size: 11px;
+            margin-top: 3px;
+        }
+        
+        .alert-form,
+        .order-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .alert-form .form-group,
+        .order-form .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .alert-form .form-group label,
+        .order-form .form-group label {
+            color: #aaa;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .alert-form .form-group label .required,
+        .order-form .form-group label .required {
+            color: #ff6b6b;
+        }
+        
+        .alert-form .form-group label .optional,
+        .order-form .form-group label .optional {
+            color: #666;
+            font-weight: normal;
+            font-size: 11px;
+        }
+        
+        .alert-form .form-group input,
+        .order-form .form-group input {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            font-size: 13px;
+            outline: none;
+        }
+        
+        .alert-form .form-group input:focus,
+        .order-form .form-group input:focus {
+            border-color: #ff6b6b;
+        }
+        
+        .alert-submit-btn {
+            padding: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .alert-submit-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        
+        .alert-submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .order-submit-btn {
+            padding: 10px;
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            border: none;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .order-submit-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(40,167,69,0.3);
+        }
+        
+        .order-submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .alert-status,
+        .order-status {
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 10px;
+            display: none;
+            font-size: 13px;
+            text-align: center;
+        }
+        
+        .alert-status.success,
+        .order-status.success {
+            display: block;
+            background: rgba(40,167,69,0.15);
+            color: #4caf50;
+            border: 1px solid rgba(40,167,69,0.2);
+        }
+        
+        .alert-status.error,
+        .order-status.error {
+            display: block;
+            background: rgba(220,53,69,0.15);
+            color: #dc3545;
+            border: 1px solid rgba(220,53,69,0.2);
+        }
+        
+        .alert-status.info,
+        .order-status.info {
+            display: block;
+            background: rgba(23,162,184,0.15);
+            color: #17a2b8;
+            border: 1px solid rgba(23,162,184,0.2);
+        }
+        
+        /* ============================================================
+           MODAL OVERLAY (Shared)
+           ============================================================ */
+        
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        }
+        
+        .modal-overlay.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: rgba(30,30,40,0.95);
+            border-radius: 16px;
+            max-width: 500px;
+            width: 95%;
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 1px solid rgba(255,255,255,0.05);
+            animation: modalSlideIn 0.3s ease;
+        }
+        
+        @keyframes modalSlideIn {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            border-radius: 16px 16px 0 0;
+        }
+        
+        .modal-header h3 {
+            margin: 0;
+            font-size: 18px;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 28px;
+            cursor: pointer;
+            opacity: 0.8;
+            padding: 0 5px;
+        }
+        
+        .modal-close:hover {
+            opacity: 1;
+        }
+        
+        .modal-body {
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .modal-footer {
+            padding: 16px 20px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .gift-card-preview {
+            background: rgba(255,255,255,0.05);
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border: 2px dashed rgba(255,255,255,0.1);
+        }
+        
+        .gift-card-preview .barcode-container {
+            background: white;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .gift-card-preview .barcode-container canvas {
+            max-width: 100%;
+        }
+        
+        .gift-card-preview .amount-display {
+            font-size: 32px;
+            font-weight: 700;
+            color: #28a745;
+        }
+        
+        .gift-card-preview .id-display {
+            font-family: monospace;
+            font-size: 16px;
+            background: rgba(255,255,255,0.05);
+            padding: 4px 12px;
+            border-radius: 4px;
+            display: inline-block;
+            color: #aaa;
+        }
+        
+        .gift-card-preview .recipient-display {
+            font-size: 16px;
+            color: #ccc;
+            margin-top: 5px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+        }
+        
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        .btn-primary:hover { background: #0056b3; }
+        
+        .btn-secondary {
+            background: rgba(255,255,255,0.1);
+            color: #aaa;
+        }
+        .btn-secondary:hover { background: rgba(255,255,255,0.2); color: #fff; }
+        
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .btn-success:hover { background: #218838; }
+        
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+        .btn-info:hover { background: #138496; }
+        
+        /* ============================================================
+           ARROWS
+           ============================================================ */
+        
+        .carousel-arrow {
+            position: fixed;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 50;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(8px);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .carousel-arrow:hover {
+            background: rgba(255, 107, 107, 0.6);
+            border-color: rgba(255, 107, 107, 0.3);
+        }
+        
+        .carousel-arrow.prev {
+            left: 10px;
+        }
+        
+        .carousel-arrow.next {
+            right: 10px;
+        }
+        
+        /* ============================================================
+           DESKTOP-ONLY: Pig head + rotating record
+           ============================================================ */
+        
+        .desktop-record-container {
+            display: none;
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 60;
+        }
+        
+        .desktop-record-container .pig-head {
+            width: 50px;
+            height: auto;
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            z-index: 2;
+        }
+        
+        .desktop-record-container .rotating-record {
+            width: 65px;
+            height: auto;
+            position: absolute;
+            bottom: 4px;
+            left: 20px;
+            z-index: 1;
+            animation: spin 4s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        /* ============================================================
+           STICKY NOTES
+           ============================================================ */
+        
+        .sticky-notes-container {
+            position: fixed;
+            top: 70px;
+            right: 15px;
+            z-index: 60;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 160px;
+        }
+        
         .sticky-note {
             background-color: #ffeb3b;
             color: #000;
-            padding: 15px 20px;
+            padding: 6px 10px;
             font-family: 'Comic Sans MS', cursive, sans-serif;
-            font-size: 1.2rem;
+            font-size: 0.7rem;
             font-weight: bold;
-            box-shadow: 5px 5px 15px rgba(0,0,0,0.3);
+            box-shadow: 3px 3px 10px rgba(0,0,0,0.3);
             transform: rotate(-2deg);
             border: 1px solid #e6c300;
-            border-radius: 0 10px 10px 0;
+            border-radius: 0 6px 6px 0;
             text-align: center;
-            line-height: 1.4;
+            line-height: 1.3;
             word-wrap: break-word;
             position: relative;
             animation: float 3s ease-in-out infinite;
@@ -75,16 +2200,16 @@
             height: 100%;
             background: linear-gradient(135deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 50%);
             pointer-events: none;
-            border-radius: 0 10px 10px 0;
+            border-radius: 0 6px 6px 0;
         }
         
         .sticky-note::after {
             content: '';
             position: absolute;
-            bottom: -5px;
-            right: -5px;
-            width: 20px;
-            height: 20px;
+            bottom: -3px;
+            right: -3px;
+            width: 14px;
+            height: 14px;
             background: rgba(0,0,0,0.1);
             transform: rotate(45deg);
             z-index: -1;
@@ -92,7 +2217,7 @@
         
         @keyframes float {
             0%, 100% { transform: translateY(0px) rotate(-2deg); }
-            50% { transform: translateY(-5px) rotate(-2deg); }
+            50% { transform: translateY(-3px) rotate(-2deg); }
         }
         
         .sticky-note:nth-child(even) {
@@ -105,183 +2230,394 @@
         
         @keyframes float-even {
             0%, 100% { transform: translateY(0px) rotate(1deg); }
-            50% { transform: translateY(-5px) rotate(1deg); }
+            50% { transform: translateY(-3px) rotate(1deg); }
         }
         
         @keyframes float-odd {
             0%, 100% { transform: translateY(0px) rotate(-3deg); }
-            50% { transform: translateY(-5px) rotate(-3deg); }
+            50% { transform: translateY(-3px) rotate(-3deg); }
         }
         
-        @media (min-width: 769px) {
-            .sticky-notes-container { display: flex; }
+        /* ============================================================
+           RESPONSIVE
+           ============================================================ */
+        
+        @media (min-width: 1025px) {
+            .desktop-record-container {
+                display: block;
+            }
+            
+            .carousel-arrow {
+                width: 48px;
+                height: 48px;
+                font-size: 1.3rem;
+            }
+            
+            .carousel-arrow.prev {
+                left: 20px;
+            }
+            
+            .carousel-arrow.next {
+                right: 20px;
+            }
+            
+            .carousel-container {
+                padding-top: 76px;
+            }
+            
+            .browse-records-grid {
+                grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+                gap: 15px;
+            }
+            
+            .merch-gallery {
+                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                gap: 18px;
+            }
+            
+            .welcome-title {
+                font-size: 3rem;
+            }
+            
+            .welcome-pigstyle {
+                font-size: 6rem;
+            }
+            
+            .fixed-header .mini-nav-item i {
+                font-size: 1.5rem;
+            }
+            
+            .fixed-header .mini-nav-item span {
+                font-size: 0.7rem;
+            }
+        }
+        
+        @media (max-width: 1024px) {
+            .fixed-header .mini-nav {
+                gap: 4px;
+            }
+            .fixed-header .mini-nav-item {
+                min-width: 34px;
+                padding: 3px 6px;
+                font-size: 0.6rem;
+            }
+            .fixed-header .mini-nav-item i {
+                font-size: 1.2rem;
+            }
+            .fixed-header .mini-nav-item span {
+                font-size: 0.6rem;
+            }
         }
         
         @media (max-width: 768px) {
-            .sticky-notes-container { display: none; }
+            .desktop-record-container {
+                display: none;
+            }
+            
+            .sticky-notes-container {
+                display: none;
+            }
+            
+            .fixed-header {
+                padding: 2px 8px 2px;
+            }
+            
+            .fixed-header .mini-nav {
+                gap: 2px;
+            }
+            
+            .fixed-header .mini-nav-item {
+                padding: 2px 4px;
+                min-width: 28px;
+                font-size: 0.5rem;
+            }
+            
+            .fixed-header .mini-nav-item i {
+                font-size: 1rem;
+            }
+            
+            .fixed-header .mini-nav-item span {
+                font-size: 0.5rem;
+            }
+            
+            .carousel-container {
+                padding-top: 62px;
+            }
+            
+            .front-icon {
+                font-size: 3.5rem;
+                margin-bottom: 10px;
+            }
+            
+            .front-title {
+                font-size: 1.6rem;
+            }
+            
+            .front-description {
+                font-size: 0.85rem;
+                max-width: 280px;
+            }
+            
+            .front-action {
+                padding: 8px 24px;
+                font-size: 0.8rem;
+            }
+            
+            .carousel-arrow {
+                width: 32px;
+                height: 32px;
+                font-size: 0.8rem;
+            }
+            
+            .carousel-arrow.prev {
+                left: 6px;
+            }
+            
+            .carousel-arrow.next {
+                right: 6px;
+            }
+            
+            .flip-hint {
+                font-size: 0.6rem;
+                bottom: 20px;
+            }
+            
+            .back-header {
+                padding: 8px 0 12px;
+            }
+            
+            .back-title {
+                font-size: 1rem;
+            }
+            
+            .flip-back-btn {
+                padding: 6px 12px;
+                font-size: 0.65rem;
+            }
+            
+            .browse-records-grid {
+                grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+                gap: 8px;
+            }
+            
+            .browse-record-card-image {
+                height: 100px;
+            }
+            
+            .browse-record-card-artist {
+                font-size: 11px;
+            }
+            
+            .browse-record-card-title {
+                font-size: 10px;
+            }
+            
+            .browse-record-card-price {
+                font-size: 13px;
+            }
+            
+            .browse-search-wrapper input {
+                font-size: 12px;
+                padding: 6px 12px;
+            }
+            
+            .browse-filter-btn {
+                font-size: 10px;
+                padding: 4px 10px;
+            }
+            
+            .merch-gallery {
+                grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+                gap: 10px;
+            }
+            
+            .merch-image {
+                height: 120px;
+            }
+            
+            .merch-info h3 {
+                font-size: 12px;
+            }
+            
+            .merch-price {
+                font-size: 14px;
+            }
+            
+            .gift-card-form .amount-selector {
+                gap: 5px;
+            }
+            
+            .gift-card-form .amount-btn {
+                font-size: 12px;
+                padding: 5px 12px;
+            }
+            
+            .connect-grid {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            
+            .welcome-title {
+                font-size: 1.8rem;
+            }
+            
+            .welcome-pigstyle {
+                font-size: 3.2rem;
+            }
+            
+            .welcome-text {
+                padding: 16px 30px;
+            }
         }
         
-        @media (min-width: 769px) and (max-width: 1024px) {
-            .sticky-notes-container {
-                top: 70px;
-                left: 10px;
-                max-width: 200px;
+        @media (max-width: 480px) {
+            .fixed-header .mini-nav-item {
+                min-width: 22px;
+                padding: 1px 3px;
+                font-size: 0.4rem;
             }
-            .sticky-note {
-                padding: 10px 15px;
-                font-size: 1rem;
+            
+            .fixed-header .mini-nav-item i {
+                font-size: 0.8rem;
+            }
+            
+            .fixed-header .mini-nav-item span {
+                font-size: 0.4rem;
+            }
+            
+            .carousel-container {
+                padding-top: 52px;
+            }
+            
+            .front-icon {
+                font-size: 2.8rem;
+            }
+            
+            .front-title {
+                font-size: 1.3rem;
+            }
+            
+            .front-description {
+                font-size: 0.75rem;
+                max-width: 240px;
+            }
+            
+            .front-action {
+                padding: 6px 18px;
+                font-size: 0.7rem;
+            }
+            
+            .carousel-arrow {
+                width: 28px;
+                height: 28px;
+                font-size: 0.65rem;
+            }
+            
+            .carousel-arrow.prev {
+                left: 4px;
+            }
+            
+            .carousel-arrow.next {
+                right: 4px;
+            }
+            
+            .flip-hint {
+                font-size: 0.5rem;
+                bottom: 15px;
+            }
+            
+            .back-title {
+                font-size: 0.85rem;
+            }
+            
+            .flip-back-btn {
+                padding: 4px 10px;
+                font-size: 0.55rem;
+            }
+            
+            .flip-back-btn i {
+                font-size: 0.7rem;
+            }
+            
+            .browse-records-grid {
+                grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+                gap: 6px;
+            }
+            
+            .browse-record-card-image {
+                height: 80px;
+            }
+            
+            .browse-record-card-info {
+                padding: 5px 6px 8px;
+            }
+            
+            .browse-record-card-artist {
+                font-size: 10px;
+            }
+            
+            .browse-record-card-title {
+                font-size: 9px;
+            }
+            
+            .browse-record-card-price {
+                font-size: 11px;
+            }
+            
+            .browse-record-card-condition {
+                font-size: 8px;
+                padding: 0 6px;
+            }
+            
+            .merch-gallery {
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+                gap: 8px;
+            }
+            
+            .merch-image {
+                height: 100px;
+            }
+            
+            .merch-info h3 {
+                font-size: 11px;
+            }
+            
+            .merch-description {
+                font-size: 10px;
+            }
+            
+            .merch-price {
+                font-size: 13px;
+            }
+            
+            .connect-contact-item {
+                font-size: 12px;
+                padding: 6px 8px;
+            }
+            
+            .welcome-title {
+                font-size: 1.4rem;
+            }
+            
+            .welcome-pigstyle {
+                font-size: 2.4rem;
+            }
+            
+            .welcome-text {
+                padding: 12px 20px;
             }
         }
     </style>
-     
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Load navbar and subscription modal (functions from shared.js)
-            loadNavbar();
-            loadSubscriptionModal();
-
-            // Get all store images
-            const storeImages = document.querySelectorAll('.store-front, .store-inside');
-            const modal = document.querySelector('.expandable-modal');
-            const expandedImg = document.querySelector('.expanded-image');
-            const imageCaption = document.querySelector('.image-caption');
-            const closeModal = document.querySelector('.close-modal');
-            
-            storeImages.forEach(img => {
-                img.addEventListener('click', function() {
-                    expandedImg.src = this.src;
-                    imageCaption.textContent = this.alt;
-                    modal.classList.add('active');
-                    document.body.classList.add('modal-open');
-                });
-            });
-            
-            if (closeModal) {
-                closeModal.addEventListener('click', function() {
-                    modal.classList.remove('active');
-                    document.body.classList.remove('modal-open');
-                });
-            }
-            
-            if (modal) {
-                modal.addEventListener('click', function(e) {
-                    if (e.target === modal) {
-                        modal.classList.remove('active');
-                        document.body.classList.remove('modal-open');
-                    }
-                });
-            }
-            
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape' && modal.classList.contains('active')) {
-                    modal.classList.remove('active');
-                    document.body.classList.remove('modal-open');
-                }
-            });
-
-            // Fetch and display commission rate
-            async function fetchCommissionRate() {
-                try {
-                    if (typeof AppConfig === 'undefined') {
-                        console.warn('AppConfig not loaded yet, retrying...');
-                        setTimeout(fetchCommissionRate, 500);
-                        return;
-                    }
-                    
-                    const apiUrl = AppConfig.getUrl('commissionRate');
-                    const response = await fetch(apiUrl, {
-                        method: 'GET',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        }
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`API returned ${response.status}: ${response.statusText}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    if (data && data.commission_rate_percent) {
-                        const sellLineItem = document.getElementById('sell-records-line');
-                        if (sellLineItem) {
-                            sellLineItem.innerHTML = `Paying cash for vinyl records`;
-                        }
-                    } else {
-                        throw new Error('Invalid response format: missing commission_rate_percent');
-                    }
-                    
-                } catch (error) {
-                    console.error('Error fetching commission rate:', error);
-                    const sellLineItem = document.getElementById('sell-records-line');
-                    if (sellLineItem) {
-                        sellLineItem.innerHTML = `Sell your records for cash - Rate info currently unavailable`;
-                    }
-                }
-            }
-
-            // Fetch and display sticky notes
-            async function fetchStickyNotes() {
-                try {
-                    const isLocalhost = window.location.hostname === 'localhost' || 
-                                      window.location.hostname === '127.0.0.1';
-                    const apiUrl = isLocalhost 
-                        ? 'http://localhost:5000/api/sticky-notes'
-                        : `https://${window.location.hostname}/api/sticky-notes`;
-                    
-                    const response = await fetch(apiUrl, {
-                        method: 'GET',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        }
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`API returned ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    if (data.status === 'success' && data.notes && data.notes.length > 0) {
-                        let container = document.querySelector('.sticky-notes-container');
-                        if (!container) {
-                            container = document.createElement('div');
-                            container.className = 'sticky-notes-container';
-                            document.body.appendChild(container);
-                        }
-                        
-                        container.innerHTML = '';
-                        
-                        data.notes.forEach(note => {
-                            const noteElement = document.createElement('div');
-                            noteElement.className = 'sticky-note';
-                            noteElement.textContent = note.note_text;
-                            container.appendChild(noteElement);
-                        });
-                    }
-                    
-                } catch (error) {
-                    console.error('Error fetching sticky notes:', error);
-                }
-            }
-
-            fetchCommissionRate();
-            fetchStickyNotes();
-        });
-    </script>
 </head>
-
 <body>
-    <!-- Background Container - consistent with other pages -->
+    <!-- Background Container -->
     <div class="background-container">
         <img src="/static/images/background.png" alt="Background" class="background-image">
         <div class="background-overlay"></div>
     </div>
     
-    <!-- Navbar placeholder -->
-    <div id="navbar-placeholder"></div>
+    <!-- Navbar placeholder - hidden -->
+    <div id="navbar-placeholder" style="display:none;"></div>
     
     <!-- Subscription Modal placeholder -->
     <div id="subscription-modal-placeholder"></div>
@@ -289,54 +2625,567 @@
     <!-- Sticky Notes Container -->
     <div class="sticky-notes-container"></div>
 
-    <!-- Main Content Container -->
-    <div class="container">
-        <!-- Top Section - Logo and Title -->
-        <div class="top-section">
-            <img src="/static/images/pigstyle_text.png" alt="PigStyle" class="pigstyle-logo">
-            <div class="psychedelic-subscript">
-                <img src="/static/images/loveland_record_store.png" alt="Loveland's Coolest Record Store">
-            </div>
-        </div>
+    <!-- Desktop: Pig Head + Rotating Record -->
+    <div class="desktop-record-container">
+        <img src="/static/images/pig_head.png" alt="Pig Head" class="pig-head">
+        <img src="/static/images/yellow-record.png" alt="Spinning Record" class="rotating-record">
+    </div>
 
-        <!-- Content Box with Bulleted List -->
-        <div class="content-box">
-            <ul>
-                <li>
-                    <div class="image-text-wrapper">
-                        <img src="/static/images/StoreFront.jpg" alt="PigStyle Store Front" class="store-front">
-                        <img src="/static/images/StoreInside1.jpg" alt="Inside PigStyle Store" class="store-inside">
-                        <img src="/static/images/StoreInside2.jpg" alt="Inside PigStyle Store" class="store-inside">
+    <!-- Fixed Header - No Logo, Just Menu -->
+    <div class="fixed-header">
+        <nav class="mini-nav" id="miniNav">
+            <button class="mini-nav-item active" data-index="0">
+                <i class="fas fa-home"></i>
+                <span>Home</span>
+            </button>
+            <button class="mini-nav-item" data-index="1">
+                <i class="fas fa-record-vinyl"></i>
+                <span>Shop</span>
+            </button>
+            <button class="mini-nav-item" data-index="2">
+                <i class="fas fa-box-open"></i>
+                <span>Merch</span>
+            </button>
+            <button class="mini-nav-item" data-index="3">
+                <i class="fas fa-calendar-alt"></i>
+                <span>Events</span>
+            </button>
+            <button class="mini-nav-item" data-index="4">
+                <i class="fas fa-envelope"></i>
+                <span>Connect</span>
+            </button>
+            <button class="mini-nav-item" data-index="5">
+                <i class="fas fa-bell"></i>
+                <span>Alerts</span>
+            </button>
+            <button class="mini-nav-item" data-index="6">
+                <i class="fas fa-shopping-cart"></i>
+                <span>Order</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- Carousel -->
+    <div class="carousel-container" id="carousel">
+        <button class="carousel-arrow prev" id="prevBtn" aria-label="Previous">
+            <i class="fas fa-chevron-left"></i>
+        </button>
+        
+        <div class="tiles-wrapper" id="tilesWrapper">
+            <!-- Tile 0: Welcome - NEW DESIGN with Keep on Truckin' font -->
+            <div class="tile" data-index="0">
+                <div class="flip-card" id="flipCard0">
+                    <div class="flip-card-front welcome-front">
+                        <div class="welcome-text">
+                            <div class="welcome-title">Welcome to</div>
+                            <div class="welcome-pigstyle">PigStyle</div>
+                        </div>
+                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
                     </div>
-                </li>
-                <li>
-                    Now offering <a href="/gift-cards" style="color: #ff6b6b; font-weight: bold;"> gift cards!</a>
-                </li>
-                <li id="sell-records-line">
-                    Sell your records for cash
-                </li>
-            </ul>
-        </div>
-
-        <!-- Bottom Section - Record and Store Info -->
-        <div class="bottom-section">
-            <div class="record-container">
-                <img src="/static/images/pig_head.png" alt="Pig Head" class="pig-head">
-                <img src="/static/images/yellow-record.png" alt="Spinning Record" class="rotating-record">
+                    <div class="flip-card-back">
+                        <div class="back-header">
+                            <div class="back-title">
+                                <i class="fas fa-home"></i> Welcome
+                            </div>
+                            <button class="flip-back-btn" data-tile="0">
+                                <i class="fas fa-rotate"></i> Flip back
+                            </button>
+                        </div>
+                        <div class="back-content">
+                            <div style="text-align:center; padding:30px 20px;">
+                                <i class="fas fa-home" style="font-size:3rem; color:#ff6b6b; margin-bottom:20px; display:block;"></i>
+                                <h2 style="color:#fff; margin-bottom:15px;">PigStyle Music Loveland</h2>
+                                <p style="color:#ccc; max-width:400px; margin:0 auto; line-height:1.6;">
+                                    We buy, sell, and trade vinyl records, CDs, and more. 
+                                    Located in the heart of Loveland, Colorado.
+                                </p>
+                                <div style="margin-top:25px; display:flex; flex-direction:column; gap:8px; align-items:center;">
+                                    <span style="color:#fff;">📞 970-492-5630</span>
+                                    <span style="color:#fff;">📍 100 E 3rd St, Loveland, CO</span>
+                                    <span style="color:#aaa; font-size:0.85rem;">🕐 Wed-Sun 10-6</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
             
-            <div class="store-info">
-                <p>Address: 100 E 3rd Loveland CO</p>
-                <p>Hours: Thu 11-6, Fri, Sat 11-9, Sun 11am - 6pm</p>
-                <p>Phone: 970-492-5630</p>
-                <p>Email: pigstyle.loveland@gmail.com</p>
-                <div class="social-icons">
-                    <a href="https://www.facebook.com/profile.php?id=61582821044262" target="_blank" aria-label="Visit our Facebook page"><i class="fab fa-facebook"></i></a>
-                    <a href="https://www.instagram.com/pigstyle_loveland/" target="_blank" aria-label="Visit our Instagram page"><i class="fab fa-instagram"></i></a>
-                    <a href="https://www.youtube.com/channel/UCz8jHllFjnbG9Jrb3xglDqQ" target="_blank" aria-label="Visit our youtube channel"><i class="fab fa-youtube"></i></a>
+            <!-- Tile 1: Shop (Browse) -->
+            <div class="tile" data-index="1">
+                <div class="flip-card" id="flipCard1">
+                    <div class="flip-card-front">
+                        <i class="fas fa-record-vinyl front-icon"></i>
+                        <h2 class="front-title">Shop Records</h2>
+                        <p class="front-description">Thousands of vinyl records, CDs, and more. Find your next favorite album.</p>
+                        <span class="front-action">Start Shopping</span>
+                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
+                    </div>
+                    <div class="flip-card-back">
+                        <div class="back-header">
+                            <div class="back-title">
+                                <i class="fas fa-record-vinyl"></i> Shop Records
+                            </div>
+                            <button class="flip-back-btn" data-tile="1">
+                                <i class="fas fa-rotate"></i> Flip back
+                            </button>
+                        </div>
+                        <div class="back-content" id="shopContent">
+                            <div class="browse-container" id="browseComponent">
+                                <div class="browse-search-wrapper">
+                                    <input type="text" id="browseSearchBox" placeholder="Search by artist or record title...">
+                                </div>
+                                
+                                <div class="browse-filter-section">
+                                    <div class="browse-filter-group">
+                                        <button id="browseGenreFilterBtn" class="browse-filter-btn">
+                                            <i class="fas fa-filter"></i> Genre
+                                        </button>
+                                        <div id="browseGenreDropdown" class="browse-filter-checkbox-container">
+                                            <div class="browse-filter-checkbox-group" id="browseGenreList">
+                                                <div style="color: #999; text-align: center; padding: 20px; font-size: 12px;">Loading genres...</div>
+                                            </div>
+                                            <div class="browse-filter-actions">
+                                                <button id="browseSelectAllGenres" class="browse-filter-action-btn">All</button>
+                                                <button id="browseClearAllGenres" class="browse-filter-action-btn">Clear</button>
+                                                <button id="browseApplyGenres" class="browse-filter-action-btn filter-apply">Apply</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="browse-filter-group">
+                                        <button id="browseFormatFilterBtn" class="browse-filter-btn">
+                                            <i class="fas fa-record-vinyl"></i> Format
+                                        </button>
+                                        <div id="browseFormatDropdown" class="browse-filter-checkbox-container">
+                                            <div class="browse-filter-checkbox-group" id="browseFormatList">
+                                                <div style="color: #999; text-align: center; padding: 20px; font-size: 12px;">Loading formats...</div>
+                                            </div>
+                                            <div class="browse-filter-actions">
+                                                <button id="browseSelectAllFormats" class="browse-filter-action-btn">All</button>
+                                                <button id="browseClearAllFormats" class="browse-filter-action-btn">Clear</button>
+                                                <button id="browseApplyFormats" class="browse-filter-action-btn filter-apply">Apply</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <button id="browseNewArrivalsBtn" class="browse-filter-btn active">
+                                        <i class="fas fa-calendar-week"></i> New Arrivals
+                                    </button>
+                                    
+                                    <button id="browseNewVinylBtn" class="browse-filter-btn">
+                                        <i class="fas fa-record-vinyl"></i> New Vinyl
+                                    </button>
+                                </div>
+                                
+                                <div id="browseFilterStatusRow" class="browse-filter-status-row">
+                                    <div class="browse-filter-summary" id="browseFilterSummary"></div>
+                                    <button id="browseClearAllFiltersBtn" class="browse-clear-filters-link">Clear all ✕</button>
+                                </div>
+                                
+                                <div id="browseCatalogContainer">
+                                    <div class="browse-loading-indicator">
+                                        <div class="browse-loading-dots">
+                                            <div></div>
+                                            <div></div>
+                                            <div></div>
+                                            <div></div>
+                                        </div>
+                                        <p style="font-size: 13px;">Loading records...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tile 2: Merch & Gifts -->
+            <div class="tile" data-index="2">
+                <div class="flip-card" id="flipCard2">
+                    <div class="flip-card-front">
+                        <i class="fas fa-box-open front-icon"></i>
+                        <h2 class="front-title">Merch &amp; Gifts</h2>
+                        <p class="front-description">Posters, merch, and gift cards for the music lover in your life.</p>
+                        <span class="front-action">Browse &amp; Buy</span>
+                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
+                    </div>
+                    <div class="flip-card-back">
+                        <div class="back-header">
+                            <div class="back-title">
+                                <i class="fas fa-box-open"></i> Merch &amp; Gifts
+                            </div>
+                            <button class="flip-back-btn" data-tile="2">
+                                <i class="fas fa-rotate"></i> Flip back
+                            </button>
+                        </div>
+                        <div class="back-content">
+                            <div class="merch-container">
+                                <!-- Merchandise Section -->
+                                <div id="catalogContainer">
+                                    <div class="merch-loading">
+                                        <div class="merch-loading-dots">
+                                            <div></div>
+                                            <div></div>
+                                            <div></div>
+                                            <div></div>
+                                        </div>
+                                        <p>Loading merchandise...</p>
+                                    </div>
+                                </div>
+                                
+                                <!-- Gift Card Section -->
+                                <div class="gift-card-section">
+                                    <div class="section-title">
+                                        <i class="fas fa-gift"></i> Gift Cards
+                                    </div>
+                                    
+                                    <div class="gift-card-form">
+                                        <div class="amount-selector">
+                                            <button class="amount-btn" data-amount="10">$10</button>
+                                            <button class="amount-btn" data-amount="25">$25</button>
+                                            <button class="amount-btn active" data-amount="50">$50</button>
+                                            <button class="amount-btn" data-amount="100">$100</button>
+                                        </div>
+                                        
+                                        <div class="custom-amount">
+                                            <span>$</span>
+                                            <input type="number" id="gc-custom-amount" placeholder="Custom amount" step="1" min="1">
+                                        </div>
+                                        
+                                        <div class="form-group">
+                                            <label for="gc-recipient"><i class="fas fa-user"></i> Recipient Name (optional)</label>
+                                            <input type="text" id="gc-recipient" placeholder="e.g., Jane Doe">
+                                        </div>
+                                        
+                                        <div class="form-group">
+                                            <label for="gc-sender"><i class="fas fa-user"></i> Sender Name (optional)</label>
+                                            <input type="text" id="gc-sender" placeholder="e.g., John Smith">
+                                        </div>
+                                        
+                                        <div class="form-group">
+                                            <label for="gc-message"><i class="fas fa-pencil-alt"></i> Personal Message (optional)</label>
+                                            <textarea id="gc-message" placeholder="Happy Birthday! Enjoy some new vinyl."></textarea>
+                                        </div>
+                                        
+                                        <button class="pay-btn" id="gc-pay-btn">
+                                            <i class="fas fa-credit-card"></i> Pay with Square
+                                        </button>
+                                        
+                                        <div id="gc-status" class="status-message"></div>
+                                    </div>
+                                    
+                                    <!-- Gift Card Balance Check -->
+                                    <div class="gift-card-check">
+                                        <div style="color: #aaa; font-size: 13px; margin-bottom: 8px;">
+                                            <i class="fas fa-search"></i> Check Gift Card Balance
+                                        </div>
+                                        <div class="check-row">
+                                            <input type="text" id="gc-check-input" placeholder="Enter gift card code">
+                                            <button class="check-btn" id="gc-check-btn">
+                                                <i class="fas fa-search"></i> Check
+                                            </button>
+                                        </div>
+                                        <div id="gc-balance-result" class="balance-result"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tile 3: Events (Calendar) -->
+            <div class="tile" data-index="3">
+                <div class="flip-card" id="flipCard3">
+                    <div class="flip-card-front">
+                        <i class="fas fa-calendar-alt front-icon"></i>
+                        <h2 class="front-title">Events</h2>
+                        <p class="front-description">Live music, record swaps, and special events. Check the calendar!</p>
+                        <span class="front-action">See Events</span>
+                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
+                    </div>
+                    <div class="flip-card-back">
+                        <div class="back-header">
+                            <div class="back-title">
+                                <i class="fas fa-calendar-alt"></i> Events
+                            </div>
+                            <button class="flip-back-btn" data-tile="3">
+                                <i class="fas fa-rotate"></i> Flip back
+                            </button>
+                        </div>
+                        <div class="back-content">
+                            <div class="events-container">
+                                <div class="events-header">
+                                    <h2>📅 Event Calendar</h2>
+                                    <p>Check out our upcoming events at PigStyle Music</p>
+                                </div>
+                                <div class="calendar-iframe-wrapper">
+                                    <iframe 
+                                        src="https://calendar.google.com/calendar/embed?src=pigstyle.loveland%40gmail.com&ctz=America%2FDenver" 
+                                        style="border: 0" 
+                                        width="800" 
+                                        height="600" 
+                                        frameborder="0" 
+                                        scrolling="no">
+                                    </iframe>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tile 4: Connect -->
+            <div class="tile" data-index="4">
+                <div class="flip-card" id="flipCard4">
+                    <div class="flip-card-front">
+                        <i class="fas fa-envelope front-icon"></i>
+                        <h2 class="front-title">Connect</h2>
+                        <p class="front-description">Get in touch. Follow us on social media. Stay in the loop.</p>
+                        <span class="front-action">Connect Now</span>
+                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
+                    </div>
+                    <div class="flip-card-back">
+                        <div class="back-header">
+                            <div class="back-title">
+                                <i class="fas fa-envelope"></i> Connect
+                            </div>
+                            <button class="flip-back-btn" data-tile="4">
+                                <i class="fas fa-rotate"></i> Flip back
+                            </button>
+                        </div>
+                        <div class="back-content">
+                            <div class="connect-container">
+                                <div class="connect-grid">
+                                    <!-- Contact Info -->
+                                    <div class="connect-info-card">
+                                        <h3><i class="fas fa-store"></i> Visit</h3>
+                                        <div class="connect-contact-item">
+                                            <i class="fas fa-map-marker-alt"></i>
+                                            <span>100 E 3rd St, Loveland, CO 80537</span>
+                                        </div>
+                                        <div class="connect-contact-item">
+                                            <i class="fas fa-phone"></i>
+                                            <a href="tel:9704925630">(970) 492-5630</a>
+                                        </div>
+                                        <div class="connect-contact-item">
+                                            <i class="fas fa-envelope"></i>
+                                            <a href="mailto:pigstyle.loveland@gmail.com">pigstyle.loveland@gmail.com</a>
+                                        </div>
+                                        
+                                        <div class="connect-hours">
+                                            <h4><i class="fas fa-clock"></i> Store Hours</h4>
+                                            <div class="connect-hours-text">Wednesday - Sunday: 10am - 6pm</div>
+                                        </div>
+                                        
+                                        <div class="connect-social">
+                                            <a href="https://www.facebook.com/profile.php?id=61582821044262" target="_blank" aria-label="Facebook"><i class="fab fa-facebook"></i></a>
+                                            <a href="https://www.instagram.com/pigstyle_loveland/" target="_blank" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Feedback Form -->
+                                    <div class="connect-feedback-card">
+                                        <h3><i class="fas fa-comments"></i> Send Us a Message</h3>
+                                        <form id="connectForm" class="connect-feedback-form">
+                                            <div class="form-group">
+                                                <label>Name <span class="optional">(optional)</span></label>
+                                                <input type="text" id="connectName" placeholder="Your name">
+                                            </div>
+                                            
+                                            <div class="form-group">
+                                                <label>Contact Info <span class="optional">(optional)</span></label>
+                                                <input type="text" id="connectContact" placeholder="Email or phone number">
+                                            </div>
+                                            
+                                            <div class="form-group">
+                                                <label>Your Message <span class="required">*</span></label>
+                                                <textarea id="connectFeedback" placeholder="Tell us what you think. Suggestions for events, music, store improvements, or just say hello."></textarea>
+                                            </div>
+                                            
+                                            <button type="submit" class="connect-submit-btn">Send Message</button>
+                                            <div id="connectMessage" class="connect-message"></div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tile 5: Record Alerts -->
+            <div class="tile" data-index="5">
+                <div class="flip-card" id="flipCard5">
+                    <div class="flip-card-front">
+                        <i class="fas fa-bell front-icon"></i>
+                        <h2 class="front-title">Record Alerts</h2>
+                        <p class="front-description">Get notified when new records matching your interests arrive.</p>
+                        <span class="front-action">Set Alerts</span>
+                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
+                    </div>
+                    <div class="flip-card-back">
+                        <div class="back-header">
+                            <div class="back-title">
+                                <i class="fas fa-bell"></i> Record Alerts
+                            </div>
+                            <button class="flip-back-btn" data-tile="5">
+                                <i class="fas fa-rotate"></i> Flip back
+                            </button>
+                        </div>
+                        <div class="back-content">
+                            <div class="alert-container">
+                                <div class="alert-header">
+                                    <h2>🔔 Record Alerts</h2>
+                                    <p>Get notified when new records matching your interests arrive</p>
+                                </div>
+                                
+                                <div class="alert-warning-box">
+                                    <strong><i class="fas fa-exclamation-triangle"></i> IMPORTANT:</strong>
+                                    Enter <strong>ONE</strong> artist per line. Each line will be matched separately.
+                                    <div class="example">Example: The Beatles</div>
+                                </div>
+                                
+                                <form id="alertsForm" class="alert-form">
+                                    <div class="form-group">
+                                        <label for="alertsEmail">Email Address <span class="required">*</span></label>
+                                        <input type="email" id="alertsEmail" placeholder="your@email.com" required>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label for="alertsArtist">Artist <span class="required">*</span></label>
+                                        <input type="text" id="alertsArtist" placeholder="e.g., The Beatles" required>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label for="alertsTitle">Title <span class="optional">(optional)</span></label>
+                                        <input type="text" id="alertsTitle" placeholder="e.g., Abbey Road">
+                                    </div>
+                                    
+                                    <button type="submit" class="alert-submit-btn" id="alertsSubmitBtn">
+                                        <i class="fas fa-bell"></i> Subscribe
+                                    </button>
+                                </form>
+                                
+                                <div id="alertsStatus" class="alert-status"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tile 6: Order Records -->
+            <div class="tile" data-index="6">
+                <div class="flip-card" id="flipCard6">
+                    <div class="flip-card-front">
+                        <i class="fas fa-shopping-cart front-icon"></i>
+                        <h2 class="front-title">Order Records</h2>
+                        <p class="front-description">Request new vinyl from our distributor. We'll contact you when it arrives.</p>
+                        <span class="front-action">Order Now</span>
+                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
+                    </div>
+                    <div class="flip-card-back">
+                        <div class="back-header">
+                            <div class="back-title">
+                                <i class="fas fa-shopping-cart"></i> Order Records
+                            </div>
+                            <button class="flip-back-btn" data-tile="6">
+                                <i class="fas fa-rotate"></i> Flip back
+                            </button>
+                        </div>
+                        <div class="back-content">
+                            <div class="order-container">
+                                <div class="order-header">
+                                    <h2>🛒 Order Records</h2>
+                                    <p>Request new vinyl from our distributor</p>
+                                </div>
+                                
+                                <form id="orderForm" class="order-form">
+                                    <div class="form-group">
+                                        <label for="orderEmail">Email Address <span class="required">*</span></label>
+                                        <input type="email" id="orderEmail" placeholder="your@email.com" required>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label for="orderArtist">Artist <span class="required">*</span></label>
+                                        <input type="text" id="orderArtist" placeholder="e.g., The Beatles" required>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label for="orderTitle">Title <span class="required">*</span></label>
+                                        <input type="text" id="orderTitle" placeholder="e.g., Abbey Road" required>
+                                    </div>
+                                    
+                                    <button type="submit" class="order-submit-btn" id="orderSubmitBtn">
+                                        <i class="fas fa-box"></i> Place Order Request
+                                    </button>
+                                </form>
+                                
+                                <div id="orderStatus" class="order-status"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
+        
+        <button class="carousel-arrow next" id="nextBtn" aria-label="Next">
+            <i class="fas fa-chevron-right"></i>
+        </button>
     </div>
+
+    <!-- Payment Confirmation Modal -->
+    <div id="payment-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="payment-status">⏳ Processing...</h3>
+                <button class="modal-close" onclick="closePaymentModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <div id="payment-loading" style="padding: 20px;">
+                    <i class="fas fa-spinner fa-pulse" style="font-size: 48px; color: #ff6b6b;"></i>
+                    <p style="margin-top: 15px; color: #888;">Confirming your payment...</p>
+                </div>
+                <div id="payment-result" style="display: none;">
+                    <div style="font-size: 48px; margin-bottom: 10px;">🎉</div>
+                    <h3 style="color: #28a745; margin-bottom: 5px;">Payment Successful!</h3>
+                    <p style="color: #888; font-size: 14px;">Your gift card is ready</p>
+                    <div class="gift-card-preview">
+                        <div class="barcode-container">
+                            <canvas id="payment-barcode"></canvas>
+                        </div>
+                        <div class="amount-display" id="gift-card-amount">$0.00</div>
+                        <div style="margin-top: 5px;">
+                            Card ID: <span class="id-display" id="gift-card-id">----</span>
+                        </div>
+                        <div class="recipient-display" id="gift-card-recipient"></div>
+                    </div>
+                    <div style="font-size: 13px; color: #666; margin-top: 10px;">
+                        <i class="fas fa-info-circle"></i> Not exchangeable for cash.
+                        <br>Scan at checkout to redeem.
+                    </div>
+                </div>
+                <div id="payment-error" style="display: none; padding: 20px;">
+                    <div style="font-size: 48px; margin-bottom: 10px;">❌</div>
+                    <h3 style="color: #dc3545;">Payment Failed</h3>
+                    <p id="payment-error-message" style="color: #888;">Something went wrong. Please try again or contact the store.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closePaymentModal()">Close</button>
+                <button class="btn btn-success" id="print-postcard-btn" onclick="printGiftCardPostcard()" style="display: none;">
+                    <i class="fas fa-print"></i> Print
+                </button>
+                <button class="btn btn-info" id="download-pdf-btn" onclick="downloadGiftCardPDF()" style="display: none;">
+                    <i class="fas fa-download"></i> Download PDF
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // The main index.js handles everything now
+        // All tile-specific JS is in separate component files
+    </script>
 </body>
 </html>
