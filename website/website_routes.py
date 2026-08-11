@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv  # Load environment variables from .env
-from flask import Flask, send_from_directory, session, redirect
+from flask import Flask, send_from_directory, session, redirect, request, abort
 
 # Load .env file
 load_dotenv()
@@ -14,7 +14,10 @@ def is_admin():
     """Check if the current user is logged in as an admin."""
     return session.get('logged_in') and session.get('role') == 'admin'
 
-# Serve HTML pages from HTML directory
+# ============================================================
+# SERVE HTML PAGES
+# ============================================================
+
 @app.route('/')
 def index():
     return send_from_directory('HTML', 'index.html')
@@ -45,6 +48,7 @@ def merchandise():
 
 @app.route('/browse')
 def browse():
+    """Serve the browse page - handles both full page and component mode."""
     return send_from_directory('HTML', 'browse.html')
 
 @app.route('/misc')
@@ -101,14 +105,37 @@ def order_records():
     return send_from_directory('HTML', 'record-alerts.html')
 
 # ==================== PAYMENT CONFIRMATION PAGE ====================
-# Note: This is handled by the modal in gift-cards.html,
-# but if you want a fallback standalone page:
 @app.route('/payment-confirm')
 def payment_confirm():
     """Payment confirmation page (fallback for Square redirect)."""
     return send_from_directory('HTML', 'payment-confirm.html')
 
-# Serve static files
+# ==================== CALENDAR PAGE ====================
+@app.route('/calendar')
+def calendar():
+    return send_from_directory('HTML', 'calendar.html')
+
+# ============================================================
+# GENERIC COMPONENT ROUTE - Serve any component from HTML/components/
+# ============================================================
+
+@app.route('/components/<path:filename>')
+def serve_component(filename):
+    """Serve any component from HTML/components/ folder."""
+    # Security: only allow .html files
+    if not filename.endswith('.html'):
+        abort(404)
+    
+    try:
+        return send_from_directory('HTML/components', filename)
+    except Exception as e:
+        print(f"Error serving component {filename}: {e}")
+        abort(404)
+
+# ============================================================
+# STATIC FILE SERVING
+# ============================================================
+
 @app.route('/static/<path:path>')
 def serve_static(path):
     return send_from_directory('static', path)
@@ -128,11 +155,6 @@ def serve_images(path):
 @app.route('/fonts/<path:path>')
 def serve_fonts(path):
     return send_from_directory('static/fonts', path)
-
-@app.route('/calendar')
-def calendar():
-    return send_from_directory('HTML', 'calendar.html')
-
 
 @app.route('/<path:filename>')
 def serve_file(filename):
