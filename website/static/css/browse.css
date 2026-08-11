@@ -642,11 +642,10 @@
     margin-left: 5px;
 }
 
-
 .cart-badge {
     position: absolute;
     top: -8px;
-    right: -12px;  /* This positions it to the right of the cart icon */
+    right: -12px;
     background: #ff6b6b;
     color: white;
     border-radius: 50%;

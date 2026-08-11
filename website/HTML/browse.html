@@ -24,570 +24,6 @@
     <script src="/static/js/config-value-manager.js"></script>
     <script src="/static/js/notification-bell.js"></script>
     <script src="/static/js/shared.js"></script>
-    
-    <style>
-        /* OVERRIDE FILTER ALIGNMENT - FORCED */
-        .filter-section {
-            display: flex !important;
-            align-items: center !important;
-            gap: 15px !important;
-            flex-wrap: wrap !important;
-            background: transparent !important;
-            padding: 0 !important;
-            margin-top: 15px !important;
-            margin-bottom: 15px !important;
-            box-shadow: none !important;
-        }
-        
-        .filter-group {
-            display: inline-block !important;
-            margin-bottom: 0 !important;
-            position: relative !important;
-        }
-        
-        .filter-btn {
-            display: inline-flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            height: 40px !important;
-            padding: 0 20px !important;
-            font-size: 14px !important;
-            font-weight: 600 !important;
-            border-radius: 40px !important;
-            border: none !important;
-            cursor: pointer !important;
-            gap: 8px !important;
-            background: #2c3e50 !important;
-            color: white !important;
-            box-sizing: border-box !important;
-            line-height: 1 !important;
-            margin: 0 !important;
-        }
-        
-        .filter-btn i {
-            font-size: 14px !important;
-        }
-        
-        .filter-btn:hover {
-            background: #1e2a36 !important;
-            transform: translateY(-1px) !important;
-        }
-        
-        .filter-btn.active {
-            background: #ff6b6b !important;
-            color: white !important;
-        }
-        
-        .filter-btn.active i {
-            color: white !important;
-        }
-        
-        .records-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 25px;
-            padding: 20px;
-        }
-        
-        .record-card {
-            background: white;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            transition: transform 0.2s, box-shadow 0.2s;
-            cursor: default;
-        }
-        
-        .record-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
-        }
-        
-        .record-card-image {
-            height: 200px;
-            background: #f0f0f0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-        }
-        
-        .record-card-image img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        
-        .record-card-image.default-bg {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 48px;
-            color: white;
-        }
-        
-        .record-card-info {
-            padding: 15px;
-        }
-        
-        .record-card-artist {
-            font-size: 16px;
-            font-weight: bold;
-            color: #2c3e50;
-            margin-bottom: 5px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
-        .record-card-title {
-            font-size: 14px;
-            color: #666;
-            margin-bottom: 10px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
-        .record-card-price {
-            font-size: 20px;
-            font-weight: bold;
-            color: #ff6b6b;
-            margin: 10px 0;
-        }
-        
-        .record-card-condition {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-            background: #3498db;
-            color: white;
-        }
-        
-        .record-card-genre {
-            font-size: 12px;
-            color: #888;
-            margin-top: 8px;
-        }
-        
-        .record-card-format {
-            font-size: 11px;
-            color: #6c5ce7;
-            margin-top: 4px;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        
-        .pagination-btn {
-            background: #2c3e50;
-            color: white;
-            border: none;
-            padding: 10px 24px;
-            border-radius: 40px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            margin: 0 5px;
-        }
-        
-        .pagination-btn:hover:not(:disabled) {
-            background: #ff6b6b;
-        }
-        
-        .pagination-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        
-        .pagination-info {
-            color: white;
-            font-size: 14px;
-            padding: 0 15px;
-        }
-        
-        #pagination-controls {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin: 30px 0;
-            padding: 20px;
-        }
-        
-        .loading-indicator {
-            text-align: center;
-            padding: 50px;
-        }
-        
-        .loading-dots {
-            display: flex;
-            justify-content: center;
-            gap: 8px;
-            margin-bottom: 15px;
-        }
-        
-        .loading-dots div {
-            width: 12px;
-            height: 12px;
-            background: #ff6b6b;
-            border-radius: 50%;
-            animation: bounce 0.5s ease-in-out infinite;
-        }
-        
-        .loading-dots div:nth-child(1) { animation-delay: 0s; }
-        .loading-dots div:nth-child(2) { animation-delay: 0.1s; }
-        .loading-dots div:nth-child(3) { animation-delay: 0.2s; }
-        .loading-dots div:nth-child(4) { animation-delay: 0.3s; }
-        
-        @keyframes bounce {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
-        }
-        
-        .filter-checkbox-container {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            margin-top: 10px;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
-            z-index: 100;
-            min-width: 220px;
-            display: none;
-        }
-        
-        .filter-checkbox-container.show {
-            display: block;
-        }
-        
-        .filter-checkbox-group {
-            max-height: 250px;
-            overflow-y: auto;
-            padding: 12px;
-        }
-        
-        .filter-checkbox-item {
-            margin-bottom: 8px;
-        }
-        
-        .filter-checkbox-item input {
-            margin-right: 8px;
-        }
-        
-        .filter-actions {
-            display: flex;
-            gap: 8px;
-            padding: 8px 12px 12px;
-            border-top: 1px solid #eee;
-        }
-        
-        .filter-action-btn {
-            flex: 1;
-            padding: 6px;
-            border: none;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 12px;
-            background: #f0f0f0;
-        }
-        
-        .filter-apply {
-            background: #ff6b6b;
-            color: white;
-        }
-        
-        .filter-status-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin: 10px 0 15px;
-            padding: 8px 12px;
-            background: rgba(0,0,0,0.5);
-            border-radius: 30px;
-            backdrop-filter: blur(4px);
-        }
-        
-        .filter-summary {
-            font-size: 13px;
-            color: #f0f0f0;
-        }
-        
-        .result-count-badge {
-            background: #ff6b6b;
-            padding: 2px 10px;
-            border-radius: 30px;
-            font-size: 12px;
-            margin-left: 10px;
-            color: white;
-            font-weight: bold;
-        }
-        
-        .clear-filters-link {
-            background: none;
-            border: none;
-            color: #ffb3b3;
-            cursor: pointer;
-            font-size: 12px;
-            text-decoration: underline;
-            padding: 4px 8px;
-        }
-        
-        .record-modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.9);
-            backdrop-filter: blur(8px);
-            z-index: 2000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .record-modal {
-            background: white;
-            border-radius: 20px;
-            max-width: 500px;
-            width: 90%;
-            overflow: hidden;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
-        }
-        
-        .record-modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 20px 24px;
-            background: #2c3e50;
-            color: white;
-        }
-        
-        .record-modal-close {
-            background: none;
-            border: none;
-            font-size: 28px;
-            cursor: pointer;
-            color: white;
-        }
-        
-        .record-modal-image {
-            width: 100%;
-            height: 250px;
-            background: #f0f0f0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-        }
-        
-        .record-modal-info {
-            padding: 24px;
-        }
-        
-        .record-modal-title {
-            font-size: 16px;
-            color: #666;
-            margin-bottom: 15px;
-        }
-        
-        .record-modal-details {
-            margin: 15px 0;
-            padding: 12px;
-            background: #f8f9fa;
-            border-radius: 12px;
-        }
-        
-        .detail-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 6px 0;
-            font-size: 14px;
-        }
-        
-        .detail-label {
-            font-weight: 600;
-            color: #555;
-        }
-        
-        .record-modal-price {
-            font-size: 28px;
-            font-weight: bold;
-            color: #ff6b6b;
-            margin: 15px 0;
-            text-align: center;
-        }
-        
-        .record-modal-actions {
-            display: flex;
-            gap: 12px;
-            margin-top: 20px;
-        }
-        
-        .close-modal-btn {
-            flex: 1;
-            background: #e9ecef;
-            color: #495057;
-            border: none;
-            padding: 14px;
-            border-radius: 40px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        
-        .notification {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            padding: 12px 20px;
-            border-radius: 8px;
-            z-index: 3500;
-            color: white;
-        }
-        
-        .required {
-            color: #ff6b6b;
-        }
-        
-        /* Navbar styles for browse page */
-        nav {
-            background: #000;
-            padding: 10px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-            border-bottom: 2px solid #ff6b6b;
-        }
-        
-        nav a {
-            color: white;
-            text-decoration: none;
-        }
-        
-        nav > a {
-            font-size: 20px;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        nav > a img {
-            height: 30px;
-            width: 30px;
-        }
-        
-        nav > div {
-            display: flex;
-            gap: 20px;
-            align-items: center;
-        }
-        
-        .background-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: -1;
-        }
-        
-        .background-image {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        
-        .background-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-        }
-        
-        .header-section {
-            max-width: 1400px;
-            margin: 80px auto 20px;
-            padding: 0 20px;
-        }
-        
-        .search-wrapper {
-            position: relative;
-            max-width: 600px;
-            margin: 0 auto;
-        }
-        
-        .search-wrapper input {
-            width: 100%;
-            padding: 14px 20px;
-            border: none;
-            border-radius: 50px;
-            font-size: 16px;
-            background: rgba(255,255,255,0.95);
-            color: #333;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-        
-        .search-wrapper input:focus {
-            outline: none;
-            box-shadow: 0 4px 20px rgba(255,107,107,0.3);
-        }
-        
-        .catalog-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 20px 40px;
-            min-height: 400px;
-        }
-        
-        .no-records-message {
-            text-align: center;
-            padding: 60px 20px;
-            color: #ccc;
-        }
-        
-        .no-records-message i {
-            font-size: 48px;
-            margin-bottom: 20px;
-            display: block;
-        }
-        
-        .error-message {
-            text-align: center;
-            padding: 60px 20px;
-            color: #ff6b6b;
-        }
-        
-        .error-message i {
-            font-size: 48px;
-            margin-bottom: 20px;
-            display: block;
-        }
-        
-        .retry-btn {
-            margin-top: 20px;
-            padding: 12px 30px;
-            background: #ff6b6b;
-            color: white;
-            border: none;
-            border-radius: 30px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-    </style>
 </head>
 <body>
     <!-- Background -->
@@ -679,7 +115,6 @@
         let newVinylActive = false;
         let currentPage = 1;
         let recordsPerPage = 50;
-        
         let allFormats = [];
 
         // Load navbar and subscription modal from shared components
@@ -704,13 +139,8 @@
                 initSubscriptionModal();
             }
             
-            // Fetch formats from database
             await fetchFormats();
-            
-            // Load catalog data
             await loadCatalogData();
-            
-            // Setup event listeners
             setupEventListeners();
         }
 
@@ -798,24 +228,17 @@
             });
         }
         
-        // Fetch format names from the database
         async function fetchFormats() {
             try {
-                console.log('Fetching formats from API...');
                 const response = await fetch(`${AppConfig.baseUrl}/api/formats`);
-                console.log('Formats response status:', response.status);
                 if (response.ok) {
                     const data = await response.json();
-                    console.log('Formats data:', data);
                     if (data.status === 'success' && data.formats) {
                         allFormats = data.formats;
-                        // Populate format dropdown directly from API
                         populateFormatDropdown(allFormats);
-                        console.log('Formats loaded from database:', allFormats);
                         return;
                     }
                 }
-                console.warn('Failed to fetch formats, status:', response.status);
                 allFormats = [];
             } catch (e) {
                 console.error('Error fetching formats:', e);
@@ -923,18 +346,75 @@
             currentSearchTerm = searchBox ? searchBox.value.trim() : '';
             currentPage = 1;
             
-            let url = `${AppConfig.baseUrl}/records?status_id=2`;
+            // Build params - all filtering now done by backend
+            let params = new URLSearchParams();
             
-            url += `&bypass_date_filter=true`;
-            url += `&require_image=true`;
-            url += `&exclude_old_no_location=false`;
-        
+            // Status filter - only active records
+            params.append('status_ids', '2');
+            
+            // Search - now separate fields
             if (currentSearchTerm) {
-                url = `${AppConfig.baseUrl}/records?search=${encodeURIComponent(currentSearchTerm)}&status_id=2`;
-                url += `&bypass_date_filter=true`;
-                url += `&require_image=true`;
-                url += `&exclude_old_no_location=false`;
+                // For simplicity, use artist and title search
+                // Could be enhanced with more specific fields
+                params.append('artist', currentSearchTerm);
+                params.append('title', currentSearchTerm);
             }
+            
+            // Genre filter
+            if (selectedGenres.length > 0) {
+                params.append('genres', selectedGenres.join(','));
+            }
+            
+            // Format filter
+            if (selectedFormatIds.length > 0) {
+                params.append('format_ids', selectedFormatIds.join(','));
+            }
+            
+            // Date filters (backend handles created_after)
+            // New Arrivals: last 7 days
+            if (newArrivalsActive) {
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                params.append('created_after', sevenDaysAgo.toISOString().split('T')[0]);
+            }
+            
+            // New Vinyl: condition_disc_id=1 AND condition_sleeve_id=1
+            // This is a client-side filter since it's not a simple field filter
+            // We'll handle it after fetching
+            
+            // Require image
+            params.append('require_image', 'true');
+            
+            // Order by newest first
+            params.append('order_by', 'created_at');
+            params.append('order_dir', 'DESC');
+            
+            // Get cutoff days from config for older records
+            let cutoffDays = 30;
+            try {
+                const configResponse = await fetch(`${AppConfig.baseUrl}/config/INVENTORY_CUTOFF_DAYS`);
+                if (configResponse.ok) {
+                    const configData = await configResponse.json();
+                    if (configData.config_value) {
+                        cutoffDays = parseInt(configData.config_value) || 30;
+                    }
+                }
+            } catch (e) {
+                console.warn('Could not fetch INVENTORY_CUTOFF_DAYS, using default 30');
+            }
+            
+            // Apply cutoff filter using created_after
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - cutoffDays);
+            params.append('created_after', cutoffDate.toISOString().split('T')[0]);
+            
+            const url = `${AppConfig.baseUrl}/records?${params.toString()}`;
+            
+            // LOG THE REQUEST
+            console.log('=== BROWSE REQUEST ===');
+            console.log('URL:', url);
+            console.log('Request Params:', Object.fromEntries(params));
+            console.log('Full URL:', url);
             
             document.getElementById('catalogContainer').innerHTML = `<div class="loading-indicator"><div class="loading-dots"><div></div><div></div><div></div><div></div></div><p>Loading records...</p></div>`;
             
@@ -943,58 +423,18 @@
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
                 
+                // LOG THE RESPONSE
+                console.log('=== BROWSE RESPONSE ===');
+                console.log('Response Status:', response.status);
+                console.log('Response Data Count:', data.count);
+                console.log('Response Records Count:', data.records ? data.records.length : 0);
+                
                 if (data.status === 'success') {
                     let records = data.records || [];
                     
-                    // Get cutoff days from config
-                    let cutoffDays = 30;
-                    try {
-                        const configResponse = await fetch(`${AppConfig.baseUrl}/config/INVENTORY_CUTOFF_DAYS`);
-                        if (configResponse.ok) {
-                            const configData = await configResponse.json();
-                            if (configData.config_value) {
-                                cutoffDays = parseInt(configData.config_value) || 30;
-                            }
-                        }
-                    } catch (e) {
-                        console.warn('Could not fetch INVENTORY_CUTOFF_DAYS, using default 30');
-                    }
-                    
-                    // Apply cutoff filter
-                    const cutoffDate = new Date();
-                    cutoffDate.setDate(cutoffDate.getDate() - cutoffDays);
-                    
-                    records = records.filter(r => {
-                        const createdDate = new Date(r.created_at);
-                        return createdDate >= cutoffDate;
-                    });
-                    
-                    // Apply genre filter
-                    if (selectedGenres.length > 0) {
-                        records = records.filter(r => {
-                            const genre = extractGenreFromDiscogsRaw(r.discogs_genre_raw);
-                            return genre && selectedGenres.some(s => s.toLowerCase() === genre.toLowerCase());
-                        });
-                    }
-                    
-                    // Apply format filter - filter by format_id directly
-                    if (selectedFormatIds.length > 0) {
-                        records = records.filter(r => selectedFormatIds.includes(r.format_id));
-                    }
-                    
-                    // Apply new vinyl filter
+                    // Apply new vinyl filter (client-side)
                     if (newVinylActive) {
                         records = records.filter(r => isNewVinyl(r));
-                    }
-                    
-                    // Apply new arrivals filter (7 days)
-                    if (newArrivalsActive) {
-                        const sevenDaysAgo = new Date();
-                        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-                        records = records.filter(r => {
-                            const createdDate = new Date(r.created_at);
-                            return createdDate >= sevenDaysAgo;
-                        });
                     }
                     
                     allRecords = records;
@@ -1010,6 +450,9 @@
                     populateGenreDropdown();
                     displayRecords(allRecords);
                     updateFilterUI();
+                } else {
+                    console.error('API returned error:', data);
+                    document.getElementById('catalogContainer').innerHTML = `<div class="error-message"><i class="fas fa-exclamation-triangle"></i><h2>Error</h2><p>${data.error || 'Unknown error'}</p></div>`;
                 }
             } catch (error) {
                 console.error('Error loading catalog:', error);
@@ -1182,15 +625,6 @@
             modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
         }
 
-        function showNotification(msg, type) {
-            const n = document.createElement('div');
-            n.className = 'notification';
-            n.textContent = msg;
-            n.style.background = type === 'error' ? '#dc3545' : '#28a745';
-            document.body.appendChild(n);
-            setTimeout(() => n.remove(), 3000);
-        }
-        
         function escapeHtml(text) { 
             if(!text) return ''; 
             const div = document.createElement('div'); 

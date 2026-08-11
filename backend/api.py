@@ -2131,120 +2131,194 @@ def create_record():
         conn.close()
         return jsonify({'status': 'error', 'error': f"Database error: {str(e)}"}), 500
 
+
 @app.route('/records', methods=['GET'])
 def get_records():
-    conn = get_db()
-    cursor = conn.cursor()
+    """Get records with all filtering logic centralized here.
     
-    random_order = request.args.get('random', 'false').lower() == 'true'
-    limit = request.args.get('limit', type=int)
-    status_id = request.args.get('status_id', type=int)
-    status_ids = request.args.get('status_ids', '')
-    created_after = request.args.get('created_after')
-    search = request.args.get('search', '').strip()
-    last_seen_days = request.args.get('last_seen_days', type=int)
-    
-    require_image = request.args.get('require_image', 'false').lower() == 'true'
-    require_location = request.args.get('require_location', 'false').lower() == 'true'
-    
-    bypass_date_filter = request.args.get('bypass_date_filter', 'false').lower() == 'true'
-    
-    batch_id = request.args.get('batch_id', type=int)
-    exclude_batch = request.args.get('exclude_batch', 'false').lower() == 'true'
-    
-    query = '''
-        SELECT 
-            r.id, r.artist, r.title, r.barcode, r.image_url, r.catalog_number,
-            r.condition_sleeve_id, r.condition_disc_id, r.store_price,
-            r.consignor_id, r.commission_rate, r.status_id, r.created_at, r.date_sold,
-            r.last_seen, r.notes, r.discogs_genre_raw,
-            r.format_id, r.location_id, r.location_index,
-            s.status_name,
-            cs.condition_name as sleeve_condition_name, cs.display_name as sleeve_display,
-            cs.abbreviation as sleeve_abbr, cs.quality_index as sleeve_quality,
-            cd.condition_name as disc_condition_name, cd.display_name as disc_display,
-            cd.abbreviation as disc_abbr, cd.quality_index as disc_quality,
-            f.name as format_name,
-            l.name as location_name
-        FROM records r
-        LEFT JOIN d_status s ON r.status_id = s.id
-        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-        LEFT JOIN formats f ON r.format_id = f.id
-        LEFT JOIN locations l ON r.location_id = l.id
-        WHERE r.artist IS NOT NULL AND r.title IS NOT NULL 
-        AND r.artist != '' AND r.title != ''
-    '''
-    
-    params = []
-    
-    if batch_id is not None:
-        query += ' AND r.batch_id = ?'
-        params.append(batch_id)
-    
-    if exclude_batch:
-        query += ' AND (r.batch_id IS NULL OR r.batch_id = "")'
-    
-    if status_ids:
-        status_list = [int(s.strip()) for s in status_ids.split(',') if s.strip()]
-        if status_list:
-            placeholders = ','.join('?' for _ in status_list)
-            query += f' AND r.status_id IN ({placeholders})'
-            params.extend(status_list)
-    elif status_id is not None:
-        query += ' AND r.status_id = ?'
-        params.append(status_id)
-    
-    if search:
-        if search.isdigit():
-            query += ' AND (r.id = ? OR r.barcode = ? OR r.artist LIKE ? OR r.title LIKE ? OR r.catalog_number LIKE ?)'
-            search_term = f'%{search}%'
-            params.extend([int(search), search, search_term, search_term, search_term])
-        else:
-            query += ' AND (r.barcode = ? OR r.artist LIKE ? OR r.title LIKE ? OR r.catalog_number LIKE ?)'
-            search_term = f'%{search}%'
-            params.extend([search, search_term, search_term, search_term])
-    else:
-        if not bypass_date_filter and not created_after and batch_id is None:
-            seven_days_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
-            query += ' AND date(r.created_at) >= ?'
-            params.append(seven_days_ago)
-        elif created_after:
-            query += ' AND date(r.created_at) >= ?'
+    Query Parameters:
+    - status_ids: comma-separated list (e.g., '1,2') - if omitted, shows all
+    - artist: filter by artist name (partial match)
+    - title: filter by title (partial match)
+    - catalog_number: filter by catalog number (partial match)
+    - barcode: filter by barcode (partial match)
+    - location_id: filter by location ID
+    - format_ids: comma-separated list (e.g., '1,2')
+    - genres: comma-separated list (OR logic, e.g., 'Jazz,Blues')
+    - require_image: 'true' to only return records with images
+    - created_after: date string (YYYY-MM-DD) - records created after this date
+    - last_seen_after: date string (YYYY-MM-DD) - records seen after this date
+    - last_seen_before: date string (YYYY-MM-DD) - records seen before this date
+    - limit: max records to return
+    - batch_id: filter by batch/purchase ID (use -1 for records with no batch)
+    - order_by: column to order by (default: 'created_at')
+    - order_dir: 'ASC' or 'DESC' (default: 'DESC')
+    """
+    try:
+        conn = get_db()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Base query - using d_condition table
+        query = """
+            SELECT 
+                r.*,
+                f.name AS format_name,
+                s.status_name AS status_name,
+                l.name AS location_name,
+                cd.condition_name AS disc_condition_name,
+                cd.abbreviation AS disc_abbr,
+                cd.quality_index AS disc_quality,
+                cs.condition_name AS sleeve_condition_name,
+                cs.abbreviation AS sleeve_abbr,
+                cs.quality_index AS sleeve_quality,
+                cd.display_name AS disc_display,
+                cs.display_name AS sleeve_display,
+                CASE 
+                    WHEN cd.quality_index IS NOT NULL AND cs.quality_index IS NOT NULL 
+                    THEN (cd.quality_index + cs.quality_index) / 2.0 
+                    ELSE NULL 
+                END AS combined_quality
+            FROM records r
+            LEFT JOIN formats f ON r.format_id = f.id
+            LEFT JOIN d_status s ON r.status_id = s.id
+            LEFT JOIN locations l ON r.location_id = l.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            WHERE 1=1
+        """
+        
+        params = []
+        
+        # --- Status Filter ---
+        status_ids = request.args.get('status_ids')
+        if status_ids:
+            ids = [int(x.strip()) for x in status_ids.split(',') if x.strip()]
+            if ids:
+                placeholders = ','.join(['?'] * len(ids))
+                query += f" AND r.status_id IN ({placeholders})"
+                params.extend(ids)
+        # If no status filter, show all (no WHERE clause needed)
+        
+        # --- Artist Filter ---
+        artist = request.args.get('artist')
+        if artist:
+            query += " AND r.artist LIKE ?"
+            params.append(f'%{artist}%')
+        
+        # --- Title Filter ---
+        title = request.args.get('title')
+        if title:
+            query += " AND r.title LIKE ?"
+            params.append(f'%{title}%')
+        
+        # --- Catalog Number Filter ---
+        catalog_number = request.args.get('catalog_number')
+        if catalog_number:
+            query += " AND r.catalog_number LIKE ?"
+            params.append(f'%{catalog_number}%')
+        
+        # --- Barcode Filter ---
+        barcode = request.args.get('barcode')
+        if barcode:
+            query += " AND r.barcode LIKE ?"
+            params.append(f'%{barcode}%')
+        
+        # --- Location Filter ---
+        location_id = request.args.get('location_id')
+        if location_id:
+            query += " AND r.location_id = ?"
+            params.append(int(location_id))
+        
+        # --- Format Filter ---
+        format_ids = request.args.get('format_ids')
+        if format_ids:
+            ids = [int(x.strip()) for x in format_ids.split(',') if x.strip()]
+            if ids:
+                placeholders = ','.join(['?'] * len(ids))
+                query += f" AND r.format_id IN ({placeholders})"
+                params.extend(ids)
+        
+        # --- Genre Filter (OR logic) ---
+        genres = request.args.get('genres')
+        if genres:
+            genre_list = [x.strip() for x in genres.split(',') if x.strip()]
+            if genre_list:
+                conditions = []
+                for genre in genre_list:
+                    conditions.append("r.discogs_genre_raw LIKE ?")
+                    params.append(f'%{genre}%')
+                query += f" AND ({' OR '.join(conditions)})"
+        
+        # --- Image Filter ---
+        require_image = request.args.get('require_image', 'false').lower() == 'true'
+        if require_image:
+            query += " AND r.image_url IS NOT NULL AND r.image_url != ''"
+        
+        # --- Created After Filter ---
+        created_after = request.args.get('created_after')
+        if created_after:
+            query += " AND date(r.created_at) >= date(?)"
             params.append(created_after)
-    
-    if require_image:
-        query += ' AND r.image_url IS NOT NULL AND r.image_url != \'\''
-    
-    # Filter by location_id - only records with a valid location
-    if require_location:
-        query += ' AND r.location_id IS NOT NULL'
-    
-    # Filter by last_seen - only records seen in the last X days
-    if last_seen_days:
-        query += ' AND date(r.last_seen) >= date("now", ?)'
-        params.append(f'-{last_seen_days} days')
-    
-    query += ' ORDER BY r.created_at DESC'
-    
-    if limit:
-        query += ' LIMIT ?'
-        params.append(limit)
-    
-    cursor.execute(query, params)
-    records = cursor.fetchall()
-    conn.close()
-    
-    records_list = []
-    for record in records:
-        record_dict = dict(record)
-        if record_dict.get('sleeve_condition_name'):
-            record_dict['condition'] = record_dict['sleeve_condition_name']
-        records_list.append(record_dict)
-    
-    return jsonify({'status': 'success', 'count': len(records_list), 'records': records_list})
-
-    
+        
+        # --- Last Seen Filters ---
+        last_seen_after = request.args.get('last_seen_after')
+        if last_seen_after:
+            query += " AND date(r.last_seen) >= date(?)"
+            params.append(last_seen_after)
+        
+        last_seen_before = request.args.get('last_seen_before')
+        if last_seen_before:
+            query += " AND date(r.last_seen) <= date(?)"
+            params.append(last_seen_before)
+        
+        # --- Batch Filter ---
+        batch_id = request.args.get('batch_id')
+        if batch_id is not None:
+            batch_id_int = int(batch_id)
+            if batch_id_int == -1:
+                query += " AND r.batch_id IS NULL"
+            else:
+                query += " AND r.batch_id = ?"
+                params.append(batch_id_int)
+        
+        # --- Ordering ---
+        order_by = request.args.get('order_by', 'created_at')
+        # Whitelist allowed columns to prevent SQL injection
+        allowed_order_columns = ['id', 'created_at', 'last_seen', 'artist', 'title', 'store_price', 'status_id', 'format_id']
+        if order_by not in allowed_order_columns:
+            order_by = 'created_at'
+        
+        order_dir = request.args.get('order_dir', 'DESC').upper()
+        if order_dir not in ['ASC', 'DESC']:
+            order_dir = 'DESC'
+        
+        query += f" ORDER BY r.{order_by} {order_dir}"
+        
+        # --- Limit ---
+        limit = request.args.get('limit')
+        if limit:
+            query += " LIMIT ?"
+            params.append(int(limit))
+        
+        print(f"📊 SQL: {query}")
+        print(f"📊 Params: {params}")
+        
+        cursor.execute(query, params)
+        records = [dict(row) for row in cursor.fetchall()]
+        
+        return jsonify({
+            'status': 'success',
+            'count': len(records),
+            'records': records
+        })
+        
+    except Exception as e:
+        print(f"❌ Error in get_records: {e}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
 
 
 @app.route('/records/<int:record_id>', methods=['GET'])
@@ -4747,75 +4821,6 @@ def get_locations():
         
     except Exception as e:
         app.logger.error(f"Error getting locations: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
-@app.route('/api/records/by-location', methods=['GET'])
-def get_records_by_location():
-    """Get all records matching a location ID"""
-    try:
-        location_id = request.args.get('location_id', type=int)
-        
-        if not location_id:
-            return jsonify({'status': 'error', 'error': 'location_id is required'}), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        query = '''
-            SELECT 
-                r.id, r.artist, r.title, r.barcode, r.image_url, 
-                r.catalog_number, r.store_price, r.status_id, r.notes, r.created_at, r.last_seen,
-                r.location_id, r.location_index,
-                COALESCE(cs.condition_name, '') as sleeve_condition_name,
-                COALESCE(cd.condition_name, '') as disc_condition_name,
-                COALESCE(s.status_name, '') as status_name,
-                COALESCE(f.name, '') as format_name,
-                COALESCE(l.name, '') as location_name
-            FROM records r
-            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-            LEFT JOIN d_status s ON r.status_id = s.id
-            LEFT JOIN formats f ON r.format_id = f.id
-            LEFT JOIN locations l ON r.location_id = l.id
-            WHERE r.location_id = ?
-            ORDER BY r.location_index, r.created_at DESC
-        '''
-        
-        cursor.execute(query, (location_id,))
-        records = cursor.fetchall()
-        conn.close()
-        
-        records_list = []
-        for record in records:
-            records_list.append({
-                'id': record['id'],
-                'artist': record['artist'],
-                'title': record['title'],
-                'barcode': record['barcode'],
-                'image_url': record['image_url'],
-                'catalog_number': record['catalog_number'],
-                'store_price': float(record['store_price']) if record['store_price'] else 0,
-                'status_id': record['status_id'],
-                'status_name': record['status_name'],
-                'notes': record['notes'],
-                'created_at': record['created_at'],
-                'last_seen': record['last_seen'],
-                'location_id': record['location_id'],
-                'location_name': record['location_name'],
-                'location_index': record['location_index'],
-                'sleeve_condition_name': record['sleeve_condition_name'],
-                'disc_condition_name': record['disc_condition_name']
-            })
-        
-        return jsonify({
-            'status': 'success',
-            'records': records_list,
-            'count': len(records_list)
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error getting records by location: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
