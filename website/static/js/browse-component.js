@@ -9,8 +9,6 @@ var browseSelectedFormatIds = [];
 var browseCurrentSearchTerm = '';
 var browseNewArrivalsActive = true;
 var browseNewVinylActive = false;
-var browseCurrentPage = 1;
-var browseRecordsPerPage = 50;
 var browseAllFormats = [];
 var browseInitialized = false;
 
@@ -30,7 +28,6 @@ function setupBrowseEventListeners() {
         browseCurrentSearchTerm = ''; 
         browseNewArrivalsActive = true; 
         browseNewVinylActive = false; 
-        browseCurrentPage = 1; 
         document.getElementById('browseSearchBox').value = ''; 
         document.querySelectorAll('#browseGenreList input').forEach(function(cb) { cb.checked = false; });
         document.querySelectorAll('#browseFormatList input').forEach(function(cb) { cb.checked = false; });
@@ -39,19 +36,16 @@ function setupBrowseEventListeners() {
     
     document.getElementById('browseNewArrivalsBtn')?.addEventListener('click', function() { 
         browseNewArrivalsActive = !browseNewArrivalsActive; 
-        browseCurrentPage = 1; 
         loadBrowseCatalogData(); 
     });
     
     document.getElementById('browseNewVinylBtn')?.addEventListener('click', function() { 
         browseNewVinylActive = !browseNewVinylActive; 
-        browseCurrentPage = 1; 
         loadBrowseCatalogData(); 
     });
     
     document.getElementById('browseSearchBox')?.addEventListener('input', debounce(function() { 
         browseCurrentSearchTerm = document.getElementById('browseSearchBox').value.trim();
-        browseCurrentPage = 1;
         loadBrowseCatalogData(); 
     }, 500));
     
@@ -91,7 +85,6 @@ function setupBrowseEventListeners() {
     document.getElementById('browseApplyGenres')?.addEventListener('click', function() { 
         browseSelectedGenres = Array.from(document.querySelectorAll('#browseGenreList input:checked')).map(function(cb) { return cb.value; }); 
         genreDropdown.classList.remove('show'); 
-        browseCurrentPage = 1; 
         loadBrowseCatalogData(); 
     });
     
@@ -106,7 +99,6 @@ function setupBrowseEventListeners() {
     document.getElementById('browseApplyFormats')?.addEventListener('click', function() { 
         browseSelectedFormatIds = Array.from(document.querySelectorAll('#browseFormatList input:checked')).map(function(cb) { return parseInt(cb.value); });
         formatDropdown.classList.remove('show'); 
-        browseCurrentPage = 1; 
         loadBrowseCatalogData(); 
     });
 }
@@ -153,79 +145,24 @@ function isBrowseNewVinyl(record) {
 
 function displayBrowseRecords(records) {
     var container = document.getElementById('browseCatalogContainer');
-    var totalRecords = records.length;
-    var totalPages = Math.ceil(totalRecords / browseRecordsPerPage);
-    var startIndex = (browseCurrentPage - 1) * browseRecordsPerPage;
-    var endIndex = startIndex + browseRecordsPerPage;
-    var pageRecords = records.slice(startIndex, endIndex);
     
     container.innerHTML = '';
     
-    if (!pageRecords || pageRecords.length === 0) {
+    if (!records || records.length === 0) {
         container.innerHTML = '<div class="browse-no-records-message"><i class="fas fa-search"></i><p>No records match your filters.</p></div>';
         return;
     }
     
     var grid = document.createElement('div');
     grid.className = 'browse-records-grid';
-    pageRecords.forEach(function(record) {
+    records.forEach(function(record) {
         grid.appendChild(createBrowseRecordCard(record));
     });
     container.appendChild(grid);
-    
-    if (totalPages > 1) {
-        addBrowsePaginationControls(totalPages, totalRecords);
-    }
-}
-
-function addBrowsePaginationControls(totalPages, totalRecords) {
-    var container = document.getElementById('browseCatalogContainer');
-    var existingPagination = document.getElementById('browse-pagination-controls');
-    if (existingPagination) existingPagination.remove();
-    
-    var paginationDiv = document.createElement('div');
-    paginationDiv.className = 'browse-pagination-controls';
-    paginationDiv.id = 'browse-pagination-controls';
-    
-    var prevBtn = document.createElement('button');
-    prevBtn.innerHTML = '← Previous';
-    prevBtn.className = 'browse-pagination-btn';
-    prevBtn.disabled = browseCurrentPage === 1;
-    prevBtn.onclick = function() {
-        if (browseCurrentPage > 1) {
-            browseCurrentPage--;
-            displayBrowseRecords(browseRecords);
-            var container = document.getElementById('browseCatalogContainer');
-            if (container) container.scrollTop = 0;
-        }
-    };
-    
-    var pageInfo = document.createElement('span');
-    pageInfo.className = 'browse-pagination-info';
-    pageInfo.textContent = 'Page ' + browseCurrentPage + ' of ' + totalPages + ' (' + totalRecords + ' records)';
-    
-    var nextBtn = document.createElement('button');
-    nextBtn.innerHTML = 'Next →';
-    nextBtn.className = 'browse-pagination-btn';
-    nextBtn.disabled = browseCurrentPage === totalPages;
-    nextBtn.onclick = function() {
-        if (browseCurrentPage < totalPages) {
-            browseCurrentPage++;
-            displayBrowseRecords(browseRecords);
-            var container = document.getElementById('browseCatalogContainer');
-            if (container) container.scrollTop = 0;
-        }
-    };
-    
-    paginationDiv.appendChild(prevBtn);
-    paginationDiv.appendChild(pageInfo);
-    paginationDiv.appendChild(nextBtn);
-    container.appendChild(paginationDiv);
 }
 
 function loadBrowseCatalogData() {
     browseCurrentSearchTerm = document.getElementById('browseSearchBox')?.value.trim() || '';
-    browseCurrentPage = 1;
     
     var params = new URLSearchParams();
     params.append('status_ids', '2');
