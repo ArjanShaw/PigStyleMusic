@@ -97,7 +97,7 @@ function showAlertStatus(message, type) {
     if (!statusEl) return;
     
     statusEl.textContent = message;
-    statusEl.className = 'status ' + type;
+    statusEl.className = 'alert-status ' + type;
     statusEl.style.display = 'block';
     
     if (type === 'success') {

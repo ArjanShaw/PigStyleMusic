@@ -15,7 +15,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const wrapper = document.getElementById('tilesWrapper');
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
-    const miniNavItems = document.querySelectorAll('.mini-nav-item');
+    const miniNavItems = document.querySelectorAll('.mini-nav-item:not(.flip-btn)');
+    const flipBtn = document.getElementById('flipBtn');
     const tiles = document.querySelectorAll('.tile');
     const totalTiles = tiles.length;
     let currentIndex = 0;
@@ -25,6 +26,16 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Track which tiles are flipped
     let flippedState = {};
+    
+    function updateFlipButton(index, isFlipped) {
+        if (isFlipped) {
+            flipBtn.classList.remove('hidden');
+            flipBtn.innerHTML = '<i class="fas fa-rotate"></i>';
+            flipBtn.title = 'Flip back';
+        } else {
+            flipBtn.classList.add('hidden');
+        }
+    }
     
     function goTo(index) {
         if (isTransitioning || index === currentIndex) return;
@@ -50,6 +61,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         flippedState = {};
         
+        // Update flip button
+        updateFlipButton(index, false);
+        
         setTimeout(function() {
             isTransitioning = false;
         }, 500);
@@ -74,24 +88,35 @@ document.addEventListener('DOMContentLoaded', function() {
             if (e.target.closest('.flip-hint') || e.target.closest('.front-action')) {
                 return;
             }
-            card.classList.add('flipped');
-            var tileIndex = parseInt(card.closest('.tile').dataset.index);
-            flippedState[tileIndex] = true;
             
-            // Initialize tile-specific components when flipped
-            initializeTileComponent(tileIndex);
+            var tileIndex = parseInt(card.closest('.tile').dataset.index);
+            
+            // Only flip if not already flipped
+            if (!flippedState[tileIndex]) {
+                card.classList.add('flipped');
+                flippedState[tileIndex] = true;
+                
+                // Update flip button
+                updateFlipButton(tileIndex, true);
+                
+                // Initialize tile-specific components when flipped
+                initializeTileComponent(tileIndex);
+            }
         });
     });
     
-    // Flip back buttons
-    document.querySelectorAll('.flip-back-btn').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            var card = this.closest('.flip-card');
-            card.classList.remove('flipped');
-            var tileIndex = parseInt(card.closest('.tile').dataset.index);
+    // Flip back button in mini-nav
+    flipBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var flippedCard = document.querySelector('.flip-card.flipped');
+        if (flippedCard) {
+            flippedCard.classList.remove('flipped');
+            var tileIndex = parseInt(flippedCard.closest('.tile').dataset.index);
             flippedState[tileIndex] = false;
-        });
+            
+            // Update flip button
+            updateFlipButton(tileIndex, false);
+        }
     });
     
     // ============================================================
@@ -134,6 +159,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // ============================================================
+    // INITIAL STATE
+    // ============================================================
+    
+    // Hide flip button initially
+    updateFlipButton(0, false);
+    
+    // ============================================================
     // ARROW & NAVIGATION EVENTS
     // ============================================================
     
@@ -159,7 +191,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }, { passive: true });
     
-    // Mini nav click
+    // Mini nav click (excluding flip button)
     miniNavItems.forEach(function(item) {
         item.addEventListener('click', function(e) {
             var index = parseInt(this.dataset.index);

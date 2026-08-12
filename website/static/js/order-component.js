@@ -98,7 +98,7 @@ function showOrderStatus(message, type) {
     if (!statusEl) return;
     
     statusEl.textContent = message;
-    statusEl.className = 'status ' + type;
+    statusEl.className = 'order-status ' + type;
     statusEl.style.display = 'block';
     
     if (type === 'success') {

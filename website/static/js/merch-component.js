@@ -5,101 +5,319 @@
 var merchInitialized = false;
 var lastGiftCardData = null;
 var giftCardInitialized = false;
+var teeExpanded = false;
+var giftCardExpanded = false;
 
 function initMerchComponent() {
     if (merchInitialized) return;
     merchInitialized = true;
     
-    // Load merchandise
+    // Load merchandise (only Tees, Stickers, Gift Cards)
     loadMerchandise();
     
     // Initialize gift card functionality
     initGiftCardPage();
+    
+    // Initialize tee functionality
+    initTeePage();
 }
 
 // ============================================================
-// MERCHANDISE SECTION
+// MERCHANDISE SECTION - Only Tees, Stickers, Gift Cards
 // ============================================================
 
 function loadMerchandise() {
-    if (typeof loadAccessories === 'function') {
-        loadAccessories();
+    // Instead of using the full merchandise store, we'll render just the 3 items
+    renderMerchItems();
+}
+
+function renderMerchItems() {
+    var container = document.getElementById('catalogContainer');
+    if (!container) return;
+    
+    // Create gallery with 3 items: Tee, Sticker, Gift Card
+    var gallery = document.createElement('div');
+    gallery.className = 'merch-gallery';
+    
+    // 1. Tee Card
+    var teeCard = document.createElement('div');
+    teeCard.className = 'merch-card';
+    teeCard.setAttribute('onclick', 'toggleTeeCard()');
+    teeCard.innerHTML = `
+        <div class="merch-image">
+            <img src="/static/images/tee-black.png" alt="PigStyle T-Shirt" onerror="this.parentElement.classList.add('default-merch-bg'); this.style.display='none';">
+        </div>
+        <div class="merch-info">
+            <h3>PigStyle T-Shirt</h3>
+            <div class="merch-price">$24.99</div>
+        </div>
+    `;
+    gallery.appendChild(teeCard);
+    
+    // 2. Sticker Card
+    var stickerCard = document.createElement('div');
+    stickerCard.className = 'merch-card sticker-tile';
+    stickerCard.innerHTML = `
+        <div style="text-align:center; padding:20px;">
+            <span class="sticker-icon"><i class="fas fa-sticky-note"></i></span>
+            <div class="sticker-label">Sticker</div>
+            <div style="color:rgba(255,255,255,0.7); font-size:0.9rem; margin-top:5px;">$4.99</div>
+        </div>
+    `;
+    gallery.appendChild(stickerCard);
+    
+    // 3. Gift Card Tile
+    var giftCard = document.createElement('div');
+    giftCard.className = 'merch-card gift-card-tile';
+    giftCard.setAttribute('onclick', 'toggleGiftCard()');
+    giftCard.innerHTML = `
+        <div style="text-align:center; padding:20px;">
+            <span class="gift-card-icon"><i class="fas fa-gift"></i></span>
+            <div class="gift-card-label">Gift Cards</div>
+        </div>
+    `;
+    gallery.appendChild(giftCard);
+    
+    container.innerHTML = '';
+    container.appendChild(gallery);
+    
+    // Add Tee Expanded View
+    addTeeExpandedView(container);
+    
+    // Add Gift Card Expanded View
+    addGiftCardExpandedView(container);
+}
+
+function addTeeExpandedView(container) {
+    var teeExpanded = document.createElement('div');
+    teeExpanded.className = 'merch-expanded';
+    teeExpanded.id = 'teeExpanded';
+    teeExpanded.innerHTML = `
+        <div class="section-title"><i class="fas fa-tshirt"></i> PigStyle T-Shirt</div>
+        <img src="/static/images/tee-black.png" alt="T-Shirt" class="tee-image" id="teeImage">
+        <div class="form-group">
+            <label>Color</label>
+            <div class="color-options">
+                <button class="color-btn black active" data-color="black" onclick="selectTeeColor('black')" title="Black"></button>
+                <button class="color-btn yellow" data-color="yellow" onclick="selectTeeColor('yellow')" title="Yellow"></button>
+                <button class="color-btn purple" data-color="purple" onclick="selectTeeColor('purple')" title="Purple"></button>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="teeSize">Size</label>
+            <select id="teeSize">
+                <option value="S">Small (S)</option>
+                <option value="M" selected>Medium (M)</option>
+                <option value="L">Large (L)</option>
+                <option value="XL">Extra Large (XL)</option>
+                <option value="XXL">XX Large (XXL)</option>
+            </select>
+        </div>
+        <div class="stock-indicator in-stock" id="teeStock">✅ In Stock</div>
+        <button class="close-expanded-btn" onclick="toggleTeeCard()">
+            <i class="fas fa-times"></i> Close
+        </button>
+    `;
+    container.appendChild(teeExpanded);
+}
+
+function addGiftCardExpandedView(container) {
+    var giftExpanded = document.createElement('div');
+    giftExpanded.className = 'merch-expanded';
+    giftExpanded.id = 'giftCardExpanded';
+    giftExpanded.innerHTML = `
+        <div class="section-title"><i class="fas fa-gift"></i> Gift Cards</div>
+        
+        <div class="amount-selector">
+            <button class="amount-btn" data-amount="10">$10</button>
+            <button class="amount-btn" data-amount="25">$25</button>
+            <button class="amount-btn active" data-amount="50">$50</button>
+            <button class="amount-btn" data-amount="100">$100</button>
+        </div>
+        
+        <div class="custom-amount">
+            <span>$</span>
+            <input type="number" id="gc-custom-amount" placeholder="Custom amount" step="1" min="1">
+        </div>
+        
+        <div class="form-group">
+            <label for="gc-recipient"><i class="fas fa-user"></i> Recipient Name (optional)</label>
+            <input type="text" id="gc-recipient" placeholder="e.g., Jane Doe">
+        </div>
+        
+        <div class="form-group">
+            <label for="gc-sender"><i class="fas fa-user"></i> Sender Name (optional)</label>
+            <input type="text" id="gc-sender" placeholder="e.g., John Smith">
+        </div>
+        
+        <div class="form-group">
+            <label for="gc-message"><i class="fas fa-pencil-alt"></i> Personal Message (optional)</label>
+            <textarea id="gc-message" placeholder="Happy Birthday! Enjoy some new vinyl."></textarea>
+        </div>
+        
+        <button class="pay-btn" id="gc-pay-btn">
+            <i class="fas fa-credit-card"></i> Pay with Square
+        </button>
+        
+        <div id="gc-status" class="status-message"></div>
+        
+        <button class="close-expanded-btn" onclick="toggleGiftCard()">
+            <i class="fas fa-times"></i> Close
+        </button>
+    `;
+    container.appendChild(giftExpanded);
+}
+
+// ============================================================
+// TEE FUNCTIONS
+// ============================================================
+
+var currentTeeColor = 'black';
+
+function toggleTeeCard() {
+    var expanded = document.getElementById('teeExpanded');
+    var container = document.getElementById('catalogContainer');
+    
+    if (expanded.classList.contains('active')) {
+        expanded.classList.remove('active');
+        // Show the tee card again
+        var cards = container.querySelectorAll('.merch-card:not(.gift-card-tile)');
+        cards.forEach(function(card) {
+            if (card.querySelector('.merch-info h3') && card.querySelector('.merch-info h3').textContent.includes('T-Shirt')) {
+                card.style.display = 'flex';
+            }
+        });
+        teeExpanded = false;
     } else {
-        console.warn('loadAccessories function not found.');
-        var container = document.getElementById('catalogContainer');
-        if (container) {
-            container.innerHTML = '<div class="error-message"><i class="fas fa-exclamation-triangle"></i><p>Merchandise store not available.</p></div>';
+        expanded.classList.add('active');
+        // Hide the tee card
+        var cards = container.querySelectorAll('.merch-card:not(.gift-card-tile)');
+        cards.forEach(function(card) {
+            if (card.querySelector('.merch-info h3') && card.querySelector('.merch-info h3').textContent.includes('T-Shirt')) {
+                card.style.display = 'none';
+            }
+        });
+        teeExpanded = true;
+        
+        // Close gift card if open
+        if (giftCardExpanded) {
+            var giftExpanded = document.getElementById('giftCardExpanded');
+            giftExpanded.classList.remove('active');
+            var giftTile = container.querySelector('.merch-card.gift-card-tile');
+            if (giftTile) giftTile.style.display = 'flex';
+            giftCardExpanded = false;
         }
     }
 }
 
+function selectTeeColor(color) {
+    currentTeeColor = color;
+    var img = document.getElementById('teeImage');
+    if (color === 'black') {
+        img.src = '/static/images/tee-black.png';
+    } else if (color === 'yellow') {
+        img.src = '/static/images/tee-yellow.png';
+    } else if (color === 'purple') {
+        img.src = '/static/images/tee-black.png'; // Fallback - use black for now
+    }
+    
+    // Update active state
+    document.querySelectorAll('.color-options .color-btn').forEach(function(btn) {
+        btn.classList.remove('active');
+    });
+    document.querySelector('.color-options .color-btn.' + color).classList.add('active');
+    
+    // Update stock (simulated)
+    var stockEl = document.getElementById('teeStock');
+    var stock = Math.floor(Math.random() * 15) + 1;
+    if (stock > 10) {
+        stockEl.className = 'stock-indicator in-stock';
+        stockEl.textContent = '✅ In Stock (' + stock + ' available)';
+    } else if (stock > 0) {
+        stockEl.className = 'stock-indicator low-stock';
+        stockEl.textContent = '⚠️ Low Stock (' + stock + ' available)';
+    } else {
+        stockEl.className = 'stock-indicator out-of-stock';
+        stockEl.textContent = '❌ Out of Stock';
+    }
+}
+
 // ============================================================
-// GIFT CARD SECTION
+// GIFT CARD FUNCTIONS
 // ============================================================
+
+function toggleGiftCard() {
+    var expanded = document.getElementById('giftCardExpanded');
+    var container = document.getElementById('catalogContainer');
+    var giftTile = container.querySelector('.merch-card.gift-card-tile');
+    
+    if (expanded.classList.contains('active')) {
+        expanded.classList.remove('active');
+        if (giftTile) giftTile.style.display = 'flex';
+        giftCardExpanded = false;
+    } else {
+        expanded.classList.add('active');
+        if (giftTile) giftTile.style.display = 'none';
+        giftCardExpanded = true;
+        
+        // Close tee if open
+        if (teeExpanded) {
+            var teeExpandedEl = document.getElementById('teeExpanded');
+            teeExpandedEl.classList.remove('active');
+            var teeCards = container.querySelectorAll('.merch-card:not(.gift-card-tile)');
+            teeCards.forEach(function(card) {
+                if (card.querySelector('.merch-info h3') && card.querySelector('.merch-info h3').textContent.includes('T-Shirt')) {
+                    card.style.display = 'flex';
+                }
+            });
+            teeExpanded = false;
+        }
+    }
+}
 
 function initGiftCardPage() {
     if (giftCardInitialized) return;
     giftCardInitialized = true;
     
-    console.log('🎁 Initializing Gift Card page...');
-    
-    // Amount presets
-    document.querySelectorAll('.amount-btn').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            document.querySelectorAll('.amount-btn').forEach(function(b) { b.classList.remove('active'); });
-            this.classList.add('active');
+    // Amount presets - use event delegation since buttons are in expanded view
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.gift-card-expanded .amount-btn');
+        if (btn) {
+            document.querySelectorAll('.gift-card-expanded .amount-btn').forEach(function(b) {
+                b.classList.remove('active');
+            });
+            btn.classList.add('active');
             document.getElementById('gc-custom-amount').value = '';
-        });
-    });
-    
-    document.getElementById('gc-custom-amount').addEventListener('input', function() {
-        if (this.value) {
-            document.querySelectorAll('.amount-btn').forEach(function(b) { b.classList.remove('active'); });
         }
     });
     
-    document.getElementById('gc-pay-btn').addEventListener('click', createGiftCardPayment);
+    document.getElementById('gc-custom-amount')?.addEventListener('input', function() {
+        if (this.value) {
+            document.querySelectorAll('.gift-card-expanded .amount-btn').forEach(function(b) {
+                b.classList.remove('active');
+            });
+        }
+    });
     
-    document.getElementById('gc-custom-amount').addEventListener('keydown', function(e) {
+    document.getElementById('gc-pay-btn')?.addEventListener('click', createGiftCardPayment);
+    
+    document.getElementById('gc-custom-amount')?.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') createGiftCardPayment();
     });
-    
-    // Balance check
-    document.getElementById('gc-check-btn').addEventListener('click', checkGiftCardBalance);
-    document.getElementById('gc-check-input').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') checkGiftCardBalance();
-    });
-    
-    // Check for Square redirect
-    const params = new URLSearchParams(window.location.search);
-    const orderId = params.get('orderId');
-    const transactionId = params.get('transactionId');
-    
-    if (orderId) {
-        fetch(AppConfig.baseUrl + '/api/square/order-payment/' + orderId, { credentials: 'include' })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.payment_id) {
-                    const newUrl = window.location.pathname;
-                    window.history.replaceState({}, document.title, newUrl);
-                    confirmPayment(data.payment_id, null);
-                }
-            })
-            .catch(function(err) { console.error('Error:', err); });
-    } else if (transactionId) {
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, document.title, newUrl);
-        confirmPayment(transactionId, null);
-    }
+}
+
+function initTeePage() {
+    // Initialize tee stock
+    selectTeeColor('black');
 }
 
 function getSelectedAmount() {
     let amount = 0;
-    const activePreset = document.querySelector('.amount-btn.active');
+    const activePreset = document.querySelector('.gift-card-expanded .amount-btn.active');
     if (activePreset) {
         amount = parseFloat(activePreset.dataset.amount);
     }
-    const customAmount = parseFloat(document.getElementById('gc-custom-amount').value);
+    const customAmount = parseFloat(document.getElementById('gc-custom-amount')?.value);
     if (customAmount && customAmount > 0) {
         amount = customAmount;
     }
@@ -108,22 +326,28 @@ function getSelectedAmount() {
 
 async function createGiftCardPayment() {
     const amount = getSelectedAmount();
-    const recipient = document.getElementById('gc-recipient').value.trim();
-    const sender = document.getElementById('gc-sender').value.trim();
-    const message = document.getElementById('gc-message').value.trim();
+    const recipient = document.getElementById('gc-recipient')?.value.trim() || '';
+    const sender = document.getElementById('gc-sender')?.value.trim() || '';
+    const message = document.getElementById('gc-message')?.value.trim() || '';
     const statusEl = document.getElementById('gc-status');
     const btn = document.getElementById('gc-pay-btn');
     
     if (!amount || amount <= 0) {
-        statusEl.textContent = '❌ Please select or enter a valid amount';
-        statusEl.className = 'status-message error';
+        if (statusEl) {
+            statusEl.textContent = '❌ Please select or enter a valid amount';
+            statusEl.className = 'status-message error';
+        }
         return;
     }
     
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating payment link...';
-    statusEl.className = 'status-message';
-    statusEl.style.display = 'none';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating payment link...';
+    }
+    if (statusEl) {
+        statusEl.className = 'status-message';
+        statusEl.style.display = 'none';
+    }
     
     try {
         const redirectUrl = window.location.origin + '/#merch';
@@ -149,339 +373,63 @@ async function createGiftCardPayment() {
         const data = await response.json();
         
         if (data.status === 'success') {
-            statusEl.textContent = 'Redirecting to Square checkout...';
-            statusEl.className = 'status-message info';
+            if (statusEl) {
+                statusEl.textContent = 'Redirecting to Square checkout...';
+                statusEl.className = 'status-message info';
+            }
             window.location.href = data.checkout_url;
         } else {
-            statusEl.textContent = '❌ ' + (data.error || 'Failed to create payment link');
-            statusEl.className = 'status-message error';
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-credit-card"></i> Pay with Square';
+            if (statusEl) {
+                statusEl.textContent = '❌ ' + (data.error || 'Failed to create payment link');
+                statusEl.className = 'status-message error';
+            }
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-credit-card"></i> Pay with Square';
+            }
         }
     } catch (err) {
         console.error('Payment error:', err);
-        statusEl.textContent = '❌ Error: ' + err.message;
-        statusEl.className = 'status-message error';
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-credit-card"></i> Pay with Square';
+        if (statusEl) {
+            statusEl.textContent = '❌ Error: ' + err.message;
+            statusEl.className = 'status-message error';
+        }
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-credit-card"></i> Pay with Square';
+        }
     }
 }
 
-async function confirmPayment(paymentId, giftCardId) {
-    const modal = document.getElementById('payment-modal');
-    const loadingEl = document.getElementById('payment-loading');
-    const resultEl = document.getElementById('payment-result');
-    const errorEl = document.getElementById('payment-error');
-    const statusEl = document.getElementById('payment-status');
-    const errorMessageEl = document.getElementById('payment-error-message');
-    
-    modal.classList.add('active');
-    loadingEl.style.display = 'block';
-    resultEl.style.display = 'none';
-    errorEl.style.display = 'none';
-    statusEl.textContent = '⏳ Processing...';
-    
-    try {
-        const metadataUrl = AppConfig.baseUrl + '/api/square/payment-metadata/' + paymentId;
-        const metadataResponse = await fetch(metadataUrl, { credentials: 'include' });
-        
-        if (!metadataResponse.ok) {
-            throw new Error('Metadata fetch failed: ' + metadataResponse.status);
-        }
-        
-        const metadataData = await metadataResponse.json();
-        
-        const confirmUrl = AppConfig.baseUrl + '/api/payment/confirm';
-        const confirmResponse = await fetch(confirmUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-                payment_id: paymentId,
-                metadata: metadataData.metadata || {},
-                gift_card_id: giftCardId
-            })
-        });
-        
-        if (!confirmResponse.ok) {
-            throw new Error('Confirmation failed: ' + confirmResponse.status);
-        }
-        
-        const data = await confirmResponse.json();
-        
-        loadingEl.style.display = 'none';
-        
-        if (data.status === 'success' && data.purpose === 'gift_card') {
-            lastGiftCardData = data;
-            resultEl.style.display = 'block';
-            statusEl.textContent = '✅ Gift Card Issued!';
-            statusEl.style.color = 'white';
-            
-            document.getElementById('gift-card-amount').textContent = '$' + data.amount.toFixed(2);
-            document.getElementById('gift-card-id').textContent = data.gift_card_id;
-            
-            const recipient = data.recipient || metadataData.metadata?.recipient || '';
-            document.getElementById('gift-card-recipient').textContent = recipient ? 'For: ' + recipient : '';
-            
-            if (typeof JsBarcode !== 'undefined') {
-                JsBarcode('#payment-barcode', data.gift_card_id, {
-                    format: 'CODE128',
-                    width: 2,
-                    height: 80,
-                    displayValue: true,
-                    fontSize: 18,
-                    font: 'monospace',
-                    textAlign: 'center',
-                    textPosition: 'bottom',
-                    textMargin: 5,
-                    background: '#ffffff',
-                    lineColor: '#000000'
-                });
-            }
-            
-            document.getElementById('print-postcard-btn').style.display = 'inline-flex';
-            document.getElementById('download-pdf-btn').style.display = 'inline-flex';
-            
-        } else {
-            errorEl.style.display = 'block';
-            errorMessageEl.textContent = data.error || 'Payment confirmation failed';
-            statusEl.textContent = '❌ Payment Failed';
-        }
-    } catch (err) {
-        console.error('Confirmation error:', err);
-        loadingEl.style.display = 'none';
-        errorEl.style.display = 'block';
-        errorMessageEl.textContent = err.message || 'Network error. Please contact the store.';
-        statusEl.textContent = '❌ Error';
-    }
-}
+// ============================================================
+// GIFT CARD PAYMENT CONFIRMATION (from merch-component)
+// ============================================================
 
-function closePaymentModal() {
-    document.getElementById('payment-modal').classList.remove('active');
-    document.getElementById('payment-loading').style.display = 'block';
-    document.getElementById('payment-result').style.display = 'none';
-    document.getElementById('payment-error').style.display = 'none';
-    document.getElementById('print-postcard-btn').style.display = 'none';
-    document.getElementById('download-pdf-btn').style.display = 'none';
-}
+// These functions are called from the modal in index.html
+// They need to be accessible globally
+window.closePaymentModal = function() {
+    var modal = document.getElementById('payment-modal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+    var loadingEl = document.getElementById('payment-loading');
+    var resultEl = document.getElementById('payment-result');
+    var errorEl = document.getElementById('payment-error');
+    var printBtn = document.getElementById('print-postcard-btn');
+    var downloadBtn = document.getElementById('download-pdf-btn');
+    if (loadingEl) loadingEl.style.display = 'block';
+    if (resultEl) resultEl.style.display = 'none';
+    if (errorEl) errorEl.style.display = 'none';
+    if (printBtn) printBtn.style.display = 'none';
+    if (downloadBtn) downloadBtn.style.display = 'none';
+};
 
-function generateGiftCardPostcard(giftCardId, amount, recipient, sender, message) {
-    if (typeof window.jspdf === 'undefined') {
-        console.warn('jsPDF not loaded. Using fallback.');
-        return null;
-    }
-    
-    const doc = new window.jspdf.jsPDF('landscape', 'mm', 'a6');
-    const pageWidth = 148;
-    const pageHeight = 105;
-    
-    doc.setFillColor(255, 248, 235);
-    doc.rect(0, 0, pageWidth, pageHeight, 'F');
-    
-    doc.setDrawColor(200, 180, 150);
-    doc.setLineWidth(0.8);
-    doc.rect(3, 3, pageWidth - 6, pageHeight - 6);
-    doc.setDrawColor(220, 200, 170);
-    doc.setLineWidth(0.3);
-    doc.rect(6, 6, pageWidth - 12, pageHeight - 12);
-    
-    doc.setFontSize(24);
-    doc.setTextColor(200, 50, 50);
-    doc.setFont('helvetica', 'bold');
-    doc.text('PIGSTYLE MUSIC', pageWidth / 2, 20, { align: 'center' });
-    
-    doc.setFontSize(11);
-    doc.setTextColor(100, 100, 100);
-    doc.setFont('helvetica', 'normal');
-    doc.text('GIFT CARD', pageWidth / 2, 28, { align: 'center' });
-    
-    doc.setDrawColor(200, 180, 150);
-    doc.setLineWidth(0.3);
-    doc.line(30, 33, pageWidth - 30, 33);
-    
-    doc.setFontSize(30);
-    doc.setTextColor(40, 167, 69);
-    doc.setFont('helvetica', 'bold');
-    doc.text('$' + amount.toFixed(2), pageWidth / 2, 52, { align: 'center' });
-    
-    doc.setFontSize(12);
-    doc.setTextColor(50, 50, 50);
-    doc.setFont('helvetica', 'normal');
-    if (recipient) {
-        doc.text('For: ' + recipient, pageWidth / 2, 63, { align: 'center' });
-    }
-    if (sender) {
-        doc.text('From: ' + sender, pageWidth / 2, 71, { align: 'center' });
-    }
-    
-    let messageY = 79;
-    if (message) {
-        doc.setFontSize(9);
-        doc.setTextColor(80, 80, 80);
-        doc.setFont('helvetica', 'italic');
-        const lines = doc.splitTextToSize('"' + message + '"', 120);
-        let y = 79;
-        lines.forEach(function(line) {
-            doc.text(line, pageWidth / 2, y, { align: 'center' });
-            y += 4.5;
-        });
-        messageY = y;
-    } else {
-        messageY = 79;
-    }
-    
-    const barcodeY = message ? Math.min(messageY + 8, 88) : 85;
-    
-    if (typeof JsBarcode !== 'undefined') {
-        const barcodeCanvas = document.createElement('canvas');
-        barcodeCanvas.width = 400;
-        barcodeCanvas.height = 100;
-        JsBarcode(barcodeCanvas, giftCardId, {
-            format: 'CODE128',
-            width: 1.8,
-            height: 50,
-            displayValue: true,
-            fontSize: 14,
-            font: 'monospace',
-            background: '#fff8eb',
-            lineColor: '#000000',
-            textAlign: 'center',
-            textPosition: 'bottom',
-            textMargin: 3
-        });
-        
-        const barcodeDataUrl = barcodeCanvas.toDataURL('image/png');
-        const barcodeWidth = 85;
-        const barcodeHeight = (barcodeCanvas.height / barcodeCanvas.width) * barcodeWidth;
-        const barcodeX = (pageWidth - barcodeWidth) / 2;
-        doc.addImage(barcodeDataUrl, 'PNG', barcodeX, barcodeY, barcodeWidth, barcodeHeight);
-        
-        const footerY = barcodeY + barcodeHeight + 5;
-        doc.setFontSize(7);
-        doc.setTextColor(150, 150, 150);
-        doc.setFont('helvetica', 'normal');
-        doc.text('Scan at checkout to redeem. Not exchangeable for cash.', pageWidth / 2, footerY, { align: 'center' });
-        
-        doc.setFontSize(6);
-        doc.setTextColor(180, 180, 180);
-        doc.text('ID: ' + giftCardId, pageWidth / 2, footerY + 4, { align: 'center' });
-    }
-    
-    return doc;
-}
+window.printGiftCardPostcard = function() {
+    // This will be implemented in the full gift card module
+    alert('Print functionality coming soon!');
+};
 
-function downloadGiftCardPDF() {
-    if (!lastGiftCardData) {
-        alert('No gift card data available.');
-        return;
-    }
-    try {
-        const data = lastGiftCardData;
-        const recipient = document.getElementById('gc-recipient').value.trim();
-        const sender = document.getElementById('gc-sender').value.trim();
-        const message = document.getElementById('gc-message').value.trim();
-        const doc = generateGiftCardPostcard(
-            data.gift_card_id,
-            data.amount,
-            recipient || data.recipient || '',
-            sender || data.sender || '',
-            message || data.message || ''
-        );
-        if (doc) {
-            doc.save('gift-card-' + data.gift_card_id + '.pdf');
-        } else {
-            alert('Error generating PDF.');
-        }
-    } catch (err) {
-        console.error('Download error:', err);
-        alert('Error generating PDF: ' + err.message);
-    }
-}
-
-function printGiftCardPostcard() {
-    if (!lastGiftCardData) {
-        alert('No gift card data available.');
-        return;
-    }
-    try {
-        const data = lastGiftCardData;
-        const recipient = document.getElementById('gc-recipient').value.trim();
-        const sender = document.getElementById('gc-sender').value.trim();
-        const message = document.getElementById('gc-message').value.trim();
-        const doc = generateGiftCardPostcard(
-            data.gift_card_id,
-            data.amount,
-            recipient || data.recipient || '',
-            sender || data.sender || '',
-            message || data.message || ''
-        );
-        if (doc) {
-            const pdfBlob = doc.output('blob');
-            const pdfUrl = URL.createObjectURL(pdfBlob);
-            const printWindow = window.open(pdfUrl);
-            if (printWindow) {
-                printWindow.onload = function() {
-                    printWindow.print();
-                };
-            } else {
-                doc.save('gift-card-' + data.gift_card_id + '.pdf');
-                alert('Please open the downloaded PDF and print it.');
-            }
-        } else {
-            alert('Error generating PDF for printing.');
-        }
-    } catch (err) {
-        console.error('Print error:', err);
-        alert('Error generating PDF for printing: ' + err.message);
-    }
-}
-
-async function checkGiftCardBalance() {
-    const input = document.getElementById('gc-check-input');
-    const resultDiv = document.getElementById('gc-balance-result');
-    
-    if (!input || !resultDiv) return;
-    
-    const code = input.value.trim().toUpperCase();
-    if (!code) {
-        resultDiv.textContent = '⚠️ Please enter a gift card code';
-        resultDiv.className = 'balance-result show';
-        resultDiv.style.color = '#ffc107';
-        return;
-    }
-    
-    const giftCode = code.startsWith('GIFT-') ? code : 'GIFT-' + code;
-    
-    try {
-        const response = await fetch(AppConfig.baseUrl + '/api/debtor/lookup', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: giftCode })
-        });
-        
-        const data = await response.json();
-        
-        resultDiv.className = 'balance-result show';
-        
-        if (data.status === 'success' && data.balance !== undefined) {
-            const balance = data.balance || 0;
-            const isActive = balance > 0;
-            
-            resultDiv.innerHTML = '<div style="font-size: 14px; color: #ccc;">' +
-                '<strong>' + giftCode + '</strong><br>' +
-                'Balance: <span style="color: ' + (isActive ? '#4caf50' : '#dc3545') + '; font-weight: bold;">$' + balance.toFixed(2) + '</span><br>' +
-                '<span style="font-size: 12px; color: #666;">' + (isActive ? '✅ Active' : '⚠️ No balance') + '</span>' +
-                '</div>';
-            resultDiv.style.background = isActive ? 'rgba(40,167,69,0.1)' : 'rgba(220,53,69,0.1)';
-        } else {
-            resultDiv.textContent = '⚠️ Gift card not found: ' + giftCode;
-            resultDiv.style.background = 'rgba(220,53,69,0.1)';
-        }
-    } catch (error) {
-        console.error('Error checking gift card:', error);
-        resultDiv.textContent = '❌ Error checking balance';
-        resultDiv.className = 'balance-result show';
-        resultDiv.style.background = 'rgba(220,53,69,0.1)';
-    }
-}
+window.downloadGiftCardPDF = function() {
+    // This will be implemented in the full gift card module
+    alert('Download PDF functionality coming soon!');
+};
