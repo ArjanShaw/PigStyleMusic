@@ -123,7 +123,7 @@
             display: none;
         }
 
-        /* ===== Cart dropdown (sibling of the button) ===== */
+        /* ===== Cart dropdown ===== */
         .cart-dropdown {
             position: absolute;
             top: 100%;
@@ -197,6 +197,36 @@
             text-align: center;
             color: #888;
         }
+
+        /* ===== Flip hint – bright white and larger ===== */
+        .flip-hint {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1rem;
+            color: #ffffff !important;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            animation: pulse 2s ease-in-out infinite;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px 20px;
+            border-radius: 30px;
+            text-shadow: 0 0 10px rgba(0,0,0,0.8);
+            z-index: 10;
+            pointer-events: auto;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        /* Back side hint */
+        .flip-card-back .flip-hint {
+            bottom: 20px;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -224,7 +254,6 @@
     <!-- Fixed Header -->
     <div class="fixed-header">
         <nav class="mini-nav" id="miniNav">
-            <!-- Normal menu items -->
             <button class="mini-nav-item active" data-index="0">
                 <i class="fas fa-home"></i>
                 <span>Home</span>
@@ -254,7 +283,7 @@
                 <span>Order</span>
             </button>
 
-            <!-- Cart as a normal menu item (button + dropdown as sibling) -->
+            <!-- Cart -->
             <div class="cart-wrapper">
                 <button class="mini-nav-item cart-nav-item hidden-nav-item" id="cartNavItem" title="Shopping Cart">
                     <i class="fas fa-shopping-cart"></i>
@@ -273,10 +302,7 @@
                 </div>
             </div>
 
-            <!-- Flip button - hidden by default -->
-            <button class="mini-nav-item flip-btn hidden" id="flipBtn">
-                <i class="fas fa-rotate"></i>
-            </button>
+            <!-- Flip button removed entirely -->
         </nav>
     </div>
 
@@ -328,6 +354,8 @@
                                 </div>
                             </div>
                         </div>
+                        <!-- Back-side flip hint -->
+                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
                     </div>
                 </div>
             </div>
@@ -399,6 +427,7 @@
                                 </div>
                             </div>
                         </div>
+                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
                     </div>
                 </div>
             </div>
@@ -435,6 +464,7 @@
                                 </div>
                             </div>
                         </div>
+                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
                     </div>
                 </div>
             </div>
@@ -449,6 +479,7 @@
                         <div style="flex:1; width:100%; padding:10px; box-sizing:border-box; display:flex; align-items:center; justify-content:center;">
                             <iframe src="https://calendar.google.com/calendar/embed?src=pigstyle.loveland%40gmail.com&ctz=America%2FDenver" style="border:0; width:100%; height:100%; border-radius:10px; background:white;" frameborder="0" scrolling="no"></iframe>
                         </div>
+                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
                     </div>
                 </div>
             </div>
@@ -485,6 +516,7 @@
                                 </div>
                             </div>
                         </div>
+                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
                     </div>
                 </div>
             </div>
@@ -529,6 +561,7 @@
                                 </div>
                             </div>
                         </div>
+                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
                     </div>
                 </div>
             </div>
@@ -568,6 +601,7 @@
                                 </div>
                             </div>
                         </div>
+                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
                     </div>
                 </div>
             </div>
@@ -1093,8 +1127,70 @@
             });
         }
 
+        // ===== FLIP HINT TOGGLE =====
+        function initFlipHints() {
+            document.querySelectorAll('.flip-hint').forEach(function(hint) {
+                hint.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var card = this.closest('.flip-card');
+                    if (card) {
+                        card.classList.toggle('flipped');
+                    }
+                });
+            });
+        }
+
+        // ===== CAROUSEL NAVIGATION =====
+        function initNavigation() {
+            var navButtons = document.querySelectorAll('.mini-nav-item:not(.cart-nav-item):not(.flip-btn)');
+            var tilesWrapper = document.getElementById('tilesWrapper');
+            var currentIndex = 0;
+            var totalTiles = document.querySelectorAll('.tile').length;
+
+            function goToTile(index) {
+                if (index < 0) index = 0;
+                if (index >= totalTiles) index = totalTiles - 1;
+                currentIndex = index;
+                tilesWrapper.style.transform = 'translateX(-' + (index * 100) + '%)';
+                navButtons.forEach(function(btn, i) {
+                    btn.classList.toggle('active', i === index);
+                });
+            }
+
+            navButtons.forEach(function(btn, index) {
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    goToTile(index);
+                });
+            });
+
+            var prevBtn = document.getElementById('prevBtn');
+            var nextBtn = document.getElementById('nextBtn');
+            if (prevBtn) {
+                prevBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    goToTile(currentIndex - 1);
+                });
+            }
+            if (nextBtn) {
+                nextBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    goToTile(currentIndex + 1);
+                });
+            }
+
+            // Set initial active
+            navButtons.forEach(function(btn, i) {
+                btn.classList.toggle('active', i === 0);
+            });
+        }
+
+        // ===== INIT =====
         document.addEventListener('DOMContentLoaded', function() {
             updateCartUI();
+            initFlipHints();
+            initNavigation();
+
             var popup = document.getElementById('merchPopup');
             if (popup) {
                 popup.addEventListener('click', function(e) {
