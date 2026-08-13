@@ -375,6 +375,7 @@ function createBrowseRecordCard(record) {
     return card;
 }
 
+
 function showBrowseRecordModal(record) {
     var genre = extractBrowseGenre(record.discogs_genre_raw);
     var discCondition = getBrowseConditionDisplayName(record.condition_disc_id);
@@ -394,6 +395,7 @@ function showBrowseRecordModal(record) {
         detailsHtml += '<div class="browse-detail-row"><span class="detail-label">Format:</span><span>' + escapeBrowseHtml(formatName) + '</span></div>';
     }
     
+    // ⭐ UPDATED BUTTONS with inline styles
     modal.innerHTML = '<div class="browse-record-modal">' +
         '<div class="browse-record-modal-header">' +
             '<h3>' + escapeBrowseHtml(record.artist) + '</h3>' +
@@ -404,13 +406,50 @@ function showBrowseRecordModal(record) {
             '<div class="browse-record-modal-title">' + escapeBrowseHtml(record.title) + '</div>' +
             '<div class="browse-record-modal-details">' + detailsHtml + '</div>' +
             '<div class="browse-record-modal-price">$' + parseFloat(record.store_price).toFixed(2) + '</div>' +
-            '<div class="browse-record-modal-actions">' +
-                '<button class="close-modal-btn">Close</button>' +
+            '<div class="browse-record-modal-actions" style="display:flex; gap:10px; justify-content:center; margin-top:12px;">' +
+                // 🔴 ADD TO CART BUTTON – RED & ROUNDED
+                '<button class="add-to-cart-btn" data-record=\'' + JSON.stringify(record).replace(/'/g, "&#39;") + '\' style="padding:10px 20px; background:#ff6b6b; color:white; border:none; border-radius:30px; font-size:14px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:8px; transition:background 0.2s;">' +
+                    '<i class="fas fa-cart-plus"></i> Add to Cart' +
+                '</button>' +
+                '<button class="close-modal-btn" style="padding:10px 20px; background:#f5f5f5; color:#666; border:none; border-radius:30px; font-size:14px; cursor:pointer;">Close</button>' +
             '</div>' +
         '</div>' +
     '</div>';
     
     document.body.appendChild(modal);
+    
+    // Add to Cart logic – keep the same
+    var addBtn = modal.querySelector('.add-to-cart-btn');
+    if (addBtn) {
+        addBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var recordData = JSON.parse(this.dataset.record);
+            if (typeof window.cart !== 'undefined' && window.cart) {
+                window.cart.addItem({
+                    id: recordData.id,
+                    type: 'record',
+                    title: recordData.artist + ' - ' + recordData.title,
+                    price: parseFloat(recordData.store_price),
+                    quantity: 1,
+                    artist: recordData.artist,
+                    condition: recordData.condition || getBrowseCombinedCondition(recordData.condition_disc_id, recordData.condition_sleeve_id)
+                });
+                // Update cart count
+                var count = window.cart.getItemCount();
+                var cartBtn = document.getElementById('cartCount');
+                if (cartBtn) cartBtn.textContent = 'Cart (' + count + ')';
+                if (typeof updateCartUI === 'function') updateCartUI();
+                // Brief feedback
+                this.innerHTML = '<i class="fas fa-check"></i> Added!';
+                setTimeout(function() {
+                    if (addBtn) addBtn.innerHTML = '<i class="fas fa-cart-plus"></i> Add to Cart';
+                }, 1500);
+            } else {
+                alert('Cart not available. Please refresh the page.');
+            }
+        });
+    }
+    
     modal.querySelector('.browse-record-modal-close').onclick = function() { modal.remove(); };
     modal.querySelector('.close-modal-btn').onclick = function() { modal.remove(); };
     modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
