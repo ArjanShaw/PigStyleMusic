@@ -369,14 +369,29 @@
 }
 
 /* Order Records tile - keep text */
+
+            
+            
+/* Order Records tile - keep text */
+
 .flip-card-front.order-front {
     background: rgba(0, 0, 0, 0.2);
-    background-image: url('/static/images/background.png');
-    background-size: cover;
+    background-image: url('/static/images/pig_delivering_order.png');
+    background-size: contain;
     background-position: center;
     background-repeat: no-repeat;
     background-blend-mode: overlay;
 }
+
+.flip-card-front.order-front .front-icon,
+.flip-card-front.order-front .front-title,
+.flip-card-front.order-front .front-description,
+.flip-card-front.order-front .front-action {
+    display: none;
+}
+
+            
+            
 
 /* ============================================================
    HOME BACK - Two tiles with white background
