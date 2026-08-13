@@ -16,7 +16,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
     const miniNavItems = document.querySelectorAll('.mini-nav-item:not(.flip-btn)');
-    const flipBtn = document.getElementById('flipBtn');
     const tiles = document.querySelectorAll('.tile');
     const totalTiles = tiles.length;
     let currentIndex = 0;
@@ -27,15 +26,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Track which tiles are flipped
     let flippedState = {};
     
-    function updateFlipButton(index, isFlipped) {
-        if (isFlipped) {
-            flipBtn.classList.remove('hidden');
-            flipBtn.innerHTML = '<i class="fas fa-rotate"></i>';
-            flipBtn.title = 'Flip back';
-        } else {
-            flipBtn.classList.add('hidden');
-        }
-    }
+     
     
     function goTo(index) {
         if (isTransitioning || index === currentIndex) return;
@@ -61,8 +52,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         flippedState = {};
         
-        // Update flip button
-        updateFlipButton(index, false);
         
         setTimeout(function() {
             isTransitioning = false;
@@ -96,8 +85,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 card.classList.add('flipped');
                 flippedState[tileIndex] = true;
                 
-                // Update flip button
-                updateFlipButton(tileIndex, true);
                 
                 // Initialize tile-specific components when flipped
                 initializeTileComponent(tileIndex);
@@ -105,19 +92,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Flip back button in mini-nav
-    flipBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        var flippedCard = document.querySelector('.flip-card.flipped');
-        if (flippedCard) {
-            flippedCard.classList.remove('flipped');
-            var tileIndex = parseInt(flippedCard.closest('.tile').dataset.index);
-            flippedState[tileIndex] = false;
-            
-            // Update flip button
-            updateFlipButton(tileIndex, false);
-        }
-    });
+    
     
     // ============================================================
     // TILE COMPONENT INITIALIZATION
@@ -162,9 +137,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // INITIAL STATE
     // ============================================================
     
-    // Hide flip button initially
-    updateFlipButton(0, false);
-    
+   
     // ============================================================
     // ARROW & NAVIGATION EVENTS
     // ============================================================
