@@ -371,88 +371,15 @@ function createBrowseRecordCard(record) {
     innerHtml += '</div>';
     
     card.innerHTML = innerHtml;
-    card.addEventListener('click', function() { showBrowseRecordModal(record); });
+    card.addEventListener('click', function() { 
+        // Use the unified popup for records
+        if (typeof openRecordPopup === 'function') {
+            openRecordPopup(record);
+        } else {
+            alert('Popup not available. Please refresh the page.');
+        }
+    });
     return card;
-}
-
-
-function showBrowseRecordModal(record) {
-    var genre = extractBrowseGenre(record.discogs_genre_raw);
-    var discCondition = getBrowseConditionDisplayName(record.condition_disc_id);
-    var sleeveCondition = getBrowseConditionDisplayName(record.condition_sleeve_id);
-    var formatName = getBrowseFormatName(record.format_id);
-    
-    var modal = document.createElement('div');
-    modal.className = 'browse-record-modal-overlay';
-    var imageHtml = record.image_url ? '<img src="' + record.image_url + '" alt="' + record.title + '">' : '<i class="fas fa-music" style="font-size: 64px;"></i>';
-    
-    var detailsHtml = '<div class="browse-detail-row"><span class="detail-label">Disc:</span><span>' + escapeBrowseHtml(discCondition) + '</span></div>' +
-        '<div class="browse-detail-row"><span class="detail-label">Sleeve:</span><span>' + escapeBrowseHtml(sleeveCondition) + '</span></div>';
-    if (genre) {
-        detailsHtml += '<div class="browse-detail-row"><span class="detail-label">Genre:</span><span>' + escapeBrowseHtml(genre) + '</span></div>';
-    }
-    if (formatName) {
-        detailsHtml += '<div class="browse-detail-row"><span class="detail-label">Format:</span><span>' + escapeBrowseHtml(formatName) + '</span></div>';
-    }
-    
-    // ⭐ UPDATED BUTTONS with inline styles
-    modal.innerHTML = '<div class="browse-record-modal">' +
-        '<div class="browse-record-modal-header">' +
-            '<h3>' + escapeBrowseHtml(record.artist) + '</h3>' +
-            '<button class="browse-record-modal-close">&times;</button>' +
-        '</div>' +
-        '<div class="browse-record-modal-image ' + (!record.image_url ? 'default-bg' : '') + '">' + imageHtml + '</div>' +
-        '<div class="browse-record-modal-info">' +
-            '<div class="browse-record-modal-title">' + escapeBrowseHtml(record.title) + '</div>' +
-            '<div class="browse-record-modal-details">' + detailsHtml + '</div>' +
-            '<div class="browse-record-modal-price">$' + parseFloat(record.store_price).toFixed(2) + '</div>' +
-            '<div class="browse-record-modal-actions" style="display:flex; gap:10px; justify-content:center; margin-top:12px;">' +
-                // 🔴 ADD TO CART BUTTON – RED & ROUNDED
-                '<button class="add-to-cart-btn" data-record=\'' + JSON.stringify(record).replace(/'/g, "&#39;") + '\' style="padding:10px 20px; background:#ff6b6b; color:white; border:none; border-radius:30px; font-size:14px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:8px; transition:background 0.2s;">' +
-                    '<i class="fas fa-cart-plus"></i> Add to Cart' +
-                '</button>' +
-                '<button class="close-modal-btn" style="padding:10px 20px; background:#f5f5f5; color:#666; border:none; border-radius:30px; font-size:14px; cursor:pointer;">Close</button>' +
-            '</div>' +
-        '</div>' +
-    '</div>';
-    
-    document.body.appendChild(modal);
-    
-    // Add to Cart logic – keep the same
-    var addBtn = modal.querySelector('.add-to-cart-btn');
-    if (addBtn) {
-        addBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            var recordData = JSON.parse(this.dataset.record);
-            if (typeof window.cart !== 'undefined' && window.cart) {
-                window.cart.addItem({
-                    id: recordData.id,
-                    type: 'record',
-                    title: recordData.artist + ' - ' + recordData.title,
-                    price: parseFloat(recordData.store_price),
-                    quantity: 1,
-                    artist: recordData.artist,
-                    condition: recordData.condition || getBrowseCombinedCondition(recordData.condition_disc_id, recordData.condition_sleeve_id)
-                });
-                // Update cart count
-                var count = window.cart.getItemCount();
-                var cartBtn = document.getElementById('cartCount');
-                if (cartBtn) cartBtn.textContent = 'Cart (' + count + ')';
-                if (typeof updateCartUI === 'function') updateCartUI();
-                // Brief feedback
-                this.innerHTML = '<i class="fas fa-check"></i> Added!';
-                setTimeout(function() {
-                    if (addBtn) addBtn.innerHTML = '<i class="fas fa-cart-plus"></i> Add to Cart';
-                }, 1500);
-            } else {
-                alert('Cart not available. Please refresh the page.');
-            }
-        });
-    }
-    
-    modal.querySelector('.browse-record-modal-close').onclick = function() { modal.remove(); };
-    modal.querySelector('.close-modal-btn').onclick = function() { modal.remove(); };
-    modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
 }
 
 function escapeBrowseHtml(text) { 

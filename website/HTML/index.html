@@ -9,10 +9,10 @@
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
     <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-03HFDR9PV7');
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-03HFDR9PV7');
     </script>
 
     <!-- CSS FILES -->
@@ -89,11 +89,7 @@
             background: rgba(255, 107, 107, 0.12);
         }
 
-        /* ===== Cart wrapper & button ===== */
-        .cart-wrapper {
-            position: relative;
-            display: inline-block;
-        }
+        /* ===== Cart button badge ===== */
         .mini-nav-item.cart-nav-item {
             position: relative;
         }
@@ -119,86 +115,111 @@
         .mini-nav-item.cart-nav-item.has-items i {
             color: #ff6b6b;
         }
-        .mini-nav-item.cart-nav-item.hidden-nav-item {
-            display: none;
-        }
 
-        /* ===== Cart dropdown ===== */
-        .cart-dropdown {
-            position: absolute;
-            top: 100%;
-            right: 0;
-            margin-top: 8px;
+        /* ===== Cart tile styles (full page cart, no flip) ===== */
+        .cart-tile-content {
+            width: 100%;
+            height: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
             background: white;
-            border-radius: 12px;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.2);
-            width: 380px;
-            max-height: 450px;
-            overflow: hidden;
-            display: none;
-            z-index: 9999;
-            border: 1px solid rgba(0,0,0,0.05);
-        }
-        .cart-dropdown.show {
-            display: block;
-        }
-        .cart-dropdown-header {
-            padding: 12px 16px;
-            border-bottom: 1px solid #eee;
-            font-weight: 600;
-            color: #333;
-        }
-        .cart-dropdown-list {
-            max-height: 300px;
+            border-radius: 20px;
             overflow-y: auto;
-            padding: 5px 0;
         }
-        .cart-dropdown-item {
+        .cart-tile-header {
             display: flex;
             justify-content: space-between;
-            padding: 8px 16px;
-            border-bottom: 1px solid #f5f5f5;
-            font-size: 0.9rem;
+            align-items: center;
+            border-bottom: 2px solid #ff6b6b;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
         }
-        .cart-dropdown-item .item-title {
-            color: #333 !important;
+        .cart-tile-header h2 {
+            margin: 0;
+            color: #333;
         }
-        .cart-dropdown-item .item-price {
-            color: #ff6b6b !important;
-            font-weight: bold;
-        }
-        .cart-dropdown-footer {
-            padding: 10px 16px;
-            border-top: 1px solid #eee;
-            text-align: center;
-        }
-        .cart-dropdown-footer .total {
-            color: #333 !important;
-            font-weight: bold;
-            font-size: 1.1rem;
-        }
-        .cart-dropdown-footer .checkout-btn {
-            margin-top: 8px;
-            padding: 8px 20px;
+        .cart-tile-header .cart-count {
             background: #ff6b6b;
             color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+        }
+        .cart-tile-list {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        }
+        .cart-tile-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #f5f5f5;
+        }
+        .cart-tile-item .item-title {
+            color: #333;
+        }
+        .cart-tile-item .item-price {
+            color: #ff6b6b;
+            font-weight: bold;
+        }
+        .cart-tile-item .remove-item-btn {
+            background: none;
+            border: none;
+            color: #c62828;
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 0 4px;
+        }
+        .cart-tile-footer {
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+            text-align: center;
+        }
+        .cart-tile-footer .total {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #333;
+        }
+        .cart-tile-footer .btn-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .cart-tile-footer .btn-group button {
+            flex: 1;
+            padding: 10px;
             border: none;
             border-radius: 30px;
             font-size: 0.9rem;
             font-weight: 600;
             cursor: pointer;
-            width: 100%;
         }
-        .cart-dropdown-footer .checkout-btn:hover {
+        .cart-tile-footer .checkout-btn {
+            background: #ff6b6b;
+            color: white;
+        }
+        .cart-tile-footer .checkout-btn:hover {
             background: #ff5252;
         }
+        .cart-tile-footer .clear-btn {
+            background: #f5f5f5;
+            color: #666;
+        }
+        .cart-tile-footer .clear-btn:hover {
+            background: #eee;
+        }
         .cart-empty-message {
-            padding: 20px;
             text-align: center;
             color: #888;
+            padding: 40px 0;
+            font-size: 1.1rem;
         }
 
-        /* ===== Flip hint – bright white and larger ===== */
+        /* ===== Flip hint ===== */
         .flip-hint {
             position: absolute;
             bottom: 30px;
@@ -218,7 +239,6 @@
             cursor: pointer;
             font-weight: bold;
         }
-        /* Back side hint */
         .flip-card-back .flip-hint {
             bottom: 20px;
         }
@@ -226,6 +246,125 @@
         @keyframes pulse {
             0%, 100% { opacity: 0.7; }
             50% { opacity: 1; }
+        }
+
+        /* ===== Unified popup ===== */
+        .merch-popup-content {
+            background: white;
+            border-radius: 20px;
+            width: 100%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 30px;
+            box-sizing: border-box;
+            position: relative;
+        }
+        .merch-popup-content .popup-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.1);
+            color: #333;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            z-index: 10;
+        }
+        .merch-popup-content .popup-close:hover {
+            background: rgba(0,0,0,0.2);
+        }
+        .merch-popup-content h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .merch-popup-content .popup-image {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .merch-popup-content .popup-image img {
+            max-width: 100%;
+            max-height: 200px;
+            object-fit: contain;
+            border-radius: 10px;
+        }
+        .merch-popup-content .popup-price {
+            text-align: center;
+            font-size: 1.2rem;
+            color: #333;
+            font-weight: bold;
+        }
+        .merch-popup-content .popup-description {
+            text-align: center;
+            color: #666;
+            margin-bottom: 15px;
+        }
+        .merch-popup-content .popup-stock {
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        .merch-popup-content .popup-stock.in-stock {
+            background: #e8f5e9;
+            color: #2E7D32;
+        }
+        .merch-popup-content .popup-stock.out-of-stock {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .merch-popup-content .add-to-cart-btn {
+            width: 100%;
+            padding: 14px;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .merch-popup-content .add-to-cart-btn:hover {
+            background: #ff5252;
+        }
+        .merch-popup-content .add-to-cart-btn:disabled {
+            background: #ccc;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        /* ===== Override for cart tile: no flip ===== */
+        .tile.no-flip .flip-card {
+            pointer-events: none; /* disable clicks on the card itself */
+            transform: none !important; /* prevent any rotation */
+            transition: none !important;
+        }
+        .tile.no-flip .flip-card-front {
+            display: none !important;
+        }
+        .tile.no-flip .flip-card-back {
+            display: flex !important;
+            transform: none !important;
+            backface-visibility: visible !important;
+            position: relative !important;
+            width: 100% !important;
+            height: 100% !important;
+            border-radius: 20px;
+            background: transparent;
+            overflow: hidden;
+        }
+        .tile.no-flip .flip-hint {
+            display: none !important;
         }
     </style>
 </head>
@@ -282,27 +421,12 @@
                 <i class="fas fa-box"></i>
                 <span>Order</span>
             </button>
-
-            <!-- Cart -->
-            <div class="cart-wrapper">
-                <button class="mini-nav-item cart-nav-item hidden-nav-item" id="cartNavItem" title="Shopping Cart">
-                    <i class="fas fa-shopping-cart"></i>
-                    <span>Cart</span>
-                    <span class="cart-badge" id="cartBadge">0</span>
-                </button>
-                <div id="cartDropdown" class="cart-dropdown">
-                    <div class="cart-dropdown-header">Your Cart</div>
-                    <div id="cartDropdownList" class="cart-dropdown-list">
-                        <div class="cart-empty-message">Your cart is empty.</div>
-                    </div>
-                    <div class="cart-dropdown-footer" style="color:#333 !important;">
-                        <div class="total">Total: $<span id="cartDropdownTotal" style="color:#333 !important;">0.00</span></div>
-                        <button class="checkout-btn" onclick="checkout()">Proceed to Checkout</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Flip button removed entirely -->
+            <!-- Cart is a regular nav item -->
+            <button class="mini-nav-item cart-nav-item" data-index="7" id="cartNavItem">
+                <i class="fas fa-shopping-cart"></i>
+                <span>Cart</span>
+                <span class="cart-badge" id="cartBadge">0</span>
+            </button>
         </nav>
     </div>
 
@@ -354,7 +478,6 @@
                                 </div>
                             </div>
                         </div>
-                        <!-- Back-side flip hint -->
                         <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
                     </div>
                 </div>
@@ -441,21 +564,24 @@
                     <div class="flip-card-back">
                         <div class="back-content" style="width:100%; height:100%; padding:20px; box-sizing:border-box; display:flex; align-items:center; justify-content:center;">
                             <div style="display:flex; flex-direction:row; gap:20px; width:100%; height:100%; max-height:600px; align-items:stretch;">
-                                <div style="flex:1; aspect-ratio:1/2; background:white; border-radius:20px; box-shadow:0 4px 20px rgba(0,0,0,0.1); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; padding:15px; box-sizing:border-box;" onclick="openMerchPopup('tshirt')">
+                                <!-- T-Shirt product -->
+                                <div class="merch-product" style="flex:1; aspect-ratio:1/2; background:white; border-radius:20px; box-shadow:0 4px 20px rgba(0,0,0,0.1); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; padding:15px; box-sizing:border-box;" onclick="openMerchPopup('tshirt')">
                                     <div style="flex:1; width:100%; background-image:url('/static/images/tee-black.png'); background-size:contain; background-position:center; background-repeat:no-repeat;"></div>
                                     <div style="text-align:center; margin-top:8px; background:rgba(255,255,255,0.85); padding:4px 8px; border-radius:8px; width:100%;">
                                         <h3 style="margin:0; color:#333; font-size:1rem;">T-Shirts</h3>
                                         <p style="margin:2px 0 0; color:#ff6b6b; font-weight:bold;">$14.99</p>
                                     </div>
                                 </div>
-                                <div style="flex:1; aspect-ratio:1/2; background:white; border-radius:20px; box-shadow:0 4px 20px rgba(0,0,0,0.1); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; padding:15px; box-sizing:border-box;" onclick="openMerchPopup('sticker')">
+                                <!-- Sticker product -->
+                                <div class="merch-product" style="flex:1; aspect-ratio:1/2; background:white; border-radius:20px; box-shadow:0 4px 20px rgba(0,0,0,0.1); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; padding:15px; box-sizing:border-box;" onclick="openMerchPopup('sticker')">
                                     <div style="flex:1; width:100%; background-image:url('/static/images/sticker.png'); background-size:contain; background-position:center; background-repeat:no-repeat;"></div>
                                     <div style="text-align:center; margin-top:8px; background:rgba(255,255,255,0.85); padding:4px 8px; border-radius:8px; width:100%;">
                                         <h3 style="margin:0; color:#333; font-size:1rem;">Stickers</h3>
                                         <p style="margin:2px 0 0; color:#ff6b6b; font-weight:bold;">$4.99</p>
                                     </div>
                                 </div>
-                                <div style="flex:1; aspect-ratio:1/2; background:white; border-radius:20px; box-shadow:0 4px 20px rgba(0,0,0,0.1); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; padding:15px; box-sizing:border-box;" onclick="openMerchPopup('giftcard')">
+                                <!-- Gift Card product -->
+                                <div class="merch-product" style="flex:1; aspect-ratio:1/2; background:white; border-radius:20px; box-shadow:0 4px 20px rgba(0,0,0,0.1); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; padding:15px; box-sizing:border-box;" onclick="openMerchPopup('giftcard')">
                                     <div style="flex:1; width:100%; background-image:url('/static/images/traditional_gift_card.png'); background-size:contain; background-position:center; background-repeat:no-repeat;"></div>
                                     <div style="text-align:center; margin-top:8px; background:rgba(255,255,255,0.85); padding:4px 8px; border-radius:8px; width:100%; flex-shrink:0;">
                                         <h3 style="margin:0; color:#333; font-size:1rem;">Gift Cards</h3>
@@ -605,6 +731,36 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Tile 7: Cart (no flip) -->
+            <div class="tile no-flip" data-index="7">
+                <div class="flip-card" id="flipCard7">
+                    <!-- Front is hidden via CSS -->
+                    <div class="flip-card-front" style="display:none;"></div>
+                    <div class="flip-card-back">
+                        <div class="back-content" style="padding:0; width:100%; height:100%;">
+                            <div class="cart-tile-content">
+                                <div class="cart-tile-header">
+                                    <h2><i class="fas fa-shopping-cart" style="color:#ff6b6b;"></i> Your Cart</h2>
+                                    <span class="cart-count" id="cartTileCount">0 items</span>
+                                </div>
+                                <div class="cart-tile-list" id="cartTileList">
+                                    <div class="cart-empty-message">Your cart is empty.</div>
+                                </div>
+                                <div class="cart-tile-footer">
+                                    <div class="total">Total: $<span id="cartTileTotal">0.00</span></div>
+                                    <div class="btn-group">
+                                        <button class="checkout-btn" onclick="checkout()">Proceed to Checkout</button>
+                                        <button class="clear-btn" onclick="clearCart()">Clear Cart</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- No flip hint -->
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         <button class="carousel-arrow next" id="nextBtn" aria-label="Next">
@@ -644,10 +800,10 @@
         </div>
     </div>
 
-    <!-- Merch Popup Modal -->
+    <!-- Unified Popup Modal (used by both Shop and Merch) -->
     <div id="merchPopup" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
-        <button onclick="closeMerchPopup()" style="position:absolute; top:20px; right:20px; background:rgba(255,255,255,0.2); color:white; border:2px solid rgba(255,255,255,0.3); border-radius:50%; width:50px; height:50px; font-size:28px; cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:20; transition:all 0.3s;">✕</button>
-        <div id="merchPopupContent" style="background:white; border-radius:20px; width:100%; max-width:600px; max-height:90vh; overflow-y:auto; padding:30px; box-sizing:border-box; position:relative;">
+        <div id="merchPopupContent" class="merch-popup-content">
+            <button class="popup-close" onclick="closeMerchPopup()">&times;</button>
             <div id="popupDynamicContent"></div>
         </div>
     </div>
@@ -825,28 +981,31 @@
         function updateCartUI() {
             if (!window.cart) return;
             var count = window.cart.getItemCount();
-            var cartItem = document.getElementById('cartNavItem');
+            // Update badge on the nav button
+            var cartNav = document.getElementById('cartNavItem');
             var badge = document.getElementById('cartBadge');
-            if (cartItem) {
+            if (cartNav) {
                 if (count > 0) {
-                    cartItem.classList.remove('hidden-nav-item');
-                    cartItem.classList.add('has-items');
+                    cartNav.classList.add('has-items');
                     if (badge) badge.textContent = count;
                 } else {
-                    cartItem.classList.add('hidden-nav-item');
-                    cartItem.classList.remove('has-items');
+                    cartNav.classList.remove('has-items');
+                    if (badge) badge.textContent = '0';
                 }
             }
-            renderCartDropdown();
+            // Update the cart tile content
+            renderCartTile();
         }
 
-        function renderCartDropdown() {
-            var list = document.getElementById('cartDropdownList');
-            var totalSpan = document.getElementById('cartDropdownTotal');
+        function renderCartTile() {
+            var list = document.getElementById('cartTileList');
+            var totalSpan = document.getElementById('cartTileTotal');
+            var countSpan = document.getElementById('cartTileCount');
             if (!list || !totalSpan) return;
             if (!window.cart || window.cart.isEmpty()) {
                 list.innerHTML = '<div class="cart-empty-message">Your cart is empty.</div>';
                 totalSpan.textContent = '0.00';
+                if (countSpan) countSpan.textContent = '0 items';
                 return;
             }
             var items = window.cart.getItems();
@@ -854,34 +1013,45 @@
             var html = '';
             items.forEach(function(item) {
                 var price = (item.price * item.quantity).toFixed(2);
-                html += '<div class="cart-dropdown-item">' +
+                html += '<div class="cart-tile-item">' +
                     '<span class="item-title">' + item.title + (item.quantity > 1 ? ' × ' + item.quantity : '') + '</span>' +
                     '<span class="item-price">$' + price + '</span>' +
+                    '<button class="remove-item-btn" data-id="' + item.id + '">&times;</button>' +
                 '</div>';
             });
             list.innerHTML = html;
             totalSpan.textContent = total.toFixed(2);
-        }
+            if (countSpan) countSpan.textContent = items.reduce((sum, item) => sum + item.quantity, 0) + ' items';
 
-        // Toggle cart dropdown
-        document.addEventListener('DOMContentLoaded', function() {
-            var cartBtn = document.getElementById('cartNavItem');
-            var dropdown = document.getElementById('cartDropdown');
-            if (cartBtn && dropdown) {
-                cartBtn.addEventListener('click', function(e) {
+            list.querySelectorAll('.remove-item-btn').forEach(function(btn) {
+                btn.addEventListener('click', function(e) {
                     e.stopPropagation();
-                    dropdown.classList.toggle('show');
-                });
-                document.addEventListener('click', function(e) {
-                    if (!dropdown.contains(e.target) && e.target !== cartBtn) {
-                        dropdown.classList.remove('show');
+                    var id = this.getAttribute('data-id');
+                    if (id && window.cart) {
+                        window.cart.removeItem(id);
+                        updateCartUI();
                     }
                 });
-            }
-            updateCartUI();
-        });
+            });
+        }
 
-        // ===== MERCH POPUPS =====
+        function clearCart() {
+            if (window.cart) {
+                window.cart.clear();
+                updateCartUI();
+            }
+        }
+
+        // ===== UNIFIED POPUP =====
+        function closeMerchPopup() {
+            var popup = document.getElementById('merchPopup');
+            popup.style.opacity = '0';
+            setTimeout(function() {
+                popup.style.display = 'none';
+                document.body.style.overflow = '';
+            }, 300);
+        }
+
         function openMerchPopup(type) {
             var popup = document.getElementById('merchPopup');
             var content = document.getElementById('popupDynamicContent');
@@ -889,9 +1059,9 @@
 
             if (type === 'tshirt') {
                 html = `
-                    <h2 style="text-align:center; color:#333; margin-bottom:20px;"><i class="fas fa-tshirt" style="color:#ff6b6b;"></i> PigStyle T-Shirt</h2>
-                    <div style="text-align:center; margin-bottom:20px;">
-                        <img src="/static/images/tee-black.png" alt="T-Shirt" style="max-width:100%; max-height:200px; object-fit:contain; border-radius:10px;" id="teePopupImage">
+                    <h2><i class="fas fa-tshirt" style="color:#ff6b6b;"></i> PigStyle T-Shirt</h2>
+                    <div class="popup-image">
+                        <img src="/static/images/tee-black.png" alt="T-Shirt" id="teePopupImage">
                     </div>
                     <div style="margin-bottom:15px;">
                         <label style="display:block; color:#666; font-size:14px; font-weight:500; margin-bottom:5px;">Color</label>
@@ -911,29 +1081,25 @@
                             <option value="XXL">XX Large (XXL)</option>
                         </select>
                     </div>
-                    <div style="margin-bottom:20px; padding:10px; border-radius:8px; background:#e8f5e9; color:#2E7D32; text-align:center; font-weight:600;">
-                        ✅ In Stock (13 available)
-                    </div>
-                    <button onclick="addToCart('T-Shirt', 14.99, 'tee', { color: document.querySelector('.color-btn.active')?.dataset?.color || 'black', size: document.getElementById('teeSize').value })" style="width:100%; padding:14px; background:#ff6b6b; color:white; border:none; border-radius:30px; font-size:16px; font-weight:600; cursor:pointer; transition:all 0.2s;">
+                    <div class="popup-stock in-stock">✅ In Stock (13 available)</div>
+                    <button class="add-to-cart-btn" onclick="addToCart('T-Shirt', 14.99, 'accessory', { color: document.querySelector('.color-btn.active')?.dataset?.color || 'black', size: document.getElementById('teeSize').value })">
                         <i class="fas fa-shopping-cart"></i> Add to Cart - $14.99
                     </button>
                 `;
             } else if (type === 'sticker') {
                 html = `
-                    <h2 style="text-align:center; color:#333; margin-bottom:20px;"><i class="fas fa-sticky-note" style="color:#ff6b6b;"></i> PigStyle Sticker Pack</h2>
-                    <div style="text-align:center; margin-bottom:20px;">
-                        <img src="/static/images/sticker.png" alt="Sticker" style="max-width:100%; max-height:200px; object-fit:contain; border-radius:10px;">
+                    <h2><i class="fas fa-sticky-note" style="color:#ff6b6b;"></i> PigStyle Sticker Pack</h2>
+                    <div class="popup-image">
+                        <img src="/static/images/sticker.png" alt="Sticker">
                     </div>
-                    <div style="margin-bottom:20px; padding:10px; border-radius:8px; background:#e8f5e9; color:#2E7D32; text-align:center; font-weight:600;">
-                        ✅ In Stock (50+ available)
-                    </div>
-                    <button onclick="addToCart('Sticker Pack', 4.99, 'sticker')" style="width:100%; padding:14px; background:#ff6b6b; color:white; border:none; border-radius:30px; font-size:16px; font-weight:600; cursor:pointer; transition:all 0.2s;">
+                    <div class="popup-stock in-stock">✅ In Stock (50+ available)</div>
+                    <button class="add-to-cart-btn" onclick="addToCart('Sticker Pack', 4.99, 'accessory')">
                         <i class="fas fa-shopping-cart"></i> Add to Cart - $4.99
                     </button>
                 `;
             } else if (type === 'giftcard') {
                 html = `
-                    <h2 style="text-align:center; color:#333; margin-bottom:20px;"><i class="fas fa-gift" style="color:#4CAF50;"></i> PigStyle Gift Card</h2>
+                    <h2><i class="fas fa-gift" style="color:#4CAF50;"></i> PigStyle Gift Card</h2>
                     <p style="text-align:center; color:#666; margin-bottom:20px;">Choose your design below</p>
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:20px;">
                         <div style="border-radius:12px; overflow:hidden; border:3px solid #4CAF50; cursor:pointer; transition:all 0.3s;" onclick="selectGiftCardDesign('pig', this)" class="design-option active">
@@ -970,7 +1136,7 @@
                         <span style="color:#666; font-size:14px;">Total: </span>
                         <span id="giftTotal" style="color:#4CAF50; font-size:24px; font-weight:bold;">$50.00</span>
                     </div>
-                    <button onclick="addGiftCardToCart()" style="width:100%; padding:14px; background:#4CAF50; color:white; border:none; border-radius:30px; font-size:16px; font-weight:600; cursor:pointer; transition:all 0.2s;">
+                    <button class="add-to-cart-btn" onclick="addGiftCardToCart()" style="background:#4CAF50;">
                         <i class="fas fa-gift"></i> Add Gift Card to Cart
                     </button>
                 `;
@@ -986,15 +1152,111 @@
             }, 50);
         }
 
-        function closeMerchPopup() {
+        // ===== RECORD POPUP (uses the same merch popup) =====
+        function openRecordPopup(record) {
             var popup = document.getElementById('merchPopup');
+            var content = document.getElementById('popupDynamicContent');
+            
+            var inStock = record.status_id === 2 || record.status_id === 1;
+            var price = parseFloat(record.store_price) || 0;
+            var condition = record.condition || 'Unknown';
+            
+            var genre = record.discogs_genre_raw ? record.discogs_genre_raw.split(',')[0].trim() : '';
+            var formatName = record.format_name || '';
+            
+            var html = `
+                <h2>${record.artist}</h2>
+                <div class="popup-image">
+                    ${record.image_url ? `<img src="${record.image_url}" alt="${record.title}">` : '<i class="fas fa-music" style="font-size:64px; color:#ddd;"></i>'}
+                </div>
+                <div class="popup-description">
+                    <strong>${record.title}</strong>
+                    ${genre ? `<br><span style="color:#888; font-size:0.9rem;">Genre: ${genre}</span>` : ''}
+                    ${formatName ? `<br><span style="color:#888; font-size:0.9rem;">Format: ${formatName}</span>` : ''}
+                    <br><span style="color:#888; font-size:0.9rem;">Condition: ${condition}</span>
+                </div>
+                <div class="popup-price">$${price.toFixed(2)}</div>
+                <div class="popup-stock ${inStock ? 'in-stock' : 'out-of-stock'}">
+                    ${inStock ? '✅ In Stock' : '❌ Out of Stock'}
+                </div>
+                ${inStock ? `
+                    <button class="add-to-cart-btn" onclick="addRecordToCart(${record.id}, '${record.artist.replace(/'/g, "\\'")}', '${record.title.replace(/'/g, "\\'")}', ${price}, '${condition.replace(/'/g, "\\'")}')">
+                        <i class="fas fa-shopping-cart"></i> Add to Cart - $${price.toFixed(2)}
+                    </button>
+                ` : `
+                    <button class="add-to-cart-btn" disabled>Out of Stock</button>
+                `}
+            `;
+            
+            content.innerHTML = html;
+            popup.style.display = 'flex';
             popup.style.opacity = '0';
+            document.body.style.overflow = 'hidden';
             setTimeout(function() {
-                popup.style.display = 'none';
-                document.body.style.overflow = '';
-            }, 300);
+                popup.style.opacity = '1';
+                popup.style.transition = 'opacity 0.3s ease';
+            }, 50);
         }
 
+        // ===== ADD RECORD TO CART =====
+        function addRecordToCart(id, artist, title, price, condition) {
+            if (!window.cart) {
+                alert('Cart not initialized.');
+                return;
+            }
+            window.cart.addItem({
+                id: id,
+                type: 'record',
+                title: artist + ' - ' + title,
+                price: price,
+                quantity: 1,
+                artist: artist,
+                condition: condition
+            });
+            closeMerchPopup();
+            updateCartUI();
+        }
+
+        // ===== MERCH ADD TO CART =====
+        function addToCart(title, price, type, options) {
+            if (!window.cart) {
+                alert('Cart not initialized.');
+                return;
+            }
+            window.cart.addItem({
+                id: Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                type: type || 'accessory',
+                title: title,
+                price: price,
+                quantity: 1,
+                options: options || {}
+            });
+            closeMerchPopup();
+            updateCartUI();
+        }
+
+        function addGiftCardToCart() {
+            var amount = selectedGiftAmount;
+            var design = selectedGiftDesign;
+            var delivery = document.getElementById('deliveryMethod')?.value || 'digital';
+            var recipient = document.getElementById('recipientEmail')?.value || '';
+            if (amount <= 0) {
+                alert('Please select a valid amount.');
+                return;
+            }
+            window.cart.addItem({
+                id: Date.now() + '_gift_' + Math.random().toString(36).substr(2, 6),
+                type: 'accessory',
+                title: 'Gift Card (' + design + ' design)',
+                price: amount,
+                quantity: 1,
+                options: { design: design, delivery: delivery, recipient: recipient }
+            });
+            closeMerchPopup();
+            updateCartUI();
+        }
+
+        // ===== TEE COLOR =====
         function selectTeeColor(color, btn) {
             document.querySelectorAll('.color-btn').forEach(function(b) {
                 b.classList.remove('active');
@@ -1009,6 +1271,7 @@
             }
         }
 
+        // ===== GIFT CARD HELPERS =====
         var selectedGiftDesign = 'pig';
         var selectedGiftAmount = 50;
 
@@ -1057,44 +1320,7 @@
             if (totalEl) totalEl.textContent = '$' + total.toFixed(2);
         }
 
-        function addToCart(title, price, type, options) {
-            if (!window.cart) {
-                alert('Cart not initialized.');
-                return;
-            }
-            window.cart.addItem({
-                id: Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-                type: 'accessory',
-                title: title,
-                price: price,
-                quantity: 1,
-                options: options || {}
-            });
-            closeMerchPopup();
-            updateCartUI();
-        }
-
-        function addGiftCardToCart() {
-            var amount = selectedGiftAmount;
-            var design = selectedGiftDesign;
-            var delivery = document.getElementById('deliveryMethod')?.value || 'digital';
-            var recipient = document.getElementById('recipientEmail')?.value || '';
-            if (amount <= 0) {
-                alert('Please select a valid amount.');
-                return;
-            }
-            window.cart.addItem({
-                id: Date.now() + '_gift_' + Math.random().toString(36).substr(2, 6),
-                type: 'accessory',
-                title: 'Gift Card (' + design + ' design)',
-                price: amount,
-                quantity: 1,
-                options: { design: design, delivery: delivery, recipient: recipient }
-            });
-            closeMerchPopup();
-            updateCartUI();
-        }
-
+        // ===== CHECKOUT =====
         function checkout() {
             if (!window.cart || window.cart.isEmpty()) {
                 alert('Your cart is empty.');
@@ -1127,22 +1353,70 @@
             });
         }
 
-        // ===== FLIP HINT TOGGLE =====
+        // ===== FLIP HANDLING (with memory, but skipping cart tile) =====
+        var flippedState = [];
+
         function initFlipHints() {
+            // Flip hint click
             document.querySelectorAll('.flip-hint').forEach(function(hint) {
                 hint.addEventListener('click', function(e) {
                     e.stopPropagation();
                     var card = this.closest('.flip-card');
                     if (card) {
+                        var tile = card.closest('.tile');
+                        var index = parseInt(tile.dataset.index);
+                        // Skip cart tile (index 7)
+                        if (index === 7) return;
                         card.classList.toggle('flipped');
+                        flippedState[index] = card.classList.contains('flipped');
                     }
                 });
             });
+
+            // Click on the card itself – only flip if NOT already flipped (front→back only)
+            document.querySelectorAll('.flip-card').forEach(function(card) {
+                card.addEventListener('click', function(e) {
+                    // Ignore clicks on interactive elements inside the card
+                    if (e.target.closest('.merch-item, .browse-record-card, .record-card, .merch-card, .add-to-cart-btn, .amount-btn, .design-option, .merch-product, input, select, button, a')) return;
+                    // Ignore clicks on the flip hint (it has its own handler)
+                    if (e.target.closest('.flip-hint')) return;
+                    // Ignore clicks that originate from the fixed header (nav buttons etc.)
+                    if (e.target.closest('.fixed-header')) return;
+
+                    var tile = this.closest('.tile');
+                    var index = parseInt(tile.dataset.index);
+                    // Skip cart tile (index 7)
+                    if (index === 7) return;
+
+                    // Only flip if currently on front (not flipped)
+                    if (!this.classList.contains('flipped')) {
+                        this.classList.toggle('flipped');
+                        flippedState[index] = this.classList.contains('flipped');
+                    }
+                    // If already flipped (back side), do nothing – prevents flipping back
+                });
+            });
+
+            // Initialize flippedState with current state on load
+            document.querySelectorAll('.tile').forEach(function(tile) {
+                var index = parseInt(tile.dataset.index);
+                var card = tile.querySelector('.flip-card');
+                // For cart tile, force flippedState[7] to true so it stays "flipped" (back side)
+                if (index === 7) {
+                    flippedState[7] = true;
+                    // Ensure the card is always showing the back
+                    if (card) {
+                        card.classList.add('flipped');
+                    }
+                } else {
+                    flippedState[index] = card ? card.classList.contains('flipped') : false;
+                }
+            });
         }
 
-        // ===== CAROUSEL NAVIGATION =====
+        // ===== NAVIGATION =====
         function initNavigation() {
-            var navButtons = document.querySelectorAll('.mini-nav-item:not(.cart-nav-item):not(.flip-btn)');
+            var navButtons = document.querySelectorAll('.mini-nav-item');
             var tilesWrapper = document.getElementById('tilesWrapper');
             var currentIndex = 0;
             var totalTiles = document.querySelectorAll('.tile').length;
@@ -1154,6 +1428,23 @@
                 tilesWrapper.style.transform = 'translateX(-' + (index * 100) + '%)';
                 navButtons.forEach(function(btn, i) {
                     btn.classList.toggle('active', i === index);
+                });
+                // Restore flip state for the new tile (skip cart tile)
+                document.querySelectorAll('.tile').forEach(function(tile) {
+                    var idx = parseInt(tile.dataset.index);
+                    var card = tile.querySelector('.flip-card');
+                    if (card) {
+                        if (idx === 7) {
+                            // Always keep cart tile flipped
+                            card.classList.add('flipped');
+                        } else {
+                            if (flippedState[idx]) {
+                                card.classList.add('flipped');
+                            } else {
+                                card.classList.remove('flipped');
+                            }
+                        }
+                    }
                 });
             }
 
@@ -1179,7 +1470,6 @@
                 });
             }
 
-            // Set initial active
             navButtons.forEach(function(btn, i) {
                 btn.classList.toggle('active', i === 0);
             });
