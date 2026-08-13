@@ -89,7 +89,11 @@
             background: rgba(255, 107, 107, 0.12);
         }
 
-        /* ===== Cart as a normal menu item ===== */
+        /* ===== Cart wrapper & button ===== */
+        .cart-wrapper {
+            position: relative;
+            display: inline-block;
+        }
         .mini-nav-item.cart-nav-item {
             position: relative;
         }
@@ -119,7 +123,7 @@
             display: none;
         }
 
-        /* ===== Cart dropdown – with forced black text ===== */
+        /* ===== Cart dropdown (sibling of the button) ===== */
         .cart-dropdown {
             position: absolute;
             top: 100%;
@@ -157,7 +161,7 @@
             font-size: 0.9rem;
         }
         .cart-dropdown-item .item-title {
-            color: #333 !important;   /* force black */
+            color: #333 !important;
         }
         .cart-dropdown-item .item-price {
             color: #ff6b6b !important;
@@ -169,7 +173,7 @@
             text-align: center;
         }
         .cart-dropdown-footer .total {
-            color: #333 !important;   /* force black */
+            color: #333 !important;
             font-weight: bold;
             font-size: 1.1rem;
         }
@@ -220,6 +224,7 @@
     <!-- Fixed Header -->
     <div class="fixed-header">
         <nav class="mini-nav" id="miniNav">
+            <!-- Normal menu items -->
             <button class="mini-nav-item active" data-index="0">
                 <i class="fas fa-home"></i>
                 <span>Home</span>
@@ -249,24 +254,26 @@
                 <span>Order</span>
             </button>
 
-            <!-- Cart button (nav item) -->
-            <button class="mini-nav-item cart-nav-item hidden-nav-item" id="cartNavItem" title="Shopping Cart">
-                <i class="fas fa-shopping-cart"></i>
-                <span>Cart</span>
-                <span class="cart-badge" id="cartBadge">0</span>
+            <!-- Cart as a normal menu item (button + dropdown as sibling) -->
+            <div class="cart-wrapper">
+                <button class="mini-nav-item cart-nav-item hidden-nav-item" id="cartNavItem" title="Shopping Cart">
+                    <i class="fas fa-shopping-cart"></i>
+                    <span>Cart</span>
+                    <span class="cart-badge" id="cartBadge">0</span>
+                </button>
                 <div id="cartDropdown" class="cart-dropdown">
                     <div class="cart-dropdown-header">Your Cart</div>
                     <div id="cartDropdownList" class="cart-dropdown-list">
                         <div class="cart-empty-message">Your cart is empty.</div>
                     </div>
                     <div class="cart-dropdown-footer" style="color:#333 !important;">
-                        <div  class="total" >Total: $<span id="cartDropdownTotal" style="color:#333 !important;">0.00</span></div>
-                        <!-- Proceed to Checkout button is INSIDE the dropdown -->
+                        <div class="total">Total: $<span id="cartDropdownTotal" style="color:#333 !important;">0.00</span></div>
                         <button class="checkout-btn" onclick="checkout()">Proceed to Checkout</button>
                     </div>
                 </div>
-            </button>
+            </div>
 
+            <!-- Flip button - hidden by default -->
             <button class="mini-nav-item flip-btn hidden" id="flipBtn">
                 <i class="fas fa-rotate"></i>
             </button>
