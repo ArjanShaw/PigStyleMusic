@@ -34,8 +34,8 @@
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-    <!-- Additional header styles -->
     <style>
+        /* ===== Header & mini-nav ===== */
         .mini-nav {
             display: flex;
             justify-content: center;
@@ -89,7 +89,7 @@
             background: rgba(255, 107, 107, 0.12);
         }
 
-        /* Cart as a normal menu item */
+        /* ===== Cart as a normal menu item ===== */
         .mini-nav-item.cart-nav-item {
             position: relative;
         }
@@ -119,7 +119,7 @@
             display: none;
         }
 
-        /* Cart dropdown - without the checkout button */
+        /* ===== Cart dropdown – with forced black text ===== */
         .cart-dropdown {
             position: absolute;
             top: 100%;
@@ -157,10 +157,10 @@
             font-size: 0.9rem;
         }
         .cart-dropdown-item .item-title {
-            color: #333;
+            color: #333 !important;   /* force black */
         }
         .cart-dropdown-item .item-price {
-            color: #ff6b6b;
+            color: #ff6b6b !important;
             font-weight: bold;
         }
         .cart-dropdown-footer {
@@ -169,10 +169,25 @@
             text-align: center;
         }
         .cart-dropdown-footer .total {
+            color: #333 !important;   /* force black */
             font-weight: bold;
             font-size: 1.1rem;
         }
-        /* Proceed to Checkout button removed */
+        .cart-dropdown-footer .checkout-btn {
+            margin-top: 8px;
+            padding: 8px 20px;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 30px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+        }
+        .cart-dropdown-footer .checkout-btn:hover {
+            background: #ff5252;
+        }
         .cart-empty-message {
             padding: 20px;
             text-align: center;
@@ -205,7 +220,6 @@
     <!-- Fixed Header -->
     <div class="fixed-header">
         <nav class="mini-nav" id="miniNav">
-            <!-- Normal menu items -->
             <button class="mini-nav-item active" data-index="0">
                 <i class="fas fa-home"></i>
                 <span>Home</span>
@@ -235,7 +249,7 @@
                 <span>Order</span>
             </button>
 
-            <!-- Cart as a normal menu item (no notification bell) -->
+            <!-- Cart button (nav item) -->
             <button class="mini-nav-item cart-nav-item hidden-nav-item" id="cartNavItem" title="Shopping Cart">
                 <i class="fas fa-shopping-cart"></i>
                 <span>Cart</span>
@@ -247,19 +261,19 @@
                     </div>
                     <div class="cart-dropdown-footer">
                         <div class="total">Total: $<span id="cartDropdownTotal">0.00</span></div>
-                        <!-- Proceed to Checkout button removed -->
+                        <!-- Proceed to Checkout button is INSIDE the dropdown -->
+                        <button class="checkout-btn" onclick="checkout()">Proceed to Checkout</button>
                     </div>
                 </div>
             </button>
 
-            <!-- Flip button - hidden by default -->
             <button class="mini-nav-item flip-btn hidden" id="flipBtn">
                 <i class="fas fa-rotate"></i>
             </button>
         </nav>
     </div>
 
-    <!-- Carousel (unchanged) -->
+    <!-- Carousel (all tiles) -->
     <div class="carousel-container" id="carousel">
         <button class="carousel-arrow prev" id="prevBtn" aria-label="Previous">
             <i class="fas fa-chevron-left"></i>
@@ -323,7 +337,6 @@
                                 <div class="browse-search-wrapper">
                                     <input type="text" id="browseSearchBox" placeholder="Search by artist or record title...">
                                 </div>
-
                                 <div class="browse-filter-section">
                                     <div class="browse-filter-group">
                                         <button id="browseGenreFilterBtn" class="browse-filter-btn">
@@ -340,7 +353,6 @@
                                             </div>
                                         </div>
                                     </div>
-
                                     <div class="browse-filter-group">
                                         <button id="browseFormatFilterBtn" class="browse-filter-btn">
                                             <i class="fas fa-record-vinyl"></i> Format
@@ -356,21 +368,17 @@
                                             </div>
                                         </div>
                                     </div>
-
                                     <button id="browseNewArrivalsBtn" class="browse-filter-btn active">
                                         <i class="fas fa-calendar-week"></i> New Arrivals
                                     </button>
-
                                     <button id="browseNewVinylBtn" class="browse-filter-btn">
                                         <i class="fas fa-record-vinyl"></i> New Vinyl
                                     </button>
                                 </div>
-
                                 <div id="browseFilterStatusRow" class="browse-filter-status-row">
                                     <div class="browse-filter-summary" id="browseFilterSummary"></div>
                                     <button id="browseClearAllFiltersBtn" class="browse-clear-filters-link">Clear all ✕</button>
                                 </div>
-
                                 <div id="browseCatalogContainer">
                                     <div class="browse-loading-indicator">
                                         <div class="browse-loading-dots">
@@ -397,7 +405,6 @@
                     <div class="flip-card-back">
                         <div class="back-content" style="width:100%; height:100%; padding:20px; box-sizing:border-box; display:flex; align-items:center; justify-content:center;">
                             <div style="display:flex; flex-direction:row; gap:20px; width:100%; height:100%; max-height:600px; align-items:stretch;">
-                                <!-- T-Shirt -->
                                 <div style="flex:1; aspect-ratio:1/2; background:white; border-radius:20px; box-shadow:0 4px 20px rgba(0,0,0,0.1); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; padding:15px; box-sizing:border-box;" onclick="openMerchPopup('tshirt')">
                                     <div style="flex:1; width:100%; background-image:url('/static/images/tee-black.png'); background-size:contain; background-position:center; background-repeat:no-repeat;"></div>
                                     <div style="text-align:center; margin-top:8px; background:rgba(255,255,255,0.85); padding:4px 8px; border-radius:8px; width:100%;">
@@ -405,7 +412,6 @@
                                         <p style="margin:2px 0 0; color:#ff6b6b; font-weight:bold;">$14.99</p>
                                     </div>
                                 </div>
-                                <!-- Sticker -->
                                 <div style="flex:1; aspect-ratio:1/2; background:white; border-radius:20px; box-shadow:0 4px 20px rgba(0,0,0,0.1); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; padding:15px; box-sizing:border-box;" onclick="openMerchPopup('sticker')">
                                     <div style="flex:1; width:100%; background-image:url('/static/images/sticker.png'); background-size:contain; background-position:center; background-repeat:no-repeat;"></div>
                                     <div style="text-align:center; margin-top:8px; background:rgba(255,255,255,0.85); padding:4px 8px; border-radius:8px; width:100%;">
@@ -413,7 +419,6 @@
                                         <p style="margin:2px 0 0; color:#ff6b6b; font-weight:bold;">$4.99</p>
                                     </div>
                                 </div>
-                                <!-- Gift Card -->
                                 <div style="flex:1; aspect-ratio:1/2; background:white; border-radius:20px; box-shadow:0 4px 20px rgba(0,0,0,0.1); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; padding:15px; box-sizing:border-box;" onclick="openMerchPopup('giftcard')">
                                     <div style="flex:1; width:100%; background-image:url('/static/images/traditional_gift_card.png'); background-size:contain; background-position:center; background-repeat:no-repeat;"></div>
                                     <div style="text-align:center; margin-top:8px; background:rgba(255,255,255,0.85); padding:4px 8px; border-radius:8px; width:100%; flex-shrink:0;">
@@ -606,14 +611,9 @@
         </div>
     </div>
 
-    <!-- INLINE CART CODE (guaranteed to load) -->
+    <!-- INLINE CART CODE -->
     <script>
-        // ============================================================
-        // cart.js - Shared Shopping Cart (localStorage) - INLINED
-        // ============================================================
-
         console.log('📦 cart.js loaded (inline)');
-
         const CART_STORAGE_KEY = 'pigstyle_cart';
 
         class ShoppingCart {
@@ -759,22 +759,16 @@
             }
         }
 
-        // Ensure window.cart is always defined
         if (typeof window.cart === 'undefined' || !window.cart) {
-            console.warn('Cart not previously defined – creating new instance.');
             window.cart = new ShoppingCart();
-        } else {
-            if (!window.cart.getItems) {
-                console.warn('Existing cart is broken – replacing.');
-                window.cart = new ShoppingCart();
-            }
+        } else if (!window.cart.getItems) {
+            window.cart = new ShoppingCart();
         }
-
         console.log('📦 Cart initialized with', window.cart.getItemCount(), 'items');
     </script>
 
     <script>
-        // ==================== PAYMENT MODAL ====================
+        // ===== PAYMENT MODAL =====
         window.closePaymentModal = function() {
             var modal = document.getElementById('payment-modal');
             if (modal) modal.classList.remove('active');
@@ -786,7 +780,7 @@
             if (errorEl) errorEl.style.display = 'none';
         };
 
-        // ==================== CART UI (Header item) ====================
+        // ===== CART UI =====
         function updateCartUI() {
             if (!window.cart) return;
             var count = window.cart.getItemCount();
@@ -846,10 +840,182 @@
             updateCartUI();
         });
 
-        // ==================== MERCH POPUPS (unchanged) ====================
-        // ... (the same openMerchPopup, closeMerchPopup, selectTeeColor, etc.)
+        // ===== MERCH POPUPS =====
+        function openMerchPopup(type) {
+            var popup = document.getElementById('merchPopup');
+            var content = document.getElementById('popupDynamicContent');
+            var html = '';
 
-        // ==================== ADD TO CART functions ====================
+            if (type === 'tshirt') {
+                html = `
+                    <h2 style="text-align:center; color:#333; margin-bottom:20px;"><i class="fas fa-tshirt" style="color:#ff6b6b;"></i> PigStyle T-Shirt</h2>
+                    <div style="text-align:center; margin-bottom:20px;">
+                        <img src="/static/images/tee-black.png" alt="T-Shirt" style="max-width:100%; max-height:200px; object-fit:contain; border-radius:10px;" id="teePopupImage">
+                    </div>
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; color:#666; font-size:14px; font-weight:500; margin-bottom:5px;">Color</label>
+                        <div style="display:flex; gap:10px;">
+                            <button onclick="selectTeeColor('black', this)" style="width:40px; height:40px; border-radius:50%; border:3px solid #ff6b6b; background:#1a1a1a; cursor:pointer; padding:0; transition:all 0.2s;" class="color-btn active"></button>
+                            <button onclick="selectTeeColor('yellow', this)" style="width:40px; height:40px; border-radius:50%; border:3px solid #ddd; background:#FFD700; cursor:pointer; padding:0; transition:all 0.2s;" class="color-btn"></button>
+                            <button onclick="selectTeeColor('purple', this)" style="width:40px; height:40px; border-radius:50%; border:3px solid #ddd; background:#9B59B6; cursor:pointer; padding:0; transition:all 0.2s;" class="color-btn"></button>
+                        </div>
+                    </div>
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; color:#666; font-size:14px; font-weight:500; margin-bottom:5px;">Size</label>
+                        <select id="teeSize" style="width:100%; padding:10px; border-radius:8px; border:2px solid #ddd; font-size:14px; outline:none;">
+                            <option value="S">Small (S)</option>
+                            <option value="M" selected>Medium (M)</option>
+                            <option value="L">Large (L)</option>
+                            <option value="XL">Extra Large (XL)</option>
+                            <option value="XXL">XX Large (XXL)</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom:20px; padding:10px; border-radius:8px; background:#e8f5e9; color:#2E7D32; text-align:center; font-weight:600;">
+                        ✅ In Stock (13 available)
+                    </div>
+                    <button onclick="addToCart('T-Shirt', 14.99, 'tee', { color: document.querySelector('.color-btn.active')?.dataset?.color || 'black', size: document.getElementById('teeSize').value })" style="width:100%; padding:14px; background:#ff6b6b; color:white; border:none; border-radius:30px; font-size:16px; font-weight:600; cursor:pointer; transition:all 0.2s;">
+                        <i class="fas fa-shopping-cart"></i> Add to Cart - $14.99
+                    </button>
+                `;
+            } else if (type === 'sticker') {
+                html = `
+                    <h2 style="text-align:center; color:#333; margin-bottom:20px;"><i class="fas fa-sticky-note" style="color:#ff6b6b;"></i> PigStyle Sticker Pack</h2>
+                    <div style="text-align:center; margin-bottom:20px;">
+                        <img src="/static/images/sticker.png" alt="Sticker" style="max-width:100%; max-height:200px; object-fit:contain; border-radius:10px;">
+                    </div>
+                    <div style="margin-bottom:20px; padding:10px; border-radius:8px; background:#e8f5e9; color:#2E7D32; text-align:center; font-weight:600;">
+                        ✅ In Stock (50+ available)
+                    </div>
+                    <button onclick="addToCart('Sticker Pack', 4.99, 'sticker')" style="width:100%; padding:14px; background:#ff6b6b; color:white; border:none; border-radius:30px; font-size:16px; font-weight:600; cursor:pointer; transition:all 0.2s;">
+                        <i class="fas fa-shopping-cart"></i> Add to Cart - $4.99
+                    </button>
+                `;
+            } else if (type === 'giftcard') {
+                html = `
+                    <h2 style="text-align:center; color:#333; margin-bottom:20px;"><i class="fas fa-gift" style="color:#4CAF50;"></i> PigStyle Gift Card</h2>
+                    <p style="text-align:center; color:#666; margin-bottom:20px;">Choose your design below</p>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:20px;">
+                        <div style="border-radius:12px; overflow:hidden; border:3px solid #4CAF50; cursor:pointer; transition:all 0.3s;" onclick="selectGiftCardDesign('pig', this)" class="design-option active">
+                            <img src="/static/images/pig_shitting_gifts.png" alt="Pig Design" style="width:100%; height:150px; object-fit:cover; display:block;">
+                            <div style="padding:10px; text-align:center; background:#4CAF50; color:white; font-size:14px; font-weight:600;">Pig Design</div>
+                        </div>
+                        <div style="border-radius:12px; overflow:hidden; border:2px solid #ddd; cursor:pointer; transition:all 0.3s;" onclick="selectGiftCardDesign('traditional', this)" class="design-option">
+                            <img src="/static/images/traditional_gift_card.png" alt="Traditional Design" style="width:100%; height:150px; object-fit:cover; display:block;">
+                            <div style="padding:10px; text-align:center; background:#f5f5f5; color:#666; font-size:14px; font-weight:600;">Traditional</div>
+                        </div>
+                    </div>
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; color:#666; font-size:14px; font-weight:500; margin-bottom:5px;">Amount</label>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button onclick="selectGiftAmount(10, this)" style="padding:8px 16px; border-radius:20px; border:2px solid #ddd; background:white; color:#666; font-size:14px; font-weight:600; cursor:pointer; transition:all 0.2s;">$10</button>
+                            <button onclick="selectGiftAmount(25, this)" style="padding:8px 16px; border-radius:20px; border:2px solid #ddd; background:white; color:#666; font-size:14px; font-weight:600; cursor:pointer; transition:all 0.2s;">$25</button>
+                            <button onclick="selectGiftAmount(50, this)" style="padding:8px 16px; border-radius:20px; border:3px solid #4CAF50; background:#4CAF50; color:white; font-size:14px; font-weight:600; cursor:pointer; transition:all 0.2s;" class="amount-btn active">$50</button>
+                            <button onclick="selectGiftAmount(100, this)" style="padding:8px 16px; border-radius:20px; border:2px solid #ddd; background:white; color:#666; font-size:14px; font-weight:600; cursor:pointer; transition:all 0.2s;">$100</button>
+                        </div>
+                    </div>
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; color:#666; font-size:14px; font-weight:500; margin-bottom:5px;">Delivery Method</label>
+                        <select id="deliveryMethod" style="width:100%; padding:10px; border-radius:8px; border:2px solid #ddd; font-size:14px; outline:none;" onchange="updateGiftTotal()">
+                            <option value="digital">💻 Digital (Email) - Free</option>
+                            <option value="print">🖨️ Print at Home - Free</option>
+                            <option value="mail">📬 Mail to Recipient - +$3.99</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom:15px;">
+                        <label style="display:block; color:#666; font-size:14px; font-weight:500; margin-bottom:5px;">Recipient Email (for digital delivery)</label>
+                        <input type="email" id="recipientEmail" placeholder="recipient@email.com" style="width:100%; padding:10px; border-radius:8px; border:2px solid #ddd; font-size:14px; outline:none; box-sizing:border-box;">
+                    </div>
+                    <div style="margin-bottom:20px; padding:10px; border-radius:8px; background:#f5f5f5; text-align:center;">
+                        <span style="color:#666; font-size:14px;">Total: </span>
+                        <span id="giftTotal" style="color:#4CAF50; font-size:24px; font-weight:bold;">$50.00</span>
+                    </div>
+                    <button onclick="addGiftCardToCart()" style="width:100%; padding:14px; background:#4CAF50; color:white; border:none; border-radius:30px; font-size:16px; font-weight:600; cursor:pointer; transition:all 0.2s;">
+                        <i class="fas fa-gift"></i> Add Gift Card to Cart
+                    </button>
+                `;
+            }
+
+            content.innerHTML = html;
+            popup.style.display = 'flex';
+            popup.style.opacity = '0';
+            document.body.style.overflow = 'hidden';
+            setTimeout(function() {
+                popup.style.opacity = '1';
+                popup.style.transition = 'opacity 0.3s ease';
+            }, 50);
+        }
+
+        function closeMerchPopup() {
+            var popup = document.getElementById('merchPopup');
+            popup.style.opacity = '0';
+            setTimeout(function() {
+                popup.style.display = 'none';
+                document.body.style.overflow = '';
+            }, 300);
+        }
+
+        function selectTeeColor(color, btn) {
+            document.querySelectorAll('.color-btn').forEach(function(b) {
+                b.classList.remove('active');
+                b.style.borderColor = '#ddd';
+            });
+            btn.classList.add('active');
+            btn.style.borderColor = '#ff6b6b';
+            btn.dataset.color = color;
+            var img = document.getElementById('teePopupImage');
+            if (img) {
+                img.src = '/static/images/tee-' + color + '.png';
+            }
+        }
+
+        var selectedGiftDesign = 'pig';
+        var selectedGiftAmount = 50;
+
+        function selectGiftCardDesign(design, el) {
+            document.querySelectorAll('.design-option').forEach(function(d) {
+                d.style.borderColor = '#ddd';
+                d.style.borderWidth = '2px';
+                var label = d.querySelector('div:last-child');
+                if (label) {
+                    label.style.background = '#f5f5f5';
+                    label.style.color = '#666';
+                }
+            });
+            el.style.borderColor = '#4CAF50';
+            el.style.borderWidth = '3px';
+            var label = el.querySelector('div:last-child');
+            if (label) {
+                label.style.background = '#4CAF50';
+                label.style.color = 'white';
+            }
+            selectedGiftDesign = design;
+        }
+
+        function selectGiftAmount(amount, btn) {
+            document.querySelectorAll('.amount-btn').forEach(function(b) {
+                b.style.borderColor = '#ddd';
+                b.style.background = 'white';
+                b.style.color = '#666';
+            });
+            btn.style.borderColor = '#4CAF50';
+            btn.style.background = '#4CAF50';
+            btn.style.color = 'white';
+            selectedGiftAmount = amount;
+            updateGiftTotal();
+        }
+
+        function updateGiftTotal() {
+            var amount = selectedGiftAmount;
+            var delivery = document.getElementById('deliveryMethod');
+            var extra = 0;
+            if (delivery && delivery.value === 'mail') {
+                extra = 3.99;
+            }
+            var total = amount + extra;
+            var totalEl = document.getElementById('giftTotal');
+            if (totalEl) totalEl.textContent = '$' + total.toFixed(2);
+        }
+
         function addToCart(title, price, type, options) {
             if (!window.cart) {
                 alert('Cart not initialized.');
@@ -888,10 +1054,38 @@
             updateCartUI();
         }
 
-        // ==================== CHECKOUT (now only accessible elsewhere) ====================
-        // The checkout function is removed from the dropdown, but can still be called programmatically.
+        function checkout() {
+            if (!window.cart || window.cart.isEmpty()) {
+                alert('Your cart is empty.');
+                return;
+            }
+            var total = window.cart.getTotal();
+            var payload = {
+                items: window.cart.getCheckoutPayload(),
+                subtotal: total,
+                total: total,
+                item_type: 'mixed'
+            };
+            console.log('Checkout payload:', payload);
+            fetch(AppConfig.baseUrl + '/api/checkout/process', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (data.status === 'success' && data.checkout_url) {
+                    window.location.href = data.checkout_url;
+                } else {
+                    alert('Checkout failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(function(err) {
+                console.error('Checkout error:', err);
+                alert('Error during checkout: ' + err.message);
+            });
+        }
 
-        // ==================== INIT ====================
         document.addEventListener('DOMContentLoaded', function() {
             updateCartUI();
             var popup = document.getElementById('merchPopup');
@@ -909,12 +1103,6 @@
                 }
             });
         });
-
-        // The rest of the script (openMerchPopup, closeMerchPopup, selectTeeColor, gift helpers)
-        // would be identical to your existing code; I've omitted them for brevity.
-        // You need to keep your original openMerchPopup, closeMerchPopup, selectTeeColor,
-        // selectGiftCardDesign, selectGiftAmount, updateGiftTotal, etc.
-        // They are not shown here but you should have them already.
     </script>
 </body>
 </html>
