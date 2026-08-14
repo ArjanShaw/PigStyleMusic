@@ -89,7 +89,23 @@
             background: rgba(255, 107, 107, 0.12);
         }
 
-        /* ===== Cart button badge ===== */
+        /* Login link in mini-nav (no active state, just a link) */
+        .mini-nav-item.login-link {
+            text-decoration: none;
+            color: #888;
+        }
+        .mini-nav-item.login-link:hover i {
+            color: #ff6b6b;
+        }
+        .mini-nav-item.login-link:hover span {
+            color: #fff;
+        }
+
+        /* ===== Cart wrapper & button ===== */
+        .cart-wrapper {
+            position: relative;
+            display: inline-block;
+        }
         .mini-nav-item.cart-nav-item {
             position: relative;
         }
@@ -115,188 +131,110 @@
         .mini-nav-item.cart-nav-item.has-items i {
             color: #ff6b6b;
         }
-
-        /* ===== Cart tile styles (full page cart, no flip) ===== */
-        .cart-tile-content {
-            width: 100%;
-            height: 100%;
-            padding: 20px;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            background: white;
-            border-radius: 20px;
-            overflow-y: auto;
+        .mini-nav-item.cart-nav-item.hidden-nav-item {
+            display: none;
         }
-        .cart-tile-header {
+
+        /* ===== Cart dropdown ===== */
+        .cart-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 8px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+            width: 380px;
+            max-height: 450px;
+            overflow: hidden;
+            display: none;
+            z-index: 9999;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+        .cart-dropdown.show {
+            display: block;
+        }
+        .cart-dropdown-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid #eee;
+            font-weight: 600;
+            color: #333;
+        }
+        .cart-dropdown-list {
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 5px 0;
+        }
+        .cart-dropdown-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 2px solid #ff6b6b;
-            padding-bottom: 10px;
-            margin-bottom: 15px;
-            flex-shrink: 0;
-        }
-        .cart-tile-header h2 {
-            margin: 0;
-            color: #333;
-        }
-        .cart-tile-header .cart-count {
-            background: #ff6b6b;
-            color: white;
-            padding: 4px 12px;
-            border-radius: 20px;
+            padding: 8px 16px;
+            border-bottom: 1px solid #f5f5f5;
             font-size: 0.9rem;
         }
-
-        /* Two‑column layout for cart body */
-        .cart-body {
-            display: flex;
-            gap: 20px;
-            flex: 1;
-            min-height: 0;
+        .cart-dropdown-item .item-title {
+            color: #333 !important;
         }
-        .cart-left {
-            flex: 1;
-            min-width: 0;
-            display: flex;
-            flex-direction: column;
-        }
-        .cart-left .cart-tile-list {
-            flex: 1;
-            overflow-y: auto;
-            margin-bottom: 15px;
-        }
-        .cart-right {
-            width: 35%;
-            min-width: 200px;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .cart-tile-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 0;
-            border-bottom: 1px solid #f5f5f5;
-        }
-        .cart-tile-item .item-title {
-            color: #333;
-        }
-        .cart-tile-item .item-price {
-            color: #ff6b6b;
+        .cart-dropdown-item .item-price {
+            color: #ff6b6b !important;
             font-weight: bold;
         }
-        .cart-tile-item .remove-item-btn {
+        .cart-dropdown-item .remove-item-btn {
             background: none;
             border: none;
             color: #c62828;
             cursor: pointer;
             font-size: 1.2rem;
             padding: 0 4px;
+            margin-left: 8px;
+            line-height: 1;
         }
-        .cart-empty-message {
+        .cart-dropdown-item .remove-item-btn:hover {
+            color: #b71c1c;
+        }
+        .cart-dropdown-footer {
+            padding: 10px 16px;
+            border-top: 1px solid #eee;
             text-align: center;
-            color: #888;
-            padding: 40px 0;
+        }
+        .cart-dropdown-footer .total {
+            color: #333 !important;
+            font-weight: bold;
             font-size: 1.1rem;
         }
-
-        .cart-tile-footer {
-            border-top: 1px solid #eee;
-            padding-top: 15px;
-            text-align: center;
-            flex-shrink: 0;
-            margin-top: auto;
-        }
-        .cart-tile-footer .total {
-            font-size: 1.3rem;
-            font-weight: bold;
-            color: #333;
-        }
-        .cart-tile-footer .btn-group {
+        .cart-dropdown-footer .btn-group {
             display: flex;
             gap: 8px;
-            margin-top: 10px;
+            margin-top: 8px;
         }
-        .cart-tile-footer .btn-group button {
+        .cart-dropdown-footer .btn-group button {
             flex: 1;
-            padding: 10px;
+            padding: 8px 12px;
             border: none;
             border-radius: 30px;
             font-size: 0.9rem;
             font-weight: 600;
             cursor: pointer;
         }
-        .cart-tile-footer .checkout-btn {
+        .cart-dropdown-footer .checkout-btn {
             background: #ff6b6b;
             color: white;
         }
-        .cart-tile-footer .checkout-btn:hover {
+        .cart-dropdown-footer .checkout-btn:hover {
             background: #ff5252;
         }
-        .cart-tile-footer .clear-btn {
+        .cart-dropdown-footer .clear-btn {
             background: #f5f5f5;
             color: #666;
         }
-        .cart-tile-footer .clear-btn:hover {
+        .cart-dropdown-footer .clear-btn:hover {
             background: #eee;
         }
-
-        /* ===== Shipping section (right column) ===== */
-        .shipping-section {
-            padding: 15px;
-            background: #f9f9f9;
-            border-radius: 10px;
-            border: 1px solid #eee;
-            flex: 1;
-            min-height: 200px;
-        }
-        .shipping-section .delivery-option {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 8px;
-        }
-        .shipping-section .delivery-option input[type="radio"] {
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-        }
-        .shipping-section .delivery-option label {
-            color: #333;
-            font-weight: 500;
-            cursor: pointer;
-        }
-        .shipping-address-fields {
-            margin-top: 10px;
-            padding-top: 10px;
-            border-top: 1px solid #ddd;
-        }
-        .shipping-address-fields input,
-        .shipping-address-fields select {
-            width: 100%;
-            padding: 8px 10px;
-            margin-bottom: 8px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            font-size: 0.9rem;
-            box-sizing: border-box;
-        }
-        .shipping-cost-display {
-            margin-top: 10px;
-            font-weight: 600;
-            color: #333;
-            text-align: right;
-        }
-        .shipping-cost-display .method-label {
-            font-weight: normal;
-            color: #666;
-        }
-
-        .shipping-address-fields.hidden {
-            display: none !important;
+        .cart-empty-message {
+            padding: 20px;
+            text-align: center;
+            color: #888;
         }
 
         /* ===== Flip hint ===== */
@@ -423,36 +361,7 @@
             cursor: not-allowed;
         }
 
-        /* ===== Override for cart tile: no flip and allow clicks inside ===== */
-        .tile.no-flip .flip-card {
-            pointer-events: none;
-            transform: none !important;
-            transform-style: flat !important;
-        }
-        .tile.no-flip .flip-card-front {
-            display: none !important;
-        }
-        .tile.no-flip .flip-card-back {
-            display: flex !important;
-            transform: none !important;
-            backface-visibility: visible !important;
-            position: relative !important;
-            width: 100% !important;
-            height: 100% !important;
-            border-radius: 20px;
-            background: transparent;
-            overflow: hidden;
-            pointer-events: auto !important;
-        }
-        .tile.no-flip .flip-card.flipped,
-        .tile.no-flip .flip-card.flipped .flip-card-back {
-            transform: none !important;
-        }
-        .tile.no-flip .flip-hint {
-            display: none !important;
-        }
-
-        /* ===== Social icons in About Us ===== */
+        /* ===== Social icons ===== */
         .social-icons {
             margin-top: 15px;
             display: flex;
@@ -522,12 +431,34 @@
                 <i class="fas fa-box"></i>
                 <span>Order</span>
             </button>
-            <!-- Cart is a regular nav item -->
-            <button class="mini-nav-item cart-nav-item" data-index="7" id="cartNavItem">
-                <i class="fas fa-shopping-cart"></i>
-                <span>Cart</span>
-                <span class="cart-badge" id="cartBadge">0</span>
-            </button>
+
+            <!-- NEW: Login link (no data-index, just a link) -->
+            <a href="/login" class="mini-nav-item login-link">
+                <i class="fas fa-sign-in-alt"></i>
+                <span>Login</span>
+            </a>
+
+            <!-- Cart -->
+            <div class="cart-wrapper">
+                <button class="mini-nav-item cart-nav-item hidden-nav-item" id="cartNavItem" title="Shopping Cart">
+                    <i class="fas fa-shopping-cart"></i>
+                    <span>Cart</span>
+                    <span class="cart-badge" id="cartBadge">0</span>
+                </button>
+                <div id="cartDropdown" class="cart-dropdown">
+                    <div class="cart-dropdown-header">Your Cart</div>
+                    <div id="cartDropdownList" class="cart-dropdown-list">
+                        <div class="cart-empty-message">Your cart is empty.</div>
+                    </div>
+                    <div class="cart-dropdown-footer" style="color:#333 !important;">
+                        <div class="total">Total: $<span id="cartDropdownTotal" style="color:#333 !important;">0.00</span></div>
+                        <div class="btn-group">
+                            <button class="checkout-btn" onclick="checkout()">Proceed to Checkout</button>
+                            <button class="clear-btn" onclick="clearCart()">Clear Cart</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </nav>
     </div>
 
@@ -565,11 +496,12 @@
                                         <i class="fas fa-music"></i>
                                         <span>Located in the heart of Loveland, Colorado.</span>
                                     </div>
-                                    <!-- Social Icons -->
+                                    <!-- Social Icons (with TikTok) -->
                                     <div class="social-icons">
                                         <a href="https://www.facebook.com/profile.php?id=61582821044262" target="_blank" aria-label="Visit our Facebook page"><i class="fab fa-facebook"></i></a>
                                         <a href="https://www.instagram.com/pigstyle_loveland/" target="_blank" aria-label="Visit our Instagram page"><i class="fab fa-instagram"></i></a>
                                         <a href="https://www.youtube.com/channel/UCz8jHllFjnbG9Jrb3xglDqQ" target="_blank" aria-label="Visit our youtube channel"><i class="fab fa-youtube"></i></a>
+                                        <a href="https://www.tiktok.com/@pigstyle.loveland" target="_blank" aria-label="Visit our TikTok page"><i class="fab fa-tiktok"></i></a>
                                     </div>
                                 </div>
                                 <div class="home-back-tile">
@@ -838,78 +770,6 @@
                     </div>
                 </div>
             </div>
-
-            <!-- Tile 7: Cart (no flip, two‑column layout) -->
-            <div class="tile no-flip" data-index="7">
-                <div class="flip-card" id="flipCard7">
-                    <!-- Front is hidden via CSS -->
-                    <div class="flip-card-front" style="display:none;"></div>
-                    <div class="flip-card-back">
-                        <div class="back-content" style="padding:0; width:100%; height:100%;">
-                            <div class="cart-tile-content">
-                                <div class="cart-tile-header">
-                                    <h2><i class="fas fa-shopping-cart" style="color:#ff6b6b;"></i> Your Cart</h2>
-                                    <span class="cart-count" id="cartTileCount">0 items</span>
-                                </div>
-
-                                <div class="cart-body">
-                                    <!-- Left column: cart items -->
-                                    <div class="cart-left">
-                                        <div class="cart-tile-list" id="cartTileList">
-                                            <div class="cart-empty-message">Your cart is empty.</div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Right column: shipping section -->
-                                    <div class="cart-right">
-                                        <div class="shipping-section" id="shippingSection">
-                                            <div class="delivery-option">
-                                                <input type="radio" id="pickupOption" name="deliveryMethod" value="pickup" checked>
-                                                <label for="pickupOption">📦 Store Pickup (Free)</label>
-                                            </div>
-                                            <div class="delivery-option">
-                                                <input type="radio" id="shippingOption" name="deliveryMethod" value="shipping">
-                                                <label for="shippingOption">🚚 Ship to an address</label>
-                                            </div>
-
-                                            <div class="shipping-address-fields hidden" id="shippingAddressFields">
-                                                <input type="text" id="shippingStreet" placeholder="Street Address">
-                                                <input type="text" id="shippingCity" placeholder="City">
-                                                <input type="text" id="shippingState" placeholder="State / Province">
-                                                <input type="text" id="shippingZip" placeholder="ZIP / Postal Code">
-                                                <select id="shippingCountry">
-                                                    <option value="US">United States</option>
-                                                    <option value="CA">Canada</option>
-                                                    <option value="UK">United Kingdom</option>
-                                                    <option value="AU">Australia</option>
-                                                    <option value="DE">Germany</option>
-                                                    <option value="FR">France</option>
-                                                </select>
-                                            </div>
-
-                                            <div class="shipping-cost-display" id="shippingCostDisplay">
-                                                <span class="method-label">Shipping:</span>
-                                                <span id="shippingCostAmount">$0.00</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Footer spans full width -->
-                                <div class="cart-tile-footer">
-                                    <div class="total">Total: $<span id="cartTileTotal">0.00</span></div>
-                                    <div class="btn-group">
-                                        <button class="checkout-btn" onclick="checkout()">Proceed to Checkout</button>
-                                        <button class="clear-btn" onclick="clearCart()">Clear Cart</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <!-- No flip hint -->
-                    </div>
-                </div>
-            </div>
-
         </div>
 
         <button class="carousel-arrow next" id="nextBtn" aria-label="Next">
@@ -1126,85 +986,49 @@
             if (errorEl) errorEl.style.display = 'none';
         };
 
-        // ===== SHIPPING COST CALCULATOR =====
-        function calculateShippingCost(items) {
-            if (!items || items.length === 0) {
-                return { cost: 0, method: 'Pickup', details: 'Free' };
-            }
-
-            let recordCount = 0;
-            let teeCount = 0;
-            let accessoryCount = 0;
-            for (let item of items) {
-                if (item.type === 'record') recordCount += item.quantity;
-                else if (item.type === 'accessory') {
-                    accessoryCount += item.quantity;
-                } else {
-                    teeCount += item.quantity;
-                }
-            }
-
-            let cost = 0;
-            let method = '';
-
-            if (recordCount === 0 && teeCount === 0 && accessoryCount > 0) {
-                cost = 2.00;
-                method = 'First-Class Letter';
-            } else if (recordCount > 0 && teeCount === 0) {
-                cost = 4.50;
-                if (recordCount > 5) cost += (recordCount - 5) * 0.75;
-                method = 'Media Mail';
-            } else if (teeCount > 0 && recordCount === 0) {
-                cost = 6.00;
-                if (teeCount > 3) cost += (teeCount - 3) * 1.50;
-                method = 'First-Class / Priority';
-            } else if (recordCount > 0 && teeCount > 0) {
-                var totalItems = recordCount + teeCount;
-                cost = 7.50;
-                if (totalItems > 3) cost += (totalItems - 3) * 0.50;
-                method = 'Mixed (Priority)';
-            }
-
-            return { cost: Math.round(cost * 100) / 100, method: method, details: method + ' shipping' };
-        }
-
         // ===== CART UI =====
         function updateCartUI() {
             if (!window.cart) return;
             var count = window.cart.getItemCount();
-            var cartNav = document.getElementById('cartNavItem');
+            var cartItem = document.getElementById('cartNavItem');
             var badge = document.getElementById('cartBadge');
-            if (cartNav) {
+            var dropdown = document.getElementById('cartDropdown');
+            if (cartItem) {
                 if (count > 0) {
-                    cartNav.classList.add('has-items');
+                    cartItem.classList.remove('hidden-nav-item');
+                    cartItem.classList.add('has-items');
                     if (badge) badge.textContent = count;
                 } else {
-                    cartNav.classList.remove('has-items');
-                    if (badge) badge.textContent = '0';
+                    cartItem.classList.add('hidden-nav-item');
+                    cartItem.classList.remove('has-items');
+                    if (dropdown) dropdown.classList.remove('show');
                 }
             }
-            renderCartTile();
-            updateShippingAndTotal();
+            renderCartDropdown();
         }
 
-        function renderCartTile() {
-            var list = document.getElementById('cartTileList');
-            if (!list) return;
+        function renderCartDropdown() {
+            var list = document.getElementById('cartDropdownList');
+            var totalSpan = document.getElementById('cartDropdownTotal');
+            if (!list || !totalSpan) return;
             if (!window.cart || window.cart.isEmpty()) {
                 list.innerHTML = '<div class="cart-empty-message">Your cart is empty.</div>';
+                totalSpan.textContent = '0.00';
                 return;
             }
             var items = window.cart.getItems();
+            var total = window.cart.getTotal();
             var html = '';
             items.forEach(function(item) {
                 var price = (item.price * item.quantity).toFixed(2);
-                html += '<div class="cart-tile-item">' +
+                html += '<div class="cart-dropdown-item">' +
                     '<span class="item-title">' + item.title + (item.quantity > 1 ? ' × ' + item.quantity : '') + '</span>' +
                     '<span class="item-price">$' + price + '</span>' +
                     '<button class="remove-item-btn" data-id="' + item.id + '">&times;</button>' +
                 '</div>';
             });
             list.innerHTML = html;
+            totalSpan.textContent = total.toFixed(2);
 
             list.querySelectorAll('.remove-item-btn').forEach(function(btn) {
                 btn.addEventListener('click', function(e) {
@@ -1218,57 +1042,39 @@
             });
         }
 
-        function updateShippingAndTotal() {
-            var items = window.cart ? window.cart.getItems() : [];
-            var subtotal = window.cart ? window.cart.getTotal() : 0;
-
-            var deliveryMethod = document.querySelector('input[name="deliveryMethod"]:checked');
-            var isShipping = deliveryMethod && deliveryMethod.value === 'shipping';
-
-            var shippingCost = 0;
-            var shippingMethodName = 'Pickup';
-
-            if (isShipping && items.length > 0) {
-                var result = calculateShippingCost(items);
-                shippingCost = result.cost;
-                shippingMethodName = result.method;
-            }
-
-            var total = subtotal + shippingCost;
-
-            document.getElementById('cartTileTotal').textContent = total.toFixed(2);
-
-            var costDisplay = document.getElementById('shippingCostAmount');
-            if (costDisplay) {
-                if (isShipping && items.length > 0) {
-                    costDisplay.textContent = '$' + shippingCost.toFixed(2) + ' (' + shippingMethodName + ')';
-                } else {
-                    costDisplay.textContent = '$0.00';
-                }
-            }
-
-            var addressFields = document.getElementById('shippingAddressFields');
-            if (addressFields) {
-                if (isShipping && items.length > 0) {
-                    addressFields.classList.remove('hidden');
-                } else {
-                    addressFields.classList.add('hidden');
-                }
-            }
-
-            var countSpan = document.getElementById('cartTileCount');
-            if (countSpan) {
-                var count = window.cart ? window.cart.getItemCount() : 0;
-                countSpan.textContent = count + ' items';
-            }
-        }
-
         function clearCart() {
             if (window.cart) {
                 window.cart.clear();
                 updateCartUI();
             }
         }
+
+        function closeCartDropdown() {
+            var dropdown = document.getElementById('cartDropdown');
+            if (dropdown) dropdown.classList.remove('show');
+        }
+
+        // Toggle cart dropdown
+        document.addEventListener('DOMContentLoaded', function() {
+            var cartBtn = document.getElementById('cartNavItem');
+            var dropdown = document.getElementById('cartDropdown');
+            if (cartBtn && dropdown) {
+                cartBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    if (window.cart && !window.cart.isEmpty()) {
+                        dropdown.classList.toggle('show');
+                    } else {
+                        dropdown.classList.remove('show');
+                    }
+                });
+                document.addEventListener('click', function(e) {
+                    if (!dropdown.contains(e.target) && e.target !== cartBtn) {
+                        dropdown.classList.remove('show');
+                    }
+                });
+            }
+            updateCartUI();
+        });
 
         // ===== UNIFIED POPUP =====
         function closeMerchPopup() {
@@ -1554,52 +1360,13 @@
                 alert('Your cart is empty.');
                 return;
             }
-
-            var deliveryMethod = document.querySelector('input[name="deliveryMethod"]:checked');
-            var isShipping = deliveryMethod && deliveryMethod.value === 'shipping';
-
-            var items = window.cart.getCheckoutPayload();
-
-            var shippingCost = 0;
-            var shippingMethodName = 'Pickup';
-            if (isShipping) {
-                var result = calculateShippingCost(window.cart.getItems());
-                shippingCost = result.cost;
-                shippingMethodName = result.method;
-                items.push({
-                    title: 'Shipping (' + shippingMethodName + ')',
-                    price: shippingCost,
-                    quantity: 1
-                });
-            }
-
-            var subtotal = window.cart.getTotal();
-            var total = subtotal + shippingCost;
-
+            var total = window.cart.getTotal();
             var payload = {
-                items: items,
-                subtotal: subtotal,
-                shipping_method: isShipping ? 'shipping' : 'pickup',
-                shipping_cost: shippingCost,
+                items: window.cart.getCheckoutPayload(),
+                subtotal: total,
                 total: total,
                 item_type: 'mixed'
             };
-
-            if (isShipping) {
-                var address = {
-                    street: document.getElementById('shippingStreet').value.trim(),
-                    city: document.getElementById('shippingCity').value.trim(),
-                    state: document.getElementById('shippingState').value.trim(),
-                    zip: document.getElementById('shippingZip').value.trim(),
-                    country: document.getElementById('shippingCountry').value
-                };
-                if (!address.street || !address.city || !address.zip) {
-                    alert('Please fill in your full shipping address (street, city, and ZIP).');
-                    return;
-                }
-                payload.shipping_address = address;
-            }
-
             console.log('Checkout payload:', payload);
             fetch(AppConfig.baseUrl + '/api/checkout/process', {
                 method: 'POST',
@@ -1620,10 +1387,11 @@
             });
         }
 
-        // ===== FLIP HANDLING (with memory, skipping cart tile) =====
+        // ===== FLIP HANDLING =====
         var flippedState = [];
 
         function initFlipHints() {
+            // Flip hint click
             document.querySelectorAll('.flip-hint').forEach(function(hint) {
                 hint.addEventListener('click', function(e) {
                     e.stopPropagation();
@@ -1631,24 +1399,25 @@
                     if (card) {
                         var tile = card.closest('.tile');
                         var index = parseInt(tile.dataset.index);
-                        if (index === 7) return;
                         card.classList.toggle('flipped');
                         flippedState[index] = card.classList.contains('flipped');
                     }
                 });
             });
 
+            // Click on the card itself – only flip if NOT already flipped (front→back only)
             document.querySelectorAll('.flip-card').forEach(function(card) {
                 card.addEventListener('click', function(e) {
+                    // Ignore clicks on interactive elements inside the card
                     if (e.target.closest('.merch-item, .browse-record-card, .record-card, .merch-card, .add-to-cart-btn, .amount-btn, .design-option, .merch-product, input, select, button, a')) return;
+                    // Ignore clicks on the flip hint (it has its own handler)
                     if (e.target.closest('.flip-hint')) return;
+                    // Ignore clicks from the fixed header (nav buttons etc.)
                     if (e.target.closest('.fixed-header')) return;
-                    if (e.target.closest('iframe')) return;
 
                     var tile = this.closest('.tile');
                     var index = parseInt(tile.dataset.index);
-                    if (index === 7) return;
-
+                    // Only flip if currently on front (not flipped)
                     if (!this.classList.contains('flipped')) {
                         this.classList.toggle('flipped');
                         flippedState[index] = this.classList.contains('flipped');
@@ -1656,23 +1425,18 @@
                 });
             });
 
+            // Initialize flippedState with current state on load
             document.querySelectorAll('.tile').forEach(function(tile) {
                 var index = parseInt(tile.dataset.index);
                 var card = tile.querySelector('.flip-card');
-                if (index === 7) {
-                    flippedState[7] = true;
-                    if (card) {
-                        card.classList.add('flipped');
-                    }
-                } else {
-                    flippedState[index] = card ? card.classList.contains('flipped') : false;
-                }
+                flippedState[index] = card ? card.classList.contains('flipped') : false;
             });
         }
 
         // ===== NAVIGATION =====
         function initNavigation() {
-            var navButtons = document.querySelectorAll('.mini-nav-item');
+            // Select all mini-nav items that have data-index (exclude login link and cart)
+            var navButtons = document.querySelectorAll('.mini-nav-item:not(.cart-nav-item):not(.login-link)');
             var tilesWrapper = document.getElementById('tilesWrapper');
             var currentIndex = 0;
             var totalTiles = document.querySelectorAll('.tile').length;
@@ -1685,21 +1449,19 @@
                 navButtons.forEach(function(btn, i) {
                     btn.classList.toggle('active', i === index);
                 });
+                // Restore flip state for the new tile
                 document.querySelectorAll('.tile').forEach(function(tile) {
                     var idx = parseInt(tile.dataset.index);
                     var card = tile.querySelector('.flip-card');
                     if (card) {
-                        if (idx === 7) {
+                        if (flippedState[idx]) {
                             card.classList.add('flipped');
                         } else {
-                            if (flippedState[idx]) {
-                                card.classList.add('flipped');
-                            } else {
-                                card.classList.remove('flipped');
-                            }
+                            card.classList.remove('flipped');
                         }
                     }
                 });
+                closeCartDropdown();
             }
 
             navButtons.forEach(function(btn, index) {
@@ -1729,276 +1491,11 @@
             });
         }
 
-        // ===== CONNECT FORM HANDLER =====
-        function initConnectForm() {
-            var form = document.getElementById('connectForm');
-            if (!form) return;
-            form.addEventListener('submit', function(e) {
-                e.preventDefault();
-                var name = document.getElementById('connectName').value.trim();
-                var contact = document.getElementById('connectContact').value.trim();
-                var feedback = document.getElementById('connectFeedback').value.trim();
-                var messageDiv = document.getElementById('connectMessage');
-
-                if (!feedback) {
-                    messageDiv.style.display = 'block';
-                    messageDiv.style.background = '#ffebee';
-                    messageDiv.style.color = '#c62828';
-                    messageDiv.textContent = 'Please enter a message.';
-                    return;
-                }
-
-                var submitBtn = form.querySelector('.connect-submit-btn');
-                submitBtn.disabled = true;
-                submitBtn.textContent = 'Sending...';
-
-                var payload = {
-                    name: name || 'Anonymous',
-                    contact: contact || 'Not provided',
-                    message: feedback
-                };
-
-                var apiUrl = (typeof AppConfig !== 'undefined' && AppConfig.baseUrl) ? AppConfig.baseUrl + '/api/connect' : '/api/connect';
-
-                fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                })
-                .then(function(response) {
-                    return response.json();
-                })
-                .then(function(data) {
-                    messageDiv.style.display = 'block';
-                    if (data.status === 'success') {
-                        messageDiv.style.background = '#e8f5e9';
-                        messageDiv.style.color = '#2E7D32';
-                        messageDiv.textContent = '✅ Message sent successfully! We\'ll get back to you soon.';
-                        document.getElementById('connectName').value = '';
-                        document.getElementById('connectContact').value = '';
-                        document.getElementById('connectFeedback').value = '';
-                    } else {
-                        messageDiv.style.background = '#ffebee';
-                        messageDiv.style.color = '#c62828';
-                        messageDiv.textContent = '❌ Failed to send message. Please try again later.';
-                    }
-                })
-                .catch(function(err) {
-                    messageDiv.style.display = 'block';
-                    messageDiv.style.background = '#ffebee';
-                    messageDiv.style.color = '#c62828';
-                    messageDiv.textContent = '❌ Error sending message. Please check your connection.';
-                    console.error('Connect error:', err);
-                })
-                .finally(function() {
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Send Message';
-                });
-            });
-        }
-
-        // ===== ALERTS FORM HANDLER =====
-        function initAlertsForm() {
-            var form = document.getElementById('alertsForm');
-            if (!form) return;
-            form.addEventListener('submit', function(e) {
-                e.preventDefault();
-
-                var email = document.getElementById('alertsEmail').value.trim();
-                var artist = document.getElementById('alertsArtist').value.trim();
-                var title = document.getElementById('alertsTitle').value.trim();
-                var statusDiv = document.getElementById('alertsStatus');
-
-                if (!email || !artist) {
-                    statusDiv.style.display = 'block';
-                    statusDiv.style.background = '#ffebee';
-                    statusDiv.style.color = '#c62828';
-                    statusDiv.textContent = 'Please fill in all required fields (Email and Artist).';
-                    return;
-                }
-
-                var submitBtn = form.querySelector('.alert-submit-btn');
-                submitBtn.disabled = true;
-                submitBtn.textContent = 'Subscribing...';
-
-                var payload = {
-                    email: email,
-                    artist: artist,
-                    title: title || ''
-                };
-
-                var apiUrl = (typeof AppConfig !== 'undefined' && AppConfig.baseUrl) ? AppConfig.baseUrl + '/api/alerts' : '/api/alerts';
-
-                fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                })
-                .then(function(response) {
-                    return response.json();
-                })
-                .then(function(data) {
-                    statusDiv.style.display = 'block';
-                    if (data.status === 'success') {
-                        statusDiv.style.background = '#e8f5e9';
-                        statusDiv.style.color = '#2E7D32';
-                        statusDiv.textContent = '✅ You\'re subscribed! We\'ll notify you when matching records arrive.';
-                        form.reset();
-                    } else {
-                        statusDiv.style.background = '#ffebee';
-                        statusDiv.style.color = '#c62828';
-                        statusDiv.textContent = '❌ ' + (data.message || 'Subscription failed. Please try again.');
-                    }
-                })
-                .catch(function(err) {
-                    statusDiv.style.display = 'block';
-                    statusDiv.style.background = '#ffebee';
-                    statusDiv.style.color = '#c62828';
-                    statusDiv.textContent = '❌ Error connecting to server. Please check your connection.';
-                    console.error('Alerts error:', err);
-                })
-                .finally(function() {
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Subscribe';
-                });
-            });
-        }
-
-        // ===== ORDER FORM HANDLER =====
-        function initOrderForm() {
-            var form = document.getElementById('orderForm');
-            if (!form) return;
-            form.addEventListener('submit', function(e) {
-                e.preventDefault();
-
-                var email = document.getElementById('orderEmail').value.trim();
-                var artist = document.getElementById('orderArtist').value.trim();
-                var title = document.getElementById('orderTitle').value.trim();
-                var statusDiv = document.getElementById('orderStatus');
-
-                if (!email || !artist || !title) {
-                    statusDiv.style.display = 'block';
-                    statusDiv.style.background = '#ffebee';
-                    statusDiv.style.color = '#c62828';
-                    statusDiv.textContent = 'Please fill in all required fields.';
-                    return;
-                }
-
-                var submitBtn = form.querySelector('.order-submit-btn');
-                submitBtn.disabled = true;
-                submitBtn.textContent = 'Sending...';
-
-                var payload = {
-                    email: email,
-                    artist: artist,
-                    title: title
-                };
-
-                var apiUrl = (typeof AppConfig !== 'undefined' && AppConfig.baseUrl) ? AppConfig.baseUrl + '/api/order' : '/api/order';
-
-                fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                })
-                .then(function(response) {
-                    return response.json();
-                })
-                .then(function(data) {
-                    statusDiv.style.display = 'block';
-                    if (data.status === 'success') {
-                        statusDiv.style.background = '#e8f5e9';
-                        statusDiv.style.color = '#2E7D32';
-                        statusDiv.textContent = '✅ Order request sent! We\'ll check availability and contact you.';
-                        form.reset();
-                    } else {
-                        statusDiv.style.background = '#ffebee';
-                        statusDiv.style.color = '#c62828';
-                        statusDiv.textContent = '❌ ' + (data.message || 'Request failed. Please try again.');
-                    }
-                })
-                .catch(function(err) {
-                    statusDiv.style.display = 'block';
-                    statusDiv.style.background = '#ffebee';
-                    statusDiv.style.color = '#c62828';
-                    statusDiv.textContent = '❌ Error connecting to server. Please check your connection.';
-                    console.error('Order error:', err);
-                })
-                .finally(function() {
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Place Order Request';
-                });
-            });
-        }
-
-        // ===== HANDLE RETURN FROM SQUARE =====
-        function handlePaymentReturn() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const status = urlParams.get('status');
-            const orderId = urlParams.get('order_id');
-
-            if (status === 'completed') {
-                // Clear the cart
-                if (window.cart) {
-                    window.cart.clear();
-                }
-
-                // Navigate to the cart tile (index 7)
-                const cartNavBtn = document.querySelector('.mini-nav-item.cart-nav-item');
-                if (cartNavBtn) {
-                    cartNavBtn.click();
-                }
-
-                // Show confirmation message inside the cart tile
-                const cartList = document.getElementById('cartTileList');
-                if (cartList) {
-                    cartList.innerHTML = `
-                        <div style="text-align:center; padding:30px 0; color:#2E7D32; background:#e8f5e9; border-radius:10px; margin:10px 0;">
-                            <i class="fas fa-check-circle" style="font-size:48px; color:#4CAF50;"></i>
-                            <h3 style="color:#2E7D32; margin:10px 0 5px;">Order Confirmed!</h3>
-                            <p style="color:#555;">Thank you for your purchase. You will receive a confirmation email shortly.</p>
-                            ${orderId ? `<p style="font-size:0.9rem; color:#888; margin-top:5px;">Order #: ${orderId}</p>` : ''}
-                        </div>
-                    `;
-                }
-
-                // Update total and count
-                const totalSpan = document.getElementById('cartTileTotal');
-                if (totalSpan) totalSpan.textContent = '0.00';
-                const countSpan = document.getElementById('cartTileCount');
-                if (countSpan) countSpan.textContent = '0 items';
-
-                // Update shipping display
-                const shippingDisplay = document.getElementById('shippingCostAmount');
-                if (shippingDisplay) shippingDisplay.textContent = '$0.00';
-
-                // Clear the URL parameters
-                const newUrl = window.location.pathname;
-                window.history.replaceState({}, document.title, newUrl);
-            }
-        }
-
-        // ===== DELIVERY METHOD CHANGE =====
-        document.addEventListener('DOMContentLoaded', function() {
-            var radios = document.querySelectorAll('input[name="deliveryMethod"]');
-            radios.forEach(function(radio) {
-                radio.addEventListener('change', function() {
-                    updateShippingAndTotal();
-                });
-            });
-        });
-
         // ===== INIT =====
         document.addEventListener('DOMContentLoaded', function() {
             updateCartUI();
             initFlipHints();
             initNavigation();
-            initConnectForm();
-            initAlertsForm();
-            initOrderForm();
-
-            // Handle return from Square payment
-            handlePaymentReturn();
 
             var popup = document.getElementById('merchPopup');
             if (popup) {
