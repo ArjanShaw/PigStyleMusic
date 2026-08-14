@@ -18,22 +18,12 @@ def is_admin():
 # SERVE HTML PAGES
 # ============================================================
 
+# Main page (the single‑page app with tiles)
 @app.route('/')
 def index():
     return send_from_directory('HTML', 'index.html')
 
-@app.route('/inventory')
-def inventory():
-    return send_from_directory('HTML', 'inventory.html')
-
-@app.route('/consignment')
-def consignment():
-    return send_from_directory('HTML', 'consignment.html')
-
-@app.route('/connect')
-def connect():
-    return send_from_directory('HTML', 'connect.html')
-
+# Standalone pages (not replaced by tiles)
 @app.route('/login')
 def login():
     return send_from_directory('HTML', 'login.html')
@@ -42,34 +32,12 @@ def login():
 def dashboard():
     return send_from_directory('HTML', 'dashboard.html')
 
-@app.route('/misch')
-def merchandise():
-    return send_from_directory('HTML', 'merchandise.html')
-
-@app.route('/browse')
-def browse():
-    """Serve the browse page - handles both full page and component mode."""
-    return send_from_directory('HTML', 'browse.html')
-
-@app.route('/misc')
-def misc():
-    return send_from_directory('HTML', 'misc.html')
-
-@app.route('/youtube-linker')
-def youtube_linker():
-    return send_from_directory('HTML', 'youtube-linker.html')
-
-@app.route('/kiosk')
-def kiosk():
-    return send_from_directory('HTML', 'kiosk.html')
-
 @app.route('/admin')
 def admin_panel():
     if not is_admin():
         return redirect('/access-denied')
     return send_from_directory('HTML', 'admin.html')
 
-# ==================== ITEM MANAGEMENT PAGE ====================
 @app.route('/item-management')
 def item_management():
     if not is_admin():
@@ -86,34 +54,38 @@ def admin_accounting():
 def access_denied():
     return send_from_directory('HTML', 'access_denied.html')
 
-# ==================== GIFT CARDS PAGE ====================
-@app.route('/gift-cards')
-def gift_cards():
-    """Public gift card purchase page."""
-    return send_from_directory('HTML', 'gift-cards.html')
+@app.route('/inventory')
+def inventory():
+    return send_from_directory('HTML', 'inventory.html')
 
-# ==================== RECORD ALERTS PAGE ====================
-@app.route('/record-alerts')
-def record_alerts():
-    """Record alerts subscription page."""
-    return send_from_directory('HTML', 'record-alerts.html')
+@app.route('/consignment')
+def consignment():
+    return send_from_directory('HTML', 'consignment.html')
 
-# ==================== ORDER RECORDS PAGE (UNIFIED) ====================
-@app.route('/order-records')
-def order_records():
-    """Order records page - uses same HTML as record-alerts with different mode."""
-    return send_from_directory('HTML', 'record-alerts.html')
+@app.route('/youtube-linker')
+def youtube_linker():
+    return send_from_directory('HTML', 'youtube-linker.html')
 
-# ==================== PAYMENT CONFIRMATION PAGE ====================
+@app.route('/kiosk')
+def kiosk():
+    return send_from_directory('HTML', 'kiosk.html')
+
 @app.route('/payment-confirm')
 def payment_confirm():
     """Payment confirmation page (fallback for Square redirect)."""
     return send_from_directory('HTML', 'payment-confirm.html')
 
-# ==================== CALENDAR PAGE ====================
-@app.route('/calendar')
-def calendar():
-    return send_from_directory('HTML', 'calendar.html')
+# ============================================================
+# REMOVED ROUTES – pages that are now tiles in index.html
+# ============================================================
+# /connect      → replaced by Connect tile (index 4)
+# /misc         → replaced by Merch tile (index 2)
+# /gift-cards   → replaced by Merch tile popup
+# /calendar     → replaced by Events tile (index 3)
+# /record-alerts → replaced by Alerts tile (index 5)
+# /order-records → replaced by Order Records tile (index 6)
+# /browse       → replaced by Shop tile (index 1)
+# ============================================================
 
 # ============================================================
 # GENERIC COMPONENT ROUTE - Serve any component from HTML/components/
@@ -122,10 +94,8 @@ def calendar():
 @app.route('/components/<path:filename>')
 def serve_component(filename):
     """Serve any component from HTML/components/ folder."""
-    # Security: only allow .html files
     if not filename.endswith('.html'):
         abort(404)
-    
     try:
         return send_from_directory('HTML/components', filename)
     except Exception as e:
