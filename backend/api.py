@@ -13492,7 +13492,8 @@ Questions? Reply to this email or contact us at the store.
     except Exception as e:
         app.logger.error(f"Order complete error: {str(e)}")
         return jsonify({'status': 'error', 'error': f'Server error: {str(e)}'}), 500    
-
+ 
+   
 @app.route('/api/record-orders/unread', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -13561,6 +13562,42 @@ def get_unread_orders_count():
     row = cursor.fetchone()
     conn.close()
     return jsonify({'status': 'success', 'count': row['count'] if row else 0})
+
+@app.route('/api/feedback/mark-all-read', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def mark_all_feedback_read():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE feedback SET notified = 1 WHERE notified = 0 OR notified IS NULL')
+    updated = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success', 'updated': updated})
+
+@app.route('/api/subscriptions/mark-all-read', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def mark_all_subscriptions_read():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE email_subscriptions SET notified = 1 WHERE notified = 0 AND is_active = 1')
+    updated = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success', 'updated': updated})
+
+@app.route('/api/orders/mark-all-read', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def mark_all_orders_read():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE orders SET notified = 1 WHERE notified = 0 OR notified IS NULL')
+    updated = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success', 'updated': updated})
 
 
 if __name__ == '__main__': 
