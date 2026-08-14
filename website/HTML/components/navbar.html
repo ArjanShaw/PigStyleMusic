@@ -1,49 +1,66 @@
 <!-- PigStyleMusic/website/HTML/Components/navbar.html -->
 <nav style="background: #000; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border-bottom: 2px solid #ff6b6b;">
+    <!-- Logo -->
     <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
         <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
     </a>
-    <div style="display: flex; gap: 20px; align-items: center;">
-        <a href="/browse" style="color: white; text-decoration: none;">Browse</a>
-        <a href="/misc" style="color: white; text-decoration: none;">Misc</a>
-        <a href="/calendar" style="color: white; text-decoration: none;">Calendar</a>  <!-- NEW -->
-        <a href="/connect" style="color: white; text-decoration: none;">Connect</a>
-        <a href="/gift-cards" style="color: white; text-decoration: none;">Gift Cards</a>
-        
-        <!-- Record Alerts - PAGE -->
-        <a href="/record-alerts" style="color: white; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
-            <i class="fas fa-bell"></i> Alerts
-        </a>
-        
-        <!-- Order Records - PAGE -->
-        <a href="/order-records" style="color: white; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
-            <i class="fas fa-shopping-cart"></i> Order
+
+    <!-- Right side -->
+    <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+
+        <!-- ===== LINKS CONTROLLED BY AUTH STATE ===== -->
+
+        <!-- Dashboard – visible when logged in (any role) -->
+        <a href="/dashboard" id="nav-dashboard-link" class="nav-link">
+            <i class="fas fa-tachometer-alt"></i> Dashboard
         </a>
 
-        <!-- Notification Bell - ONLY VISIBLE WHEN LOGGED IN -->
-        <div id="navbar-notification-container" class="hidden">
-            <button id="navbar-notification-btn" aria-label="Notifications">
-                <i class="fas fa-bell" style="font-size: 16px;"></i>
-                <span id="navbar-notification-badge">0</span>
+        <!-- Admin Panel – only for admins -->
+        <a href="/admin" class="nav-link admin-only" style="display: none; color: #ffb3b3; border-color: rgba(255,107,107,0.4);">
+            <i class="fas fa-cog"></i> Admin Panel
+        </a>
+
+        <!-- Item Management – only for admins -->
+        <a href="/item-management" class="nav-link admin-only" style="display: none; color: #ffb3b3; border-color: rgba(255,107,107,0.4);">
+            <i class="fas fa-boxes"></i> Item Management
+        </a>
+
+        <!-- Accounting – only for admins -->
+        <a href="/admin/accounting" class="nav-link admin-only" style="display: none; color: #ffb3b3; border-color: rgba(255,107,107,0.4);">
+            <i class="fas fa-calculator"></i> Accounting
+        </a>
+
+        <!-- ===== AUTH LINKS ===== -->
+        <span id="nav-user-greeting" style="color: #fff; font-weight: 500; display: none;"></span>
+
+        <a href="/login" id="nav-login-link" class="nav-link">
+            <i class="fas fa-sign-in-alt"></i> Login
+        </a>
+        <!-- Register link REMOVED -->
+        <a href="#" id="nav-logout-link" class="nav-link" style="display: none;">
+            <i class="fas fa-sign-out-alt"></i> Logout
+        </a>
+
+        <!-- ===== NOTIFICATION BELL ===== -->
+        <div id="navbar-notification-container" class="hidden" style="position: relative;">
+            <button id="navbar-notification-btn" aria-label="Notifications" style="background: none; border: none; color: white; font-size: 18px; cursor: pointer; position: relative;">
+                <i class="fas fa-bell"></i>
+                <span id="navbar-notification-badge" style="position: absolute; top: -8px; right: -8px; background: #ff6b6b; color: white; border-radius: 50%; padding: 2px 6px; font-size: 10px; font-weight: bold; min-width: 16px; text-align: center;">0</span>
             </button>
-            <div id="navbar-notification-dropdown">
-                <div class="navbar-notification-header">
-                    <span><i class="fas fa-bell"></i>Notifications</span>
-                    <button id="navbar-mark-all-read">Mark all read</button>
+            <div id="navbar-notification-dropdown" style="display: none; position: absolute; right: 0; top: 100%; background: white; color: #333; width: 320px; max-height: 400px; overflow-y: auto; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); margin-top: 5px; z-index: 2000;">
+                <div class="navbar-notification-header" style="padding: 12px 16px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; font-weight: 600;">
+                    <span><i class="fas fa-bell"></i> Notifications</span>
+                    <button id="navbar-mark-all-read" style="background: none; border: none; color: #007bff; cursor: pointer; font-size: 12px;">Mark all read</button>
                 </div>
-                <div id="navbar-notification-list">
-                    <div class="navbar-notification-empty">
-                        <i class="fas fa-bell-slash"></i>
-                        No new notifications
+                <div id="navbar-notification-list" class="navbar-notification-list">
+                    <div class="navbar-notification-empty" style="padding: 20px; text-align: center; color: #888;">
+                        <i class="fas fa-bell-slash"></i> No new notifications
                     </div>
                 </div>
-                <div class="navbar-notification-footer">
-                    <a href="/admin#email-subscriptions">View all in Admin Panel →</a>
+                <div class="navbar-notification-footer" style="padding: 10px 16px; border-top: 1px solid #eee; text-align: center; font-size: 13px;">
+                    <a href="/admin#email-subscriptions" style="color: #007bff; text-decoration: none;">View all in Admin Panel →</a>
                 </div>
             </div>
-        </div>
-
-        <div id="auth-section">
         </div>
     </div>
 </nav>

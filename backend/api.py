@@ -1242,7 +1242,6 @@ def get_sales_over_time_discogs_stats():
         'revenue': revenue
     })
 
-
 @app.route('/api/checkout/process', methods=['POST'])
 def process_checkout():
     """Create a Square payment link for either records or accessories"""
@@ -1339,12 +1338,12 @@ def process_checkout():
         }
         
         env = os.getenv("ENV", "production")
-        redirect_path = '/merchandise' if item_type == 'accessory' else '/browse'
         
+        # 👇 CHANGED: redirect to root with status parameter
         if env == "development":
-            redirect_url = f"http://localhost:8000{redirect_path}?status=completed&order_id={order_id}"
+            redirect_url = f"http://localhost:8000/?status=completed&order_id={order_id}"
         else:
-            redirect_url = f"https://www.pigstylemusic.com{redirect_path}?status=completed&order_id={order_id}"
+            redirect_url = f"https://www.pigstylemusic.com/?status=completed&order_id={order_id}"
 
         payload = {
             "idempotency_key": str(uuid.uuid4()),

@@ -3,11 +3,16 @@
 
 // ===== LOAD COMPONENTS =====
 function loadNavbar() {
+    const placeholder = document.getElementById('navbar-placeholder');
+    if (!placeholder) return;
+
     fetch('/components/navbar.html')
         .then(response => response.text())
         .then(html => {
-            document.getElementById('navbar-placeholder').innerHTML = html;
-            // Initialize notification bell (defined in notification-bell.js)
+            placeholder.innerHTML = html;
+            // Apply auth state directly from localStorage (bypass session check)
+            applyAuthFromLocalStorage();
+            // Initialize notification bell
             if (typeof initNotificationBell === 'function') {
                 initNotificationBell();
             }
@@ -19,10 +24,13 @@ function loadNavbar() {
 }
 
 function loadSubscriptionModal() {
+    const placeholder = document.getElementById('subscription-modal-placeholder');
+    if (!placeholder) return;
+
     fetch('/components/subscription-modal.html')
         .then(response => response.text())
         .then(html => {
-            document.getElementById('subscription-modal-placeholder').innerHTML = html;
+            placeholder.innerHTML = html;
         })
         .catch(error => {
             console.error('Error loading subscription modal:', error);
@@ -137,3 +145,64 @@ function initSubscriptionModal() {
         subscribeMessage.style.marginTop = '15px';
     }
 }
+
+// ===== AUTH STATE FROM LOCALSTORAGE =====
+function applyAuthFromLocalStorage() {
+    const token = localStorage.getItem('auth_token');
+    const userStr = localStorage.getItem('user');
+    
+    // User is logged in if EITHER token OR user exists
+    const isLoggedIn = !!(token || userStr);
+
+    let username = '';
+    let role = '';
+    if (userStr) {
+        try {
+            const user = JSON.parse(userStr);
+            username = user.username || user.full_name || 'User';
+            role = user.role || '';
+        } catch (e) {}
+    }
+
+    const isAdmin = role === 'admin';
+
+    // Get all navbar elements
+    const loginLink = document.getElementById('nav-login-link');
+    const registerLink = document.getElementById('nav-register-link');
+    const logoutLink = document.getElementById('nav-logout-link');
+    const greeting = document.getElementById('nav-user-greeting');
+    const notificationContainer = document.getElementById('navbar-notification-container');
+    const adminLinks = document.querySelectorAll('.admin-only');
+
+    if (isLoggedIn) {
+        if (loginLink) loginLink.style.display = 'none';
+        if (registerLink) registerLink.style.display = 'none';
+        if (logoutLink) logoutLink.style.display = 'inline-block';
+        if (greeting) {
+            greeting.textContent = `Hi, ${username || 'User'}`;
+            greeting.style.display = 'inline-block';
+        }
+        if (notificationContainer) notificationContainer.classList.remove('hidden');
+        // Show admin links only if admin
+        adminLinks.forEach(el => {
+            el.style.display = isAdmin ? 'inline-block' : 'none';
+        });
+    } else {
+        if (loginLink) loginLink.style.display = 'inline-block';
+        if (registerLink) registerLink.style.display = 'inline-block';
+        if (logoutLink) logoutLink.style.display = 'none';
+        if (greeting) greeting.style.display = 'none';
+        if (notificationContainer) notificationContainer.classList.add('hidden');
+        adminLinks.forEach(el => el.style.display = 'none');
+    }
+
+    console.log('Navbar updated from localStorage. Logged in:', isLoggedIn, 'Role:', role);
+}
+
+// ===== AUTO‑INIT ON DOM READY =====
+document.addEventListener('DOMContentLoaded', function() {
+    // Load navbar if placeholder exists
+    loadNavbar();
+    // Load subscription modal if placeholder exists
+    loadSubscriptionModal();
+});

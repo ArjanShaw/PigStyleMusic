@@ -135,6 +135,7 @@
             border-bottom: 2px solid #ff6b6b;
             padding-bottom: 10px;
             margin-bottom: 15px;
+            flex-shrink: 0;
         }
         .cart-tile-header h2 {
             margin: 0;
@@ -147,11 +148,32 @@
             border-radius: 20px;
             font-size: 0.9rem;
         }
-        .cart-tile-list {
+
+        /* Two‑column layout for cart body */
+        .cart-body {
+            display: flex;
+            gap: 20px;
+            flex: 1;
+            min-height: 0;
+        }
+        .cart-left {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .cart-left .cart-tile-list {
             flex: 1;
             overflow-y: auto;
             margin-bottom: 15px;
         }
+        .cart-right {
+            width: 35%;
+            min-width: 200px;
+            display: flex;
+            flex-direction: column;
+        }
+
         .cart-tile-item {
             display: flex;
             justify-content: space-between;
@@ -174,10 +196,19 @@
             font-size: 1.2rem;
             padding: 0 4px;
         }
+        .cart-empty-message {
+            text-align: center;
+            color: #888;
+            padding: 40px 0;
+            font-size: 1.1rem;
+        }
+
         .cart-tile-footer {
             border-top: 1px solid #eee;
             padding-top: 15px;
             text-align: center;
+            flex-shrink: 0;
+            margin-top: auto;
         }
         .cart-tile-footer .total {
             font-size: 1.3rem;
@@ -212,11 +243,60 @@
         .cart-tile-footer .clear-btn:hover {
             background: #eee;
         }
-        .cart-empty-message {
-            text-align: center;
-            color: #888;
-            padding: 40px 0;
-            font-size: 1.1rem;
+
+        /* ===== Shipping section (right column) ===== */
+        .shipping-section {
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 10px;
+            border: 1px solid #eee;
+            flex: 1;
+            min-height: 200px;
+        }
+        .shipping-section .delivery-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .shipping-section .delivery-option input[type="radio"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        .shipping-section .delivery-option label {
+            color: #333;
+            font-weight: 500;
+            cursor: pointer;
+        }
+        .shipping-address-fields {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
+        }
+        .shipping-address-fields input,
+        .shipping-address-fields select {
+            width: 100%;
+            padding: 8px 10px;
+            margin-bottom: 8px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+        }
+        .shipping-cost-display {
+            margin-top: 10px;
+            font-weight: 600;
+            color: #333;
+            text-align: right;
+        }
+        .shipping-cost-display .method-label {
+            font-weight: normal;
+            color: #666;
+        }
+
+        .shipping-address-fields.hidden {
+            display: none !important;
         }
 
         /* ===== Flip hint ===== */
@@ -343,11 +423,11 @@
             cursor: not-allowed;
         }
 
-        /* ===== Override for cart tile: no flip ===== */
+        /* ===== Override for cart tile: no flip and allow clicks inside ===== */
         .tile.no-flip .flip-card {
-            pointer-events: none; /* disable clicks on the card itself */
-            transform: none !important; /* prevent any rotation */
-            transition: none !important;
+            pointer-events: none;
+            transform: none !important;
+            transform-style: flat !important;
         }
         .tile.no-flip .flip-card-front {
             display: none !important;
@@ -362,6 +442,11 @@
             border-radius: 20px;
             background: transparent;
             overflow: hidden;
+            pointer-events: auto !important;
+        }
+        .tile.no-flip .flip-card.flipped,
+        .tile.no-flip .flip-card.flipped .flip-card-back {
+            transform: none !important;
         }
         .tile.no-flip .flip-hint {
             display: none !important;
@@ -480,7 +565,7 @@
                                         <i class="fas fa-music"></i>
                                         <span>Located in the heart of Loveland, Colorado.</span>
                                     </div>
-                                    <!-- Social Icons placed here -->
+                                    <!-- Social Icons -->
                                     <div class="social-icons">
                                         <a href="https://www.facebook.com/profile.php?id=61582821044262" target="_blank" aria-label="Visit our Facebook page"><i class="fab fa-facebook"></i></a>
                                         <a href="https://www.instagram.com/pigstyle_loveland/" target="_blank" aria-label="Visit our Instagram page"><i class="fab fa-instagram"></i></a>
@@ -754,7 +839,7 @@
                 </div>
             </div>
 
-            <!-- Tile 7: Cart (no flip) -->
+            <!-- Tile 7: Cart (no flip, two‑column layout) -->
             <div class="tile no-flip" data-index="7">
                 <div class="flip-card" id="flipCard7">
                     <!-- Front is hidden via CSS -->
@@ -766,9 +851,51 @@
                                     <h2><i class="fas fa-shopping-cart" style="color:#ff6b6b;"></i> Your Cart</h2>
                                     <span class="cart-count" id="cartTileCount">0 items</span>
                                 </div>
-                                <div class="cart-tile-list" id="cartTileList">
-                                    <div class="cart-empty-message">Your cart is empty.</div>
+
+                                <div class="cart-body">
+                                    <!-- Left column: cart items -->
+                                    <div class="cart-left">
+                                        <div class="cart-tile-list" id="cartTileList">
+                                            <div class="cart-empty-message">Your cart is empty.</div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Right column: shipping section -->
+                                    <div class="cart-right">
+                                        <div class="shipping-section" id="shippingSection">
+                                            <div class="delivery-option">
+                                                <input type="radio" id="pickupOption" name="deliveryMethod" value="pickup" checked>
+                                                <label for="pickupOption">📦 Store Pickup (Free)</label>
+                                            </div>
+                                            <div class="delivery-option">
+                                                <input type="radio" id="shippingOption" name="deliveryMethod" value="shipping">
+                                                <label for="shippingOption">🚚 Ship to an address</label>
+                                            </div>
+
+                                            <div class="shipping-address-fields hidden" id="shippingAddressFields">
+                                                <input type="text" id="shippingStreet" placeholder="Street Address">
+                                                <input type="text" id="shippingCity" placeholder="City">
+                                                <input type="text" id="shippingState" placeholder="State / Province">
+                                                <input type="text" id="shippingZip" placeholder="ZIP / Postal Code">
+                                                <select id="shippingCountry">
+                                                    <option value="US">United States</option>
+                                                    <option value="CA">Canada</option>
+                                                    <option value="UK">United Kingdom</option>
+                                                    <option value="AU">Australia</option>
+                                                    <option value="DE">Germany</option>
+                                                    <option value="FR">France</option>
+                                                </select>
+                                            </div>
+
+                                            <div class="shipping-cost-display" id="shippingCostDisplay">
+                                                <span class="method-label">Shipping:</span>
+                                                <span id="shippingCostAmount">$0.00</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
+
+                                <!-- Footer spans full width -->
                                 <div class="cart-tile-footer">
                                     <div class="total">Total: $<span id="cartTileTotal">0.00</span></div>
                                     <div class="btn-group">
@@ -999,11 +1126,52 @@
             if (errorEl) errorEl.style.display = 'none';
         };
 
+        // ===== SHIPPING COST CALCULATOR =====
+        function calculateShippingCost(items) {
+            if (!items || items.length === 0) {
+                return { cost: 0, method: 'Pickup', details: 'Free' };
+            }
+
+            let recordCount = 0;
+            let teeCount = 0;
+            let accessoryCount = 0;
+            for (let item of items) {
+                if (item.type === 'record') recordCount += item.quantity;
+                else if (item.type === 'accessory') {
+                    accessoryCount += item.quantity;
+                } else {
+                    teeCount += item.quantity;
+                }
+            }
+
+            let cost = 0;
+            let method = '';
+
+            if (recordCount === 0 && teeCount === 0 && accessoryCount > 0) {
+                cost = 2.00;
+                method = 'First-Class Letter';
+            } else if (recordCount > 0 && teeCount === 0) {
+                cost = 4.50;
+                if (recordCount > 5) cost += (recordCount - 5) * 0.75;
+                method = 'Media Mail';
+            } else if (teeCount > 0 && recordCount === 0) {
+                cost = 6.00;
+                if (teeCount > 3) cost += (teeCount - 3) * 1.50;
+                method = 'First-Class / Priority';
+            } else if (recordCount > 0 && teeCount > 0) {
+                var totalItems = recordCount + teeCount;
+                cost = 7.50;
+                if (totalItems > 3) cost += (totalItems - 3) * 0.50;
+                method = 'Mixed (Priority)';
+            }
+
+            return { cost: Math.round(cost * 100) / 100, method: method, details: method + ' shipping' };
+        }
+
         // ===== CART UI =====
         function updateCartUI() {
             if (!window.cart) return;
             var count = window.cart.getItemCount();
-            // Update badge on the nav button
             var cartNav = document.getElementById('cartNavItem');
             var badge = document.getElementById('cartBadge');
             if (cartNav) {
@@ -1015,23 +1183,18 @@
                     if (badge) badge.textContent = '0';
                 }
             }
-            // Update the cart tile content
             renderCartTile();
+            updateShippingAndTotal();
         }
 
         function renderCartTile() {
             var list = document.getElementById('cartTileList');
-            var totalSpan = document.getElementById('cartTileTotal');
-            var countSpan = document.getElementById('cartTileCount');
-            if (!list || !totalSpan) return;
+            if (!list) return;
             if (!window.cart || window.cart.isEmpty()) {
                 list.innerHTML = '<div class="cart-empty-message">Your cart is empty.</div>';
-                totalSpan.textContent = '0.00';
-                if (countSpan) countSpan.textContent = '0 items';
                 return;
             }
             var items = window.cart.getItems();
-            var total = window.cart.getTotal();
             var html = '';
             items.forEach(function(item) {
                 var price = (item.price * item.quantity).toFixed(2);
@@ -1042,8 +1205,6 @@
                 '</div>';
             });
             list.innerHTML = html;
-            totalSpan.textContent = total.toFixed(2);
-            if (countSpan) countSpan.textContent = items.reduce((sum, item) => sum + item.quantity, 0) + ' items';
 
             list.querySelectorAll('.remove-item-btn').forEach(function(btn) {
                 btn.addEventListener('click', function(e) {
@@ -1055,6 +1216,51 @@
                     }
                 });
             });
+        }
+
+        function updateShippingAndTotal() {
+            var items = window.cart ? window.cart.getItems() : [];
+            var subtotal = window.cart ? window.cart.getTotal() : 0;
+
+            var deliveryMethod = document.querySelector('input[name="deliveryMethod"]:checked');
+            var isShipping = deliveryMethod && deliveryMethod.value === 'shipping';
+
+            var shippingCost = 0;
+            var shippingMethodName = 'Pickup';
+
+            if (isShipping && items.length > 0) {
+                var result = calculateShippingCost(items);
+                shippingCost = result.cost;
+                shippingMethodName = result.method;
+            }
+
+            var total = subtotal + shippingCost;
+
+            document.getElementById('cartTileTotal').textContent = total.toFixed(2);
+
+            var costDisplay = document.getElementById('shippingCostAmount');
+            if (costDisplay) {
+                if (isShipping && items.length > 0) {
+                    costDisplay.textContent = '$' + shippingCost.toFixed(2) + ' (' + shippingMethodName + ')';
+                } else {
+                    costDisplay.textContent = '$0.00';
+                }
+            }
+
+            var addressFields = document.getElementById('shippingAddressFields');
+            if (addressFields) {
+                if (isShipping && items.length > 0) {
+                    addressFields.classList.remove('hidden');
+                } else {
+                    addressFields.classList.add('hidden');
+                }
+            }
+
+            var countSpan = document.getElementById('cartTileCount');
+            if (countSpan) {
+                var count = window.cart ? window.cart.getItemCount() : 0;
+                countSpan.textContent = count + ' items';
+            }
         }
 
         function clearCart() {
@@ -1348,13 +1554,52 @@
                 alert('Your cart is empty.');
                 return;
             }
-            var total = window.cart.getTotal();
+
+            var deliveryMethod = document.querySelector('input[name="deliveryMethod"]:checked');
+            var isShipping = deliveryMethod && deliveryMethod.value === 'shipping';
+
+            var items = window.cart.getCheckoutPayload();
+
+            var shippingCost = 0;
+            var shippingMethodName = 'Pickup';
+            if (isShipping) {
+                var result = calculateShippingCost(window.cart.getItems());
+                shippingCost = result.cost;
+                shippingMethodName = result.method;
+                items.push({
+                    title: 'Shipping (' + shippingMethodName + ')',
+                    price: shippingCost,
+                    quantity: 1
+                });
+            }
+
+            var subtotal = window.cart.getTotal();
+            var total = subtotal + shippingCost;
+
             var payload = {
-                items: window.cart.getCheckoutPayload(),
-                subtotal: total,
+                items: items,
+                subtotal: subtotal,
+                shipping_method: isShipping ? 'shipping' : 'pickup',
+                shipping_cost: shippingCost,
                 total: total,
                 item_type: 'mixed'
             };
+
+            if (isShipping) {
+                var address = {
+                    street: document.getElementById('shippingStreet').value.trim(),
+                    city: document.getElementById('shippingCity').value.trim(),
+                    state: document.getElementById('shippingState').value.trim(),
+                    zip: document.getElementById('shippingZip').value.trim(),
+                    country: document.getElementById('shippingCountry').value
+                };
+                if (!address.street || !address.city || !address.zip) {
+                    alert('Please fill in your full shipping address (street, city, and ZIP).');
+                    return;
+                }
+                payload.shipping_address = address;
+            }
+
             console.log('Checkout payload:', payload);
             fetch(AppConfig.baseUrl + '/api/checkout/process', {
                 method: 'POST',
@@ -1379,7 +1624,6 @@
         var flippedState = [];
 
         function initFlipHints() {
-            // Flip hint click
             document.querySelectorAll('.flip-hint').forEach(function(hint) {
                 hint.addEventListener('click', function(e) {
                     e.stopPropagation();
@@ -1387,7 +1631,6 @@
                     if (card) {
                         var tile = card.closest('.tile');
                         var index = parseInt(tile.dataset.index);
-                        // Skip cart tile (index 7)
                         if (index === 7) return;
                         card.classList.toggle('flipped');
                         flippedState[index] = card.classList.contains('flipped');
@@ -1395,40 +1638,29 @@
                 });
             });
 
-            // Click on the card itself – only flip if NOT already flipped (front→back only)
             document.querySelectorAll('.flip-card').forEach(function(card) {
                 card.addEventListener('click', function(e) {
-                    // Ignore clicks on interactive elements inside the card
                     if (e.target.closest('.merch-item, .browse-record-card, .record-card, .merch-card, .add-to-cart-btn, .amount-btn, .design-option, .merch-product, input, select, button, a')) return;
-                    // Ignore clicks on the flip hint (it has its own handler)
                     if (e.target.closest('.flip-hint')) return;
-                    // Ignore clicks that originate from the fixed header (nav buttons etc.)
                     if (e.target.closest('.fixed-header')) return;
-                    // Ignore clicks inside iframe (so calendar and map remain clickable)
                     if (e.target.closest('iframe')) return;
 
                     var tile = this.closest('.tile');
                     var index = parseInt(tile.dataset.index);
-                    // Skip cart tile (index 7)
                     if (index === 7) return;
 
-                    // Only flip if currently on front (not flipped)
                     if (!this.classList.contains('flipped')) {
                         this.classList.toggle('flipped');
                         flippedState[index] = this.classList.contains('flipped');
                     }
-                    // If already flipped (back side), do nothing – prevents flipping back
                 });
             });
 
-            // Initialize flippedState with current state on load
             document.querySelectorAll('.tile').forEach(function(tile) {
                 var index = parseInt(tile.dataset.index);
                 var card = tile.querySelector('.flip-card');
-                // For cart tile, force flippedState[7] to true so it stays "flipped" (back side)
                 if (index === 7) {
                     flippedState[7] = true;
-                    // Ensure the card is always showing the back
                     if (card) {
                         card.classList.add('flipped');
                     }
@@ -1453,13 +1685,11 @@
                 navButtons.forEach(function(btn, i) {
                     btn.classList.toggle('active', i === index);
                 });
-                // Restore flip state for the new tile (skip cart tile)
                 document.querySelectorAll('.tile').forEach(function(tile) {
                     var idx = parseInt(tile.dataset.index);
                     var card = tile.querySelector('.flip-card');
                     if (card) {
                         if (idx === 7) {
-                            // Always keep cart tile flipped
                             card.classList.add('flipped');
                         } else {
                             if (flippedState[idx]) {
@@ -1504,14 +1734,12 @@
             var form = document.getElementById('connectForm');
             if (!form) return;
             form.addEventListener('submit', function(e) {
-                e.preventDefault(); // Prevent page reload
-
+                e.preventDefault();
                 var name = document.getElementById('connectName').value.trim();
                 var contact = document.getElementById('connectContact').value.trim();
                 var feedback = document.getElementById('connectFeedback').value.trim();
                 var messageDiv = document.getElementById('connectMessage');
 
-                // Simple validation
                 if (!feedback) {
                     messageDiv.style.display = 'block';
                     messageDiv.style.background = '#ffebee';
@@ -1520,12 +1748,10 @@
                     return;
                 }
 
-                // Disable submit button to prevent double submission
                 var submitBtn = form.querySelector('.connect-submit-btn');
                 submitBtn.disabled = true;
                 submitBtn.textContent = 'Sending...';
 
-                // Build payload
                 var payload = {
                     name: name || 'Anonymous',
                     contact: contact || 'Not provided',
@@ -1548,7 +1774,6 @@
                         messageDiv.style.background = '#e8f5e9';
                         messageDiv.style.color = '#2E7D32';
                         messageDiv.textContent = '✅ Message sent successfully! We\'ll get back to you soon.';
-                        // Clear form
                         document.getElementById('connectName').value = '';
                         document.getElementById('connectContact').value = '';
                         document.getElementById('connectFeedback').value = '';
@@ -1706,6 +1931,63 @@
             });
         }
 
+        // ===== HANDLE RETURN FROM SQUARE =====
+        function handlePaymentReturn() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const status = urlParams.get('status');
+            const orderId = urlParams.get('order_id');
+
+            if (status === 'completed') {
+                // Clear the cart
+                if (window.cart) {
+                    window.cart.clear();
+                }
+
+                // Navigate to the cart tile (index 7)
+                const cartNavBtn = document.querySelector('.mini-nav-item.cart-nav-item');
+                if (cartNavBtn) {
+                    cartNavBtn.click();
+                }
+
+                // Show confirmation message inside the cart tile
+                const cartList = document.getElementById('cartTileList');
+                if (cartList) {
+                    cartList.innerHTML = `
+                        <div style="text-align:center; padding:30px 0; color:#2E7D32; background:#e8f5e9; border-radius:10px; margin:10px 0;">
+                            <i class="fas fa-check-circle" style="font-size:48px; color:#4CAF50;"></i>
+                            <h3 style="color:#2E7D32; margin:10px 0 5px;">Order Confirmed!</h3>
+                            <p style="color:#555;">Thank you for your purchase. You will receive a confirmation email shortly.</p>
+                            ${orderId ? `<p style="font-size:0.9rem; color:#888; margin-top:5px;">Order #: ${orderId}</p>` : ''}
+                        </div>
+                    `;
+                }
+
+                // Update total and count
+                const totalSpan = document.getElementById('cartTileTotal');
+                if (totalSpan) totalSpan.textContent = '0.00';
+                const countSpan = document.getElementById('cartTileCount');
+                if (countSpan) countSpan.textContent = '0 items';
+
+                // Update shipping display
+                const shippingDisplay = document.getElementById('shippingCostAmount');
+                if (shippingDisplay) shippingDisplay.textContent = '$0.00';
+
+                // Clear the URL parameters
+                const newUrl = window.location.pathname;
+                window.history.replaceState({}, document.title, newUrl);
+            }
+        }
+
+        // ===== DELIVERY METHOD CHANGE =====
+        document.addEventListener('DOMContentLoaded', function() {
+            var radios = document.querySelectorAll('input[name="deliveryMethod"]');
+            radios.forEach(function(radio) {
+                radio.addEventListener('change', function() {
+                    updateShippingAndTotal();
+                });
+            });
+        });
+
         // ===== INIT =====
         document.addEventListener('DOMContentLoaded', function() {
             updateCartUI();
@@ -1714,6 +1996,9 @@
             initConnectForm();
             initAlertsForm();
             initOrderForm();
+
+            // Handle return from Square payment
+            handlePaymentReturn();
 
             var popup = document.getElementById('merchPopup');
             if (popup) {

@@ -9,75 +9,60 @@
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-03HFDR9PV7"></script>
     <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-03HFDR9PV7');
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-03HFDR9PV7');
     </script>
     
     <!-- CSS FILES -->
-    <link rel="stylesheet" href="/static/css/index.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="/static/css/shared.css">
     <link rel="stylesheet" href="/static/css/admin.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
     
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="../static/js/app-config.js"></script>
+    <script src="/static/js/app-config.js"></script>
     <script src="/static/js/notification-bell.js"></script>
     <script src="/static/js/shared.js"></script>
+    <script src="/static/js/item-management.js"></script>
 
     <style>
-        /* ========== STATUS BADGE STYLES ========== */
-        .status-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: capitalize;
-        }
-        .status-badge.active { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .status-badge.new { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
-        .status-badge.sold { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
-        .status-badge.removed { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .status-badge.pending { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
-        .status-badge.paid { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .status-badge.cancelled { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .status-badge.shipped { background: #cce5ff; color: #004085; border: 1px solid #b8daff; }
-        .status-badge.completed { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .status-badge.in-transit { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
-        .status-badge.returned { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .status-badge.draft { background: #e9ecef; color: #495057; border: 1px solid #dee2e6; }
-
-        /* ========== GENERAL STYLES ========== */
+        /* ===== RESET & BASE ===== */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            background: #f5f5f5;
-            color: #333;
+            background: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding-top: 70px; /* space for fixed navbar */
             margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         }
 
+        /* ===== MAIN CONTAINER ===== */
         .admin-container {
-            max-width: 1400px;
-            margin: 0 auto;
+            width: 100%;
+            min-height: calc(100vh - 70px);
             padding: 25px 30px;
-            margin-top: 70px;
+            box-sizing: border-box;
+            background: white;
+            color: #000;
         }
         .admin-container h1 {
-            color: #333;
+            color: #000;
+            margin-bottom: 10px;
         }
         .admin-container .subtitle {
             color: #666;
             margin-bottom: 20px;
         }
 
+        /* ===== STATUS MESSAGE ===== */
         .status-message {
             padding: 10px 15px;
             border-radius: 4px;
             margin: 10px 0;
             display: none;
+            background: white;
+            border: 1px solid #ddd;
+            color: #000;
         }
         .status-message.success {
             display: block;
@@ -104,9 +89,35 @@
             border: 1px solid #b8daff;
         }
 
-        /* ========== SEARCH SECTION ========== */
+        /* ===== STATS ROW ===== */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            color: #000;
+        }
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #007bff;
+            margin-bottom: 5px;
+        }
+        .stat-label {
+            color: #333;
+            font-size: 14px;
+        }
+
+        /* ===== SEARCH SECTION ===== */
         .search-section {
-            background: #f8f9fa;
+            background: white;
             border: 1px solid #ddd;
             border-radius: 8px;
             padding: 20px;
@@ -153,7 +164,7 @@
             border-color: #007bff;
         }
 
-        /* ========== BUTTONS ========== */
+        /* ===== BUTTONS ===== */
         .btn {
             padding: 10px 20px;
             border: none;
@@ -180,9 +191,9 @@
         .btn-small { padding: 5px 12px; font-size: 12px; }
         .btn-small.active { background: #007bff; color: white; border-color: #0056b3; }
 
-        /* ========== ACTION MODE SELECTOR ========== */
+        /* ===== ACTION MODE SECTION ===== */
         .action-mode-section {
-            background: #f8f9fa;
+            background: white;
             border: 1px solid #ddd;
             border-radius: 8px;
             padding: 20px;
@@ -220,16 +231,45 @@
             margin-top: 15px;
             padding-top: 15px;
             border-top: 1px solid #ddd;
+            margin-bottom: 25px;
         }
         .selected-count {
             font-size: 14px;
-            color: #666;
-        }
-        .selected-count strong {
             color: #333;
         }
+        .selected-count strong {
+            color: #000;
+        }
 
-        /* ========== TABLE STYLES ========== */
+        /* ===== ADD TO CHECKOUT ROW ===== */
+        .add-checkout-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            background: white;
+            padding: 12px 15px;
+            border-radius: 8px;
+            border: 1px solid #b8daff;
+            clear: both;
+        }
+        .add-checkout-row .label {
+            font-weight: 600;
+            color: #004085;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-right: 10px;
+        }
+        .add-checkout-row .hint {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            margin-left: 10px;
+        }
+
+        /* ===== TABLE ===== */
         .records-table-container {
             overflow-x: auto;
             background: white;
@@ -275,7 +315,6 @@
             border-radius: 4px;
             background: #f8f9fa;
         }
-
         .barcode-value {
             font-family: monospace;
             font-size: 12px;
@@ -284,7 +323,6 @@
             border-radius: 3px;
             color: #333;
         }
-
         .no-records {
             text-align: center;
             padding: 40px;
@@ -295,7 +333,6 @@
             margin-bottom: 15px;
             color: #999;
         }
-
         .loading {
             text-align: center;
             padding: 40px;
@@ -307,7 +344,7 @@
             color: #007bff;
         }
 
-        /* ========== PAGINATION ========== */
+        /* ===== PAGINATION ===== */
         .pagination-container {
             display: flex;
             justify-content: space-between;
@@ -317,9 +354,10 @@
             border-top: 1px solid #ddd;
             flex-wrap: wrap;
             gap: 15px;
+            background: white;
         }
         .pagination-info {
-            color: #666;
+            color: #333;
             font-size: 14px;
         }
         .pagination-controls {
@@ -359,7 +397,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            color: #666;
+            color: #333;
             font-size: 14px;
         }
         .pagination-size-selector select {
@@ -378,88 +416,51 @@
             outline: none;
             border-color: #007bff;
         }
-        @media (max-width: 768px) {
-            .pagination-container {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-            .pagination-controls {
-                width: 100%;
-                justify-content: center;
-            }
-        }
 
-        /* ========== STATS ROW ========== */
-        .stats-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        .stat-card {
-            background: #f8f9fa;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 20px;
-            text-align: center;
-        }
-        .stat-value {
-            font-size: 32px;
-            font-weight: bold;
-            color: #007bff;
-            margin-bottom: 5px;
-        }
-        .stat-label {
-            color: #666;
-            font-size: 14px;
-        }
-
-        /* ========== TENDER MODAL ========== */
-        .tender-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.6);
-            display: none;
-            justify-content: center;
+        /* ===== SELECTION STATUS ===== */
+        .selection-status {
+            display: flex;
+            justify-content: space-between;
             align-items: center;
-            z-index: 10000;
-        }
-        .tender-content {
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
             background: white;
-            padding: 30px;
-            border-radius: 12px;
-            max-width: 400px;
-            width: 90%;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        }
-        .tender-amount {
-            font-size: 48px;
-            font-weight: bold;
-            text-align: center;
-            color: #28a745;
-            margin: 10px 0;
-        }
-        .tender-input {
-            width: 100%;
-            padding: 12px;
-            font-size: 24px;
-            text-align: center;
-            border: 2px solid #ddd;
+            padding: 12px 15px;
             border-radius: 8px;
-            margin: 15px 0;
+            border: 1px solid #ddd;
+            color: #000;
         }
-        .change-display {
-            font-size: 36px;
-            font-weight: bold;
-            text-align: center;
-            color: #dc3545;
-            margin: 10px 0;
+        .selection-status .status-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .selection-status .status-left .count-badge {
+            font-weight: 600;
+            color: #333;
+        }
+        .selection-status .status-left .count-badge span {
+            color: #28a745;
+        }
+        .selection-status .status-left .view-text {
+            font-size: 13px;
+            color: #666;
+        }
+        .selection-status .status-left .view-text i {
+            margin-right: 4px;
+        }
+        .selection-status .status-right {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .selection-status .status-right .btn-small {
+            padding: 5px 12px;
+            font-size: 12px;
         }
 
-        /* ========== GIFT CARD MODAL ========== */
+        /* ===== MODAL OVERLAYS ===== */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -517,6 +518,8 @@
         }
         .modal-body {
             padding: 24px;
+            background: white;
+            color: #000;
         }
         .modal-footer {
             padding: 16px 24px;
@@ -524,108 +527,72 @@
             display: flex;
             justify-content: flex-end;
             gap: 10px;
+            background: white;
         }
-
-        .gift-card-preset {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-top: 10px;
-        }
-        .preset-btn {
-            background: #f8f9fa;
-            border: 1px solid #ddd;
-            color: #333;
-            padding: 5px 12px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 13px;
-        }
-        .preset-btn:hover {
-            background: #e9ecef;
-        }
-
-        /* ========== VIEW TOGGLE STYLES ========== */
-        .view-toggle {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
+        .tender-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            display: none;
+            justify-content: center;
             align-items: center;
-            flex-wrap: wrap;
-            background: #f8f9fa;
-            padding: 12px 15px;
-            border-radius: 8px;
-            border: 1px solid #ddd;
+            z-index: 10000;
         }
-        .view-toggle .label {
-            font-weight: 600;
-            color: #333;
-            margin-right: 5px;
+        .tender-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
         }
-        .view-toggle .hint {
-            font-size: 13px;
-            color: #666;
-            margin-left: 10px;
-        }
-        .view-toggle .hint i {
-            margin-right: 4px;
-        }
-        @media (max-width: 768px) {
-            .view-toggle .hint {
-                display: none;
-            }
-        }
-
-        /* ========== SELECTION STATUS STYLES ========== */
-        .selection-status {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
-            gap: 10px;
-            background: #f8f9fa;
-            padding: 12px 15px;
-            border-radius: 8px;
-            border: 1px solid #ddd;
-        }
-        .selection-status .status-left {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-        .selection-status .status-left .count-badge {
-            font-weight: 600;
-            color: #333;
-        }
-        .selection-status .status-left .count-badge span {
+        .tender-amount {
+            font-size: 48px;
+            font-weight: bold;
+            text-align: center;
             color: #28a745;
+            margin: 10px 0;
         }
-        .selection-status .status-left .view-text {
-            font-size: 13px;
-            color: #666;
+        .tender-input {
+            width: 100%;
+            padding: 12px;
+            font-size: 24px;
+            text-align: center;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            margin: 15px 0;
         }
-        .selection-status .status-left .view-text i {
-            margin-right: 4px;
-        }
-        .selection-status .status-right {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-        .selection-status .status-right .btn-small {
-            padding: 5px 12px;
-            font-size: 12px;
+        .change-display {
+            font-size: 36px;
+            font-weight: bold;
+            text-align: center;
+            color: #dc3545;
+            margin: 10px 0;
         }
 
-        /* ========== TOAST STYLES ========== */
-        @keyframes slideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes slideOut {
-            from { transform: translateX(0); opacity: 1; }
-            to { transform: translateX(100%); opacity: 0; }
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .pagination-container {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .pagination-controls {
+                width: 100%;
+                justify-content: center;
+            }
+            .stats-row {
+                grid-template-columns: 1fr 1fr;
+            }
+            .search-options-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .search-form {
+                min-width: auto;
+            }
         }
     </style>
 </head>
@@ -720,23 +687,13 @@
             </div>
         </div>
 
-        <!-- ========== ACTION BUTTONS (Custom Item, Bernie, Gift Card) ========== -->
-        <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; background: #e3f2fd; padding: 12px 15px; border-radius: 8px; border: 1px solid #b8daff;">
-            <span style="font-weight: 600; color: #004085; display: flex; align-items: center; gap: 8px; margin-right: 10px;">
-                <i class="fas fa-plus-circle"></i> Add to Checkout:
-            </span>
-            <button class="btn btn-info btn-small" onclick="window.showCustomItemModal()" style="background: #17a2b8; color: white; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;">
-                <i class="fas fa-plus-circle"></i> Custom Item
-            </button>
-            <button class="btn btn-warning btn-small" onclick="window.addBernieItem()" style="background: #ffc107; color: #333; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;">
-                <i class="fas fa-donate"></i> Bernie ($0.99)
-            </button>
-            <button class="btn btn-success btn-small" onclick="window.showGiftCardModal()" style="background: #28a745; color: white; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;">
-                <i class="fas fa-gift"></i> Gift Card
-            </button>
-            <span style="font-size: 12px; color: #666; margin-left: 10px; display: flex; align-items: center;">
-                <i class="fas fa-info-circle"></i> Add custom items, Bernie donations, or gift cards
-            </span>
+        <!-- ========== ADD TO CHECKOUT ROW ========== -->
+        <div class="add-checkout-row">
+            <span class="label"><i class="fas fa-plus-circle"></i> Add to Checkout:</span>
+            <button class="btn btn-info btn-small" onclick="window.showCustomItemModal()"><i class="fas fa-plus-circle"></i> Custom Item</button>
+            <button class="btn btn-warning btn-small" onclick="window.addBernieItem()"><i class="fas fa-donate"></i> Bernie ($0.99)</button>
+            <button class="btn btn-success btn-small" onclick="window.showGiftCardModal()"><i class="fas fa-gift"></i> Gift Card</button>
+            <span class="hint"><i class="fas fa-info-circle"></i> Add custom items, Bernie donations, or gift cards</span>
         </div>
 
         <!-- ========== SELECTION STATUS ========== -->
@@ -776,12 +733,7 @@
                     </tr>
                 </thead>
                 <tbody id="records-table-body">
-                    <tr>
-                        <td colspan="8" style="text-align: center; padding: 40px;">
-                            <i class="fas fa-search" style="font-size: 48px; color: #ccc; display: block; margin-bottom: 15px;"></i>
-                            Search for items to manage them.
-                        </td>
-                    </tr>
+                    <!-- Rows will be dynamically inserted -->
                 </tbody>
             </table>
         </div>
@@ -923,36 +875,49 @@
     <script src="/static/js/item-management.js"></script>
 
     <script>
+        // ============================================================
+        // LOGOUT HANDLER
+        // ============================================================
+        document.addEventListener('click', function(e) {
+            const logoutBtn = e.target.closest('#nav-logout-link');
+            if (logoutBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Logout clicked');
+                fetch(AppConfig.baseUrl + '/logout', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(() => {
+                    localStorage.removeItem('auth_token');
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('auth_timestamp');
+                    window.location.href = '/login';
+                })
+                .catch(() => {
+                    localStorage.clear();
+                    window.location.href = '/login';
+                });
+            }
+        });
+
+        // ============================================================
+        // INIT
+        // ============================================================
         document.addEventListener('DOMContentLoaded', function() {
-            // Load navbar and subscription modal (functions from shared.js)
-            loadNavbar();
-            loadSubscriptionModal();
+            console.log('DOM_LOADED: Initializing item management');
 
-            // ===== MODAL CLOSE FUNCTIONS =====
-            window.closeTenderModal = function() {
-                document.getElementById('tender-modal').style.display = 'none';
-                document.getElementById('tender-amount').value = '';
-                document.getElementById('change-display-container').style.display = 'none';
-                document.getElementById('complete-payment-btn').disabled = true;
+            // Load navbar (auto-loaded by shared.js, but we call it explicitly as a fallback)
+            if (typeof loadNavbar === 'function') {
+                loadNavbar();
             }
 
-            window.closeGiftCardModal = function() {
-                document.getElementById('giftcard-modal').style.display = 'none';
-                document.getElementById('giftcard-code').value = '';
-                document.getElementById('giftcard-info').style.display = 'none';
-                document.getElementById('giftcard-apply-section').style.display = 'none';
-                document.getElementById('giftcard-result').style.display = 'none';
-            }
-
-            window.closeConfirmDeleteModal = function() {
-                document.getElementById('confirm-delete-modal').style.display = 'none';
-            }
-
-            window.closeConfirmRefundModal = function() {
-                document.getElementById('confirm-refund-modal').style.display = 'none';
+            // Initialize item management
+            if (typeof window.initItemManagement === 'function') {
+                window.initItemManagement();
             }
         });
     </script>
-
 </body>
 </html>
