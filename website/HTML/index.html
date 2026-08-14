@@ -20,7 +20,7 @@
     <link rel="stylesheet" href="/static/css/shared.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
-    <!-- JS FILES -->
+    <!-- JS FILES (notification-bell.js removed) -->
     <script src="/static/js/app-config.js"></script>
     <script src="/static/js/shared.js"></script>
     <script src="/static/js/merchandise-store.js"></script>
@@ -116,11 +116,11 @@
             color: #ff6b6b;
         }
 
-        /* ===== Cart tile styles – compact ===== */
+        /* ===== Cart tile styles (full page cart, no flip) ===== */
         .cart-tile-content {
             width: 100%;
             height: 100%;
-            padding: 12px 15px 10px 15px;
+            padding: 20px;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
@@ -133,34 +133,31 @@
             justify-content: space-between;
             align-items: center;
             border-bottom: 2px solid #ff6b6b;
-            padding-bottom: 8px;
-            margin-bottom: 10px;
-            flex-shrink: 0;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
         }
         .cart-tile-header h2 {
             margin: 0;
             color: #333;
-            font-size: 1.2rem;
         }
         .cart-tile-header .cart-count {
             background: #ff6b6b;
             color: white;
-            padding: 2px 10px;
+            padding: 4px 12px;
             border-radius: 20px;
-            font-size: 0.8rem;
+            font-size: 0.9rem;
         }
         .cart-tile-list {
             flex: 1;
             overflow-y: auto;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
         }
         .cart-tile-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 6px 0;
+            padding: 10px 0;
             border-bottom: 1px solid #f5f5f5;
-            font-size: 0.9rem;
         }
         .cart-tile-item .item-title {
             color: #333;
@@ -174,31 +171,30 @@
             border: none;
             color: #c62828;
             cursor: pointer;
-            font-size: 1.1rem;
+            font-size: 1.2rem;
             padding: 0 4px;
         }
         .cart-tile-footer {
             border-top: 1px solid #eee;
-            padding-top: 10px;
+            padding-top: 15px;
             text-align: center;
-            flex-shrink: 0;
         }
         .cart-tile-footer .total {
-            font-size: 1.1rem;
+            font-size: 1.3rem;
             font-weight: bold;
             color: #333;
         }
         .cart-tile-footer .btn-group {
             display: flex;
             gap: 8px;
-            margin-top: 8px;
+            margin-top: 10px;
         }
         .cart-tile-footer .btn-group button {
             flex: 1;
-            padding: 8px 10px;
+            padding: 10px;
             border: none;
             border-radius: 30px;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
             font-weight: 600;
             cursor: pointer;
         }
@@ -219,8 +215,8 @@
         .cart-empty-message {
             text-align: center;
             color: #888;
-            padding: 30px 0;
-            font-size: 1rem;
+            padding: 40px 0;
+            font-size: 1.1rem;
         }
 
         /* ===== Flip hint ===== */
@@ -347,10 +343,10 @@
             cursor: not-allowed;
         }
 
-        /* ===== Override for no-flip tiles (cart & events) ===== */
+        /* ===== Override for cart tile: no flip ===== */
         .tile.no-flip .flip-card {
-            pointer-events: none;
-            transform: none !important;
+            pointer-events: none; /* disable clicks on the card itself */
+            transform: none !important; /* prevent any rotation */
             transition: none !important;
         }
         .tile.no-flip .flip-card-front {
@@ -371,51 +367,7 @@
             display: none !important;
         }
 
-        /* ===== Events tile: clickable card (opens in new tab) ===== */
-        .events-card {
-            width: 100%;
-            height: 100%;
-            padding: 20px;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            background: white;
-            border-radius: 20px;
-            text-align: center;
-        }
-        .events-card i {
-            font-size: 60px;
-            color: #ff6b6b;
-            margin-bottom: 20px;
-        }
-        .events-card h2 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 1.8rem;
-        }
-        .events-card p {
-            color: #666;
-            margin-bottom: 25px;
-            font-size: 1rem;
-            max-width: 80%;
-        }
-        .events-card .events-btn {
-            display: inline-block;
-            padding: 14px 25px;
-            background: #ff6b6b;
-            color: white;
-            text-decoration: none;
-            border-radius: 30px;
-            font-weight: 600;
-            transition: background 0.2s;
-        }
-        .events-card .events-btn:hover {
-            background: #ff5252;
-        }
-
-        /* ===== Home social icons ===== */
+        /* ===== Social icons in About Us ===== */
         .social-icons {
             margin-top: 15px;
             display: flex;
@@ -665,27 +617,17 @@
                 </div>
             </div>
 
-            <!-- Tile 3: Events (no flip, opens in new tab) -->
-            <div class="tile no-flip" data-index="3">
+            <!-- Tile 3: Events -->
+            <div class="tile" data-index="3">
                 <div class="flip-card" id="flipCard3">
-                    <!-- Front is hidden via CSS -->
-                    <div class="flip-card-front" style="display:none;"></div>
-                    <div class="flip-card-back">
-                        <div class="back-content" style="padding:0; width:100%; height:100%;">
-                            <div class="events-card">
-                                <i class="fas fa-calendar-alt"></i>
-                                <h2>PigStyle Events</h2>
-                                <p>See our upcoming events, special sales, and store activities.</p>
-                                <a href="https://calendar.google.com/calendar/u/0?cid=cGlnc3R5bGUubG92ZWxhbmRAbGdtYWlsLmNvbQ"
-                                   target="_blank"
-                                   rel="noopener noreferrer"
-                                   class="events-btn">
-                                    <i class="fas fa-calendar-alt"></i>
-                                    View Full Calendar
-                                </a>
-                            </div>
+                    <div class="flip-card-front events-front">
+                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
+                    </div>
+                    <div class="flip-card-back" style="padding:0; display:flex; align-items:stretch; justify-content:stretch; background:transparent; width:100%; height:100%;">
+                        <div style="flex:1; width:100%; padding:10px; box-sizing:border-box; display:flex; align-items:center; justify-content:center;">
+                            <iframe src="https://calendar.google.com/calendar/embed?src=pigstyle.loveland%40gmail.com&ctz=America%2FDenver" style="border:0; width:100%; height:100%; border-radius:10px; background:white;" frameborder="0" scrolling="no"></iframe>
                         </div>
-                        <!-- No flip hint -->
+                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
                     </div>
                 </div>
             </div>
@@ -1433,7 +1375,7 @@
             });
         }
 
-        // ===== FLIP HANDLING (with memory, skipping cart & events tiles) =====
+        // ===== FLIP HANDLING (with memory, skipping cart tile) =====
         var flippedState = [];
 
         function initFlipHints() {
@@ -1445,8 +1387,8 @@
                     if (card) {
                         var tile = card.closest('.tile');
                         var index = parseInt(tile.dataset.index);
-                        // Skip cart (7) and events (3) tiles
-                        if (index === 7 || index === 3) return;
+                        // Skip cart tile (index 7)
+                        if (index === 7) return;
                         card.classList.toggle('flipped');
                         flippedState[index] = card.classList.contains('flipped');
                     }
@@ -1462,13 +1404,13 @@
                     if (e.target.closest('.flip-hint')) return;
                     // Ignore clicks that originate from the fixed header (nav buttons etc.)
                     if (e.target.closest('.fixed-header')) return;
-                    // Ignore clicks inside iframe (they are handled separately)
+                    // Ignore clicks inside iframe (so calendar and map remain clickable)
                     if (e.target.closest('iframe')) return;
 
                     var tile = this.closest('.tile');
                     var index = parseInt(tile.dataset.index);
-                    // Skip cart (7) and events (3) tiles
-                    if (index === 7 || index === 3) return;
+                    // Skip cart tile (index 7)
+                    if (index === 7) return;
 
                     // Only flip if currently on front (not flipped)
                     if (!this.classList.contains('flipped')) {
@@ -1483,9 +1425,10 @@
             document.querySelectorAll('.tile').forEach(function(tile) {
                 var index = parseInt(tile.dataset.index);
                 var card = tile.querySelector('.flip-card');
-                // For cart and events tiles, force flippedState to true so they stay "flipped" (back side)
-                if (index === 7 || index === 3) {
-                    flippedState[index] = true;
+                // For cart tile, force flippedState[7] to true so it stays "flipped" (back side)
+                if (index === 7) {
+                    flippedState[7] = true;
+                    // Ensure the card is always showing the back
                     if (card) {
                         card.classList.add('flipped');
                     }
@@ -1510,12 +1453,13 @@
                 navButtons.forEach(function(btn, i) {
                     btn.classList.toggle('active', i === index);
                 });
-                // Restore flip state for the new tile (skip cart & events)
+                // Restore flip state for the new tile (skip cart tile)
                 document.querySelectorAll('.tile').forEach(function(tile) {
                     var idx = parseInt(tile.dataset.index);
                     var card = tile.querySelector('.flip-card');
                     if (card) {
-                        if (idx === 7 || idx === 3) {
+                        if (idx === 7) {
+                            // Always keep cart tile flipped
                             card.classList.add('flipped');
                         } else {
                             if (flippedState[idx]) {
@@ -1555,11 +1499,221 @@
             });
         }
 
+        // ===== CONNECT FORM HANDLER =====
+        function initConnectForm() {
+            var form = document.getElementById('connectForm');
+            if (!form) return;
+            form.addEventListener('submit', function(e) {
+                e.preventDefault(); // Prevent page reload
+
+                var name = document.getElementById('connectName').value.trim();
+                var contact = document.getElementById('connectContact').value.trim();
+                var feedback = document.getElementById('connectFeedback').value.trim();
+                var messageDiv = document.getElementById('connectMessage');
+
+                // Simple validation
+                if (!feedback) {
+                    messageDiv.style.display = 'block';
+                    messageDiv.style.background = '#ffebee';
+                    messageDiv.style.color = '#c62828';
+                    messageDiv.textContent = 'Please enter a message.';
+                    return;
+                }
+
+                // Disable submit button to prevent double submission
+                var submitBtn = form.querySelector('.connect-submit-btn');
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Sending...';
+
+                // Build payload
+                var payload = {
+                    name: name || 'Anonymous',
+                    contact: contact || 'Not provided',
+                    message: feedback
+                };
+
+                var apiUrl = (typeof AppConfig !== 'undefined' && AppConfig.baseUrl) ? AppConfig.baseUrl + '/api/connect' : '/api/connect';
+
+                fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                })
+                .then(function(response) {
+                    return response.json();
+                })
+                .then(function(data) {
+                    messageDiv.style.display = 'block';
+                    if (data.status === 'success') {
+                        messageDiv.style.background = '#e8f5e9';
+                        messageDiv.style.color = '#2E7D32';
+                        messageDiv.textContent = '✅ Message sent successfully! We\'ll get back to you soon.';
+                        // Clear form
+                        document.getElementById('connectName').value = '';
+                        document.getElementById('connectContact').value = '';
+                        document.getElementById('connectFeedback').value = '';
+                    } else {
+                        messageDiv.style.background = '#ffebee';
+                        messageDiv.style.color = '#c62828';
+                        messageDiv.textContent = '❌ Failed to send message. Please try again later.';
+                    }
+                })
+                .catch(function(err) {
+                    messageDiv.style.display = 'block';
+                    messageDiv.style.background = '#ffebee';
+                    messageDiv.style.color = '#c62828';
+                    messageDiv.textContent = '❌ Error sending message. Please check your connection.';
+                    console.error('Connect error:', err);
+                })
+                .finally(function() {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Send Message';
+                });
+            });
+        }
+
+        // ===== ALERTS FORM HANDLER =====
+        function initAlertsForm() {
+            var form = document.getElementById('alertsForm');
+            if (!form) return;
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+
+                var email = document.getElementById('alertsEmail').value.trim();
+                var artist = document.getElementById('alertsArtist').value.trim();
+                var title = document.getElementById('alertsTitle').value.trim();
+                var statusDiv = document.getElementById('alertsStatus');
+
+                if (!email || !artist) {
+                    statusDiv.style.display = 'block';
+                    statusDiv.style.background = '#ffebee';
+                    statusDiv.style.color = '#c62828';
+                    statusDiv.textContent = 'Please fill in all required fields (Email and Artist).';
+                    return;
+                }
+
+                var submitBtn = form.querySelector('.alert-submit-btn');
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Subscribing...';
+
+                var payload = {
+                    email: email,
+                    artist: artist,
+                    title: title || ''
+                };
+
+                var apiUrl = (typeof AppConfig !== 'undefined' && AppConfig.baseUrl) ? AppConfig.baseUrl + '/api/alerts' : '/api/alerts';
+
+                fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                })
+                .then(function(response) {
+                    return response.json();
+                })
+                .then(function(data) {
+                    statusDiv.style.display = 'block';
+                    if (data.status === 'success') {
+                        statusDiv.style.background = '#e8f5e9';
+                        statusDiv.style.color = '#2E7D32';
+                        statusDiv.textContent = '✅ You\'re subscribed! We\'ll notify you when matching records arrive.';
+                        form.reset();
+                    } else {
+                        statusDiv.style.background = '#ffebee';
+                        statusDiv.style.color = '#c62828';
+                        statusDiv.textContent = '❌ ' + (data.message || 'Subscription failed. Please try again.');
+                    }
+                })
+                .catch(function(err) {
+                    statusDiv.style.display = 'block';
+                    statusDiv.style.background = '#ffebee';
+                    statusDiv.style.color = '#c62828';
+                    statusDiv.textContent = '❌ Error connecting to server. Please check your connection.';
+                    console.error('Alerts error:', err);
+                })
+                .finally(function() {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Subscribe';
+                });
+            });
+        }
+
+        // ===== ORDER FORM HANDLER =====
+        function initOrderForm() {
+            var form = document.getElementById('orderForm');
+            if (!form) return;
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+
+                var email = document.getElementById('orderEmail').value.trim();
+                var artist = document.getElementById('orderArtist').value.trim();
+                var title = document.getElementById('orderTitle').value.trim();
+                var statusDiv = document.getElementById('orderStatus');
+
+                if (!email || !artist || !title) {
+                    statusDiv.style.display = 'block';
+                    statusDiv.style.background = '#ffebee';
+                    statusDiv.style.color = '#c62828';
+                    statusDiv.textContent = 'Please fill in all required fields.';
+                    return;
+                }
+
+                var submitBtn = form.querySelector('.order-submit-btn');
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Sending...';
+
+                var payload = {
+                    email: email,
+                    artist: artist,
+                    title: title
+                };
+
+                var apiUrl = (typeof AppConfig !== 'undefined' && AppConfig.baseUrl) ? AppConfig.baseUrl + '/api/order' : '/api/order';
+
+                fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                })
+                .then(function(response) {
+                    return response.json();
+                })
+                .then(function(data) {
+                    statusDiv.style.display = 'block';
+                    if (data.status === 'success') {
+                        statusDiv.style.background = '#e8f5e9';
+                        statusDiv.style.color = '#2E7D32';
+                        statusDiv.textContent = '✅ Order request sent! We\'ll check availability and contact you.';
+                        form.reset();
+                    } else {
+                        statusDiv.style.background = '#ffebee';
+                        statusDiv.style.color = '#c62828';
+                        statusDiv.textContent = '❌ ' + (data.message || 'Request failed. Please try again.');
+                    }
+                })
+                .catch(function(err) {
+                    statusDiv.style.display = 'block';
+                    statusDiv.style.background = '#ffebee';
+                    statusDiv.style.color = '#c62828';
+                    statusDiv.textContent = '❌ Error connecting to server. Please check your connection.';
+                    console.error('Order error:', err);
+                })
+                .finally(function() {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Place Order Request';
+                });
+            });
+        }
+
         // ===== INIT =====
         document.addEventListener('DOMContentLoaded', function() {
             updateCartUI();
             initFlipHints();
             initNavigation();
+            initConnectForm();
+            initAlertsForm();
+            initOrderForm();
 
             var popup = document.getElementById('merchPopup');
             if (popup) {
