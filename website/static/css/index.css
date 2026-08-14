@@ -46,7 +46,7 @@
 }
 
 /* ============================================================
-   FIXED HEADER - NO LOGO, JUST MENU + FLIP BUTTON
+   FIXED HEADER – NAV NOW WHITE
    ============================================================ */
 
 .fixed-header {
@@ -73,12 +73,13 @@
     border-radius: 0;
 }
 
+/* ---- NAV ITEMS – NOW WHITE ---- */
 .fixed-header .mini-nav-item {
     display: flex;
     flex-direction: column;
     align-items: center;
     text-decoration: none;
-    color: #888;
+    color: #fff;                      /* was #888 → now white */
     font-size: 0.7rem;
     padding: 4px 8px;
     border-radius: 6px;
@@ -94,7 +95,7 @@
 .fixed-header .mini-nav-item i {
     font-size: 1.5rem;
     margin-bottom: 2px;
-    color: #777;
+    color: #fff;                      /* was #777 → now white */
     transition: color 0.2s;
 }
 
@@ -102,24 +103,25 @@
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: #777;
+    color: #fff;                      /* was #777 → now white */
 }
 
+/* ---- Hover / Active – accent color ---- */
 .fixed-header .mini-nav-item:hover i,
 .fixed-header .mini-nav-item.active i {
-    color: #ff6b6b;
+    color: #ff6b6b;                   /* pink accent */
 }
 
 .fixed-header .mini-nav-item:hover span,
 .fixed-header .mini-nav-item.active span {
-    color: #fff;
+    color: #fff;                      /* keep white or could be #ff6b6b – we keep white */
 }
 
 .fixed-header .mini-nav-item.active {
     background: rgba(255, 107, 107, 0.12);
 }
 
-/* Flip button in mini-nav */
+/* ---- Flip button (special) ---- */
 .fixed-header .mini-nav-item.flip-btn {
     background: rgba(255, 107, 107, 0.2);
     border: 1px solid rgba(255, 107, 107, 0.3);
@@ -137,7 +139,7 @@
 
 .fixed-header .mini-nav-item.flip-btn i {
     font-size: 1.2rem;
-    color: #ff6b6b;
+    color: #ff6b6b;                   /* keep pink for flip button */
     margin-bottom: 0;
 }
 
@@ -222,7 +224,7 @@
 }
 
 .flip-card-front {
-    background: rgba(255, 255, 255, 0.1);
+    background: transparent;  /* no dark overlay */
     border: none;
     box-shadow: none;
     color: white;
@@ -240,157 +242,104 @@
     padding: 20px;
 }
 
-/* Remove scrollbar from flip-card-back */
 .flip-card-back::-webkit-scrollbar {
     width: 0px;
     background: transparent;
 }
 
 /* ============================================================
-   FRONT TILE BACKGROUNDS - PIG IMAGES
+   FRONT TILE BACKGROUNDS – NO OVERLAYS, PURE IMAGES
    ============================================================ */
 
 /* Welcome tile (Home) */
 .flip-card-front.welcome-front {
-    background: rgba(0, 0, 0, 0.2);
-    background-image: url('/static/images/pig_before_storefront.png');
-    background-size: contain;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-blend-mode: overlay;
+    background: transparent !important;
+    background-image: url('/static/images/pig_before_storefront.png') !important;
+    background-size: contain !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    background-blend-mode: normal !important;
+}
+.flip-card-front.welcome-front::before {
+    display: none !important;
 }
 
-.flip-card-front.welcome-front .welcome-text {
-    display: none;
-}
-
-.flip-card-front.welcome-front .flip-hint {
-    bottom: 20px;
-}
-
-.welcome-front::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.3) 100%);
-    pointer-events: none;
-}
-
-/* Merch tile – exact copy of welcome-front, only image changed */
+/* Merch tile */
 .flip-card-front.merch-front {
-    background: rgba(0, 0, 0, 0.2);
-    background-image: url('/static/images/merch_front_pig_shitting_gifts.png');
-    background-size: contain;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-blend-mode: overlay;
+    background: transparent !important;
+    background-image: url('/static/images/merch_front_pig_shitting_gifts.png') !important;
+    background-size: contain !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    background-blend-mode: normal !important;
 }
-
-.flip-card-front.merch-front .flip-hint {
-    bottom: 20px;
-}
-
-.merch-front::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.3) 100%);
-    pointer-events: none;
+.flip-card-front.merch-front::before {
+    display: none !important;
 }
 
 /* Shop tile */
 .flip-card-front.shop-front {
-    background: rgba(0, 0, 0, 0.2);
-    background-image: url('/static/images/pig_shopping.png');
-    background-size: contain;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-blend-mode: overlay;
+    background: transparent !important;
+    background-image: url('/static/images/pig_shopping.png') !important;
+    background-size: contain !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    background-blend-mode: normal !important;
 }
-
-.flip-card-front.shop-front .front-icon,
-.flip-card-front.shop-front .front-title,
-.flip-card-front.shop-front .front-description,
-.flip-card-front.shop-front .front-action {
-    display: none;
+.flip-card-front.shop-front::before {
+    display: none !important;
 }
 
 /* Events tile */
 .flip-card-front.events-front {
-    background: rgba(0, 0, 0, 0.2);
-    background-image: url('/static/images/pig_in_a_band.png');
-    background-size: contain;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-blend-mode: overlay;
+    background: transparent !important;
+    background-image: url('/static/images/pig_in_a_band.png') !important;
+    background-size: contain !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    background-blend-mode: normal !important;
 }
-
-.flip-card-front.events-front .front-icon,
-.flip-card-front.events-front .front-title,
-.flip-card-front.events-front .front-description,
-.flip-card-front.events-front .front-action {
-    display: none;
+.flip-card-front.events-front::before {
+    display: none !important;
 }
 
 /* Connect tile */
 .flip-card-front.connect-front {
-    background: rgba(0, 0, 0, 0.2);
-    background-image: url('/static/images/pig_on_classroom_table.png');
-    background-size: contain;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-blend-mode: overlay;
+    background: transparent !important;
+    background-image: url('/static/images/pig_on_classroom_table.png') !important;
+    background-size: contain !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    background-blend-mode: normal !important;
 }
-
-.flip-card-front.connect-front .connect-front-text {
-    display: none;
-}
-
-.flip-card-front.connect-front .front-icon,
-.flip-card-front.connect-front .front-title,
-.flip-card-front.connect-front .front-description,
-.flip-card-front.connect-front .front-action {
-    display: none;
+.flip-card-front.connect-front::before {
+    display: none !important;
 }
 
 /* Record Alerts tile */
 .flip-card-front.alerts-front {
-    background: rgba(0, 0, 0, 0.2);
-    background-image: url('/static/images/pig_giving_record_alert.png');
-    background-size: contain;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-blend-mode: overlay;
+    background: transparent !important;
+    background-image: url('/static/images/pig_giving_record_alert.png') !important;
+    background-size: contain !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    background-blend-mode: normal !important;
 }
-
-.flip-card-front.alerts-front .front-icon,
-.flip-card-front.alerts-front .front-title,
-.flip-card-front.alerts-front .front-description,
-.flip-card-front.alerts-front .front-action {
-    display: none;
+.flip-card-front.alerts-front::before {
+    display: none !important;
 }
 
 /* Order Records tile */
 .flip-card-front.order-front {
-    background: rgba(0, 0, 0, 0.2);
-    background-image: url('/static/images/pig_delivering_order.png');
-    background-size: contain;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-blend-mode: overlay;
+    background: transparent !important;
+    background-image: url('/static/images/pig_delivering_order.png') !important;
+    background-size: contain !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    background-blend-mode: normal !important;
 }
-
-.flip-card-front.order-front .front-icon,
-.flip-card-front.order-front .front-title,
-.flip-card-front.order-front .front-description,
-.flip-card-front.order-front .front-action {
-    display: none;
+.flip-card-front.order-front::before {
+    display: none !important;
 }
 
 /* ============================================================
@@ -466,7 +415,7 @@
 }
 
 /* ============================================================
-   FRONT SIDE CONTENT (fallback)
+   FRONT SIDE CONTENT (fallback – hidden now)
    ============================================================ */
 
 .front-icon {
