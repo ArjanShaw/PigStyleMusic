@@ -2051,11 +2051,14 @@
         min-height: 300px;
     }
 
-    /* ----- Flip hint – higher & more visible ----- */
+    /* ----- Flip hint – position under the header on mobile ----- */
     .flip-hint {
+        top: 56px !important;       /* just below the fixed header */
+        bottom: auto !important;
+        left: 50%;
+        transform: translateX(-50%);
         font-size: 0.7rem !important;
         padding: 6px 14px !important;
-        bottom: 15px !important;
         background: rgba(0, 0, 0, 0.7) !important;
         border-radius: 20px !important;
     }
@@ -2278,9 +2281,9 @@
     }
 
     .flip-hint {
+        top: 48px !important;
         font-size: 0.6rem !important;
         padding: 4px 10px !important;
-        bottom: 10px !important;
     }
 
     .fixed-header .mini-nav-item {
