@@ -46,7 +46,7 @@
 }
 
 /* ============================================================
-   FIXED HEADER – NAV NOW WHITE
+   FIXED HEADER – NAV WHITE
    ============================================================ */
 
 .fixed-header {
@@ -73,13 +73,12 @@
     border-radius: 0;
 }
 
-/* ---- NAV ITEMS – NOW WHITE ---- */
 .fixed-header .mini-nav-item {
     display: flex;
     flex-direction: column;
     align-items: center;
     text-decoration: none;
-    color: #fff;                      /* was #888 → now white */
+    color: #fff;
     font-size: 0.7rem;
     padding: 4px 8px;
     border-radius: 6px;
@@ -95,7 +94,7 @@
 .fixed-header .mini-nav-item i {
     font-size: 1.5rem;
     margin-bottom: 2px;
-    color: #fff;                      /* was #777 → now white */
+    color: #fff;
     transition: color 0.2s;
 }
 
@@ -103,25 +102,23 @@
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: #fff;                      /* was #777 → now white */
+    color: #fff;
 }
 
-/* ---- Hover / Active – accent color ---- */
 .fixed-header .mini-nav-item:hover i,
 .fixed-header .mini-nav-item.active i {
-    color: #ff6b6b;                   /* pink accent */
+    color: #ff6b6b;
 }
 
 .fixed-header .mini-nav-item:hover span,
 .fixed-header .mini-nav-item.active span {
-    color: #fff;                      /* keep white or could be #ff6b6b – we keep white */
+    color: #fff;
 }
 
 .fixed-header .mini-nav-item.active {
     background: rgba(255, 107, 107, 0.12);
 }
 
-/* ---- Flip button (special) ---- */
 .fixed-header .mini-nav-item.flip-btn {
     background: rgba(255, 107, 107, 0.2);
     border: 1px solid rgba(255, 107, 107, 0.3);
@@ -139,7 +136,7 @@
 
 .fixed-header .mini-nav-item.flip-btn i {
     font-size: 1.2rem;
-    color: #ff6b6b;                   /* keep pink for flip button */
+    color: #ff6b6b;
     margin-bottom: 0;
 }
 
@@ -224,7 +221,7 @@
 }
 
 .flip-card-front {
-    background: transparent;  /* no dark overlay */
+    background: transparent;
     border: none;
     box-shadow: none;
     color: white;
@@ -251,7 +248,6 @@
    FRONT TILE BACKGROUNDS – NO OVERLAYS, PURE IMAGES
    ============================================================ */
 
-/* Welcome tile (Home) */
 .flip-card-front.welcome-front {
     background: transparent !important;
     background-image: url('/static/images/pig_before_storefront.png') !important;
@@ -264,7 +260,6 @@
     display: none !important;
 }
 
-/* Merch tile */
 .flip-card-front.merch-front {
     background: transparent !important;
     background-image: url('/static/images/merch_front_pig_shitting_gifts.png') !important;
@@ -277,7 +272,6 @@
     display: none !important;
 }
 
-/* Shop tile */
 .flip-card-front.shop-front {
     background: transparent !important;
     background-image: url('/static/images/pig_shopping.png') !important;
@@ -290,7 +284,6 @@
     display: none !important;
 }
 
-/* Events tile */
 .flip-card-front.events-front {
     background: transparent !important;
     background-image: url('/static/images/pig_in_a_band.png') !important;
@@ -303,7 +296,6 @@
     display: none !important;
 }
 
-/* Connect tile */
 .flip-card-front.connect-front {
     background: transparent !important;
     background-image: url('/static/images/pig_on_classroom_table.png') !important;
@@ -316,7 +308,6 @@
     display: none !important;
 }
 
-/* Record Alerts tile */
 .flip-card-front.alerts-front {
     background: transparent !important;
     background-image: url('/static/images/pig_giving_record_alert.png') !important;
@@ -329,7 +320,6 @@
     display: none !important;
 }
 
-/* Order Records tile */
 .flip-card-front.order-front {
     background: transparent !important;
     background-image: url('/static/images/pig_delivering_order.png') !important;
@@ -2027,236 +2017,327 @@
 }
 
 /* ============================================================
-   RESPONSIVE
+   MOBILE FIXES – tile layout (flip hint & swipe)
    ============================================================ */
 
-@media (min-width: 1025px) {
-    .desktop-record-container {
-        display: block;
-    }
-    
-    .carousel-arrow {
-        width: 48px;
-        height: 48px;
-        font-size: 1.3rem;
-    }
-    
-    .carousel-arrow.prev {
-        left: 20px;
-    }
-    
-    .carousel-arrow.next {
-        right: 20px;
-    }
-    
-    .carousel-container {
-        padding-top: 76px;
-    }
-    
-    .fixed-header .mini-nav-item i {
-        font-size: 1.5rem;
-    }
-    
-    .fixed-header .mini-nav-item span {
-        font-size: 0.7rem;
-    }
-}
-
-@media (max-width: 1024px) {
-    .fixed-header .mini-nav {
-        gap: 4px;
-    }
-    .fixed-header .mini-nav-item {
-        min-width: 34px;
-        padding: 3px 6px;
-        font-size: 0.6rem;
-    }
-    .fixed-header .mini-nav-item i {
-        font-size: 1.2rem;
-    }
-    .fixed-header .mini-nav-item span {
-        font-size: 0.6rem;
-    }
-}
-
 @media (max-width: 768px) {
-    .desktop-record-container {
-        display: none;
-    }
-    
-    .sticky-notes-container {
-        display: none;
-    }
-    
-    .fixed-header {
-        padding: 2px 8px 2px;
-    }
-    
-    .fixed-header .mini-nav {
-        gap: 2px;
-    }
-    
-    .fixed-header .mini-nav-item {
-        padding: 2px 4px;
-        min-width: 28px;
-        font-size: 0.5rem;
-    }
-    
-    .fixed-header .mini-nav-item i {
-        font-size: 1rem;
-    }
-    
-    .fixed-header .mini-nav-item span {
-        font-size: 0.5rem;
-    }
-    
-    .fixed-header .mini-nav-item.flip-btn {
-        width: 34px;
-        min-width: 34px;
-        height: 34px;
-    }
-    
-    .fixed-header .mini-nav-item.flip-btn i {
-        font-size: 1rem;
-    }
-    
+
+    /* ----- Carousel container – reduce padding ----- */
     .carousel-container {
-        padding-top: 62px;
+        padding-top: 56px !important;
     }
-    
-    .front-icon {
-        font-size: 3.5rem;
-        margin-bottom: 10px;
+
+    /* ----- Tiles – full height with overflow handling ----- */
+    .tile {
+        height: 100%;
+        min-height: 100vh;
+        overflow-y: auto;
+        padding: 0 5px;
     }
-    
-    .front-title {
-        font-size: 1.6rem;
+
+    /* ----- Flip card – ensure content fits ----- */
+    .flip-card-front,
+    .flip-card-back {
+        padding: 10px !important;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
     }
-    
-    .front-description {
-        font-size: 0.85rem;
-        max-width: 280px;
+
+    /* ----- Front tile images – contain, not cover ----- */
+    .flip-card-front {
+        background-size: contain !important;
+        background-position: center !important;
+        background-repeat: no-repeat !important;
+        min-height: 300px;
     }
-    
-    .front-action {
-        padding: 8px 24px;
-        font-size: 0.8rem;
-    }
-    
-    .carousel-arrow {
-        width: 32px;
-        height: 32px;
-        font-size: 0.8rem;
-    }
-    
-    .carousel-arrow.prev {
-        left: 6px;
-    }
-    
-    .carousel-arrow.next {
-        right: 6px;
-    }
-    
+
+    /* ----- Flip hint – higher & more visible ----- */
     .flip-hint {
-        font-size: 0.6rem;
-        bottom: 20px;
+        font-size: 0.7rem !important;
+        padding: 6px 14px !important;
+        bottom: 15px !important;
+        background: rgba(0, 0, 0, 0.7) !important;
+        border-radius: 20px !important;
     }
-    
-    .browse-search-wrapper input {
-        font-size: 12px;
-        padding: 6px 12px;
-    }
-    
-    .browse-filter-btn {
-        font-size: 10px;
-        padding: 4px 10px;
-    }
-    
+
+    /* ----- Home back – stack vertically ----- */
     .home-back-grid {
         grid-template-columns: 1fr;
         gap: 10px;
+        height: auto;
+        min-height: 100%;
+        padding: 5px 0;
     }
-    
-    .home-back-tile {
-        min-height: 180px;
-    }
-    
-    .alert-box,
-    .order-box {
-        padding: 15px;
-        max-width: 320px;
-    }
-}
 
-@media (max-width: 480px) {
-    .fixed-header .mini-nav-item {
-        min-width: 22px;
-        padding: 1px 3px;
-        font-size: 0.4rem;
+    .home-back-tile {
+        min-height: 200px;
+        padding: 12px;
     }
-    
-    .fixed-header .mini-nav-item i {
-        font-size: 0.8rem;
+
+    .home-back-tile .map-container {
+        min-height: 150px;
     }
-    
-    .fixed-header .mini-nav-item span {
-        font-size: 0.4rem;
+
+    /* ----- Merch products – stack vertically ----- */
+    .tile[data-index="2"] .back-content > div {
+        flex-direction: column !important;
+        gap: 15px !important;
+        height: auto !important;
+        max-height: none !important;
     }
-    
-    .fixed-header .mini-nav-item.flip-btn {
-        width: 28px;
-        min-width: 28px;
-        height: 28px;
+
+    .merch-product {
+        aspect-ratio: auto !important;
+        height: 150px !important;
+        flex: none !important;
+        width: 100% !important;
     }
-    
-    .fixed-header .mini-nav-item.flip-btn i {
-        font-size: 0.8rem;
+
+    /* ----- Browse grid – single column ----- */
+    .browse-records-grid {
+        grid-template-columns: 1fr !important;
+        gap: 10px;
+        padding: 5px 0;
     }
-    
-    .carousel-container {
-        padding-top: 52px;
+
+    .browse-record-card {
+        max-width: 100%;
     }
-    
-    .front-icon {
-        font-size: 2.8rem;
+
+    /* ----- Browse filters – wrap and shrink ----- */
+    .browse-filter-section {
+        gap: 4px;
     }
-    
-    .front-title {
-        font-size: 1.3rem;
+
+    .browse-filter-btn {
+        font-size: 10px;
+        padding: 4px 8px;
     }
-    
-    .front-description {
-        font-size: 0.75rem;
-        max-width: 240px;
+
+    /* ----- Cart tile – full width with scroll ----- */
+    .tile[data-index="7"] .flip-card {
+        border-radius: 8px !important;
     }
-    
-    .front-action {
-        padding: 6px 18px;
-        font-size: 0.7rem;
+
+    .cart-tile-content {
+        padding: 12px;
     }
-    
-    .carousel-arrow {
-        width: 28px;
-        height: 28px;
-        font-size: 0.65rem;
+
+    .cart-tile-content .cart-header {
+        font-size: 1.2rem;
     }
-    
-    .carousel-arrow.prev {
-        left: 4px;
+
+    .cart-tile-content .cart-item {
+        font-size: 0.85rem;
+        padding: 6px 0;
     }
-    
-    .carousel-arrow.next {
-        right: 4px;
+
+    .cart-tile-content .btn-group {
+        flex-direction: column;
+        gap: 6px;
     }
-    
-    .flip-hint {
-        font-size: 0.5rem;
-        bottom: 15px;
+
+    .cart-tile-content .btn-group button {
+        width: 100%;
     }
-    
+
+    /* ----- Shipping address fields – stack ----- */
+    .cart-tile-content .address-fields .address-row {
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    /* ----- Browse pagination – wrap & shrink ----- */
+    .browse-pagination-container {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        padding: 10px 5px;
+    }
+
+    .browse-pagination-controls {
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .browse-pagination-btn {
+        padding: 4px 8px;
+        font-size: 12px;
+        min-width: 30px;
+    }
+
+    .browse-page-size-selector {
+        font-size: 12px;
+    }
+
+    /* ----- Connect tile – full width form ----- */
+    .tile[data-index="4"] .connect-feedback-card {
+        padding: 15px !important;
+        border-radius: 12px !important;
+    }
+
+    .tile[data-index="4"] .connect-feedback-card h3 {
+        font-size: 16px;
+    }
+
+    .tile[data-index="4"] .connect-feedback-form textarea {
+        min-height: 60px;
+    }
+
+    /* ----- Events tile – calendar iframe full height ----- */
+    .tile[data-index="3"] .flip-card-back > div {
+        padding: 5px !important;
+    }
+
+    .tile[data-index="3"] iframe {
+        border-radius: 6px;
+    }
+
+    /* ----- Alerts & Order tiles – reduce padding ----- */
     .alert-box,
     .order-box {
         padding: 12px;
-        max-width: 280px;
+        max-width: 100% !important;
+        margin: 0 5px;
+    }
+
+    .alert-header h2,
+    .order-header h2 {
+        font-size: 1rem;
+    }
+
+    /* ----- Carousel arrows – reposition & enlarge touch target ----- */
+    .carousel-arrow {
+        width: 36px;
+        height: 36px;
+        font-size: 0.9rem;
+        background: rgba(0, 0, 0, 0.6);
+        top: 50%;
+        transform: translateY(-50%);
+    }
+
+    .carousel-arrow.prev {
+        left: 4px;
+    }
+
+    .carousel-arrow.next {
+        right: 4px;
+    }
+
+    /* ----- Fixed header – reduce height and spacing ----- */
+    .fixed-header {
+        padding: 2px 8px;
+    }
+
+    .fixed-header .mini-nav {
+        gap: 2px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        justify-content: flex-start;
+        flex-wrap: nowrap;
+        padding: 2px 0;
+    }
+
+    .fixed-header .mini-nav-item {
+        min-width: 36px;
+        padding: 2px 6px;
+        font-size: 0.5rem;
+        flex-shrink: 0;
+    }
+
+    .fixed-header .mini-nav-item i {
+        font-size: 1rem;
+    }
+
+    .fixed-header .mini-nav-item span {
+        font-size: 0.5rem;
+        letter-spacing: 0.3px;
+    }
+
+    /* ----- Login link in mini-nav – keep visible ----- */
+    .fixed-header .mini-nav-item.login-link {
+        min-width: 44px;
+    }
+}
+
+/* ============================================================
+   EXTRA SMALL (≤ 480px)
+   ============================================================ */
+
+@media (max-width: 480px) {
+    .carousel-container {
+        padding-top: 48px !important;
+    }
+
+    .tile {
+        padding: 0 3px;
+    }
+
+    .flip-card-front {
+        min-height: 200px;
+    }
+
+    .flip-hint {
+        font-size: 0.6rem !important;
+        padding: 4px 10px !important;
+        bottom: 10px !important;
+    }
+
+    .fixed-header .mini-nav-item {
+        min-width: 28px;
+        padding: 1px 4px;
+        font-size: 0.4rem;
+    }
+
+    .fixed-header .mini-nav-item i {
+        font-size: 0.8rem;
+    }
+
+    .fixed-header .mini-nav-item span {
+        font-size: 0.4rem;
+    }
+
+    .home-back-tile {
+        min-height: 150px;
+    }
+
+    .merch-product {
+        height: 120px !important;
+    }
+
+    .browse-record-card {
+        font-size: 0.9rem;
+    }
+
+    .browse-record-card-image {
+        height: 100px;
+    }
+
+    .cart-tile-content {
+        padding: 8px;
+    }
+
+    .cart-tile-content .cart-header {
+        font-size: 1rem;
+    }
+
+    .cart-tile-content .cart-item {
+        font-size: 0.75rem;
+    }
+
+    .cart-tile-content .btn-group button {
+        font-size: 0.8rem;
+        padding: 8px 10px;
+    }
+
+    .alert-box,
+    .order-box {
+        padding: 10px;
+    }
+
+    .carousel-arrow {
+        width: 28px;
+        height: 28px;
+        font-size: 0.7rem;
     }
 }

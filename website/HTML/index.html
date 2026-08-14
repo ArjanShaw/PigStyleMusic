@@ -53,7 +53,7 @@
             flex-direction: column;
             align-items: center;
             text-decoration: none;
-            color: #ddd;   /* brighter default color */
+            color: #ddd;
             font-size: 0.7rem;
             padding: 4px 8px;
             border-radius: 6px;
@@ -69,7 +69,7 @@
         .mini-nav-item i {
             font-size: 1.5rem;
             margin-bottom: 2px;
-            color: #ccc;   /* brighter icon color */
+            color: #ccc;
             transition: color 0.2s;
         }
         .mini-nav-item span {
@@ -564,15 +564,12 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            /* no filters or overlays that dull the image */
         }
         .pig-head {
             max-width: 100%;
             height: auto;
             display: block;
-            /* remove any gray overlay by ensuring no opacity/filter on parent */
         }
-        /* No overlay on the pig container */
         .desktop-record-container::before,
         .desktop-record-container::after {
             display: none;
@@ -771,7 +768,7 @@
                                     </div>
                                 </div>
 
-                                <!-- ===== BROWSE PAGINATION (new) ===== -->
+                                <!-- ===== BROWSE PAGINATION ===== -->
                                 <div class="browse-pagination-container">
                                     <div class="browse-pagination-info">
                                         Showing <span id="browseShowingRange">0-0</span> of <span id="browseTotalRecords">0</span> records
@@ -1803,6 +1800,67 @@
             });
         }
 
+        // ===== SWIPE GESTURE FOR CAROUSEL =====
+        function initSwipe() {
+            var wrapper = document.getElementById('tilesWrapper');
+            if (!wrapper) return;
+
+            var startX = 0;
+            var startY = 0;
+            var isSwiping = false;
+
+            wrapper.addEventListener('touchstart', function(e) {
+                var touch = e.touches[0];
+                startX = touch.clientX;
+                startY = touch.clientY;
+                isSwiping = false;
+            }, { passive: true });
+
+            wrapper.addEventListener('touchmove', function(e) {
+                if (!startX) return;
+                var touch = e.touches[0];
+                var diffX = touch.clientX - startX;
+                var diffY = touch.clientY - startY;
+                // Only activate if horizontal swipe and not vertical (to avoid conflict with scrolling)
+                if (Math.abs(diffX) > 10 && Math.abs(diffX) > Math.abs(diffY) * 1.5) {
+                    isSwiping = true;
+                }
+            }, { passive: true });
+
+            wrapper.addEventListener('touchend', function(e) {
+                if (!startX || !isSwiping) {
+                    startX = 0;
+                    return;
+                }
+                var endX = e.changedTouches[0].clientX;
+                var diff = endX - startX;
+                var threshold = 50; // minimum swipe distance
+
+                if (Math.abs(diff) > threshold) {
+                    var navButtons = document.querySelectorAll('.mini-nav-item[data-index]');
+                    var currentIndex = 0;
+                    navButtons.forEach(function(btn, idx) {
+                        if (btn.classList.contains('active')) {
+                            currentIndex = idx;
+                        }
+                    });
+                    if (diff < 0) {
+                        // Swipe left → next tile
+                        if (currentIndex < navButtons.length - 1) {
+                            goToTile(currentIndex + 1);
+                        }
+                    } else {
+                        // Swipe right → previous tile
+                        if (currentIndex > 0) {
+                            goToTile(currentIndex - 1);
+                        }
+                    }
+                }
+                startX = 0;
+                isSwiping = false;
+            }, { passive: true });
+        }
+
         // ===== PAYMENT CONFIRMATION HANDLER =====
         function checkPaymentStatus() {
             var params = new URLSearchParams(window.location.search);
@@ -2027,6 +2085,7 @@
             updateCartUI();
             initFlipHints();
             initNavigation();
+            initSwipe();   // <-- swipe support added
             checkPaymentStatus();
 
             var popup = document.getElementById('merchPopup');
