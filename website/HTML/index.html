@@ -20,7 +20,7 @@
     <link rel="stylesheet" href="/static/css/shared.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
-    <!-- JS FILES (notification-bell.js removed) -->
+    <!-- JS FILES -->
     <script src="/static/js/app-config.js"></script>
     <script src="/static/js/shared.js"></script>
     <script src="/static/js/merchandise-store.js"></script>
@@ -116,11 +116,11 @@
             color: #ff6b6b;
         }
 
-        /* ===== Cart tile styles (full page cart, no flip) ===== */
+        /* ===== Cart tile styles – compact ===== */
         .cart-tile-content {
             width: 100%;
             height: 100%;
-            padding: 20px;
+            padding: 12px 15px 10px 15px;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
@@ -133,31 +133,34 @@
             justify-content: space-between;
             align-items: center;
             border-bottom: 2px solid #ff6b6b;
-            padding-bottom: 10px;
-            margin-bottom: 15px;
+            padding-bottom: 8px;
+            margin-bottom: 10px;
+            flex-shrink: 0;
         }
         .cart-tile-header h2 {
             margin: 0;
             color: #333;
+            font-size: 1.2rem;
         }
         .cart-tile-header .cart-count {
             background: #ff6b6b;
             color: white;
-            padding: 4px 12px;
+            padding: 2px 10px;
             border-radius: 20px;
-            font-size: 0.9rem;
+            font-size: 0.8rem;
         }
         .cart-tile-list {
             flex: 1;
             overflow-y: auto;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
         .cart-tile-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 10px 0;
+            padding: 6px 0;
             border-bottom: 1px solid #f5f5f5;
+            font-size: 0.9rem;
         }
         .cart-tile-item .item-title {
             color: #333;
@@ -171,30 +174,31 @@
             border: none;
             color: #c62828;
             cursor: pointer;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             padding: 0 4px;
         }
         .cart-tile-footer {
             border-top: 1px solid #eee;
-            padding-top: 15px;
+            padding-top: 10px;
             text-align: center;
+            flex-shrink: 0;
         }
         .cart-tile-footer .total {
-            font-size: 1.3rem;
+            font-size: 1.1rem;
             font-weight: bold;
             color: #333;
         }
         .cart-tile-footer .btn-group {
             display: flex;
             gap: 8px;
-            margin-top: 10px;
+            margin-top: 8px;
         }
         .cart-tile-footer .btn-group button {
             flex: 1;
-            padding: 10px;
+            padding: 8px 10px;
             border: none;
             border-radius: 30px;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             font-weight: 600;
             cursor: pointer;
         }
@@ -215,8 +219,8 @@
         .cart-empty-message {
             text-align: center;
             color: #888;
-            padding: 40px 0;
-            font-size: 1.1rem;
+            padding: 30px 0;
+            font-size: 1rem;
         }
 
         /* ===== Flip hint ===== */
@@ -343,10 +347,10 @@
             cursor: not-allowed;
         }
 
-        /* ===== Override for cart tile: no flip ===== */
+        /* ===== Override for no-flip tiles (cart & events) ===== */
         .tile.no-flip .flip-card {
-            pointer-events: none; /* disable clicks on the card itself */
-            transform: none !important; /* prevent any rotation */
+            pointer-events: none;
+            transform: none !important;
             transition: none !important;
         }
         .tile.no-flip .flip-card-front {
@@ -365,6 +369,66 @@
         }
         .tile.no-flip .flip-hint {
             display: none !important;
+        }
+
+        /* ===== Events tile: clickable card (opens in new tab) ===== */
+        .events-card {
+            width: 100%;
+            height: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            border-radius: 20px;
+            text-align: center;
+        }
+        .events-card i {
+            font-size: 60px;
+            color: #ff6b6b;
+            margin-bottom: 20px;
+        }
+        .events-card h2 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.8rem;
+        }
+        .events-card p {
+            color: #666;
+            margin-bottom: 25px;
+            font-size: 1rem;
+            max-width: 80%;
+        }
+        .events-card .events-btn {
+            display: inline-block;
+            padding: 14px 25px;
+            background: #ff6b6b;
+            color: white;
+            text-decoration: none;
+            border-radius: 30px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        .events-card .events-btn:hover {
+            background: #ff5252;
+        }
+
+        /* ===== Home social icons ===== */
+        .social-icons {
+            margin-top: 15px;
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            font-size: 2rem;
+        }
+        .social-icons a {
+            color: #555;
+            transition: color 0.2s;
+        }
+        .social-icons a:hover {
+            color: #ff6b6b;
         }
     </style>
 </head>
@@ -463,6 +527,12 @@
                                     <div class="info-item">
                                         <i class="fas fa-music"></i>
                                         <span>Located in the heart of Loveland, Colorado.</span>
+                                    </div>
+                                    <!-- Social Icons placed here -->
+                                    <div class="social-icons">
+                                        <a href="https://www.facebook.com/profile.php?id=61582821044262" target="_blank" aria-label="Visit our Facebook page"><i class="fab fa-facebook"></i></a>
+                                        <a href="https://www.instagram.com/pigstyle_loveland/" target="_blank" aria-label="Visit our Instagram page"><i class="fab fa-instagram"></i></a>
+                                        <a href="https://www.youtube.com/channel/UCz8jHllFjnbG9Jrb3xglDqQ" target="_blank" aria-label="Visit our youtube channel"><i class="fab fa-youtube"></i></a>
                                     </div>
                                 </div>
                                 <div class="home-back-tile">
@@ -595,17 +665,27 @@
                 </div>
             </div>
 
-            <!-- Tile 3: Events -->
-            <div class="tile" data-index="3">
+            <!-- Tile 3: Events (no flip, opens in new tab) -->
+            <div class="tile no-flip" data-index="3">
                 <div class="flip-card" id="flipCard3">
-                    <div class="flip-card-front events-front">
-                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
-                    </div>
-                    <div class="flip-card-back" style="padding:0; display:flex; align-items:stretch; justify-content:stretch; background:transparent; width:100%; height:100%;">
-                        <div style="flex:1; width:100%; padding:10px; box-sizing:border-box; display:flex; align-items:center; justify-content:center;">
-                            <iframe src="https://calendar.google.com/calendar/embed?src=pigstyle.loveland%40gmail.com&ctz=America%2FDenver" style="border:0; width:100%; height:100%; border-radius:10px; background:white;" frameborder="0" scrolling="no"></iframe>
+                    <!-- Front is hidden via CSS -->
+                    <div class="flip-card-front" style="display:none;"></div>
+                    <div class="flip-card-back">
+                        <div class="back-content" style="padding:0; width:100%; height:100%;">
+                            <div class="events-card">
+                                <i class="fas fa-calendar-alt"></i>
+                                <h2>PigStyle Events</h2>
+                                <p>See our upcoming events, special sales, and store activities.</p>
+                                <a href="https://calendar.google.com/calendar/u/0?cid=cGlnc3R5bGUubG92ZWxhbmRAbGdtYWlsLmNvbQ"
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   class="events-btn">
+                                    <i class="fas fa-calendar-alt"></i>
+                                    View Full Calendar
+                                </a>
+                            </div>
                         </div>
-                        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
+                        <!-- No flip hint -->
                     </div>
                 </div>
             </div>
@@ -1353,7 +1433,7 @@
             });
         }
 
-        // ===== FLIP HANDLING (with memory, but skipping cart tile) =====
+        // ===== FLIP HANDLING (with memory, skipping cart & events tiles) =====
         var flippedState = [];
 
         function initFlipHints() {
@@ -1365,8 +1445,8 @@
                     if (card) {
                         var tile = card.closest('.tile');
                         var index = parseInt(tile.dataset.index);
-                        // Skip cart tile (index 7)
-                        if (index === 7) return;
+                        // Skip cart (7) and events (3) tiles
+                        if (index === 7 || index === 3) return;
                         card.classList.toggle('flipped');
                         flippedState[index] = card.classList.contains('flipped');
                     }
@@ -1382,11 +1462,13 @@
                     if (e.target.closest('.flip-hint')) return;
                     // Ignore clicks that originate from the fixed header (nav buttons etc.)
                     if (e.target.closest('.fixed-header')) return;
+                    // Ignore clicks inside iframe (they are handled separately)
+                    if (e.target.closest('iframe')) return;
 
                     var tile = this.closest('.tile');
                     var index = parseInt(tile.dataset.index);
-                    // Skip cart tile (index 7)
-                    if (index === 7) return;
+                    // Skip cart (7) and events (3) tiles
+                    if (index === 7 || index === 3) return;
 
                     // Only flip if currently on front (not flipped)
                     if (!this.classList.contains('flipped')) {
@@ -1401,10 +1483,9 @@
             document.querySelectorAll('.tile').forEach(function(tile) {
                 var index = parseInt(tile.dataset.index);
                 var card = tile.querySelector('.flip-card');
-                // For cart tile, force flippedState[7] to true so it stays "flipped" (back side)
-                if (index === 7) {
-                    flippedState[7] = true;
-                    // Ensure the card is always showing the back
+                // For cart and events tiles, force flippedState to true so they stay "flipped" (back side)
+                if (index === 7 || index === 3) {
+                    flippedState[index] = true;
                     if (card) {
                         card.classList.add('flipped');
                     }
@@ -1429,13 +1510,12 @@
                 navButtons.forEach(function(btn, i) {
                     btn.classList.toggle('active', i === index);
                 });
-                // Restore flip state for the new tile (skip cart tile)
+                // Restore flip state for the new tile (skip cart & events)
                 document.querySelectorAll('.tile').forEach(function(tile) {
                     var idx = parseInt(tile.dataset.index);
                     var card = tile.querySelector('.flip-card');
                     if (card) {
-                        if (idx === 7) {
-                            // Always keep cart tile flipped
+                        if (idx === 7 || idx === 3) {
                             card.classList.add('flipped');
                         } else {
                             if (flippedState[idx]) {
