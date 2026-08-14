@@ -64,6 +64,7 @@
             cursor: pointer;
             font-family: inherit;
             white-space: nowrap;
+            position: relative;
         }
         .mini-nav-item i {
             font-size: 1.5rem;
@@ -89,27 +90,8 @@
             background: rgba(255, 107, 107, 0.12);
         }
 
-        /* Login link in mini-nav (no active state, just a link) */
-        .mini-nav-item.login-link {
-            text-decoration: none;
-            color: #888;
-        }
-        .mini-nav-item.login-link:hover i {
-            color: #ff6b6b;
-        }
-        .mini-nav-item.login-link:hover span {
-            color: #fff;
-        }
-
-        /* ===== Cart wrapper & button ===== */
-        .cart-wrapper {
-            position: relative;
-            display: inline-block;
-        }
-        .mini-nav-item.cart-nav-item {
-            position: relative;
-        }
-        .mini-nav-item.cart-nav-item .cart-badge {
+        /* Cart badge on the mini-nav-item */
+        .mini-nav-item .cart-badge {
             position: absolute;
             top: -2px;
             right: -4px;
@@ -125,116 +107,22 @@
             padding: 0 4px;
             display: none;
         }
-        .mini-nav-item.cart-nav-item.has-items .cart-badge {
+        .mini-nav-item.has-items .cart-badge {
             display: block;
         }
-        .mini-nav-item.cart-nav-item.has-items i {
+        .mini-nav-item.has-items i {
             color: #ff6b6b;
         }
-        .mini-nav-item.cart-nav-item.hidden-nav-item {
-            display: none;
-        }
 
-        /* ===== Cart dropdown ===== */
-        .cart-dropdown {
-            position: absolute;
-            top: 100%;
-            right: 0;
-            margin-top: 8px;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.2);
-            width: 380px;
-            max-height: 450px;
-            overflow: hidden;
-            display: none;
-            z-index: 9999;
-            border: 1px solid rgba(0,0,0,0.05);
-        }
-        .cart-dropdown.show {
-            display: block;
-        }
-        .cart-dropdown-header {
-            padding: 12px 16px;
-            border-bottom: 1px solid #eee;
-            font-weight: 600;
-            color: #333;
-        }
-        .cart-dropdown-list {
-            max-height: 300px;
-            overflow-y: auto;
-            padding: 5px 0;
-        }
-        .cart-dropdown-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 16px;
-            border-bottom: 1px solid #f5f5f5;
-            font-size: 0.9rem;
-        }
-        .cart-dropdown-item .item-title {
-            color: #333 !important;
-        }
-        .cart-dropdown-item .item-price {
-            color: #ff6b6b !important;
-            font-weight: bold;
-        }
-        .cart-dropdown-item .remove-item-btn {
-            background: none;
-            border: none;
-            color: #c62828;
-            cursor: pointer;
-            font-size: 1.2rem;
-            padding: 0 4px;
-            margin-left: 8px;
-            line-height: 1;
-        }
-        .cart-dropdown-item .remove-item-btn:hover {
-            color: #b71c1c;
-        }
-        .cart-dropdown-footer {
-            padding: 10px 16px;
-            border-top: 1px solid #eee;
-            text-align: center;
-        }
-        .cart-dropdown-footer .total {
-            color: #333 !important;
-            font-weight: bold;
-            font-size: 1.1rem;
-        }
-        .cart-dropdown-footer .btn-group {
-            display: flex;
-            gap: 8px;
-            margin-top: 8px;
-        }
-        .cart-dropdown-footer .btn-group button {
-            flex: 1;
-            padding: 8px 12px;
-            border: none;
-            border-radius: 30px;
-            font-size: 0.9rem;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        .cart-dropdown-footer .checkout-btn {
-            background: #ff6b6b;
-            color: white;
-        }
-        .cart-dropdown-footer .checkout-btn:hover {
-            background: #ff5252;
-        }
-        .cart-dropdown-footer .clear-btn {
-            background: #f5f5f5;
-            color: #666;
-        }
-        .cart-dropdown-footer .clear-btn:hover {
-            background: #eee;
-        }
-        .cart-empty-message {
-            padding: 20px;
-            text-align: center;
+        .mini-nav-item.login-link {
+            text-decoration: none;
             color: #888;
+        }
+        .mini-nav-item.login-link:hover i {
+            color: #ff6b6b;
+        }
+        .mini-nav-item.login-link:hover span {
+            color: #fff;
         }
 
         /* ===== Flip hint ===== */
@@ -418,6 +306,183 @@
             color: #004085;
             border: 1px solid #b8daff;
         }
+
+        /* ===== Cart tile content (no flip, static) ===== */
+        .cart-tile-content {
+            width: 100%;
+            height: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            background: white;
+            border-radius: 16px;
+        }
+        .cart-tile-content .cart-header {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 12px;
+            border-bottom: 2px solid #ff6b6b;
+            padding-bottom: 8px;
+        }
+        .cart-tile-content .cart-items-list {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 12px;
+        }
+        .cart-tile-content .cart-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #f5f5f5;
+            font-size: 0.95rem;
+        }
+        .cart-tile-content .cart-item .item-title {
+            color: #333;
+        }
+        .cart-tile-content .cart-item .item-price {
+            color: #ff6b6b;
+            font-weight: bold;
+        }
+        .cart-tile-content .cart-item .remove-item-btn {
+            background: none;
+            border: none;
+            color: #c62828;
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 0 4px;
+            margin-left: 8px;
+            line-height: 1;
+        }
+        .cart-tile-content .cart-total-row {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            font-size: 1.1rem;
+            border-top: 2px solid #ddd;
+            padding-top: 8px;
+            margin-top: 8px;
+        }
+        .cart-tile-content .shipping-section {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #eee;
+        }
+        .cart-tile-content .shipping-options {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        .cart-tile-content .shipping-options label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            color: #333;
+            cursor: pointer;
+        }
+        .cart-tile-content .shipping-options input[type="radio"] {
+            margin: 0;
+            width: 16px;
+            height: 16px;
+            accent-color: #ff6b6b;
+        }
+        .cart-tile-content .address-fields {
+            display: none;
+            margin-top: 8px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        .cart-tile-content .address-fields.visible {
+            display: block;
+        }
+        .cart-tile-content .address-fields input {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            margin-bottom: 6px;
+            box-sizing: border-box;
+        }
+        .cart-tile-content .address-fields .address-row {
+            display: flex;
+            gap: 8px;
+        }
+        .cart-tile-content .address-fields .address-row input {
+            flex: 1;
+        }
+        .cart-tile-content .btn-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .cart-tile-content .btn-group button {
+            flex: 1;
+            padding: 10px 12px;
+            border: none;
+            border-radius: 30px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .cart-tile-content .btn-group .checkout-btn {
+            background: #ff6b6b;
+            color: white;
+        }
+        .cart-tile-content .btn-group .checkout-btn:hover {
+            background: #ff5252;
+        }
+        .cart-tile-content .btn-group .clear-btn {
+            background: #f5f5f5;
+            color: #666;
+        }
+        .cart-tile-content .btn-group .clear-btn:hover {
+            background: #eee;
+        }
+        .cart-tile-content .empty-cart {
+            text-align: center;
+            color: #888;
+            padding: 40px 0;
+            font-size: 1.1rem;
+        }
+        /* Ensure the tile background is white and fills */
+        .tile[data-index="7"] .flip-card {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        .tile[data-index="7"] .flip-card .flip-card-front,
+        .tile[data-index="7"] .flip-card .flip-card-back {
+            display: none;
+        }
+        .tile[data-index="7"] .flip-card .cart-tile-content {
+            display: flex;
+        }
+        /* Hide flip hint for cart tile */
+        .tile[data-index="7"] .flip-hint {
+            display: none;
+        }
+        /* Disable pointer events on the flip card for tile 7 to prevent flipping */
+        .tile[data-index="7"] .flip-card {
+            pointer-events: auto;
+        }
+        /* Confirmation message style */
+        .confirmation-message {
+            padding: 12px 16px;
+            background: #d4edda;
+            color: #155724;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            border: 1px solid #c3e6cb;
+            font-weight: 500;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -473,34 +538,17 @@
                 <i class="fas fa-box"></i>
                 <span>Order</span>
             </button>
+            <button class="mini-nav-item" data-index="7" id="cartNavItem" title="Shopping Cart">
+                <i class="fas fa-shopping-cart"></i>
+                <span>Cart</span>
+                <span class="cart-badge" id="cartBadge">0</span>
+            </button>
 
-            <!-- NEW: Login link (no data-index, just a link) -->
+            <!-- Login link -->
             <a href="/login" class="mini-nav-item login-link">
                 <i class="fas fa-sign-in-alt"></i>
                 <span>Login</span>
             </a>
-
-            <!-- Cart -->
-            <div class="cart-wrapper">
-                <button class="mini-nav-item cart-nav-item hidden-nav-item" id="cartNavItem" title="Shopping Cart">
-                    <i class="fas fa-shopping-cart"></i>
-                    <span>Cart</span>
-                    <span class="cart-badge" id="cartBadge">0</span>
-                </button>
-                <div id="cartDropdown" class="cart-dropdown">
-                    <div class="cart-dropdown-header">Your Cart</div>
-                    <div id="cartDropdownList" class="cart-dropdown-list">
-                        <div class="cart-empty-message">Your cart is empty.</div>
-                    </div>
-                    <div class="cart-dropdown-footer" style="color:#333 !important;">
-                        <div class="total">Total: $<span id="cartDropdownTotal" style="color:#333 !important;">0.00</span></div>
-                        <div class="btn-group">
-                            <button class="checkout-btn" onclick="checkout()">Proceed to Checkout</button>
-                            <button class="clear-btn" onclick="clearCart()">Clear Cart</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </nav>
     </div>
 
@@ -538,7 +586,6 @@
                                         <i class="fas fa-music"></i>
                                         <span>Located in the heart of Loveland, Colorado.</span>
                                     </div>
-                                    <!-- Social Icons (with TikTok) -->
                                     <div class="social-icons">
                                         <a href="https://www.facebook.com/profile.php?id=61582821044262" target="_blank" aria-label="Visit our Facebook page"><i class="fab fa-facebook"></i></a>
                                         <a href="https://www.instagram.com/pigstyle_loveland/" target="_blank" aria-label="Visit our Instagram page"><i class="fab fa-instagram"></i></a>
@@ -812,7 +859,63 @@
                     </div>
                 </div>
             </div>
-        </div>
+
+            <!-- Tile 7: Cart (static content, no flip) -->
+            <div class="tile" data-index="7">
+                <div class="flip-card" id="flipCard7" style="background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+                    <div class="cart-tile-content" id="cartTileContent">
+                        <div class="cart-header">🛒 Your Cart</div>
+                        <!-- Confirmation message -->
+                        <div id="cartConfirmationMessage" class="confirmation-message">
+                            ✅ Your order has been placed successfully! Thank you for shopping at PigStyle Music.
+                        </div>
+                        <div id="cartTileList" class="cart-items-list">
+                            <div class="empty-cart">Your cart is empty.</div>
+                        </div>
+                        <div id="cartTileSummary">
+                            <div class="cart-total-row">
+                                <span>Subtotal:</span>
+                                <span id="cartTileSubtotal">$0.00</span>
+                            </div>
+                            <div class="shipping-section">
+                                <div style="font-weight:500; margin-bottom:6px;">Shipping</div>
+                                <div class="shipping-options">
+                                    <label>
+                                        <input type="radio" name="shippingMethodTile" value="pickup" checked>
+                                        📦 Store Pickup (Free)
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="shippingMethodTile" value="ship">
+                                        📬 Ship to Address
+                                    </label>
+                                </div>
+                                <div class="address-fields" id="addressFieldsTile">
+                                    <input type="text" id="shipStreetTile" placeholder="Street address" disabled>
+                                    <input type="text" id="shipCityTile" placeholder="City" disabled>
+                                    <div class="address-row">
+                                        <input type="text" id="shipStateTile" placeholder="State" disabled>
+                                        <input type="text" id="shipZipTile" placeholder="ZIP code" disabled>
+                                    </div>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:0.95rem;">
+                                    <span>Shipping:</span>
+                                    <span id="shippingCostTile">$0.00</span>
+                                </div>
+                                <div class="cart-total-row" style="margin-top:8px; border-top:2px solid #ddd; padding-top:8px;">
+                                    <span>Total:</span>
+                                    <span id="cartTileTotal" style="color:#ff6b6b;">$0.00</span>
+                                </div>
+                            </div>
+                            <div class="btn-group">
+                                <button class="checkout-btn" onclick="checkoutTile()">Proceed to Checkout</button>
+                                <button class="clear-btn" onclick="clearCartTile()">Clear Cart</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div> <!-- end tiles-wrapper -->
 
         <button class="carousel-arrow next" id="nextBtn" aria-label="Next">
             <i class="fas fa-chevron-right"></i>
@@ -859,7 +962,7 @@
         </div>
     </div>
 
-    <!-- INLINE CART CODE -->
+    <!-- INLINE CART & ALL SCRIPTS -->
     <script>
         console.log('📦 cart.js loaded (inline)');
         const CART_STORAGE_KEY = 'pigstyle_cart';
@@ -1028,49 +1131,50 @@
             if (errorEl) errorEl.style.display = 'none';
         };
 
-        // ===== CART UI =====
+        // ===== CART UI (updated for tile) =====
         function updateCartUI() {
             if (!window.cart) return;
             var count = window.cart.getItemCount();
-            var cartItem = document.getElementById('cartNavItem');
+            var cartBtn = document.getElementById('cartNavItem');
             var badge = document.getElementById('cartBadge');
-            var dropdown = document.getElementById('cartDropdown');
-            if (cartItem) {
+            if (cartBtn) {
                 if (count > 0) {
-                    cartItem.classList.remove('hidden-nav-item');
-                    cartItem.classList.add('has-items');
+                    cartBtn.classList.add('has-items');
                     if (badge) badge.textContent = count;
                 } else {
-                    cartItem.classList.add('hidden-nav-item');
-                    cartItem.classList.remove('has-items');
-                    if (dropdown) dropdown.classList.remove('show');
+                    cartBtn.classList.remove('has-items');
+                    if (badge) badge.textContent = '0';
                 }
             }
-            renderCartDropdown();
+            renderCartTile();
+            updateShippingAndTotalTile();
         }
 
-        function renderCartDropdown() {
-            var list = document.getElementById('cartDropdownList');
-            var totalSpan = document.getElementById('cartDropdownTotal');
-            if (!list || !totalSpan) return;
+        function renderCartTile() {
+            var list = document.getElementById('cartTileList');
+            var subtotalSpan = document.getElementById('cartTileSubtotal');
+            var totalSpan = document.getElementById('cartTileTotal');
+            if (!list || !subtotalSpan || !totalSpan) return;
+
             if (!window.cart || window.cart.isEmpty()) {
-                list.innerHTML = '<div class="cart-empty-message">Your cart is empty.</div>';
+                list.innerHTML = '<div class="empty-cart">Your cart is empty.</div>';
+                subtotalSpan.textContent = '0.00';
                 totalSpan.textContent = '0.00';
                 return;
             }
             var items = window.cart.getItems();
-            var total = window.cart.getTotal();
+            var subtotal = window.cart.getTotal();
             var html = '';
             items.forEach(function(item) {
                 var price = (item.price * item.quantity).toFixed(2);
-                html += '<div class="cart-dropdown-item">' +
+                html += '<div class="cart-item">' +
                     '<span class="item-title">' + item.title + (item.quantity > 1 ? ' × ' + item.quantity : '') + '</span>' +
                     '<span class="item-price">$' + price + '</span>' +
                     '<button class="remove-item-btn" data-id="' + item.id + '">&times;</button>' +
                 '</div>';
             });
             list.innerHTML = html;
-            totalSpan.textContent = total.toFixed(2);
+            subtotalSpan.textContent = subtotal.toFixed(2);
 
             list.querySelectorAll('.remove-item-btn').forEach(function(btn) {
                 btn.addEventListener('click', function(e) {
@@ -1082,41 +1186,112 @@
                     }
                 });
             });
+
+            updateShippingAndTotalTile();
         }
 
-        function clearCart() {
+        function clearCartTile() {
             if (window.cart) {
                 window.cart.clear();
                 updateCartUI();
             }
         }
 
-        function closeCartDropdown() {
-            var dropdown = document.getElementById('cartDropdown');
-            if (dropdown) dropdown.classList.remove('show');
+        // ===== SHIPPING LOGIC (Tile version) =====
+        function computeShippingCostTile() {
+            if (!window.cart || window.cart.isEmpty()) return 0;
+            var items = window.cart.getItems();
+            var hasRecord = items.some(function(item) { return item.type === 'record'; });
+            return hasRecord ? 5.99 : 4.99;
         }
 
-        // Toggle cart dropdown
-        document.addEventListener('DOMContentLoaded', function() {
-            var cartBtn = document.getElementById('cartNavItem');
-            var dropdown = document.getElementById('cartDropdown');
-            if (cartBtn && dropdown) {
-                cartBtn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    if (window.cart && !window.cart.isEmpty()) {
-                        dropdown.classList.toggle('show');
-                    } else {
-                        dropdown.classList.remove('show');
-                    }
-                });
-                document.addEventListener('click', function(e) {
-                    if (!dropdown.contains(e.target) && e.target !== cartBtn) {
-                        dropdown.classList.remove('show');
-                    }
-                });
+        function updateShippingAndTotalTile() {
+            var addressFields = document.getElementById('addressFieldsTile');
+            var shippingCostDisplay = document.getElementById('shippingCostTile');
+            var totalSpan = document.getElementById('cartTileTotal');
+            var subtotal = window.cart ? window.cart.getTotal() : 0;
+
+            var selectedMethod = document.querySelector('input[name="shippingMethodTile"]:checked');
+            var isShip = selectedMethod && selectedMethod.value === 'ship';
+            var shippingCost = isShip ? computeShippingCostTile() : 0;
+
+            if (addressFields) {
+                addressFields.classList.toggle('visible', isShip);
+                var inputs = addressFields.querySelectorAll('input');
+                inputs.forEach(function(inp) { inp.disabled = !isShip; });
             }
-            updateCartUI();
+
+            if (shippingCostDisplay) shippingCostDisplay.textContent = '$' + shippingCost.toFixed(2);
+            if (totalSpan) {
+                var total = subtotal + shippingCost;
+                totalSpan.textContent = '$' + total.toFixed(2);
+            }
+        }
+
+        // Listen to radio changes on the tile
+        document.addEventListener('DOMContentLoaded', function() {
+            var radios = document.querySelectorAll('input[name="shippingMethodTile"]');
+            radios.forEach(function(radio) {
+                radio.addEventListener('change', function() {
+                    updateShippingAndTotalTile();
+                });
+            });
         });
+
+        // ===== CHECKOUT (Tile version) =====
+        function checkoutTile() {
+            if (!window.cart || window.cart.isEmpty()) {
+                alert('Your cart is empty.');
+                return;
+            }
+
+            var selectedMethod = document.querySelector('input[name="shippingMethodTile"]:checked');
+            var method = selectedMethod ? selectedMethod.value : 'pickup';
+            var shippingCost = method === 'ship' ? computeShippingCostTile() : 0;
+
+            var payload = {
+                items: window.cart.getCheckoutPayload(),
+                subtotal: window.cart.getTotal(),
+                total: window.cart.getTotal() + shippingCost,
+                item_type: 'mixed',
+                shipping: {
+                    method: method,
+                    amount: shippingCost
+                }
+            };
+
+            if (method === 'ship') {
+                var street = document.getElementById('shipStreetTile').value.trim();
+                var city = document.getElementById('shipCityTile').value.trim();
+                var state = document.getElementById('shipStateTile').value.trim();
+                var zip = document.getElementById('shipZipTile').value.trim();
+                if (!street || !city || !state || !zip) {
+                    alert('Please fill in the complete shipping address.');
+                    return;
+                }
+                payload.shipping.address = { street: street, city: city, state: state, zip: zip };
+                payload.shipping_address = street + ', ' + city + ', ' + state + ' ' + zip;
+            }
+
+            console.log('Checkout payload:', payload);
+            fetch(AppConfig.baseUrl + '/api/checkout/process', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (data.status === 'success' && data.checkout_url) {
+                    window.location.href = data.checkout_url;
+                } else {
+                    alert('Checkout failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(function(err) {
+                console.error('Checkout error:', err);
+                alert('Error during checkout: ' + err.message);
+            });
+        }
 
         // ===== UNIFIED POPUP =====
         function closeMerchPopup() {
@@ -1396,44 +1571,11 @@
             if (totalEl) totalEl.textContent = '$' + total.toFixed(2);
         }
 
-        // ===== CHECKOUT =====
-        function checkout() {
-            if (!window.cart || window.cart.isEmpty()) {
-                alert('Your cart is empty.');
-                return;
-            }
-            var total = window.cart.getTotal();
-            var payload = {
-                items: window.cart.getCheckoutPayload(),
-                subtotal: total,
-                total: total,
-                item_type: 'mixed'
-            };
-            console.log('Checkout payload:', payload);
-            fetch(AppConfig.baseUrl + '/api/checkout/process', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
-            .then(function(res) { return res.json(); })
-            .then(function(data) {
-                if (data.status === 'success' && data.checkout_url) {
-                    window.location.href = data.checkout_url;
-                } else {
-                    alert('Checkout failed: ' + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(function(err) {
-                console.error('Checkout error:', err);
-                alert('Error during checkout: ' + err.message);
-            });
-        }
-
-        // ===== FLIP HANDLING =====
+        // ===== FLIP HANDLING (skip cart tile) =====
         var flippedState = [];
 
         function initFlipHints() {
-            // Flip hint click
+            // Flip hint click – skip cart tile
             document.querySelectorAll('.flip-hint').forEach(function(hint) {
                 hint.addEventListener('click', function(e) {
                     e.stopPropagation();
@@ -1441,25 +1583,24 @@
                     if (card) {
                         var tile = card.closest('.tile');
                         var index = parseInt(tile.dataset.index);
+                        if (index === 7) return; // skip cart
                         card.classList.toggle('flipped');
                         flippedState[index] = card.classList.contains('flipped');
                     }
                 });
             });
 
-            // Click on the card itself – only flip if NOT already flipped (front→back only)
+            // Flip card click – skip cart tile
             document.querySelectorAll('.flip-card').forEach(function(card) {
                 card.addEventListener('click', function(e) {
-                    // Ignore clicks on interactive elements inside the card
+                    // Ignore clicks on interactive elements
                     if (e.target.closest('.merch-item, .browse-record-card, .record-card, .merch-card, .add-to-cart-btn, .amount-btn, .design-option, .merch-product, input, select, button, a')) return;
-                    // Ignore clicks on the flip hint (it has its own handler)
                     if (e.target.closest('.flip-hint')) return;
-                    // Ignore clicks from the fixed header (nav buttons etc.)
                     if (e.target.closest('.fixed-header')) return;
 
                     var tile = this.closest('.tile');
                     var index = parseInt(tile.dataset.index);
-                    // Only flip if currently on front (not flipped)
+                    if (index === 7) return; // skip cart
                     if (!this.classList.contains('flipped')) {
                         this.classList.toggle('flipped');
                         flippedState[index] = this.classList.contains('flipped');
@@ -1467,7 +1608,7 @@
                 });
             });
 
-            // Initialize flippedState with current state on load
+            // Initialize flippedState
             document.querySelectorAll('.tile').forEach(function(tile) {
                 var index = parseInt(tile.dataset.index);
                 var card = tile.querySelector('.flip-card');
@@ -1477,8 +1618,7 @@
 
         // ===== NAVIGATION =====
         function initNavigation() {
-            // Select all mini-nav items that have data-index (exclude login link and cart)
-            var navButtons = document.querySelectorAll('.mini-nav-item:not(.cart-nav-item):not(.login-link)');
+            var navButtons = document.querySelectorAll('.mini-nav-item[data-index]');
             var tilesWrapper = document.getElementById('tilesWrapper');
             var currentIndex = 0;
             var totalTiles = document.querySelectorAll('.tile').length;
@@ -1491,7 +1631,6 @@
                 navButtons.forEach(function(btn, i) {
                     btn.classList.toggle('active', i === index);
                 });
-                // Restore flip state for the new tile
                 document.querySelectorAll('.tile').forEach(function(tile) {
                     var idx = parseInt(tile.dataset.index);
                     var card = tile.querySelector('.flip-card');
@@ -1503,8 +1642,10 @@
                         }
                     }
                 });
-                closeCartDropdown();
             }
+
+            // Expose goToTile globally so payment handler can use it
+            window.goToTile = goToTile;
 
             navButtons.forEach(function(btn, index) {
                 btn.addEventListener('click', function(e) {
@@ -1531,6 +1672,41 @@
             navButtons.forEach(function(btn, i) {
                 btn.classList.toggle('active', i === 0);
             });
+        }
+
+        // ===== PAYMENT CONFIRMATION HANDLER =====
+        function checkPaymentStatus() {
+            var params = new URLSearchParams(window.location.search);
+            var status = params.get('status');
+            var orderId = params.get('order_id');
+
+            if (status === 'completed') {
+                var msgDiv = document.getElementById('cartConfirmationMessage');
+                if (msgDiv) {
+                    msgDiv.style.display = 'block';
+                    if (orderId) {
+                        msgDiv.textContent = '✅ Your order (' + orderId + ') has been placed successfully! Thank you for shopping at PigStyle Music.';
+                    } else {
+                        msgDiv.textContent = '✅ Your order has been placed successfully! Thank you for shopping at PigStyle Music.';
+                    }
+                }
+
+                // Clear the cart
+                if (window.cart) {
+                    window.cart.clear();
+                    updateCartUI();
+                }
+
+                // Navigate to cart tile (index 7)
+                if (typeof window.goToTile === 'function') {
+                    window.goToTile(7);
+                }
+
+                // Clean URL (remove query parameters)
+                if (window.history && window.history.replaceState) {
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+            }
         }
 
         // ===== ORDER REQUEST HANDLER =====
@@ -1636,7 +1812,6 @@
                     statusDiv.textContent = data.message || '✅ Subscription created! You\'ll be notified when matching records arrive.';
                     form.reset();
 
-                    // Refresh notification bell
                     if (window.notificationBell && typeof window.notificationBell.updateTotalCount === 'function') {
                         window.notificationBell.updateTotalCount();
                     }
@@ -1702,7 +1877,6 @@
                     messageDiv.textContent = '✅ Thank you! Your feedback has been sent.';
                     form.reset();
 
-                    // 🔔 Refresh the notification bell count immediately
                     if (window.notificationBell && typeof window.notificationBell.updateTotalCount === 'function') {
                         window.notificationBell.updateTotalCount();
                     }
@@ -1724,6 +1898,7 @@
             updateCartUI();
             initFlipHints();
             initNavigation();
+            checkPaymentStatus();
 
             var popup = document.getElementById('merchPopup');
             if (popup) {
