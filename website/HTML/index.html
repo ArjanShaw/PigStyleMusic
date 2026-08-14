@@ -376,6 +376,29 @@
         .social-icons a:hover {
             color: #ff6b6b;
         }
+
+        /* ===== Order status messages ===== */
+        .order-status {
+            display: none;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-top: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            text-align: center;
+        }
+        .order-status.success {
+            display: block;
+            background: #e8f5e9;
+            color: #2E7D32;
+            border: 1px solid #a5d6a7;
+        }
+        .order-status.error {
+            display: block;
+            background: #ffebee;
+            color: #c62828;
+            border: 1px solid #ef9a9a;
+        }
     </style>
 </head>
 <body>
@@ -1490,6 +1513,65 @@
                 btn.classList.toggle('active', i === 0);
             });
         }
+
+        // ===== ORDER REQUEST HANDLER =====
+        document.addEventListener('DOMContentLoaded', function() {
+            const orderForm = document.getElementById('orderForm');
+            const orderEmail = document.getElementById('orderEmail');
+            const orderArtist = document.getElementById('orderArtist');
+            const orderTitle = document.getElementById('orderTitle');
+            const orderStatus = document.getElementById('orderStatus');
+            const orderSubmitBtn = document.getElementById('orderSubmitBtn');
+
+            if (!orderForm) return;
+
+            orderForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+
+                const email = orderEmail.value.trim();
+                const artist = orderArtist.value.trim();
+                const title = orderTitle.value.trim();
+
+                if (!email || !artist || !title) {
+                    orderStatus.style.display = 'block';
+                    orderStatus.className = 'order-status error';
+                    orderStatus.textContent = '⚠️ All fields are required.';
+                    return;
+                }
+
+                orderSubmitBtn.disabled = true;
+                orderSubmitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting...';
+                orderStatus.style.display = 'none';
+
+                try {
+                    const response = await fetch(AppConfig.baseUrl + '/api/record-orders', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, artist, title })
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(data.error || `HTTP ${response.status}`);
+                    }
+
+                    orderStatus.style.display = 'block';
+                    orderStatus.className = 'order-status success';
+                    orderStatus.textContent = '✅ Order request placed successfully! We\'ll notify you when it arrives.';
+                    orderForm.reset();
+
+                } catch (err) {
+                    console.error('❌ Order request failed:', err);
+                    orderStatus.style.display = 'block';
+                    orderStatus.className = 'order-status error';
+                    orderStatus.textContent = `❌ Failed: ${err.message}. Please try again or contact the store.`;
+                } finally {
+                    orderSubmitBtn.disabled = false;
+                    orderSubmitBtn.innerHTML = '<i class="fas fa-box"></i> Place Order Request';
+                }
+            });
+        });
 
         // ===== INIT =====
         document.addEventListener('DOMContentLoaded', function() {

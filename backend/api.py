@@ -13321,23 +13321,7 @@ def delete_order(order_id):
     except Exception as e:
         app.logger.error(f"Error deleting order: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
-@app.route('/api/orders/unread-count', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def get_unread_orders_count():
-    """Get count of unread orders (notified = 0)"""
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT COUNT(*) as count FROM orders WHERE notified = 0 OR notified IS NULL')
-        result = cursor.fetchone()
-        conn.close()
-        return jsonify({'status': 'success', 'count': result['count'] if result else 0})
-    except Exception as e:
-        app.logger.error(f"Error getting unread orders count: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
+ 
 @app.route('/api/orders/unread', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -13508,6 +13492,76 @@ Questions? Reply to this email or contact us at the store.
     except Exception as e:
         app.logger.error(f"Order complete error: {str(e)}")
         return jsonify({'status': 'error', 'error': f'Server error: {str(e)}'}), 500    
+
+@app.route('/api/record-orders/unread', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_unread_record_orders():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, email, artist, title, status, created_at
+        FROM record_orders
+        WHERE notified = 0 OR notified IS NULL
+        ORDER BY created_at DESC
+        LIMIT 50
+    ''')
+    rows = cursor.fetchall()
+    conn.close()
+    return jsonify({
+        'status': 'success',
+        'notifications': [dict(row) for row in rows],
+        'count': len(rows)
+    })
+
+@app.route('/api/record-orders/unread-count', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_unread_record_orders_count():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) as count FROM record_orders WHERE notified = 0 OR notified IS NULL')
+    row = cursor.fetchone()
+    conn.close()
+    return jsonify({'status': 'success', 'count': row['count'] if row else 0})
+
+@app.route('/api/record-orders/<int:order_id>/mark-read', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def mark_record_order_read(order_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE record_orders SET notified = 1 WHERE id = ?', (order_id,))
+    if cursor.rowcount == 0:
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'Order not found'}), 404
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success'})
+
+@app.route('/api/record-orders/mark-all-read', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def mark_all_record_orders_read():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE record_orders SET notified = 1 WHERE notified = 0 OR notified IS NULL')
+    updated = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success', 'updated': updated})
+
+@app.route('/api/orders/unread-count', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_unread_orders_count():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) as count FROM orders WHERE notified = 0 OR notified IS NULL')
+    row = cursor.fetchone()
+    conn.close()
+    return jsonify({'status': 'success', 'count': row['count'] if row else 0})
+
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)

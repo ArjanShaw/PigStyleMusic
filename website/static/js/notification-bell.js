@@ -1,5 +1,5 @@
 // ============================================================================
-// notification-bell.js - Unified Notification Bell
+// notification-bell.js - Unified Notification Bell (FULL VERSION)
 // ============================================================================
 
 (function() {
@@ -187,6 +187,7 @@
 
         // Initial load
         loadNotifications();
+        updateTotalCount();
 
         initialized = true;
         console.log('✅ Notification bell initialized');
@@ -213,10 +214,11 @@
     // ========== Load Notifications ==========
     async function loadNotifications() {
         try {
-            const [feedback, subscriptions, orders] = await Promise.all([
+            const [feedback, subscriptions, orders, recordOrders] = await Promise.all([
                 getUnreadFeedback(),
                 getUnreadSubscriptions(),
-                getUnreadOrders()
+                getUnreadOrders(),
+                getUnreadRecordOrders()
             ]);
             
             notifications = [];
@@ -229,7 +231,7 @@
                     title: '📝 New Feedback',
                     message: item.content ? item.content.substring(0, 100) : 'New feedback received',
                     created_at: item.created_at,
-                    link: '/admin#feedback',  // CHANGED: Now goes to Feedback tab
+                    link: '/admin#feedback',
                     markRead: () => markFeedbackRead(item.id)
                 });
             });
@@ -247,7 +249,7 @@
                 });
             });
             
-            // Format order notifications
+            // Format order notifications (catalog sales)
             orders.forEach(item => {
                 notifications.push({
                     id: item.id,
@@ -259,6 +261,19 @@
                     markRead: () => markOrderRead(item.id)
                 });
             });
+
+            // Format record order notifications (vinyl requests)
+            recordOrders.forEach(item => {
+                notifications.push({
+                    id: item.id,
+                    type: 'record_order',
+                    title: '📀 New Vinyl Request',
+                    message: `${item.email} wants "${item.artist} - ${item.title}"`,
+                    created_at: item.created_at,
+                    link: '/admin#record-orders',
+                    markRead: () => markRecordOrderRead(item.id)
+                });
+            });
             
             // Sort by created_at desc (newest first)
             notifications.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
@@ -266,7 +281,9 @@
             renderNotifications(notifications);
             
         } catch (error) {
-            console.error('Error loading notifications:', error);
+            console.error('❌ Error loading notifications:', error);
+            // Show a toast for the admin to see the error
+            showToast('Failed to load notifications. Check console for details.', 'error');
         }
     }
 
@@ -365,143 +382,147 @@
             success = await markSubscriptionRead(id);
         } else if (type === 'order') {
             success = await markOrderRead(id);
+        } else if (type === 'record_order') {
+            success = await markRecordOrderRead(id);
         }
         
         if (success) {
             loadNotifications();
             updateTotalCount();
+        } else {
+            showToast(`Failed to mark ${type} as read.`, 'error');
         }
     }
 
     // ========== API Calls ==========
+
+    // --- Feedback ---
     async function getUnreadFeedback() {
-        try {
-            const response = await fetch(`${AppConfig.baseUrl}/api/feedback/unread`, {
-                credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-            });
-            const data = await response.json();
-            return data.notifications || [];
-        } catch (error) {
-            console.error('Error fetching unread feedback:', error);
-            return [];
-        }
-    }
-
-    async function getUnreadSubscriptions() {
-        try {
-            const response = await fetch(`${AppConfig.baseUrl}/api/subscriptions/notifications`, {
-                credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-            });
-            const data = await response.json();
-            return data.notifications || [];
-        } catch (error) {
-            console.error('Error fetching unread subscriptions:', error);
-            return [];
-        }
-    }
-
-    async function getUnreadOrders() {
-        try {
-            const response = await fetch(`${AppConfig.baseUrl}/api/orders/unread`, {
-                credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-            });
-            const data = await response.json();
-            if (data.status === 'success') {
-                return data.orders || [];
-            }
-            return [];
-        } catch (error) {
-            console.error('Error fetching unread orders:', error);
-            return [];
-        }
-    }
-
-    async function getUnreadOrdersCount() {
-        try {
-            const response = await fetch(`${AppConfig.baseUrl}/api/orders/unread-count`, {
-                credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-            });
-            const data = await response.json();
-            return data.count || 0;
-        } catch (error) {
-            console.error('Error fetching unread orders count:', error);
-            return 0;
-        }
+        const response = await fetch(`${AppConfig.baseUrl}/api/feedback/unread`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status} - Feedback`);
+        const data = await response.json();
+        if (data.status !== 'success') throw new Error(data.error || 'Feedback API error');
+        return data.notifications || [];
     }
 
     async function getUnreadFeedbackCount() {
-        try {
-            const response = await fetch(`${AppConfig.baseUrl}/api/feedback/unread-count`, {
-                credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-            });
-            const data = await response.json();
-            return data.count || 0;
-        } catch (error) {
-            console.error('Error fetching unread feedback count:', error);
-            return 0;
-        }
-    }
-
-    async function getUnreadSubscriptionCount() {
-        try {
-            const response = await fetch(`${AppConfig.baseUrl}/api/subscriptions/notifications/count`, {
-                credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-            });
-            const data = await response.json();
-            return data.count || 0;
-        } catch (error) {
-            console.error('Error fetching unread subscriptions count:', error);
-            return 0;
-        }
+        const response = await fetch(`${AppConfig.baseUrl}/api/feedback/unread-count`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status} - Feedback count`);
+        const data = await response.json();
+        if (data.status !== 'success') throw new Error(data.error || 'Feedback count API error');
+        return data.count || 0;
     }
 
     async function markFeedbackRead(id) {
-        try {
-            const response = await fetch(`${AppConfig.baseUrl}/api/feedback/${id}/mark-read`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-            });
-            return response.ok;
-        } catch (error) {
-            console.error('Error marking feedback read:', error);
-            return false;
-        }
+        const response = await fetch(`${AppConfig.baseUrl}/api/feedback/${id}/mark-read`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        return response.ok;
+    }
+
+    // --- Subscriptions ---
+    async function getUnreadSubscriptions() {
+        const response = await fetch(`${AppConfig.baseUrl}/api/subscriptions/notifications`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status} - Subscriptions`);
+        const data = await response.json();
+        if (data.status !== 'success') throw new Error(data.error || 'Subscriptions API error');
+        return data.notifications || [];
+    }
+
+    async function getUnreadSubscriptionCount() {
+        const response = await fetch(`${AppConfig.baseUrl}/api/subscriptions/notifications/count`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status} - Subscriptions count`);
+        const data = await response.json();
+        if (data.status !== 'success') throw new Error(data.error || 'Subscriptions count API error');
+        return data.count || 0;
     }
 
     async function markSubscriptionRead(id) {
-        try {
-            const response = await fetch(`${AppConfig.baseUrl}/api/subscriptions/${id}/mark-read`, {
-                method: 'PUT',
-                credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mark_read: true })
-            });
-            return response.ok;
-        } catch (error) {
-            console.error('Error marking subscription read:', error);
-            return false;
-        }
+        const response = await fetch(`${AppConfig.baseUrl}/api/subscriptions/${id}/mark-read`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mark_read: true })
+        });
+        return response.ok;
+    }
+
+    // --- Catalog Orders ---
+    async function getUnreadOrders() {
+        const response = await fetch(`${AppConfig.baseUrl}/api/orders/unread`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status} - Orders`);
+        const data = await response.json();
+        if (data.status !== 'success') throw new Error(data.error || 'Orders API error');
+        return data.orders || [];
+    }
+
+    async function getUnreadOrdersCount() {
+        const response = await fetch(`${AppConfig.baseUrl}/api/orders/unread-count`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status} - Orders count`);
+        const data = await response.json();
+        if (data.status !== 'success') throw new Error(data.error || 'Orders count API error');
+        return data.count || 0;
     }
 
     async function markOrderRead(id) {
-        try {
-            const response = await fetch(`${AppConfig.baseUrl}/api/orders/${id}/mark-read`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-            });
-            return response.ok;
-        } catch (error) {
-            console.error('Error marking order read:', error);
-            return false;
-        }
+        const response = await fetch(`${AppConfig.baseUrl}/api/orders/${id}/mark-read`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        return response.ok;
+    }
+
+    // --- Record Orders (Vinyl Requests) ---
+    async function getUnreadRecordOrders() {
+        const response = await fetch(`${AppConfig.baseUrl}/api/record-orders/unread`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status} - Record orders`);
+        const data = await response.json();
+        if (data.status !== 'success') throw new Error(data.error || 'Record orders API error');
+        return data.notifications || [];
+    }
+
+    async function getUnreadRecordOrdersCount() {
+        const response = await fetch(`${AppConfig.baseUrl}/api/record-orders/unread-count`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status} - Record orders count`);
+        const data = await response.json();
+        if (data.status !== 'success') throw new Error(data.error || 'Record orders count API error');
+        return data.count || 0;
+    }
+
+    async function markRecordOrderRead(id) {
+        const response = await fetch(`${AppConfig.baseUrl}/api/record-orders/${id}/mark-read`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        return response.ok;
     }
 
     // ========== Update Badge ==========
@@ -519,65 +540,73 @@
 
     async function updateTotalCount() {
         try {
-            const [feedbackCount, subscriptionCount, orderCount] = await Promise.all([
+            const [feedbackCount, subscriptionCount, orderCount, recordOrderCount] = await Promise.all([
                 getUnreadFeedbackCount(),
                 getUnreadSubscriptionCount(),
-                getUnreadOrdersCount()
+                getUnreadOrdersCount(),
+                getUnreadRecordOrdersCount()
             ]);
-            const total = feedbackCount + subscriptionCount + orderCount;
+            const total = feedbackCount + subscriptionCount + orderCount + recordOrderCount;
             updateBadge(total);
         } catch (error) {
-            console.error('Error updating total count:', error);
+            console.error('❌ Error updating total count:', error);
+            // Don't hide the error – the console shows it clearly
         }
     }
 
     // ========== Mark All Read ==========
     async function markAllRead() {
-        // Mark all feedback as read
-        try {
-            const feedbackResponse = await fetch(`${AppConfig.baseUrl}/api/feedback/mark-all-read`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-            });
-            if (!feedbackResponse.ok) {
-                console.error('Failed to mark all feedback as read');
-            }
-        } catch (error) {
-            console.error('Error marking all feedback as read:', error);
+        const base = AppConfig?.baseUrl || '';
+        const headers = AppConfig?.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' };
+        
+        // Show a "working" state
+        const btn = document.getElementById('notification-mark-all-read');
+        if (btn) {
+            btn.textContent = 'Marking...';
+            btn.disabled = true;
         }
 
-        // Mark all subscriptions as read
-        try {
-            const subResponse = await fetch(`${AppConfig.baseUrl}/api/subscriptions/mark-all-read`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-            });
-            if (!subResponse.ok) {
-                console.error('Failed to mark all subscriptions as read');
-            }
-        } catch (error) {
-            console.error('Error marking all subscriptions as read:', error);
+        const endpoints = [
+            { url: '/api/feedback/mark-all-read', name: 'Feedback' },
+            { url: '/api/subscriptions/mark-all-read', name: 'Subscriptions' },
+            { url: '/api/orders/mark-all-read', name: 'Orders' },
+            { url: '/api/record-orders/mark-all-read', name: 'Record orders' }
+        ];
+
+        const results = await Promise.allSettled(
+            endpoints.map(async ({ url, name }) => {
+                const response = await fetch(`${base}${url}`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: headers
+                });
+                if (!response.ok) {
+                    const text = await response.text();
+                    throw new Error(`${name}: HTTP ${response.status} - ${text.substring(0, 100)}`);
+                }
+                return response.json();
+            })
+        );
+
+        if (btn) {
+            btn.textContent = 'Mark all as read';
+            btn.disabled = false;
         }
 
-        // Mark all orders as read
-        try {
-            const orderResponse = await fetch(`${AppConfig.baseUrl}/api/orders/mark-all-read`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-            });
-            if (!orderResponse.ok) {
-                console.error('Failed to mark all orders as read');
-            }
-        } catch (error) {
-            console.error('Error marking all orders as read:', error);
+        const successes = results.filter(r => r.status === 'fulfilled');
+        const failures = results.filter(r => r.status === 'rejected');
+
+        if (failures.length === 0) {
+            showToast('✅ All notifications marked as read!', 'success');
+        } else {
+            const errors = failures.map(f => f.reason.message).join('; ');
+            showToast(`⚠️ Some operations failed: ${errors}`, 'error');
+            console.error('❌ Mark-all-read failures:', failures);
         }
 
-        // Reload notifications
-        updateTotalCount();
-        loadNotifications();
+        // Refresh counts and list regardless
+        await updateTotalCount();
+        await loadNotifications();
     }
 
     // ========== Polling ==========
@@ -620,6 +649,37 @@
         return date.toLocaleDateString();
     }
 
+    // ========== Toast Helper ==========
+    function showToast(msg, type = 'info') {
+        // Remove existing toast if any
+        const existing = document.querySelector('.notification-toast');
+        if (existing) existing.remove();
+
+        const div = document.createElement('div');
+        div.className = 'notification-toast';
+        div.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            background: ${type === 'success' ? '#28a745' : '#dc3545'};
+            color: white;
+            font-weight: bold;
+            z-index: 99999;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            max-width: 400px;
+            font-size: 14px;
+            transition: opacity 0.3s;
+        `;
+        div.textContent = msg;
+        document.body.appendChild(div);
+        setTimeout(() => {
+            div.style.opacity = '0';
+            setTimeout(() => div.remove(), 300);
+        }, 5000);
+    }
+
     // ========== Expose Functions ==========
     window.notificationBell = {
         init: initNotificationBell,
@@ -629,39 +689,37 @@
         stopPolling: stopPolling
     };
 
-    // Auto-initialize on DOM ready
+    // ========== Auto‑initialize ==========
+    function autoInit() {
+        if (initialized) return;
+        const navbar = document.querySelector('nav > div');
+        if (navbar) {
+            initNotificationBell();
+        } else {
+            // Wait for navbar to appear
+            const observer = new MutationObserver(() => {
+                if (document.querySelector('nav > div') && !initialized) {
+                    initNotificationBell();
+                    observer.disconnect();
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+            // Also try after a delay
+            setTimeout(() => {
+                if (!initialized && document.querySelector('nav > div')) {
+                    initNotificationBell();
+                }
+            }, 2000);
+        }
+    }
+
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        setTimeout(initNotificationBell, 500);
+        setTimeout(autoInit, 500);
     } else {
         document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(initNotificationBell, 500);
+            setTimeout(autoInit, 500);
         });
     }
 
-    // Also check for navbar after load
-    document.addEventListener('DOMContentLoaded', function() {
-        // Check if navbar is loaded dynamically
-        const observer = new MutationObserver(function(mutations) {
-            const navbar = document.querySelector('nav > div');
-            if (navbar && !initialized) {
-                console.log('🔔 Navbar detected, initializing notification bell...');
-                initNotificationBell();
-                observer.disconnect();
-            }
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
-        
-        // Also try after a delay
-        setTimeout(function() {
-            if (!initialized) {
-                const navbar = document.querySelector('nav > div');
-                if (navbar) {
-                    console.log('🔔 Navbar found after delay, initializing...');
-                    initNotificationBell();
-                }
-            }
-        }, 2000);
-    });
-
-    console.log('✅ notification-bell.js loaded');
+    console.log('✅ notification-bell.js loaded (full version with record_orders)');
 })();
