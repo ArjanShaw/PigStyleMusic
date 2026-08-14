@@ -180,6 +180,7 @@ function loadBrowseCatalogData() {
         params.append('format_ids', browseSelectedFormatIds.join(','));
     }
     
+    // ---- NEW ARRIVALS toggle (still uses created_after, 7 days) ----
     if (browseNewArrivalsActive) {
         var sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -189,83 +190,53 @@ function loadBrowseCatalogData() {
     params.append('require_image', 'true');
     params.append('order_by', 'created_at');
     params.append('order_dir', 'DESC');
-    
-    var cutoffDays = 30;
-    try {
-        var configResponse = fetch(AppConfig.baseUrl + '/config/INVENTORY_CUTOFF_DAYS')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.config_value) {
-                    cutoffDays = parseInt(data.config_value) || 30;
+
+    // =============================================================
+    // NEW: Fetch the hardcoded LAST_SEEN_CUTOFF_DATE from app_config
+    // and apply it as last_seen_after
+    // =============================================================
+    fetch(AppConfig.baseUrl + '/config/LAST_SEEN_CUTOFF_DATE')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            // Fallback to a safe default (today - 30 days) if config missing
+            var cutoffDate = '2026-08-13';
+            if (data.config_value) {
+                cutoffDate = data.config_value;
+            }
+            // Append the last_seen_after filter
+            params.append('last_seen_after', cutoffDate);
+            
+            var url = AppConfig.baseUrl + '/records?' + params.toString();
+            document.getElementById('browseCatalogContainer').innerHTML = 
+                '<div class="browse-loading-indicator"><div class="browse-loading-dots"><div></div><div></div><div></div><div></div></div><p style="font-size:13px;">Loading records...</p></div>';
+            
+            return fetch(url);
+        })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            if (data.status === 'success') {
+                var records = data.records || [];
+                if (browseNewVinylActive) {
+                    records = records.filter(function(r) { return isBrowseNewVinyl(r); });
                 }
-                var cutoffDate = new Date();
-                cutoffDate.setDate(cutoffDate.getDate() - cutoffDays);
-                params.append('created_after', cutoffDate.toISOString().split('T')[0]);
+                browseRecords = records;
                 
-                var url = AppConfig.baseUrl + '/records?' + params.toString();
-                document.getElementById('browseCatalogContainer').innerHTML = '<div class="browse-loading-indicator"><div class="browse-loading-dots"><div></div><div></div><div></div><div></div></div><p style="font-size:13px;">Loading records...</p></div>';
-                
-                return fetch(url);
-            })
-            .then(function(response) { return response.json(); })
-            .then(function(data) {
-                if (data.status === 'success') {
-                    var records = data.records || [];
-                    if (browseNewVinylActive) {
-                        records = records.filter(function(r) { return isBrowseNewVinyl(r); });
-                    }
-                    browseRecords = records;
-                    
-                    var genreSet = new Set();
-                    records.forEach(function(r) {
-                        var genre = extractBrowseGenre(r.discogs_genre_raw);
-                        if (genre) genreSet.add(genre);
-                    });
-                    browseAvailableGenres = Array.from(genreSet).sort();
-                    populateBrowseGenreDropdown();
-                    displayBrowseRecords(browseRecords);
-                    updateBrowseFilterUI();
-                }
-            })
-            .catch(function(error) {
-                console.error('Error loading catalog:', error);
-                document.getElementById('browseCatalogContainer').innerHTML = '<div class="browse-error-message"><i class="fas fa-exclamation-triangle"></i><p>Failed to load records.</p></div>';
-            });
-    } catch (e) {
-        console.warn('Could not fetch INVENTORY_CUTOFF_DAYS, using default 30');
-        var cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - 30);
-        params.append('created_after', cutoffDate.toISOString().split('T')[0]);
-        
-        var url = AppConfig.baseUrl + '/records?' + params.toString();
-        document.getElementById('browseCatalogContainer').innerHTML = '<div class="browse-loading-indicator"><div class="browse-loading-dots"><div></div><div></div><div></div><div></div></div><p style="font-size:13px;">Loading records...</p></div>';
-        
-        fetch(url)
-            .then(function(response) { return response.json(); })
-            .then(function(data) {
-                if (data.status === 'success') {
-                    var records = data.records || [];
-                    if (browseNewVinylActive) {
-                        records = records.filter(function(r) { return isBrowseNewVinyl(r); });
-                    }
-                    browseRecords = records;
-                    
-                    var genreSet = new Set();
-                    records.forEach(function(r) {
-                        var genre = extractBrowseGenre(r.discogs_genre_raw);
-                        if (genre) genreSet.add(genre);
-                    });
-                    browseAvailableGenres = Array.from(genreSet).sort();
-                    populateBrowseGenreDropdown();
-                    displayBrowseRecords(browseRecords);
-                    updateBrowseFilterUI();
-                }
-            })
-            .catch(function(error) {
-                console.error('Error loading catalog:', error);
-                document.getElementById('browseCatalogContainer').innerHTML = '<div class="browse-error-message"><i class="fas fa-exclamation-triangle"></i><p>Failed to load records.</p></div>';
-            });
-    }
+                var genreSet = new Set();
+                records.forEach(function(r) {
+                    var genre = extractBrowseGenre(r.discogs_genre_raw);
+                    if (genre) genreSet.add(genre);
+                });
+                browseAvailableGenres = Array.from(genreSet).sort();
+                populateBrowseGenreDropdown();
+                displayBrowseRecords(browseRecords);
+                updateBrowseFilterUI();
+            }
+        })
+        .catch(function(error) {
+            console.error('Error loading catalog:', error);
+            document.getElementById('browseCatalogContainer').innerHTML = 
+                '<div class="browse-error-message"><i class="fas fa-exclamation-triangle"></i><p>Failed to load records.</p></div>';
+        });
 }
 
 function populateBrowseGenreDropdown() {
@@ -368,11 +339,19 @@ function createBrowseRecordCard(record) {
         innerHtml += '<div class="browse-record-card-format"><i class="fas fa-record-vinyl"></i> ' + escapeBrowseHtml(formatName) + '</div>';
     }
     
+    // --- NEW: display location (location_name + location_index) ---
+    if (record.location_id && record.location_name) {
+        var locationText = record.location_name;
+        if (record.location_index !== null && record.location_index !== undefined) {
+            locationText += ' - ' + record.location_index;
+        }
+        innerHtml += '<div class="browse-record-card-location"><i class="fas fa-map-pin"></i> ' + escapeBrowseHtml(locationText) + '</div>';
+    }
+    
     innerHtml += '</div>';
     
     card.innerHTML = innerHtml;
     card.addEventListener('click', function() { 
-        // Use the unified popup for records
         if (typeof openRecordPopup === 'function') {
             openRecordPopup(record);
         } else {
