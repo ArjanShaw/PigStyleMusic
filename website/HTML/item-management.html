@@ -32,7 +32,7 @@
         body {
             background: white;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            padding-top: 70px; /* space for fixed navbar */
+            padding-top: 70px;
             margin: 0;
         }
 
@@ -128,21 +128,6 @@
             align-items: center;
             gap: 20px;
             flex-wrap: wrap;
-        }
-        .search-field-select {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #333;
-        }
-        .search-field-select select {
-            background: white;
-            border: 1px solid #ddd;
-            color: #333;
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
         }
         .search-form {
             display: flex;
@@ -632,20 +617,11 @@
             </div>
         </div>
 
-        <!-- ========== SEARCH SECTION ========== -->
+        <!-- ========== SEARCH SECTION ===== (Simplified) ====== -->
         <div class="search-section">
             <div class="search-options-row">
-                <div class="search-field-select">
-                    <label for="searchField"><i class="fas fa-search"></i> Search by:</label>
-                    <select id="searchField">
-                        <option value="all">Barcode, Artist, or Title</option>
-                        <option value="barcode">Barcode</option>
-                        <option value="artist">Artist</option>
-                        <option value="title">Title</option>
-                    </select>
-                </div>
                 <form class="search-form" id="searchForm" action="javascript:void(0);">
-                    <input type="text" class="search-input" id="searchInput" placeholder="Search for items to manage...">
+                    <input type="text" class="search-input" id="searchInput" placeholder="Search by ID, Barcode, Artist, or Title...">
                     <button id="searchButton" type="button" class="btn btn-primary"><i class="fas fa-search"></i> Search</button>
                     <button type="button" class="btn btn-secondary" id="clearSearch"><i class="fas fa-times"></i> Clear</button>
                 </form>
@@ -908,12 +884,10 @@
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM_LOADED: Initializing item management');
 
-            // Load navbar (auto-loaded by shared.js, but we call it explicitly as a fallback)
             if (typeof loadNavbar === 'function') {
                 loadNavbar();
             }
 
-            // Initialize item management
             if (typeof window.initItemManagement === 'function') {
                 window.initItemManagement();
             }

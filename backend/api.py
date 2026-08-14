@@ -2131,35 +2131,17 @@ def create_record():
         return jsonify({'status': 'error', 'error': f"Database error: {str(e)}"}), 500
 
 
+
 @app.route('/records', methods=['GET'])
 def get_records():
-    """Get records with all filtering logic centralized here.
-    
-    Query Parameters:
-    - status_ids: comma-separated list (e.g., '1,2') - if omitted, shows all
-    - artist: filter by artist name (partial match)
-    - title: filter by title (partial match)
-    - catalog_number: filter by catalog number (partial match)
-    - barcode: filter by barcode (partial match)
-    - location_id: filter by location ID
-    - format_ids: comma-separated list (e.g., '1,2')
-    - genres: comma-separated list (OR logic, e.g., 'Jazz,Blues')
-    - require_image: 'true' to only return records with images
-    - created_after: date string (YYYY-MM-DD) - records created after this date
-    - last_seen_after: date string (YYYY-MM-DD) - records seen after this date
-    - last_seen_before: date string (YYYY-MM-DD) - records seen before this date
-    - limit: max records to return
-    - batch_id: filter by batch/purchase ID (use -1 for records with no batch)
-    - order_by: column to order by (default: 'created_at')
-    - order_dir: 'ASC' or 'DESC' (default: 'DESC')
-    """
+    """Get records with filtering, pagination, and a generic search."""
     try:
         conn = get_db()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
-        # Base query - using d_condition table
-        query = """
+
+        # ---------- Base query (all joins) ----------
+        base_query = """
             SELECT 
                 r.*,
                 f.name AS format_name,
@@ -2186,132 +2168,167 @@ def get_records():
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
             WHERE 1=1
         """
-        
+
+        # ---------- Collect filter conditions and parameters ----------
+        where_clauses = []
         params = []
-        
-        # --- Status Filter ---
+
+        # --- Status filter (comma-separated) ---
         status_ids = request.args.get('status_ids')
         if status_ids:
             ids = [int(x.strip()) for x in status_ids.split(',') if x.strip()]
             if ids:
                 placeholders = ','.join(['?'] * len(ids))
-                query += f" AND r.status_id IN ({placeholders})"
+                where_clauses.append(f"r.status_id IN ({placeholders})")
                 params.extend(ids)
-        # If no status filter, show all (no WHERE clause needed)
-        
-        # --- Artist Filter ---
+
+        # --- Artist (partial match) ---
         artist = request.args.get('artist')
         if artist:
-            query += " AND r.artist LIKE ?"
+            where_clauses.append("r.artist LIKE ?")
             params.append(f'%{artist}%')
-        
-        # --- Title Filter ---
+
+        # --- Title (partial match) ---
         title = request.args.get('title')
         if title:
-            query += " AND r.title LIKE ?"
+            where_clauses.append("r.title LIKE ?")
             params.append(f'%{title}%')
-        
-        # --- Catalog Number Filter ---
+
+        # --- Catalog Number (partial match) ---
         catalog_number = request.args.get('catalog_number')
         if catalog_number:
-            query += " AND r.catalog_number LIKE ?"
+            where_clauses.append("r.catalog_number LIKE ?")
             params.append(f'%{catalog_number}%')
-        
-        # --- Barcode Filter ---
+
+        # --- Barcode (exact match) ---
         barcode = request.args.get('barcode')
         if barcode:
-            query += " AND r.barcode LIKE ?"
-            params.append(f'%{barcode}%')
-        
-        # --- Location Filter ---
+            where_clauses.append("r.barcode = ?")
+            params.append(barcode)
+
+        # --- ID (exact match, single or comma-separated) ---
+        ids_param = request.args.get('id') or request.args.get('ids')
+        if ids_param:
+            ids = [int(x.strip()) for x in ids_param.split(',') if x.strip()]
+            if ids:
+                placeholders = ','.join(['?'] * len(ids))
+                where_clauses.append(f"r.id IN ({placeholders})")
+                params.extend(ids)
+
+        # --- NEW: Generic search (LIKE on id, barcode, artist, title, catalog_number) ---
+        search = request.args.get('search')
+        if search:
+            search_like = f'%{search}%'
+            where_clauses.append(
+                "(CAST(r.id AS TEXT) LIKE ? OR r.barcode LIKE ? OR r.artist LIKE ? OR r.title LIKE ? OR r.catalog_number LIKE ?)"
+            )
+            params.extend([search_like, search_like, search_like, search_like, search_like])
+
+        # --- Location (exact) ---
         location_id = request.args.get('location_id')
         if location_id:
-            query += " AND r.location_id = ?"
+            where_clauses.append("r.location_id = ?")
             params.append(int(location_id))
-        
-        # --- Format Filter ---
+
+        # --- Formats (comma-separated) ---
         format_ids = request.args.get('format_ids')
         if format_ids:
             ids = [int(x.strip()) for x in format_ids.split(',') if x.strip()]
             if ids:
                 placeholders = ','.join(['?'] * len(ids))
-                query += f" AND r.format_id IN ({placeholders})"
+                where_clauses.append(f"r.format_id IN ({placeholders})")
                 params.extend(ids)
-        
-        # --- Genre Filter (OR logic) ---
+
+        # --- Genres (OR logic, partial match) ---
         genres = request.args.get('genres')
         if genres:
             genre_list = [x.strip() for x in genres.split(',') if x.strip()]
             if genre_list:
-                conditions = []
+                or_conditions = []
                 for genre in genre_list:
-                    conditions.append("r.discogs_genre_raw LIKE ?")
+                    or_conditions.append("r.discogs_genre_raw LIKE ?")
                     params.append(f'%{genre}%')
-                query += f" AND ({' OR '.join(conditions)})"
-        
-        # --- Image Filter ---
+                where_clauses.append(f"({' OR '.join(or_conditions)})")
+
+        # --- Require image ---
         require_image = request.args.get('require_image', 'false').lower() == 'true'
         if require_image:
-            query += " AND r.image_url IS NOT NULL AND r.image_url != ''"
-        
-        # --- Created After Filter ---
+            where_clauses.append("r.image_url IS NOT NULL AND r.image_url != ''")
+
+        # --- Created after (date) ---
         created_after = request.args.get('created_after')
         if created_after:
-            query += " AND date(r.created_at) >= date(?)"
+            where_clauses.append("date(r.created_at) >= date(?)")
             params.append(created_after)
-        
-        # --- Last Seen Filters ---
+
+        # --- Last seen filters ---
         last_seen_after = request.args.get('last_seen_after')
         if last_seen_after:
-            query += " AND date(r.last_seen) >= date(?)"
+            where_clauses.append("date(r.last_seen) >= date(?)")
             params.append(last_seen_after)
-        
+
         last_seen_before = request.args.get('last_seen_before')
         if last_seen_before:
-            query += " AND date(r.last_seen) <= date(?)"
+            where_clauses.append("date(r.last_seen) <= date(?)")
             params.append(last_seen_before)
-        
-        # --- Batch Filter ---
+
+        # --- Batch filter ---
         batch_id = request.args.get('batch_id')
         if batch_id is not None:
             batch_id_int = int(batch_id)
             if batch_id_int == -1:
-                query += " AND r.batch_id IS NULL"
+                where_clauses.append("r.batch_id IS NULL")
             else:
-                query += " AND r.batch_id = ?"
+                where_clauses.append("r.batch_id = ?")
                 params.append(batch_id_int)
-        
-        # --- Ordering ---
+
+        # ---------- Assemble WHERE clause ----------
+        if where_clauses:
+            where_sql = " AND " + " AND ".join(where_clauses)
+        else:
+            where_sql = ""
+
+        # ---------- Count query (no ORDER BY / LIMIT / OFFSET) ----------
+        count_query = f"SELECT COUNT(*) AS total FROM records r WHERE 1=1 {where_sql}"
+        cursor.execute(count_query, params)
+        total = cursor.fetchone()['total']
+
+        # ---------- Ordering ----------
         order_by = request.args.get('order_by', 'created_at')
-        # Whitelist allowed columns to prevent SQL injection
         allowed_order_columns = ['id', 'created_at', 'last_seen', 'artist', 'title', 'store_price', 'status_id', 'format_id']
         if order_by not in allowed_order_columns:
             order_by = 'created_at'
-        
+
         order_dir = request.args.get('order_dir', 'DESC').upper()
         if order_dir not in ['ASC', 'DESC']:
             order_dir = 'DESC'
-        
-        query += f" ORDER BY r.{order_by} {order_dir}"
-        
-        # --- Limit ---
+        order_sql = f" ORDER BY r.{order_by} {order_dir}"
+
+        # ---------- Pagination (limit + offset) ----------
         limit = request.args.get('limit')
-        if limit:
-            query += " LIMIT ?"
+        offset = request.args.get('offset')
+        pagination_sql = ""
+        if limit is not None:
+            pagination_sql += " LIMIT ?"
             params.append(int(limit))
-        
-        print(f"📊 SQL: {query}")
-        print(f"📊 Params: {params}")
-        
-        cursor.execute(query, params)
+        if offset is not None:
+            pagination_sql += " OFFSET ?"
+            params.append(int(offset))
+
+        # ---------- Final query ----------
+        final_query = base_query + where_sql + order_sql + pagination_sql
+        cursor.execute(final_query, params)
         records = [dict(row) for row in cursor.fetchall()]
-        
+
+        conn.close()
+
         return jsonify({
             'status': 'success',
+            'total': total,
             'count': len(records),
             'records': records
         })
-        
+
     except Exception as e:
         print(f"❌ Error in get_records: {e}")
         return jsonify({
@@ -2319,29 +2336,6 @@ def get_records():
             'error': str(e)
         }), 500
 
-
-@app.route('/records/<int:record_id>', methods=['GET'])
-def get_record(record_id):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name,
-        cd.condition_name as disc_condition_name,
-        f.name as format_name,
-        l.name as location_name
-        FROM records r
-        LEFT JOIN d_status s ON r.status_id = s.id
-        LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-        LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-        LEFT JOIN formats f ON r.format_id = f.id
-        LEFT JOIN locations l ON r.location_id = l.id
-        WHERE r.id = ?
-    ''', (record_id,))
-    record = cursor.fetchone()
-    conn.close()
-    if not record:
-        return jsonify({'status': 'error', 'error': 'Record not found'}), 404
-    return jsonify(dict(record))
 
 @app.route('/api/stats/last-seen-distribution', methods=['GET'])
 def get_last_seen_distribution_stats():

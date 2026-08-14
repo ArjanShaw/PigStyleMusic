@@ -1,5 +1,5 @@
 // ============================================================
-// browse-component.js - Shop Tile (Record Browsing)
+// browse-component.js - Shop Tile with Pagination + Exact Search
 // ============================================================
 
 var browseRecords = [];
@@ -12,6 +12,12 @@ var browseNewVinylActive = false;
 var browseAllFormats = [];
 var browseInitialized = false;
 
+// ---- Pagination state ----
+var browseCurrentPage = 1;
+var browsePageSize = 20;
+var browseTotalRecords = 0;
+var browseTotalPages = 1;
+
 function initBrowseComponent() {
     if (browseInitialized) return;
     browseInitialized = true;
@@ -19,6 +25,7 @@ function initBrowseComponent() {
     fetchBrowseFormats();
     loadBrowseCatalogData();
     setupBrowseEventListeners();
+    setupPaginationEventListeners();
 }
 
 function setupBrowseEventListeners() {
@@ -28,6 +35,7 @@ function setupBrowseEventListeners() {
         browseCurrentSearchTerm = ''; 
         browseNewArrivalsActive = true; 
         browseNewVinylActive = false; 
+        browseCurrentPage = 1;
         document.getElementById('browseSearchBox').value = ''; 
         document.querySelectorAll('#browseGenreList input').forEach(function(cb) { cb.checked = false; });
         document.querySelectorAll('#browseFormatList input').forEach(function(cb) { cb.checked = false; });
@@ -36,16 +44,19 @@ function setupBrowseEventListeners() {
     
     document.getElementById('browseNewArrivalsBtn')?.addEventListener('click', function() { 
         browseNewArrivalsActive = !browseNewArrivalsActive; 
+        browseCurrentPage = 1;
         loadBrowseCatalogData(); 
     });
     
     document.getElementById('browseNewVinylBtn')?.addEventListener('click', function() { 
         browseNewVinylActive = !browseNewVinylActive; 
+        browseCurrentPage = 1;
         loadBrowseCatalogData(); 
     });
     
     document.getElementById('browseSearchBox')?.addEventListener('input', debounce(function() { 
         browseCurrentSearchTerm = document.getElementById('browseSearchBox').value.trim();
+        browseCurrentPage = 1;
         loadBrowseCatalogData(); 
     }, 500));
     
@@ -85,6 +96,7 @@ function setupBrowseEventListeners() {
     document.getElementById('browseApplyGenres')?.addEventListener('click', function() { 
         browseSelectedGenres = Array.from(document.querySelectorAll('#browseGenreList input:checked')).map(function(cb) { return cb.value; }); 
         genreDropdown.classList.remove('show'); 
+        browseCurrentPage = 1;
         loadBrowseCatalogData(); 
     });
     
@@ -99,8 +111,27 @@ function setupBrowseEventListeners() {
     document.getElementById('browseApplyFormats')?.addEventListener('click', function() { 
         browseSelectedFormatIds = Array.from(document.querySelectorAll('#browseFormatList input:checked')).map(function(cb) { return parseInt(cb.value); });
         formatDropdown.classList.remove('show'); 
+        browseCurrentPage = 1;
         loadBrowseCatalogData(); 
     });
+}
+
+function setupPaginationEventListeners() {
+    document.getElementById('browseFirstPage')?.addEventListener('click', function() { goToBrowsePage(1); });
+    document.getElementById('browsePrevPage')?.addEventListener('click', function() { goToBrowsePage(browseCurrentPage - 1); });
+    document.getElementById('browseNextPage')?.addEventListener('click', function() { goToBrowsePage(browseCurrentPage + 1); });
+    document.getElementById('browseLastPage')?.addEventListener('click', function() { goToBrowsePage(browseTotalPages); });
+    document.getElementById('browsePageSize')?.addEventListener('change', function() {
+        browsePageSize = parseInt(this.value);
+        browseCurrentPage = 1;
+        loadBrowseCatalogData();
+    });
+}
+
+function goToBrowsePage(page) {
+    if (page < 1 || page > browseTotalPages) return;
+    browseCurrentPage = page;
+    loadBrowseCatalogData();
 }
 
 function fetchBrowseFormats() {
@@ -145,7 +176,6 @@ function isBrowseNewVinyl(record) {
 
 function displayBrowseRecords(records) {
     var container = document.getElementById('browseCatalogContainer');
-    
     container.innerHTML = '';
     
     if (!records || records.length === 0) {
@@ -167,9 +197,13 @@ function loadBrowseCatalogData() {
     var params = new URLSearchParams();
     params.append('status_ids', '2');
     
+    // ---- Search filters ----
     if (browseCurrentSearchTerm) {
+        // For 'all' search, we send artist, title (partial), AND barcode (exact)
+        // The backend will match barcode exactly (and also id if numeric)
         params.append('artist', browseCurrentSearchTerm);
         params.append('title', browseCurrentSearchTerm);
+        params.append('barcode', browseCurrentSearchTerm);  // exact match on barcode + id
     }
     
     if (browseSelectedGenres.length > 0) {
@@ -180,7 +214,6 @@ function loadBrowseCatalogData() {
         params.append('format_ids', browseSelectedFormatIds.join(','));
     }
     
-    // ---- NEW ARRIVALS toggle (still uses created_after, 7 days) ----
     if (browseNewArrivalsActive) {
         var sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -190,20 +223,21 @@ function loadBrowseCatalogData() {
     params.append('require_image', 'true');
     params.append('order_by', 'created_at');
     params.append('order_dir', 'DESC');
-
-    // =============================================================
-    // NEW: Fetch the hardcoded LAST_SEEN_CUTOFF_DATE from app_config
-    // and apply it as last_seen_after
-    // =============================================================
+    
+    // ---- Pagination ----
+    var limit = browsePageSize;
+    var offset = (browseCurrentPage - 1) * limit;
+    params.append('limit', limit);
+    params.append('offset', offset);
+    
+    // ---- Last seen cutoff ----
     fetch(AppConfig.baseUrl + '/config/LAST_SEEN_CUTOFF_DATE')
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            // Fallback to a safe default (today - 30 days) if config missing
             var cutoffDate = '2026-08-13';
             if (data.config_value) {
                 cutoffDate = data.config_value;
             }
-            // Append the last_seen_after filter
             params.append('last_seen_after', cutoffDate);
             
             var url = AppConfig.baseUrl + '/records?' + params.toString();
@@ -216,6 +250,9 @@ function loadBrowseCatalogData() {
         .then(function(data) {
             if (data.status === 'success') {
                 var records = data.records || [];
+                browseTotalRecords = data.total || records.length;
+                browseTotalPages = Math.ceil(browseTotalRecords / browsePageSize) || 1;
+                
                 if (browseNewVinylActive) {
                     records = records.filter(function(r) { return isBrowseNewVinyl(r); });
                 }
@@ -230,6 +267,7 @@ function loadBrowseCatalogData() {
                 populateBrowseGenreDropdown();
                 displayBrowseRecords(browseRecords);
                 updateBrowseFilterUI();
+                updatePaginationUI();
             }
         })
         .catch(function(error) {
@@ -237,6 +275,29 @@ function loadBrowseCatalogData() {
             document.getElementById('browseCatalogContainer').innerHTML = 
                 '<div class="browse-error-message"><i class="fas fa-exclamation-triangle"></i><p>Failed to load records.</p></div>';
         });
+}
+
+function updatePaginationUI() {
+    var start = (browseCurrentPage - 1) * browsePageSize + 1;
+    var end = Math.min(browseCurrentPage * browsePageSize, browseTotalRecords);
+    var showingSpan = document.getElementById('browseShowingRange');
+    var totalSpan = document.getElementById('browseTotalRecords');
+    var pageInfo = document.getElementById('browsePageInfo');
+    
+    if (showingSpan) {
+        showingSpan.textContent = browseTotalRecords > 0 ? start + '-' + end : '0';
+    }
+    if (totalSpan) {
+        totalSpan.textContent = browseTotalRecords;
+    }
+    if (pageInfo) {
+        pageInfo.textContent = browseCurrentPage + ' / ' + browseTotalPages;
+    }
+    
+    document.getElementById('browseFirstPage').disabled = browseCurrentPage <= 1;
+    document.getElementById('browsePrevPage').disabled = browseCurrentPage <= 1;
+    document.getElementById('browseNextPage').disabled = browseCurrentPage >= browseTotalPages;
+    document.getElementById('browseLastPage').disabled = browseCurrentPage >= browseTotalPages;
 }
 
 function populateBrowseGenreDropdown() {
@@ -339,8 +400,7 @@ function createBrowseRecordCard(record) {
         innerHtml += '<div class="browse-record-card-format"><i class="fas fa-record-vinyl"></i> ' + escapeBrowseHtml(formatName) + '</div>';
     }
     
-    // --- NEW: display location (location_name + location_index) ---
-    if (record.location_id && record.location_name) {
+    if (record.location_name) {
         var locationText = record.location_name;
         if (record.location_index !== null && record.location_index !== undefined) {
             locationText += ' - ' + record.location_index;

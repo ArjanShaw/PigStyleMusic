@@ -11,19 +11,18 @@
     const ItemManagement = {
         // State
         records: [],
-        selectedRecords: [], // Store FULL record objects for selected items
+        selectedRecords: [],
         selectedIds: new Set(),
         currentPage: 1,
         pageSize: 50,
         totalRecords: 0,
         totalPages: 1,
         searchTerm: '',
-        searchField: 'all',
         isProcessing: false,
         currentAction: 'checkout',
-        viewMode: 'search', // 'search' or 'selection'
+        viewMode: 'search',
         
-        // Checkout state - COMPLETE checkout system
+        // Checkout state
         checkoutQueue: [],
         checkoutTotal: 0,
         checkoutSelectedItems: [],
@@ -54,7 +53,6 @@
             statusMessage: document.getElementById('status-message'),
             recordsTableBody: document.getElementById('records-table-body'),
             searchInput: document.getElementById('searchInput'),
-            searchField: document.getElementById('searchField'),
             searchButton: document.getElementById('searchButton'),
             clearSearch: document.getElementById('clearSearch'),
             selectAllCheckbox: document.getElementById('select-all-checkbox'),
@@ -82,10 +80,7 @@
             clearSelectionBtn: document.getElementById('clear-selection-btn')
         };
         
-        // Set up event listeners
         setupEventListeners();
-        
-        // Load initial data
         loadStats();
         performSearch();
         
@@ -142,11 +137,8 @@
         
         if (els.selectAllCheckbox) {
             els.selectAllCheckbox.addEventListener('change', function() {
-                if (this.checked) {
-                    selectAllRecords();
-                } else {
-                    clearSelection();
-                }
+                if (this.checked) selectAllRecords();
+                else clearSelection();
             });
         }
         if (els.selectAllBtn) {
@@ -163,7 +155,6 @@
             radio.addEventListener('change', function() {
                 ItemManagement.currentAction = this.value;
                 updateActionUI();
-                // Clear selection and refresh when switching modes
                 clearSelection();
                 performSearch();
             });
@@ -178,56 +169,37 @@
     function updateViewButtons() {
         const count = ItemManagement.selectedRecords.length;
         const badge = document.getElementById('selection-count-badge');
-        if (badge) {
-            badge.textContent = count;
-        }
+        if (badge) badge.textContent = count;
         
-        // Show/hide clear selection button
         const clearBtn = document.getElementById('clear-selection-btn');
-        if (clearBtn) {
-            clearBtn.style.display = count > 0 ? 'inline-block' : 'none';
-        }
+        if (clearBtn) clearBtn.style.display = count > 0 ? 'inline-block' : 'none';
         
-        // Update view status text
         const statusText = document.getElementById('view-status-text');
         if (statusText) {
-            if (ItemManagement.viewMode === 'selection') {
-                statusText.textContent = 'Showing selection list (' + count + ' items)';
-            } else {
-                statusText.textContent = 'Showing search results';
-            }
+            statusText.textContent = ItemManagement.viewMode === 'selection' 
+                ? 'Showing selection list (' + count + ' items)' 
+                : 'Showing search results';
         }
         
-        // Update selected count display
         const selectedDisplay = document.getElementById('selected-count-display');
-        if (selectedDisplay) {
-            selectedDisplay.textContent = count;
-        }
+        if (selectedDisplay) selectedDisplay.textContent = count;
         const selectedText = document.getElementById('selected-count-text');
-        if (selectedText) {
-            selectedText.textContent = count;
-        }
+        if (selectedText) selectedText.textContent = count;
     }
 
     // ============================================================
     // SELECTION FUNCTIONS
     // ============================================================
-    
     function addToSelection(record) {
-        // Check if already selected
-        if (!ItemManagement.selectedRecords.some(function(r) { return r.id === record.id; })) {
+        if (!ItemManagement.selectedRecords.some(r => r.id === record.id)) {
             ItemManagement.selectedRecords.push(record);
             ItemManagement.selectedIds.add(record.id);
         }
-        
-        // Auto-switch to selection view
         ItemManagement.viewMode = 'selection';
         updateViewButtons();
         renderTable();
         updateSelectionUI();
         updateExecuteButton();
-        
-        // Clear search and refocus
         const searchInput = ItemManagement.elements.searchInput;
         if (searchInput) {
             searchInput.value = '';
@@ -237,18 +209,12 @@
     }
 
     function removeFromSelection(recordId) {
-        ItemManagement.selectedRecords = ItemManagement.selectedRecords.filter(function(r) {
-            return r.id !== recordId;
-        });
+        ItemManagement.selectedRecords = ItemManagement.selectedRecords.filter(r => r.id !== recordId);
         ItemManagement.selectedIds.delete(recordId);
-        
-        // Stay in selection view (or switch to search if empty)
         if (ItemManagement.selectedRecords.length === 0) {
             ItemManagement.viewMode = 'search';
             const searchInput = ItemManagement.elements.searchInput;
-            if (searchInput) {
-                searchInput.focus();
-            }
+            if (searchInput) searchInput.focus();
         }
         updateViewButtons();
         renderTable();
@@ -257,22 +223,17 @@
     }
 
     function selectAllRecords() {
-        // Add all records from current search results
         ItemManagement.records.forEach(function(record) {
-            if (!ItemManagement.selectedRecords.some(function(r) { return r.id === record.id; })) {
+            if (!ItemManagement.selectedRecords.some(r => r.id === record.id)) {
                 ItemManagement.selectedRecords.push(record);
                 ItemManagement.selectedIds.add(record.id);
             }
         });
-        
-        // Auto-switch to selection view
         ItemManagement.viewMode = 'selection';
         updateViewButtons();
         renderTable();
         updateSelectionUI();
         updateExecuteButton();
-        
-        // Clear search and refocus
         const searchInput = ItemManagement.elements.searchInput;
         if (searchInput) {
             searchInput.value = '';
@@ -289,22 +250,17 @@
         renderTable();
         updateSelectionUI();
         updateExecuteButton();
-        
         const searchInput = ItemManagement.elements.searchInput;
-        if (searchInput) {
-            searchInput.focus();
-        }
+        if (searchInput) searchInput.focus();
     }
 
     function updateSelectionUI() {
         const count = ItemManagement.selectedRecords.length;
         const els = ItemManagement.elements;
-        
         if (els.selectedCountText) els.selectedCountText.textContent = count;
         if (els.selectedCountDisplay) els.selectedCountDisplay.textContent = count;
         if (els.executeActionBtn) els.executeActionBtn.disabled = count === 0;
         
-        // Update select all checkbox
         const total = ItemManagement.records.length;
         if (els.selectAllCheckbox) {
             if (total > 0 && count === total) {
@@ -319,140 +275,106 @@
             }
         }
         
-        // Update total value
         let totalValue = 0;
         ItemManagement.selectedRecords.forEach(function(record) {
-            const price = record.store_price ? parseFloat(record.store_price) : 0;
-            totalValue += price;
+            totalValue += parseFloat(record.store_price) || 0;
         });
         if (els.totalValue) els.totalValue.textContent = '$' + totalValue.toFixed(2);
         
-        // Update view buttons
         updateViewButtons();
         updateExecuteButton();
     }
 
     function updateExecuteButton() {
-        const count = ItemManagement.selectedRecords.length;
         const btn = ItemManagement.elements.executeActionBtn;
-        if (btn) {
-            btn.disabled = count === 0;
-        }
+        if (btn) btn.disabled = ItemManagement.selectedRecords.length === 0;
     }
 
     function updateActionUI() {
         const action = ItemManagement.currentAction;
         const btn = ItemManagement.elements.executeActionBtn;
-        const icons = {
-            'checkout': 'fa-shopping-cart',
-            'delete': 'fa-trash',
-            'refund': 'fa-undo'
-        };
-        const labels = {
-            'checkout': 'Checkout Selected',
-            'delete': 'Delete Selected',
-            'refund': 'Refund Selected'
-        };
-        const colors = {
-            'checkout': 'btn-success',
-            'delete': 'btn-danger',
-            'refund': 'btn-warning'
-        };
-        
+        const icons = { 'checkout': 'fa-shopping-cart', 'delete': 'fa-trash', 'refund': 'fa-undo' };
+        const labels = { 'checkout': 'Checkout Selected', 'delete': 'Delete Selected', 'refund': 'Refund Selected' };
+        const colors = { 'checkout': 'btn-success', 'delete': 'btn-danger', 'refund': 'btn-warning' };
         if (btn) {
             btn.innerHTML = `<i class="fas ${icons[action]}"></i> ${labels[action]}`;
             btn.className = `btn ${colors[action]}`;
             btn.disabled = ItemManagement.selectedRecords.length === 0;
         }
-        
         const searchInput = ItemManagement.elements.searchInput;
         if (searchInput) {
-            if (action === 'checkout') {
-                searchInput.placeholder = 'Search active records...';
-            } else if (action === 'refund') {
-                searchInput.placeholder = 'Search sold records...';
-            } else if (action === 'delete') {
-                searchInput.placeholder = 'Search records to delete...';
-            }
+            const placeholders = {
+                'checkout': 'Search active records...',
+                'refund': 'Search sold records...',
+                'delete': 'Search records to delete...'
+            };
+            searchInput.placeholder = placeholders[action] || 'Search records...';
         }
     }
 
     // ============================================================
-    // SEARCH FUNCTIONS
+    // SEARCH FUNCTIONS – SIMPLIFIED
     // ============================================================
     function performSearch() {
         console.log('performSearch called');
         const els = ItemManagement.elements;
         ItemManagement.searchTerm = els.searchInput.value.trim();
-        ItemManagement.searchField = els.searchField.value;
         ItemManagement.currentPage = 1;
-        
-        // When searching, switch to search view
+
         ItemManagement.viewMode = 'search';
         updateViewButtons();
-        
         showStatus('Searching...', 'info');
-        
+
         const params = new URLSearchParams();
-        params.append('page', ItemManagement.currentPage);
-        params.append('limit', ItemManagement.pageSize);
-        
+
+        // Status filter based on action mode
         const action = ItemManagement.currentAction;
-        
-        if (action === 'checkout') {
-            params.append('status_ids', '2');
-        } else if (action === 'refund') {
-            params.append('status_ids', '3,4');
-        } else if (action === 'delete') {
-            params.append('status_ids', '1,2');
-        } else {
-            params.append('status_ids', '1,2,3,4');
+        if (action === 'checkout') params.append('status_ids', '2');
+        else if (action === 'refund') params.append('status_ids', '3,4');
+        else if (action === 'delete') params.append('status_ids', '1,2');
+        else params.append('status_ids', '1,2,3,4');
+
+        // Simple search: send the term as 'search' parameter
+        const term = ItemManagement.searchTerm;
+        if (term) {
+            params.append('search', term);
         }
-        
-        if (ItemManagement.searchTerm) {
-            params.append('search', ItemManagement.searchTerm);
-        }
-        
+
+        // Pagination
+        const limit = ItemManagement.pageSize;
+        const offset = (ItemManagement.currentPage - 1) * limit;
+        params.append('limit', limit);
+        params.append('offset', offset);
+
         const url = `${AppConfig.baseUrl}/records?${params.toString()}`;
         console.log('Fetching:', url);
-        
+
         fetch(url, {
             credentials: 'include',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            }
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
         })
         .then(response => {
-            if (!response.ok) {
-                throw new Error('HTTP ' + response.status);
-            }
+            if (!response.ok) throw new Error('HTTP ' + response.status);
             return response.json();
         })
         .then(data => {
             if (data.status === 'success') {
                 ItemManagement.records = data.records || [];
-                ItemManagement.totalRecords = data.total || 0;
-                ItemManagement.totalPages = data.total_pages || 1;
-                
+                ItemManagement.totalRecords = data.total || ItemManagement.records.length;
+                ItemManagement.totalPages = Math.ceil(ItemManagement.totalRecords / limit) || 1;
+
                 renderTable();
                 updatePagination();
                 updateStats();
                 updateSelectionUI();
                 updateViewButtons();
                 hideStatus();
-                
-                let statusMsg = '';
-                if (action === 'checkout') {
-                    statusMsg = 'Showing active records (status: Active)';
-                } else if (action === 'refund') {
-                    statusMsg = 'Showing sold records (status: Sold)';
-                } else if (action === 'delete') {
-                    statusMsg = 'Showing new and active records (status: New, Active)';
-                }
-                if (statusMsg) {
-                    showStatus(statusMsg + ' - ' + ItemManagement.totalRecords + ' found', 'info');
-                }
+
+                const actionLabel = { 'checkout': 'Active', 'refund': 'Sold', 'delete': 'New + Active' }[action] || 'All';
+                let msg = ItemManagement.records.length === 0 
+                    ? `No ${actionLabel} records found.` 
+                    : `Showing ${ItemManagement.records.length} ${actionLabel} records${term ? ' matching "' + term + '"' : ''}.`;
+                showStatus(msg + ` (Page ${ItemManagement.currentPage} of ${ItemManagement.totalPages})`, 'info');
             } else {
                 showStatus(data.error || 'Search failed', 'error');
             }
@@ -467,11 +389,8 @@
         ItemManagement.elements.searchInput.value = '';
         ItemManagement.searchTerm = '';
         ItemManagement.currentPage = 1;
-        
-        // Clear search switches to search view
         ItemManagement.viewMode = 'search';
         updateViewButtons();
-        
         performSearch();
     }
 
@@ -488,30 +407,21 @@
     function renderTable() {
         const tbody = ItemManagement.elements.recordsTableBody;
         const viewMode = ItemManagement.viewMode || 'search';
-        
-        // Determine which records to show
         let records = [];
         let emptyMessage = '';
-        
+
         if (viewMode === 'selection') {
-            // Show ALL selected records from the separate array
             records = ItemManagement.selectedRecords;
             emptyMessage = 'No items selected. Search for records and add them to your selection.';
         } else {
-            // Show search results
             records = ItemManagement.records;
             const action = ItemManagement.currentAction;
-            if (action === 'checkout') {
-                emptyMessage = 'No active records found. Search to find records to checkout.';
-            } else if (action === 'refund') {
-                emptyMessage = 'No sold records found. Search to find records to refund.';
-            } else if (action === 'delete') {
-                emptyMessage = 'No new or active records found. Search to find records to delete.';
-            } else {
-                emptyMessage = 'Search for items to manage them.';
-            }
+            if (action === 'checkout') emptyMessage = 'No active records found. Search to find records to checkout.';
+            else if (action === 'refund') emptyMessage = 'No sold records found. Search to find records to refund.';
+            else if (action === 'delete') emptyMessage = 'No new or active records found. Search to find records to delete.';
+            else emptyMessage = 'Search for items to manage them.';
         }
-        
+
         if (!records || records.length === 0) {
             tbody.innerHTML = `
                 <tr>
@@ -523,48 +433,30 @@
             `;
             return;
         }
-        
-        // Update selection count badge
+
         updateViewButtons();
-        
+
         let html = '';
         records.forEach(function(record) {
             const isSelected = ItemManagement.selectedIds.has(record.id);
             const statusClass = getStatusClass(record.status_id || record.status);
             const statusLabel = getStatusLabel(record.status_id || record.status);
-            const price = record.store_price ? parseFloat(record.store_price) : 0;
-            
-            // Different action buttons based on view mode
+            const price = parseFloat(record.store_price) || 0;
+
             let actionHtml = '';
             if (viewMode === 'selection') {
-                // Show Remove button in selection view
-                actionHtml = `
-                    <button class="btn btn-sm btn-danger remove-selection-btn" data-id="${record.id}">
-                        <i class="fas fa-times"></i> Remove
-                    </button>
-                `;
+                actionHtml = `<button class="btn btn-sm btn-danger remove-selection-btn" data-id="${record.id}"><i class="fas fa-times"></i> Remove</button>`;
             } else {
-                // Show Add button in search view
                 if (isSelected) {
-                    actionHtml = `
-                        <button class="btn btn-sm btn-secondary" disabled>
-                            <i class="fas fa-check"></i> Added
-                        </button>
-                    `;
+                    actionHtml = `<button class="btn btn-sm btn-secondary" disabled><i class="fas fa-check"></i> Added</button>`;
                 } else {
-                    actionHtml = `
-                        <button class="btn btn-sm btn-success add-selection-btn" data-id="${record.id}">
-                            <i class="fas fa-plus"></i> Add
-                        </button>
-                    `;
+                    actionHtml = `<button class="btn btn-sm btn-success add-selection-btn" data-id="${record.id}"><i class="fas fa-plus"></i> Add</button>`;
                 }
             }
-            
+
             html += `
                 <tr class="${isSelected ? 'selected-row' : ''}" data-id="${record.id}">
-                    <td>
-                        <input type="checkbox" class="record-checkbox" data-id="${record.id}" ${isSelected ? 'checked' : ''}>
-                    </td>
+                    <td><input type="checkbox" class="record-checkbox" data-id="${record.id}" ${isSelected ? 'checked' : ''}></td>
                     <td>${record.id}</td>
                     <td>${escapeHtml(record.artist || 'Unknown')}</td>
                     <td>${escapeHtml(record.title || 'Unknown')}</td>
@@ -575,38 +467,32 @@
                 </tr>
             `;
         });
-        
+
         tbody.innerHTML = html;
-        
-        // Add event listeners for Add/Remove buttons
+
+        // Attach event listeners
         if (viewMode === 'selection') {
             tbody.querySelectorAll('.remove-selection-btn').forEach(function(btn) {
                 btn.addEventListener('click', function() {
-                    const id = parseInt(this.dataset.id);
-                    removeFromSelection(id);
+                    removeFromSelection(parseInt(this.dataset.id));
                 });
             });
         } else {
             tbody.querySelectorAll('.add-selection-btn').forEach(function(btn) {
                 btn.addEventListener('click', function() {
                     const id = parseInt(this.dataset.id);
-                    const record = ItemManagement.records.find(function(r) { return r.id === id; });
-                    if (record) {
-                        addToSelection(record);
-                    }
+                    const record = ItemManagement.records.find(r => r.id === id);
+                    if (record) addToSelection(record);
                 });
             });
         }
-        
-        // Handle checkbox events
+
         tbody.querySelectorAll('.record-checkbox').forEach(function(checkbox) {
             checkbox.addEventListener('change', function() {
                 const id = parseInt(this.dataset.id);
-                const record = ItemManagement.records.find(function(r) { return r.id === id; });
+                const record = ItemManagement.records.find(r => r.id === id);
                 if (this.checked) {
-                    if (record) {
-                        addToSelection(record);
-                    }
+                    if (record) addToSelection(record);
                 } else {
                     removeFromSelection(id);
                 }
@@ -614,90 +500,44 @@
         });
     }
 
-    function updateRowStyles() {
-        const rows = ItemManagement.elements.recordsTableBody.querySelectorAll('tr');
-        rows.forEach(function(row) {
-            const id = parseInt(row.dataset.id);
-            if (ItemManagement.selectedIds.has(id)) {
-                row.classList.add('selected-row');
-            } else {
-                row.classList.remove('selected-row');
-            }
-        });
-    }
-
     // ============================================================
-    // STATS FUNCTIONS
+    // STATS & PAGINATION
     // ============================================================
     function loadStats() {
-        console.log('Loading stats...');
+        fetch(`${AppConfig.baseUrl}/records/count`, { credentials: 'include' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    ItemManagement.elements.totalRecords.textContent = data.count || 0;
+                }
+            })
+            .catch(console.error);
         
-        fetch(`${AppConfig.baseUrl}/records/count`, {
-            credentials: 'include',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            }
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('HTTP ' + response.status);
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.status === 'success') {
-                ItemManagement.elements.totalRecords.textContent = data.count || 0;
-            }
-        })
-        .catch(error => {
-            console.error('Failed to load total stats:', error);
-        });
-        
-        fetch(`${AppConfig.baseUrl}/records/count?status_id=2`, {
-            credentials: 'include',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            }
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('HTTP ' + response.status);
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.status === 'success') {
-                ItemManagement.elements.activeRecords.textContent = data.count || 0;
-            }
-        })
-        .catch(error => {
-            console.error('Failed to load active stats:', error);
-        });
+        fetch(`${AppConfig.baseUrl}/records/count?status_id=2`, { credentials: 'include' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    ItemManagement.elements.activeRecords.textContent = data.count || 0;
+                }
+            })
+            .catch(console.error);
     }
 
     function updateStats() {
         const start = (ItemManagement.currentPage - 1) * ItemManagement.pageSize + 1;
         const end = Math.min(start + ItemManagement.pageSize - 1, ItemManagement.totalRecords);
         const els = ItemManagement.elements;
-        
         if (els.recordShowingStart) els.recordShowingStart.textContent = ItemManagement.totalRecords > 0 ? start : 0;
         if (els.recordShowingEnd) els.recordShowingEnd.textContent = end;
         if (els.recordTotalFiltered) els.recordTotalFiltered.textContent = ItemManagement.totalRecords;
     }
 
-    // ============================================================
-    // PAGINATION FUNCTIONS
-    // ============================================================
     function updatePagination() {
         const els = ItemManagement.elements;
         const current = ItemManagement.currentPage;
         const total = ItemManagement.totalPages;
-        
         if (els.recordCurrentPage) els.recordCurrentPage.value = current;
         if (els.recordTotalPages) els.recordTotalPages.textContent = total;
-        
         if (els.recordFirstPage) els.recordFirstPage.disabled = current <= 1;
         if (els.recordPrevPage) els.recordPrevPage.disabled = current <= 1;
         if (els.recordNextPage) els.recordNextPage.disabled = current >= total;
@@ -712,26 +552,20 @@
             showStatus('Please select at least one item.', 'warning');
             return;
         }
-        
         const action = ItemManagement.currentAction;
-        
-        switch (action) {
-            case 'checkout':
-                executeCheckout();
-                break;
-            case 'delete':
-                confirmDelete();
-                break;
-            case 'refund':
-                confirmRefund();
-                break;
-            default:
-                showStatus('Unknown action: ' + action, 'error');
+        if (action === 'checkout') {
+            executeCheckout();
+        } else if (action === 'delete') {
+            confirmDelete();
+        } else if (action === 'refund') {
+            confirmRefund();
+        } else {
+            showStatus('Unknown action: ' + action, 'error');
         }
     }
 
     // ============================================================
-    // CHECKOUT FUNCTIONS - FULL SYSTEM
+    // CHECKOUT FUNCTIONS – FULL IMPLEMENTATION
     // ============================================================
     
     function executeCheckout() {
