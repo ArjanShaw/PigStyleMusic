@@ -1303,6 +1303,62 @@
             }, 300);
         }
 
+        // ===== RECORD POPUP (uses the same merch popup) =====
+        function openRecordPopup(record) {
+            var popup = document.getElementById('merchPopup');
+            var content = document.getElementById('popupDynamicContent');
+            
+            var inStock = record.status_id === 2 || record.status_id === 1;
+            var price = parseFloat(record.store_price) || 0;
+            var condition = record.condition || record.disc_condition_name || 'Unknown';
+            
+            var genre = record.discogs_genre_raw ? record.discogs_genre_raw.split(',')[0].trim() : '';
+            var formatName = record.format_name || '';
+            
+            // ---- Build location string ----
+            var locationText = '';
+            if (record.location_name) {
+                locationText = record.location_name;
+                if (record.location_index !== null && record.location_index !== undefined) {
+                    locationText += ' - ' + record.location_index;
+                }
+            }
+
+            var html = `
+                <h2>${record.artist}</h2>
+                <div class="popup-image">
+                    ${record.image_url ? `<img src="${record.image_url}" alt="${record.title}">` : '<i class="fas fa-music" style="font-size:64px; color:#ddd;"></i>'}
+                </div>
+                <div class="popup-description">
+                    <strong>${record.title}</strong>
+                    ${genre ? `<br><span style="color:#888; font-size:0.9rem;">Genre: ${genre}</span>` : ''}
+                    ${formatName ? `<br><span style="color:#888; font-size:0.9rem;">Format: ${formatName}</span>` : ''}
+                    <br><span style="color:#888; font-size:0.9rem;">Condition: ${condition}</span>
+                    ${locationText ? `<br><span style="color:#888; font-size:0.9rem;"><i class="fas fa-map-pin" style="color:#ff6b6b;"></i> Location: ${locationText}</span>` : ''}
+                </div>
+                <div class="popup-price">$${price.toFixed(2)}</div>
+                <div class="popup-stock ${inStock ? 'in-stock' : 'out-of-stock'}">
+                    ${inStock ? '✅ In Stock' : '❌ Out of Stock'}
+                </div>
+                ${inStock ? `
+                    <button class="add-to-cart-btn" onclick="addRecordToCart(${record.id}, '${record.artist.replace(/'/g, "\\'")}', '${record.title.replace(/'/g, "\\'")}', ${price}, '${condition.replace(/'/g, "\\'")}')">
+                        <i class="fas fa-shopping-cart"></i> Add to Cart - $${price.toFixed(2)}
+                    </button>
+                ` : `
+                    <button class="add-to-cart-btn" disabled>Out of Stock</button>
+                `}
+            `;
+            
+            content.innerHTML = html;
+            popup.style.display = 'flex';
+            popup.style.opacity = '0';
+            document.body.style.overflow = 'hidden';
+            setTimeout(function() {
+                popup.style.opacity = '1';
+                popup.style.transition = 'opacity 0.3s ease';
+            }, 50);
+        }
+
         function openMerchPopup(type) {
             var popup = document.getElementById('merchPopup');
             var content = document.getElementById('popupDynamicContent');
@@ -1393,52 +1449,6 @@
                 `;
             }
 
-            content.innerHTML = html;
-            popup.style.display = 'flex';
-            popup.style.opacity = '0';
-            document.body.style.overflow = 'hidden';
-            setTimeout(function() {
-                popup.style.opacity = '1';
-                popup.style.transition = 'opacity 0.3s ease';
-            }, 50);
-        }
-
-        // ===== RECORD POPUP (uses the same merch popup) =====
-        function openRecordPopup(record) {
-            var popup = document.getElementById('merchPopup');
-            var content = document.getElementById('popupDynamicContent');
-            
-            var inStock = record.status_id === 2 || record.status_id === 1;
-            var price = parseFloat(record.store_price) || 0;
-            var condition = record.condition || 'Unknown';
-            
-            var genre = record.discogs_genre_raw ? record.discogs_genre_raw.split(',')[0].trim() : '';
-            var formatName = record.format_name || '';
-            
-            var html = `
-                <h2>${record.artist}</h2>
-                <div class="popup-image">
-                    ${record.image_url ? `<img src="${record.image_url}" alt="${record.title}">` : '<i class="fas fa-music" style="font-size:64px; color:#ddd;"></i>'}
-                </div>
-                <div class="popup-description">
-                    <strong>${record.title}</strong>
-                    ${genre ? `<br><span style="color:#888; font-size:0.9rem;">Genre: ${genre}</span>` : ''}
-                    ${formatName ? `<br><span style="color:#888; font-size:0.9rem;">Format: ${formatName}</span>` : ''}
-                    <br><span style="color:#888; font-size:0.9rem;">Condition: ${condition}</span>
-                </div>
-                <div class="popup-price">$${price.toFixed(2)}</div>
-                <div class="popup-stock ${inStock ? 'in-stock' : 'out-of-stock'}">
-                    ${inStock ? '✅ In Stock' : '❌ Out of Stock'}
-                </div>
-                ${inStock ? `
-                    <button class="add-to-cart-btn" onclick="addRecordToCart(${record.id}, '${record.artist.replace(/'/g, "\\'")}', '${record.title.replace(/'/g, "\\'")}', ${price}, '${condition.replace(/'/g, "\\'")}')">
-                        <i class="fas fa-shopping-cart"></i> Add to Cart - $${price.toFixed(2)}
-                    </button>
-                ` : `
-                    <button class="add-to-cart-btn" disabled>Out of Stock</button>
-                `}
-            `;
-            
             content.innerHTML = html;
             popup.style.display = 'flex';
             popup.style.opacity = '0';
