@@ -20,7 +20,7 @@
     <link rel="stylesheet" href="/static/css/shared.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
-    <!-- JS FILES (notification-bell.js removed) -->
+    <!-- JS FILES -->
     <script src="/static/js/app-config.js"></script>
     <script src="/static/js/shared.js"></script>
     <script src="/static/js/merchandise-store.js"></script>
@@ -53,7 +53,7 @@
             flex-direction: column;
             align-items: center;
             text-decoration: none;
-            color: #888;
+            color: #ddd;   /* brighter default color */
             font-size: 0.7rem;
             padding: 4px 8px;
             border-radius: 6px;
@@ -69,14 +69,14 @@
         .mini-nav-item i {
             font-size: 1.5rem;
             margin-bottom: 2px;
-            color: #777;
+            color: #ccc;   /* brighter icon color */
             transition: color 0.2s;
         }
         .mini-nav-item span {
             font-size: 0.7rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            color: #777;
+            color: #ccc;
         }
         .mini-nav-item:hover i,
         .mini-nav-item.active i {
@@ -116,7 +116,7 @@
 
         .mini-nav-item.login-link {
             text-decoration: none;
-            color: #888;
+            color: #ddd;
         }
         .mini-nav-item.login-link:hover i {
             color: #ff6b6b;
@@ -483,6 +483,100 @@
             font-weight: 500;
             display: none;
         }
+
+        /* ===== BROWSE PAGINATION (new) ===== */
+        .browse-pagination-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            padding: 15px 10px;
+            border-top: 1px solid #ddd;
+            flex-wrap: wrap;
+            gap: 15px;
+            background: transparent;
+        }
+        .browse-pagination-info {
+            color: #888;
+            font-size: 14px;
+        }
+        .browse-pagination-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .browse-pagination-btn {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            color: #333;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            min-width: 36px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+        .browse-pagination-btn:hover:not(:disabled) {
+            background: #e9ecef;
+            border-color: #ccc;
+        }
+        .browse-pagination-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .browse-page-info {
+            font-size: 14px;
+            color: #333;
+            padding: 0 8px;
+            font-weight: 500;
+        }
+        .browse-page-size-selector {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #888;
+            font-size: 13px;
+        }
+        .browse-page-size-selector select {
+            background: white;
+            border: 1px solid #ddd;
+            color: #333;
+            padding: 4px 6px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .browse-page-size-selector select:hover {
+            background: #f8f9fa;
+        }
+        .browse-page-size-selector select:focus {
+            outline: none;
+            border-color: #ff6b6b;
+        }
+
+        /* ===== Pig Head – ensure "Welcome" text stays yellow ===== */
+        .desktop-record-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            /* no filters or overlays that dull the image */
+        }
+        .pig-head {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            /* remove any gray overlay by ensuring no opacity/filter on parent */
+        }
+        /* No overlay on the pig container */
+        .desktop-record-container::before,
+        .desktop-record-container::after {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -676,6 +770,31 @@
                                         <p style="font-size: 13px;">Loading records...</p>
                                     </div>
                                 </div>
+
+                                <!-- ===== BROWSE PAGINATION (new) ===== -->
+                                <div class="browse-pagination-container">
+                                    <div class="browse-pagination-info">
+                                        Showing <span id="browseShowingRange">0-0</span> of <span id="browseTotalRecords">0</span> records
+                                    </div>
+                                    <div class="browse-pagination-controls">
+                                        <button id="browseFirstPage" class="browse-pagination-btn" disabled><i class="fas fa-angle-double-left"></i></button>
+                                        <button id="browsePrevPage" class="browse-pagination-btn" disabled><i class="fas fa-angle-left"></i></button>
+                                        <span class="browse-page-info" id="browsePageInfo">1 / 1</span>
+                                        <button id="browseNextPage" class="browse-pagination-btn" disabled><i class="fas fa-angle-right"></i></button>
+                                        <button id="browseLastPage" class="browse-pagination-btn" disabled><i class="fas fa-angle-double-right"></i></button>
+                                        <div class="browse-page-size-selector">
+                                            <label for="browsePageSize">Per page:</label>
+                                            <select id="browsePageSize">
+                                                <option value="12">12</option>
+                                                <option value="24" selected>24</option>
+                                                <option value="48">48</option>
+                                                <option value="96">96</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- ===== END BROWSE PAGINATION ===== -->
+
                             </div>
                         </div>
                         <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
@@ -1303,62 +1422,6 @@
             }, 300);
         }
 
-        // ===== RECORD POPUP (uses the same merch popup) =====
-        function openRecordPopup(record) {
-            var popup = document.getElementById('merchPopup');
-            var content = document.getElementById('popupDynamicContent');
-            
-            var inStock = record.status_id === 2 || record.status_id === 1;
-            var price = parseFloat(record.store_price) || 0;
-            var condition = record.condition || record.disc_condition_name || 'Unknown';
-            
-            var genre = record.discogs_genre_raw ? record.discogs_genre_raw.split(',')[0].trim() : '';
-            var formatName = record.format_name || '';
-            
-            // ---- Build location string ----
-            var locationText = '';
-            if (record.location_name) {
-                locationText = record.location_name;
-                if (record.location_index !== null && record.location_index !== undefined) {
-                    locationText += ' - ' + record.location_index;
-                }
-            }
-
-            var html = `
-                <h2>${record.artist}</h2>
-                <div class="popup-image">
-                    ${record.image_url ? `<img src="${record.image_url}" alt="${record.title}">` : '<i class="fas fa-music" style="font-size:64px; color:#ddd;"></i>'}
-                </div>
-                <div class="popup-description">
-                    <strong>${record.title}</strong>
-                    ${genre ? `<br><span style="color:#888; font-size:0.9rem;">Genre: ${genre}</span>` : ''}
-                    ${formatName ? `<br><span style="color:#888; font-size:0.9rem;">Format: ${formatName}</span>` : ''}
-                    <br><span style="color:#888; font-size:0.9rem;">Condition: ${condition}</span>
-                    ${locationText ? `<br><span style="color:#888; font-size:0.9rem;"><i class="fas fa-map-pin" style="color:#ff6b6b;"></i> Location: ${locationText}</span>` : ''}
-                </div>
-                <div class="popup-price">$${price.toFixed(2)}</div>
-                <div class="popup-stock ${inStock ? 'in-stock' : 'out-of-stock'}">
-                    ${inStock ? '✅ In Stock' : '❌ Out of Stock'}
-                </div>
-                ${inStock ? `
-                    <button class="add-to-cart-btn" onclick="addRecordToCart(${record.id}, '${record.artist.replace(/'/g, "\\'")}', '${record.title.replace(/'/g, "\\'")}', ${price}, '${condition.replace(/'/g, "\\'")}')">
-                        <i class="fas fa-shopping-cart"></i> Add to Cart - $${price.toFixed(2)}
-                    </button>
-                ` : `
-                    <button class="add-to-cart-btn" disabled>Out of Stock</button>
-                `}
-            `;
-            
-            content.innerHTML = html;
-            popup.style.display = 'flex';
-            popup.style.opacity = '0';
-            document.body.style.overflow = 'hidden';
-            setTimeout(function() {
-                popup.style.opacity = '1';
-                popup.style.transition = 'opacity 0.3s ease';
-            }, 50);
-        }
-
         function openMerchPopup(type) {
             var popup = document.getElementById('merchPopup');
             var content = document.getElementById('popupDynamicContent');
@@ -1449,6 +1512,62 @@
                 `;
             }
 
+            content.innerHTML = html;
+            popup.style.display = 'flex';
+            popup.style.opacity = '0';
+            document.body.style.overflow = 'hidden';
+            setTimeout(function() {
+                popup.style.opacity = '1';
+                popup.style.transition = 'opacity 0.3s ease';
+            }, 50);
+        }
+
+        // ===== RECORD POPUP (uses the same merch popup) =====
+        function openRecordPopup(record) {
+            var popup = document.getElementById('merchPopup');
+            var content = document.getElementById('popupDynamicContent');
+            
+            var inStock = record.status_id === 2 || record.status_id === 1;
+            var price = parseFloat(record.store_price) || 0;
+            var condition = record.condition || record.disc_condition_name || 'Unknown';
+            
+            var genre = record.discogs_genre_raw ? record.discogs_genre_raw.split(',')[0].trim() : '';
+            var formatName = record.format_name || '';
+            
+            // ---- Build location string ----
+            var locationText = '';
+            if (record.location_name) {
+                locationText = record.location_name;
+                if (record.location_index !== null && record.location_index !== undefined) {
+                    locationText += ' - ' + record.location_index;
+                }
+            }
+
+            var html = `
+                <h2>${record.artist}</h2>
+                <div class="popup-image">
+                    ${record.image_url ? `<img src="${record.image_url}" alt="${record.title}">` : '<i class="fas fa-music" style="font-size:64px; color:#ddd;"></i>'}
+                </div>
+                <div class="popup-description">
+                    <strong>${record.title}</strong>
+                    ${genre ? `<br><span style="color:#888; font-size:0.9rem;">Genre: ${genre}</span>` : ''}
+                    ${formatName ? `<br><span style="color:#888; font-size:0.9rem;">Format: ${formatName}</span>` : ''}
+                    <br><span style="color:#888; font-size:0.9rem;">Condition: ${condition}</span>
+                    ${locationText ? `<br><span style="color:#888; font-size:0.9rem;"><i class="fas fa-map-pin" style="color:#ff6b6b;"></i> Location: ${locationText}</span>` : ''}
+                </div>
+                <div class="popup-price">$${price.toFixed(2)}</div>
+                <div class="popup-stock ${inStock ? 'in-stock' : 'out-of-stock'}">
+                    ${inStock ? '✅ In Stock' : '❌ Out of Stock'}
+                </div>
+                ${inStock ? `
+                    <button class="add-to-cart-btn" onclick="addRecordToCart(${record.id}, '${record.artist.replace(/'/g, "\\'")}', '${record.title.replace(/'/g, "\\'")}', ${price}, '${condition.replace(/'/g, "\\'")}')">
+                        <i class="fas fa-shopping-cart"></i> Add to Cart - $${price.toFixed(2)}
+                    </button>
+                ` : `
+                    <button class="add-to-cart-btn" disabled>Out of Stock</button>
+                `}
+            `;
+            
             content.innerHTML = html;
             popup.style.display = 'flex';
             popup.style.opacity = '0';
