@@ -1182,14 +1182,8 @@
         }
 
         @keyframes slideIn {
-            from {
-                transform: translateX(-10px);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
+            from { transform: translateX(-10px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
 
         .sort-indicator {
@@ -1997,7 +1991,6 @@
             <div class="tab" data-tab="custom-labels"><i class="fas fa-tag"></i> Custom Labels</div>
             <div class="tab" data-tab="email-subscriptions"><i class="fas fa-envelope"></i> Email Subscriptions</div>
             <div class="tab" data-tab="record-orders"><i class="fas fa-shopping-cart"></i> Record Orders</div>
-            <!-- ===== NEW FEEDBACK TAB ===== -->
             <div class="tab" data-tab="feedback"><i class="fas fa-comment"></i> Feedback</div>
             <div class="tab" data-tab="db-query"><i class="fas fa-database"></i> DB Query</div>
             <div class="tab" data-tab="sticky-notes"><i class="fas fa-sticky-note"></i> Sticky Notes</div>
@@ -2203,12 +2196,17 @@
         <div id="mode-container-scan" style="display: none;">
             <!-- Location Builder -->
             <div class="scan-location-builder">
-                <h3><i class="fas fa-map-pin"></i> Location Setup</h3>
+                <h3 style="display: flex; justify-content: space-between; align-items: center;">
+                    <span><i class="fas fa-map-pin"></i> Location Setup</span>
+                    <button class="btn btn-light" id="next-location-btn" onclick="cycleToNextLocation()" style="background: white; color: #333; padding: 4px 12px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer;">
+                        <i class="fas fa-arrow-right"></i> Next Location
+                    </button>
+                </h3>
                 <p class="text-muted">Select a location and start scanning. The index will auto-increment.</p>
                 
                 <div style="margin-bottom: 15px;">
                     <label style="display: block; font-weight: 600; margin-bottom: 8px; color: white;">Select Location:</label>
-                    <select id="scan-location-select" class="scan-location-select" style="background:white !important; color:#000000 !important;">
+                    <select id="scan-location-select" class="scan-location-select" style="background:white !important; color:#000000 !important;" onchange="clearScanError();">
                         <option value="" style="background:white !important; color:#000000 !important;">-- Select Location --</option>
                     </select>
                 </div>
@@ -2217,6 +2215,8 @@
                     <span class="location-text" id="scan-location-display">-- Please select a location --</span>
                     <span class="index-text" id="scan-index-display">📍 Index: 0</span>
                 </div>
+                
+                <div id="scan-error-message" style="display: none; color: #ff6b6b; margin-top: 10px; font-weight: bold;"></div>
                 
                 <div class="scan-input-area">
                     <input type="text" id="scan-input" placeholder="Scan barcode or search..." disabled="">
@@ -3363,6 +3363,16 @@ Example: SELECT * FROM records LIMIT 10;" onkeydown="handleQueryKeydown(event)">
                     <canvas id="lastSeenDistributionChart" width="400" height="250" style="max-height: 250px; width: 100%;"></canvas>
                 </div>
 
+                <!-- NEW: Scans per Bin Chart -->
+                <div class="stat-card" style="padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <h3 style="margin: 0 0 15px 0; font-size: 16px;">
+                        <i class="fas fa-chart-bar"></i> Scans per Bin 
+                        <span style="font-size: 12px; color: #666; margin-left: 10px;">(last seen after cutoff)</span>
+                    </h3>
+                    <canvas id="scansPerBinChart" width="400" height="250" style="max-height: 250px; width: 100%;"></canvas>
+                    <div id="scansPerBinMessage" style="text-align: center; color: #999; font-size: 13px; margin-top: 8px;"></div>
+                </div>
+
                 <div class="stat-card" style="padding: 15px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                     <h3 style="margin: 0 0 15px 0; font-size: 16px;"><i class="fas fa-calendar-alt"></i> Records Created Over Time <span style="font-size: 12px; color: #666; margin-left: 10px;">(by month)</span></h3>
                     <canvas id="createdAtChart" width="400" height="250" style="max-height: 250px; width: 100%;"></canvas>
@@ -3830,7 +3840,6 @@ Example: SELECT * FROM records LIMIT 10;" onkeydown="handleQueryKeydown(event)">
     <script src="/static/js/admin-creditors.js"></script>
     <script src="/static/js/email-subscriptions.js"></script>
     <script src="/static/js/order-management.js"></script>
-    <!-- ===== NEW: Feedback Management Script ===== -->
     <script src="/static/js/admin-feedback.js"></script>
 
     <script>
@@ -3980,6 +3989,199 @@ Example: SELECT * FROM records LIMIT 10;" onkeydown="handleQueryKeydown(event)">
                 console.log('✅ Config verified, keys:', Object.keys(window.dbConfigValues));
             }
         }, 1000);
+    });
+
+    // ========== GENRE-AWARE "NEXT LOCATION" ==========
+    function parseLocation(text) {
+        // Matches "Rock & Pop Bin 1 LT", "Jazz Bin 3 RB", "Roots Bin 2 LB", "Rear Wall Bin 4 RT"
+        const match = text.match(/^(Rock & Pop|Jazz|Roots|Rear Wall) Bin (\d+) (LT|RT|LB|RB)$/);
+        if (match) {
+            return { genre: match[1], bin: parseInt(match[2], 10), suffix: match[3] };
+        }
+        return null;
+    }
+
+    function cycleToNextLocation() {
+        const select = document.getElementById('scan-location-select');
+        if (!select) return;
+
+        const currentText = select.options[select.selectedIndex]?.text || '';
+        if (!currentText || currentText === '-- Select Location --') {
+            showScanError('Please select a valid location first.');
+            return;
+        }
+
+        const parsed = parseLocation(currentText);
+        if (!parsed) {
+            showScanError(`Cannot determine genre from "${currentText}".`);
+            return;
+        }
+
+        const { genre, bin, suffix } = parsed;
+        const suffixOrder = ['LT', 'RT', 'LB', 'RB'];
+        let suffixIndex = suffixOrder.indexOf(suffix);
+        let newBin = bin;
+        let newSuffixIndex = suffixIndex + 1;
+        let found = false;
+        const maxBin = 20; // safety limit
+
+        while (!found && newBin <= maxBin) {
+            if (newSuffixIndex >= suffixOrder.length) {
+                newBin++;
+                newSuffixIndex = 0;
+            }
+            const nextSuffix = suffixOrder[newSuffixIndex];
+            const nextText = `${genre} Bin ${newBin} ${nextSuffix}`;
+
+            // Check if this option exists in the dropdown
+            for (let i = 0; i < select.options.length; i++) {
+                if (select.options[i].text === nextText) {
+                    select.selectedIndex = i;
+                    found = true;
+                    break;
+                }
+            }
+            newSuffixIndex++;
+        }
+
+        if (!found) {
+            showScanError(`No more locations found in "${genre}". Reached the end.`);
+            return;
+        }
+
+        select.dispatchEvent(new Event('change'));
+        clearScanError();
+    }
+
+    function showScanError(msg) {
+        let errorEl = document.getElementById('scan-error-message');
+        if (!errorEl) {
+            const preview = document.querySelector('.location-preview');
+            if (preview) {
+                errorEl = document.createElement('div');
+                errorEl.id = 'scan-error-message';
+                errorEl.style.color = '#ff6b6b';
+                errorEl.style.marginTop = '10px';
+                errorEl.style.fontWeight = 'bold';
+                preview.parentNode.insertBefore(errorEl, preview.nextSibling);
+            }
+        }
+        if (errorEl) {
+            errorEl.textContent = '⚠️ ' + msg;
+            errorEl.style.display = 'block';
+        }
+    }
+
+    function clearScanError() {
+        const errorEl = document.getElementById('scan-error-message');
+        if (errorEl) errorEl.style.display = 'none';
+    }
+
+    // ========== SCANS PER BIN CHART (with fallback) ==========
+    async function loadScansPerBinChart() {
+        const ctx = document.getElementById('scansPerBinChart');
+        const msgEl = document.getElementById('scansPerBinMessage');
+        if (!ctx) return;
+
+        try {
+            // Get cutoff date from app_config
+            const configResponse = await fetch('/config', { credentials: 'include' });
+            const configData = await configResponse.json();
+            let cutoffDate = null;
+            if (configData.status === 'success' && configData.configs) {
+                const cutoffConfig = configData.configs.find(c => c.config_key === 'LAST_SEEN_CUTOFF_DATE');
+                if (cutoffConfig) {
+                    cutoffDate = cutoffConfig.config_value;
+                }
+            }
+            if (!cutoffDate) {
+                const d = new Date();
+                d.setDate(d.getDate() - 30);
+                cutoffDate = d.toISOString().split('T')[0];
+            }
+
+            // Try to fetch real data
+            const response = await fetch(`/api/stats/scans-per-bin?cutoff=${encodeURIComponent(cutoffDate)}`, {
+                credentials: 'include'
+            });
+            let data;
+            try {
+                data = await response.json();
+            } catch (e) {
+                data = null;
+            }
+
+            let labels, values;
+            if (data && data.labels && data.values && data.labels.length > 0) {
+                labels = data.labels;
+                values = data.values;
+                msgEl.textContent = `Showing records with last_seen > ${cutoffDate}`;
+            } else {
+                // Fallback: sample data to demonstrate the chart
+                labels = ['Rock & Pop Bin 1', 'Rock & Pop Bin 2', 'Jazz Bin 1', 'Roots Bin 1', 'Rear Wall Bin 1'];
+                values = [12, 8, 5, 3, 2];
+                msgEl.textContent = '⚠️ Sample data – backend endpoint not available. Use DB Query to get real counts.';
+                msgEl.style.color = '#ffc107';
+            }
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Records scanned',
+                        data: values,
+                        backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.raw + ' record(s)';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Number of Records' }
+                        },
+                        x: {
+                            title: { display: true, text: 'Location' },
+                            ticks: {
+                                maxRotation: 90,
+                                minRotation: 45
+                            }
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error loading scans per bin chart:', error);
+            msgEl.textContent = '❌ Error loading chart data.';
+            msgEl.style.color = '#dc3545';
+        }
+    }
+
+    // Load chart when stats tab is shown
+    document.addEventListener('DOMContentLoaded', function() {
+        const statsTab = document.querySelector('.tab[data-tab="stats"]');
+        if (statsTab) {
+            statsTab.addEventListener('click', function() {
+                setTimeout(loadScansPerBinChart, 300);
+            });
+        }
+        if (document.getElementById('stats-tab').classList.contains('active')) {
+            setTimeout(loadScansPerBinChart, 500);
+        }
     });
     </script>
 
