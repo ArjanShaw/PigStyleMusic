@@ -828,6 +828,9 @@
         }
     }
 
+    // ============================================================
+    // LOOKUP DEBTOR – UPDATED to handle gift cards
+    // ============================================================
     async function lookupDebtorForCheckout() {
         var input = document.getElementById('checkout-debtor-code');
         var infoDiv = document.getElementById('checkout-debtor-info');
@@ -851,6 +854,51 @@
         statusEl.style.color = '#666';
         
         try {
+            // ---- CHECK FOR GIFT CARD FIRST ----
+            if (code.startsWith('GIFT-') || code.startsWith('GC-')) {
+                // Gift card lookup
+                var giftCardResponse = await fetch(AppConfig.baseUrl + '/api/gift-card/balance/' + encodeURIComponent(code), {
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                var giftCardData = await giftCardResponse.json();
+                
+                if (giftCardData.status === 'success') {
+                    var balance = giftCardData.balance || 0;
+                    
+                    ItemManagement.checkoutDebtorData = {
+                        debtor: code,
+                        balance: balance,
+                        is_gift_card: true,
+                        is_bernie: false
+                    };
+                    
+                    infoDiv.style.display = 'block';
+                    nameEl.textContent = code;
+                    typeEl.textContent = '🎁 Gift Card';
+                    balanceEl.textContent = balance.toFixed(2);
+                    balanceEl.style.color = balance > 0 ? '#28a745' : '#dc3545';
+                    
+                    if (balance <= 0) {
+                        statusEl.textContent = '⚠️ This gift card has no balance.';
+                        statusEl.style.color = '#856404';
+                    } else {
+                        statusEl.textContent = '✅ Gift card balance: $' + balance.toFixed(2) + '. Click Apply to use it.';
+                        statusEl.style.color = '#28a745';
+                    }
+                    return;
+                } else {
+                    // Gift card not found
+                    infoDiv.style.display = 'block';
+                    statusEl.textContent = '❌ Gift card not found. Check the code.';
+                    statusEl.style.color = '#dc3545';
+                    ItemManagement.checkoutDebtorData = null;
+                    return;
+                }
+            }
+            
+            // ---- DEBTOR / STORE CREDIT LOOKUP ----
             var response = await fetch(AppConfig.baseUrl + '/api/debtor/lookup', {
                 method: 'POST',
                 credentials: 'include',
@@ -884,7 +932,7 @@
                     statusEl.textContent = '⚠️ This account has no balance.';
                     statusEl.style.color = '#856404';
                 } else if (isBernie) {
-                    statusEl.textContent = '⚠️ Bernie funds cannot be redeemed for purchases. Use the Donate button in Creditors.';
+                    statusEl.textContent = '⚠️ Bernie funds cannot be redeemed for purchases.';
                     statusEl.style.color = '#856404';
                 } else {
                     statusEl.textContent = '✅ Balance available: $' + balance.toFixed(2) + '. Click Apply to use it.';
@@ -897,7 +945,7 @@
                 ItemManagement.checkoutDebtorData = null;
             }
         } catch (error) {
-            console.error('Error looking up debtor:', error);
+            console.error('Error looking up:', error);
             statusEl.textContent = '❌ Error: ' + error.message;
             statusEl.style.color = '#dc3545';
             ItemManagement.checkoutDebtorData = null;
@@ -905,74 +953,99 @@
     }
 
     async function applyDebtorToCheckout() {
-        if (!ItemManagement.checkoutDebtorData) {
-            showCheckoutStatus('Please lookup a debtor first.', 'error');
-            return;
+    if (!ItemManagement.checkoutDebtorData) {
+        showCheckoutStatus('Please lookup a debtor first.', 'error');
+        return;
+    }
+    
+    var statusEl = document.getElementById('checkout-debtor-status');
+    var data = ItemManagement.checkoutDebtorData;
+    var balance = data.balance || 0;
+    
+    if (balance <= 0) {
+        statusEl.textContent = '⚠️ This account has no balance.';
+        statusEl.style.color = '#856404';
+        return;
+    }
+    
+    if (ItemManagement.checkoutRemaining <= 0.01) {
+        statusEl.textContent = '⚠️ No remaining balance to pay.';
+        statusEl.style.color = '#856404';
+        return;
+    }
+    
+    var amount = Math.min(balance, ItemManagement.checkoutRemaining);
+    
+    try {
+        var endpoint, payload;
+        
+        // ---- Check if this is a gift card ----
+        if (data.is_gift_card) {
+            // Use gift card redeem endpoint
+            endpoint = '/api/gift-card/redeem';
+            payload = {
+                code: data.debtor,
+                purchase_amount: amount,
+                order_id: generateOrderId()   // optional
+            };
+        } else {
+            // Use debtor redeem endpoint for store credit
+            endpoint = '/api/debtor/redeem';
+            payload = {
+                name: data.debtor,
+                amount: amount,
+                description: 'Checkout redemption - ' + ItemManagement.checkoutSelectedItems.length + ' items'
+            };
         }
         
-        var statusEl = document.getElementById('checkout-debtor-status');
-        var balance = ItemManagement.checkoutDebtorData.balance;
+        var response = await fetch(AppConfig.baseUrl + endpoint, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
         
-        if (balance <= 0) {
-            statusEl.textContent = '⚠️ This account has no balance.';
-            statusEl.style.color = '#856404';
-            return;
-        }
+        var result = await response.json();
         
-        if (ItemManagement.checkoutRemaining <= 0.01) {
-            statusEl.textContent = '⚠️ No remaining balance to pay.';
-            statusEl.style.color = '#856404';
-            return;
-        }
-        
-        var amount = Math.min(balance, ItemManagement.checkoutRemaining);
-        
-        try {
-            var response = await fetch(AppConfig.baseUrl + '/api/debtor/redeem', {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: ItemManagement.checkoutDebtorData.debtor,
-                    amount: amount,
-                    description: 'Checkout redemption - ' + ItemManagement.checkoutSelectedItems.length + ' items'
-                })
-            });
+        if (result.status === 'success') {
+            // ---- Handle success ----
+            var appliedAmount = result.applied_amount || amount;
+            var newBalance = result.new_balance || (balance - appliedAmount);
             
-            var data = await response.json();
+            // Add payment entry
+            var method = data.is_gift_card ? 'Gift Card (' + data.debtor + ')' : 'Store Credit (' + data.debtor + ')';
+            addPaymentEntry(method, appliedAmount);
             
-            if (data.status === 'success') {
-                var method = ItemManagement.checkoutDebtorData.is_gift_card ? 'Gift Card' : 'Store Credit';
-                addPaymentEntry(method + ' (' + ItemManagement.checkoutDebtorData.debtor + ')', amount);
-                
-                ItemManagement.checkoutDebtorData.balance -= amount;
-                document.getElementById('checkout-debtor-balance').textContent = ItemManagement.checkoutDebtorData.balance.toFixed(2);
-                
-                if (ItemManagement.checkoutDebtorData.balance <= 0.01) {
-                    statusEl.textContent = '✅ Applied $' + amount.toFixed(2) + ' from ' + ItemManagement.checkoutDebtorData.debtor + '. Card is now empty.';
-                    statusEl.style.color = '#28a745';
-                    setTimeout(function() {
-                        document.getElementById('checkout-debtor-info').style.display = 'none';
-                    }, 2000);
-                } else {
-                    statusEl.textContent = '✅ Applied $' + amount.toFixed(2) + ' from ' + ItemManagement.checkoutDebtorData.debtor + '. Remaining balance: $' + ItemManagement.checkoutDebtorData.balance.toFixed(2);
-                    statusEl.style.color = '#28a745';
-                }
-                
-                if (ItemManagement.checkoutRemaining <= 0.01) {
-                    updateCheckoutCompleteButton();
-                }
-                
+            // Update displayed balance
+            data.balance = newBalance;
+            document.getElementById('checkout-debtor-balance').textContent = newBalance.toFixed(2);
+            
+            if (newBalance <= 0.01) {
+                statusEl.textContent = '✅ Applied $' + appliedAmount.toFixed(2) + ' from ' + data.debtor + '. Card/account is now empty.';
+                statusEl.style.color = '#28a745';
+                setTimeout(function() {
+                    document.getElementById('checkout-debtor-info').style.display = 'none';
+                }, 2000);
             } else {
-                statusEl.textContent = '❌ ' + (data.error || 'Failed to redeem');
-                statusEl.style.color = '#dc3545';
+                statusEl.textContent = '✅ Applied $' + appliedAmount.toFixed(2) + ' from ' + data.debtor + '. Remaining balance: $' + newBalance.toFixed(2);
+                statusEl.style.color = '#28a745';
             }
-        } catch (error) {
-            console.error('Error redeeming debtor:', error);
-            statusEl.textContent = '❌ Error: ' + error.message;
+            
+            if (ItemManagement.checkoutRemaining <= 0.01) {
+                updateCheckoutCompleteButton();
+            }
+            
+        } else {
+            // ---- Handle error from API ----
+            statusEl.textContent = '❌ ' + (result.error || 'Failed to redeem');
             statusEl.style.color = '#dc3545';
         }
+    } catch (error) {
+        console.error('Error redeeming:', error);
+        statusEl.textContent = '❌ Error: ' + error.message;
+        statusEl.style.color = '#dc3545';
     }
+}
 
     async function processSquarePayment() {
         var statusDiv = document.getElementById('checkout-square-status');
@@ -1112,6 +1185,9 @@
         }, 2000);
     }
 
+    // ============================================================
+    // COMPLETE CHECKOUT – UPDATED to create gift cards after payment
+    // ============================================================
     async function completeCheckout() {
         console.log('🛒 completeCheckout called');
         
@@ -1133,13 +1209,16 @@
         var regularRecords = [];
         var bernieItems = [];
         var consignorRecords = [];
+        var giftCardItems = [];
 
         for (var i = 0; i < selected.length; i++) {
             var record = selected[i];
             if (record.isBernie === true) {
                 bernieItems.push(record);
+            } else if (record.isGiftCard === true) {
+                giftCardItems.push(record);
             } else if (record.isCustom === true) {
-                // Skip other custom items
+                // skip other custom items
             } else if (record.consignor_id && record.consignor_id !== 1 && record.consignor_id !== null) {
                 consignorRecords.push(record);
             } else {
@@ -1147,6 +1226,44 @@
             }
         }
 
+        // --- 🎁 Create gift cards (only after payment is confirmed) ---
+        var giftCardErrors = [];
+        for (var i = 0; i < giftCardItems.length; i++) {
+            var item = giftCardItems[i];
+            try {
+                var createPayload = {
+                    code: item.barcode,
+                    card_value: item.store_price,
+                    charge_amount: item.charge_amount || 0,
+                    recipient_name: item.recipient || 'Unknown',
+                    notes: item.notes || 'Created at checkout',
+                    payment_method: 'cash'   // adjust if needed
+                };
+
+                var response = await fetch(AppConfig.baseUrl + '/api/gift-card/create', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(createPayload)
+                });
+
+                var data = await response.json();
+                if (data.status === 'success') {
+                    console.log('✅ Gift card created:', item.barcode);
+                    success++;
+                } else {
+                    giftCardErrors.push(item.barcode + ': ' + (data.error || 'unknown error'));
+                }
+            } catch (error) {
+                giftCardErrors.push(item.barcode + ': ' + error.message);
+            }
+        }
+
+        if (giftCardErrors.length > 0) {
+            showCheckoutStatus('⚠️ Some gift cards failed to create: ' + giftCardErrors.join('; '), 'warning');
+        }
+
+        // --- Continue with existing logic: mark records as sold, consignor transactions, etc. ---
         bernieTotal = bernieItems.reduce(function(sum, r) { return sum + (r.store_price || 0); }, 0);
         console.log('🛒 Bernie total:', bernieTotal);
         console.log('🛒 Regular records:', regularRecords.length);
@@ -1349,6 +1466,8 @@
                 receipt += '[Bernie] ' + desc.padEnd(25) + '$' + price.toFixed(2) + '\n';
             } else if (item.consignor_id && item.consignor_id !== 1) {
                 receipt += '[Consignor] ' + desc.padEnd(25) + '$' + price.toFixed(2) + '\n';
+            } else if (item.isGiftCard) {
+                receipt += '[Gift Card] ' + desc.padEnd(25) + '$' + price.toFixed(2) + '\n';
             } else {
                 receipt += desc.padEnd(25) + '$' + price.toFixed(2) + '\n';
             }
@@ -1400,6 +1519,9 @@
         }
         if (bernieTotal > 0) {
             statusMsg += ', Bernie donations: $' + bernieTotal.toFixed(2);
+        }
+        if (giftCardErrors.length > 0) {
+            statusMsg += ' ⚠️ Gift card errors: ' + giftCardErrors.join('; ');
         }
 
         if (receiptDownloaded) {
@@ -1566,21 +1688,24 @@
         playSound('success');
     }
 
+    // ============================================================
+    // GIFT CARD MODAL – UPDATED (only adds to cart, no API call)
+    // ============================================================
     function showGiftCardModal() {
-        var existingModal = document.getElementById('gift-card-modal');
+        var existingModal = document.getElementById('checkout-gift-card-modal');
         if (existingModal) {
             existingModal.remove();
         }
         
         var modal = document.createElement('div');
-        modal.id = 'gift-card-modal';
+        modal.id = 'checkout-gift-card-modal';
         modal.className = 'modal-overlay';
         modal.style.display = 'flex';
         modal.innerHTML = `
             <div class="modal-content" style="max-width: 500px; width: 95%;">
                 <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
                     <h3 class="modal-title"><i class="fas fa-gift"></i> Gift Card</h3>
-                    <button class="modal-close" onclick="closeGiftCardModal()" style="color: white; font-size: 28px; background: none; border: none; cursor: pointer;">&times;</button>
+                    <button class="modal-close" id="checkout-gift-card-close-btn" style="color: white; font-size: 28px; background: none; border: none; cursor: pointer;">&times;</button>
                 </div>
                 <div class="modal-body">
                     <div style="margin-bottom: 15px;">
@@ -1607,15 +1732,23 @@
                     <div id="gift-card-status" style="margin-top: 10px; display: none;"></div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" onclick="closeGiftCardModal()">Cancel</button>
+                    <button class="btn btn-secondary" id="checkout-gift-card-cancel-btn">Cancel</button>
                     <button class="btn btn-success" id="gift-card-add-btn"><i class="fas fa-gift"></i> Add to Cart</button>
                 </div>
             </div>
         `;
         document.body.appendChild(modal);
 
+        // --- Event listeners for close ---
+        document.getElementById('checkout-gift-card-close-btn').addEventListener('click', function() {
+            closeCheckoutGiftCardModal();
+        });
+        document.getElementById('checkout-gift-card-cancel-btn').addEventListener('click', function() {
+            closeCheckoutGiftCardModal();
+        });
         document.getElementById('gift-card-add-btn').addEventListener('click', addGiftCardFromModal);
 
+        // Enter key navigation
         document.getElementById('gift-card-code').addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 document.getElementById('gift-card-value').focus();
@@ -1638,11 +1771,22 @@
         });
     }
 
-    function closeGiftCardModal() {
-        var modal = document.getElementById('gift-card-modal');
+    function closeCheckoutGiftCardModal() {
+        var modal = document.getElementById('checkout-gift-card-modal');
         if (modal) modal.remove();
+        // Also remove any old gift-card-modal with the old ID
+        var oldModal = document.getElementById('gift-card-modal');
+        if (oldModal) oldModal.remove();
     }
 
+    // Keep alias for compatibility
+    function closeGiftCardModal() {
+        closeCheckoutGiftCardModal();
+    }
+
+    // ============================================================
+    // GIFT CARD – ADD TO CART (no API call, pending)
+    // ============================================================
     function addGiftCardFromModal() {
         var code = document.getElementById('gift-card-code').value.trim().toUpperCase();
         var value = parseFloat(document.getElementById('gift-card-value').value);
@@ -1651,25 +1795,33 @@
         var notes = document.getElementById('gift-card-notes').value.trim();
         var statusDiv = document.getElementById('gift-card-status');
 
+        // --- Validation ---
         if (!code) {
-            statusDiv.textContent = 'Please enter a barcode/code.';
-            statusDiv.className = 'status-message warning';
-            statusDiv.style.display = 'block';
+            if (statusDiv) {
+                statusDiv.textContent = 'Please enter a barcode/code.';
+                statusDiv.className = 'status-message warning';
+                statusDiv.style.display = 'block';
+            }
             return;
         }
         if (isNaN(value) || value <= 0) {
-            statusDiv.textContent = 'Please enter a valid card value greater than 0.';
-            statusDiv.className = 'status-message error';
-            statusDiv.style.display = 'block';
+            if (statusDiv) {
+                statusDiv.textContent = 'Please enter a valid card value greater than 0.';
+                statusDiv.className = 'status-message error';
+                statusDiv.style.display = 'block';
+            }
             return;
         }
         if (!recipient) {
-            statusDiv.textContent = 'Please enter a recipient name.';
-            statusDiv.className = 'status-message warning';
-            statusDiv.style.display = 'block';
+            if (statusDiv) {
+                statusDiv.textContent = 'Please enter a recipient name.';
+                statusDiv.className = 'status-message warning';
+                statusDiv.style.display = 'block';
+            }
             return;
         }
 
+        // --- Create temporary gift card item (pending, not in DB yet) ---
         var giftCardItem = {
             id: -Date.now() - 2,
             artist: 'Gift Card',
@@ -1678,6 +1830,7 @@
             barcode: code,
             isCustom: true,
             isGiftCard: true,
+            pending: true,
             card_value: value,
             charge_amount: charge,
             recipient: recipient,
@@ -1692,14 +1845,18 @@
             ItemManagement.checkoutSelectedItems.push(giftCardItem);
         }
 
-        closeGiftCardModal();
+        // --- Close modal ---
+        closeCheckoutGiftCardModal();
+
+        // --- Update UI ---
         ItemManagement.viewMode = 'selection';
         updateViewButtons();
         renderTable();
         updateSelectionUI();
         updateExecuteButton();
 
-        showStatus('Added gift card: "' + code + '" for $' + value.toFixed(2), 'success');
+        showStatus('✅ Gift card "' + code + '" added to cart ($' + value.toFixed(2) + '). Will be activated upon successful payment.', 'success');
+        playSound('success');
     }
 
     // ============================================================
@@ -1866,7 +2023,7 @@
     }
 
     // ============================================================
-    // GIFT CARD FUNCTIONS (for payment)
+    // GIFT CARD FUNCTIONS (for payment) – kept for compatibility
     // ============================================================
     function checkGiftCardForPayment() {
         const code = document.getElementById('giftcard-code').value.trim();
@@ -2172,6 +2329,7 @@
     window.addBernieItem = addBernieItem;
     window.showGiftCardModal = showGiftCardModal;
     window.closeGiftCardModal = closeGiftCardModal;
+    window.closeCheckoutGiftCardModal = closeCheckoutGiftCardModal;
 
     console.log('Item Management JavaScript loaded.');
 
