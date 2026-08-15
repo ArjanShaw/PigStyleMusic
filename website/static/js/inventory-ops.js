@@ -1257,7 +1257,14 @@
 
             if (data.status === 'success') {
                 if (currentPurchaseRecords.length > 0) {
-                    await generatePDF(currentPurchaseRecords);
+                    // Use the new LabelPrinter to generate price tags
+                    if (window.LabelPrinter) {
+                        await window.LabelPrinter.generatePriceTags(currentPurchaseRecords, {
+                            title: 'Price Tags - Purchase #' + purchaseId
+                        });
+                    } else {
+                        console.warn('LabelPrinter not loaded, cannot generate PDF');
+                    }
                     showToast('📄 Price tags generated for ' + currentPurchaseRecords.length + ' records.', 'success');
                 }
 
@@ -3704,7 +3711,7 @@
     }
 
     // ========== Print Price Tags ==========
-    function printPriceTags() {
+    async function printPriceTags() {
         var records = [];
         
         if (rangeFromIndex !== null && rangeToIndex !== null) {
@@ -3719,11 +3726,15 @@
             showStatus('No records to print.', 'warning');
             return;
         }
-        generatePDF(records);
-    }
 
-    // ========== Complete Action Handler - REMOVED ==========
-    // handleCompleteAction function has been removed
+        // Use the new LabelPrinter module
+        if (window.LabelPrinter) {
+            await window.LabelPrinter.generatePriceTags(records);
+        } else {
+            showStatus('LabelPrinter not loaded. Please refresh the page.', 'error');
+            console.error('LabelPrinter not available');
+        }
+    }
 
     // ========== Pagination ==========
     function renderPagination() {
@@ -3787,8 +3798,6 @@
             printBtn.style.display = 'none';
         }
 
-        // Complete action button logic removed for scan mode
-
         cancelRangeBtn.style.display = (rangeFromIndex !== null && rangeToIndex !== null) ? 'inline-block' : 'none';
     }
 
@@ -3807,98 +3816,6 @@
         if (currentPage < 1) currentPage = 1;
         renderPagination();
         renderTablePage();
-    }
-
-    // ========== PDF Generation ==========
-    async function generatePDF(records) {
-        if (!records.length) { 
-            console.log('📄 generatePDF: no records to print');
-            return; 
-        }
-        console.log('📄 generatePDF: generating PDF for ' + records.length + ' records');
-        var jsPDF = window.jspdf.jsPDF;
-
-        var labelWidthMM = parseFloat((await apiRequest('GET', '/config/LABEL_WIDTH_MM')).config_value);
-        var labelHeightMM = parseFloat((await apiRequest('GET', '/config/LABEL_HEIGHT_MM')).config_value);
-        var leftMarginMM = parseFloat((await apiRequest('GET', '/config/LEFT_MARGIN_MM')).config_value);
-        var gutterSpacingMM = parseFloat((await apiRequest('GET', '/config/GUTTER_SPACING_MM')).config_value);
-        var topMarginMM = parseFloat((await apiRequest('GET', '/config/TOP_MARGIN_MM')).config_value);
-        var priceFontSize = parseInt((await apiRequest('GET', '/config/PRICE_FONT_SIZE')).config_value);
-        var textFontSize = parseInt((await apiRequest('GET', '/config/TEXT_FONT_SIZE')).config_value);
-        var barcodeHeightMM = parseFloat((await apiRequest('GET', '/config/BARCODE_HEIGHT')).config_value);
-        var printBorders = (await apiRequest('GET', '/config/PRINT_BORDERS')).config_value === 'true';
-        var priceYPosMM = parseFloat((await apiRequest('GET', '/config/PRICE_Y_POS')).config_value);
-        var barcodeYPosMM = parseFloat((await apiRequest('GET', '/config/BARCODE_Y_POS')).config_value);
-        var infoYPosMM = parseFloat((await apiRequest('GET', '/config/INFO_Y_POS')).config_value);
-
-        var mmToPt = 2.83465;
-        var labelWidthPt = labelWidthMM * mmToPt;
-        var labelHeightPt = labelHeightMM * mmToPt;
-        var leftMarginPt = leftMarginMM * mmToPt;
-        var gutterSpacingPt = gutterSpacingMM * mmToPt;
-        var topMarginPt = topMarginMM * mmToPt;
-        var barcodeHeightPt = barcodeHeightMM * mmToPt;
-
-        var doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-        var rows = 15, cols = 4, labelsPerPage = rows * cols;
-        var currentLabel = 0, pageNumber = 0;
-
-        for (var i = 0; i < records.length; i++) {
-            var record = records[i];
-            var pageIndex = currentLabel % labelsPerPage;
-            var pageNum = Math.floor(currentLabel / labelsPerPage);
-            if (pageNum > pageNumber) { doc.addPage(); pageNumber = pageNum; }
-
-            var row = Math.floor(pageIndex / cols);
-            var col = pageIndex % cols;
-            var x = leftMarginPt + col * (labelWidthPt + gutterSpacingPt);
-            var y = topMarginPt + row * labelHeightPt;
-
-            if (printBorders) {
-                doc.setDrawColor(0);
-                doc.setLineWidth(0.5);
-                doc.rect(x, y, labelWidthPt, labelHeightPt);
-            }
-
-            var genre = (record.discogs_genre_raw || '').split(',')[0].trim();
-            var consignor = record.consignor_id && consignorMap[record.consignor_id] ? consignorMap[record.consignor_id].initials : '';
-            var infoText = record.artist || 'Unknown';
-            if (genre) infoText = genre + ' | ' + infoText;
-            if (consignor) infoText += ' (' + consignor + ')';
-
-            doc.setFontSize(textFontSize);
-            doc.setFont('helvetica', 'normal');
-            var displayText = infoText;
-            var maxWidth = labelWidthPt - 10;
-            if (doc.getTextWidth(displayText) > maxWidth) {
-                while (doc.getTextWidth(displayText + '…') > maxWidth && displayText.length > 0) displayText = displayText.slice(0, -1);
-                displayText += '…';
-            }
-            var infoWidth = doc.getTextWidth(displayText);
-            doc.text(displayText, x + (labelWidthPt - infoWidth)/2, y + infoYPosMM * mmToPt);
-
-            var priceText = '$' + (record.store_price || 0).toFixed(2);
-            doc.setFontSize(priceFontSize);
-            doc.setFont('helvetica', 'bold');
-            var priceWidth = doc.getTextWidth(priceText);
-            doc.text(priceText, x + (labelWidthPt - priceWidth)/2, y + priceYPosMM * mmToPt);
-
-            var barcodeNum = record.barcode || record.id;
-            if (barcodeNum) {
-                var canvas = document.createElement('canvas');
-                JsBarcode(canvas, barcodeNum.toString(), { format: 'CODE128', displayValue: false, height: 30, width: 2, margin: 0 });
-                var barcodeData = canvas.toDataURL('image/png');
-                var barcodeWidth = 40;
-                doc.addImage(barcodeData, 'PNG', x + (labelWidthPt - barcodeWidth)/2, y + barcodeYPosMM * mmToPt, barcodeWidth, barcodeHeightPt);
-            }
-            currentLabel++;
-        }
-
-        var pdfBlob = doc.output('blob');
-        var pdfUrl = URL.createObjectURL(pdfBlob);
-        window.open(pdfUrl, '_blank');
-        console.log('📄 generatePDF: PDF generated with ' + records.length + ' labels');
-        showStatus('PDF generated with ' + records.length + ' labels', 'success');
     }
 
     // ========== MODE CHANGE ==========
