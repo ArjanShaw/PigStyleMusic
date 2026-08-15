@@ -2217,6 +2217,28 @@
             color: #000000 !important;
             background-color: white !important;
         }
+
+        /* Barcode preview in custom labels */
+        .barcode-preview-item {
+            background: white;
+            border: 1px solid #ddd;
+            padding: 4px 8px;
+            margin-bottom: 4px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 13px;
+        }
+        .barcode-preview-item canvas {
+            height: 30px;
+            width: auto;
+        }
+        .barcode-preview-item .code-text {
+            font-family: monospace;
+            color: #333;
+            font-weight: 500;
+        }
     </style>
 </head>
 <body>
@@ -3039,37 +3061,19 @@
                 <p style="margin: 0;">Enter one label per line. Each line will be printed on a separate label using the same dimensions as price tags. Supports multiple lines per label by using the format: <code>Line 1|Line 2|Line 3</code> (use pipe | to separate lines).</p>
             </div>
 
-            <!-- ===== NEW: PRINT BARCODES SECTION ===== -->
+            <!-- ===== IMPROVED: PRINT BARCODES SECTION (generates actual barcode images) ===== -->
             <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); padding: 20px; border-radius: 12px; margin-bottom: 25px; color: white;">
                 <h3 style="margin: 0 0 10px 0;"><i class="fas fa-barcode"></i> Print Gift Card Barcodes</h3>
-                <p style="margin: 0 0 15px 0; opacity: 0.9;">Generate and print barcodes for gift cards. These are blank cards with no balance - they will be activated when scanned at checkout.</p>
-
-                <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; background: rgba(255,255,255,0.15); padding: 15px; border-radius: 8px;">
-                    <div class="form-group" style="flex: 1; min-width: 150px;">
-                        <label style="display: block; margin-bottom: 5px; font-size: 13px; opacity: 0.9;">Number of Barcodes</label>
-                        <select id="barcode-count" style="width: 100%; padding: 10px; border: none; border-radius: 6px; background: white; color: #333; font-size: 14px;">
-                            <option value="5">5</option>
-                            <option value="10" selected="">10</option>
-                            <option value="20">20</option>
-                            <option value="50">50</option>
-                            <option value="100">100</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="flex: 1; min-width: 150px;">
-                        <label style="display: block; margin-bottom: 5px; font-size: 13px; opacity: 0.9;">Label Format</label>
-                        <select id="barcode-format" style="width: 100%; padding: 10px; border: none; border-radius: 6px; background: white; color: #333; font-size: 14px;">
-                            <option value="avery5160">Avery 5160 (30 per sheet)</option>
-                            <option value="avery8160">Avery 8160 (30 per sheet)</option>
-                            <option value="avery5163">Avery 5163 (10 per sheet)</option>
-                            <option value="custom">Custom (4 columns x 15 rows)</option>
-                        </select>
-                    </div>
-                    <button class="btn btn-light" onclick="generateBarcodes()" style="padding: 10px 30px; background: white; color: #28a745; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
-                        <i class="fas fa-print"></i> Generate &amp; Print
+                <p style="margin: 0 0 15px 0; opacity: 0.9;">Generate 60 gift card barcodes (scannable images) and populate the text area below. Then use "Generate PDF" to print.</p>
+                <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; background: rgba(255,255,255,0.15); padding: 15px; border-radius: 8px;">
+                    <button class="btn btn-light" onclick="generateGiftCardBarcodes()" style="padding: 10px 30px; background: white; color: #28a745; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                        <i class="fas fa-barcode"></i> Generate 60 Gift Card Barcodes
                     </button>
+                    <span style="font-size: 13px; opacity: 0.9;"><i class="fas fa-info-circle"></i> Barcodes will be placed in the text area below (codes + preview)</span>
                 </div>
-
                 <div id="barcode-status" style="margin-top: 10px; display: none; padding: 10px; background: rgba(255,255,255,0.2); border-radius: 6px;"></div>
+                <!-- Hidden container for barcode image data -->
+                <div id="barcode-image-store" style="display: none;"></div>
             </div>
 
             <!-- Existing Starting Position Section -->
@@ -3103,7 +3107,7 @@ New Arrivals|Vinyl Records
 Store Credit Available
 Buy One Get One Free|Limited Time
 Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
-                        <p style="font-size: 12px; color: rgba(255,255,255,0.8); margin-top: 8px;"><i class="fas fa-info-circle"></i> Use <strong>|</strong> (pipe) to create multiple lines on a single label. Each line will be centered separately.</p>
+                        <p style="font-size: 12px; color: rgba(255,255,255,0.8); margin-top: 8px;"><i class="fas fa-info-circle"></i> Use <strong>|</strong> (pipe) to create multiple lines on a single label. Each line will be centered separately. Lines starting with <strong>GC-</strong> will render as scannable barcodes.</p>
                     </div>
                 </div>
                 <div class="action-buttons" style="justify-content: flex-start; gap: 15px;">
@@ -3113,13 +3117,13 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                 </div>
             </div>
 
-            <!-- Preview -->
+            <!-- Preview (enhanced to show barcode images) -->
             <div class="stats-table-container" style="margin-top: 20px;">
                 <div class="table-header">
                     <h4><i class="fas fa-eye"></i> Preview</h4>
                     <span class="table-count" id="custom-label-preview-count">0 labels</span>
                 </div>
-                <div id="custom-label-preview" style="background: #f8f9fa; border-radius: 8px; padding: 15px; max-height: 300px; overflow-y: auto;">
+                <div id="custom-label-preview" style="background: #f8f9fa; border-radius: 8px; padding: 15px; max-height: 400px; overflow-y: auto;">
                     <p style="color: #666; text-align: center;">Enter labels above to see preview</p>
                 </div>
             </div>
@@ -3131,6 +3135,7 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                     <li>Uses the SAME label dimensions as price tags (configured in Admin Config)</li>
                     <li>Each line of text is centered on the label</li>
                     <li>Use <strong>|</strong> (pipe) to create multi-line labels (up to 5 lines)</li>
+                    <li>Lines starting with <strong>GC-</strong> will render as scannable Code128 barcodes</li>
                     <li>Starting position (Row, Column) determines where on the sheet printing begins</li>
                     <li>Labels are arranged left-to-right, top-to-bottom on the sheet</li>
                     <li>Sheet layout: 4 columns × 15 rows = 60 labels per page</li>
@@ -4448,6 +4453,400 @@ Example: SELECT * FROM records LIMIT 10;" onkeydown="handleQueryKeydown(event)">
             }
             if (document.getElementById('stats-tab').classList.contains('active')) {
                 setTimeout(loadScansPerBinChart, 500);
+            }
+        });
+
+        // ===== GENERATE GIFT CARD BARCODES (with actual barcode images) =====
+        function generateGiftCardBarcodes() {
+            const textarea = document.getElementById('custom-label-text');
+            if (!textarea) {
+                alert('Could not find the custom label text area.');
+                return;
+            }
+
+            const count = 60;
+            const codes = [];
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+            for (let i = 0; i < count; i++) {
+                let code = 'GC-';
+                for (let j = 0; j < 8; j++) {
+                    code += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                codes.push(code);
+            }
+
+            // Populate the textarea with codes
+            textarea.value = codes.join('\n');
+            textarea.dispatchEvent(new Event('input'));
+
+            // Update preview with barcode images
+            updateBarcodePreview(codes);
+
+            // Show status
+            const status = document.getElementById('barcode-status');
+            if (status) {
+                status.style.display = 'block';
+                status.textContent = '✅ 60 gift card barcodes generated and added to the text area.';
+                setTimeout(() => { status.style.display = 'none'; }, 4000);
+            }
+        }
+
+        // ===== Update preview with actual barcode images =====
+        function updateBarcodePreview(codes) {
+            const preview = document.getElementById('custom-label-preview');
+            if (!preview) return;
+
+            if (!codes || codes.length === 0) {
+                preview.innerHTML = '<p style="color:#666; text-align:center;">Enter labels above to see preview</p>';
+                return;
+            }
+
+            let html = '';
+            codes.forEach(code => {
+                // Create a temporary canvas for each barcode
+                const canvasId = 'barcode-preview-' + Math.random().toString(36).substr(2, 9);
+                html += `
+                    <div class="barcode-preview-item">
+                        <canvas id="${canvasId}" style="height:30px; width:auto;"></canvas>
+                        <span class="code-text">${code}</span>
+                    </div>
+                `;
+            });
+
+            preview.innerHTML = html;
+
+            // Render each barcode on its canvas
+            codes.forEach((code, index) => {
+                const canvas = preview.querySelectorAll('canvas')[index];
+                if (canvas) {
+                    try {
+                        JsBarcode(canvas, code, {
+                            format: 'CODE128',
+                            width: 1.5,
+                            height: 30,
+                            displayValue: false,
+                            fontSize: 0,
+                            margin: 0
+                        });
+                    } catch (e) {
+                        console.warn('Could not render barcode for', code, e);
+                    }
+                }
+            });
+
+            // Update count
+            const countEl = document.getElementById('custom-label-preview-count');
+            if (countEl) countEl.textContent = codes.length + ' labels';
+        }
+
+        // ===== Override/Extend the existing preview update to handle barcodes =====
+        // Save original function if it exists
+        const originalPreviewUpdate = window.updateCustomLabelPreview || function() {};
+
+        // New preview function that detects GC- lines and renders barcodes
+        window.updateCustomLabelPreview = function() {
+            const textarea = document.getElementById('custom-label-text');
+            const preview = document.getElementById('custom-label-preview');
+            const count = document.getElementById('custom-label-preview-count');
+            if (!textarea || !preview) return;
+
+            const lines = textarea.value.split('\n').filter(line => line.trim() !== '');
+            count.textContent = lines.length + ' labels';
+
+            if (lines.length === 0) {
+                preview.innerHTML = '<p style="color:#666; text-align:center;">Enter labels above to see preview</p>';
+                return;
+            }
+
+            // Check if any line starts with GC- (barcode indicator)
+            const hasBarcodes = lines.some(line => line.trim().startsWith('GC-'));
+
+            if (hasBarcodes) {
+                // Render as barcodes
+                let html = '';
+                lines.forEach(line => {
+                    const trimmed = line.trim();
+                    const canvasId = 'barcode-preview-' + Math.random().toString(36).substr(2, 9);
+                    html += `
+                        <div class="barcode-preview-item">
+                            <canvas id="${canvasId}" style="height:30px; width:auto;"></canvas>
+                            <span class="code-text">${trimmed}</span>
+                        </div>
+                    `;
+                });
+                preview.innerHTML = html;
+
+                // Render each barcode
+                const canvases = preview.querySelectorAll('canvas');
+                lines.forEach((line, index) => {
+                    const canvas = canvases[index];
+                    if (canvas) {
+                        try {
+                            JsBarcode(canvas, line.trim(), {
+                                format: 'CODE128',
+                                width: 1.5,
+                                height: 30,
+                                displayValue: false,
+                                fontSize: 0,
+                                margin: 0
+                            });
+                        } catch (e) {
+                            console.warn('Could not render barcode for', line, e);
+                        }
+                    }
+                });
+            } else {
+                // Render as text (original behavior)
+                preview.innerHTML = lines.map(line => {
+                    const parts = line.split('|').map(p => p.trim());
+                    return `<div style="background:white; border:1px solid #ddd; padding:8px; margin-bottom:5px; border-radius:4px; font-size:13px;">${parts.join(' • ')}</div>`;
+                }).join('');
+            }
+        };
+
+        // ===== Override customLabelsGeneratePDF to support barcode rendering =====
+        // Store reference to original if it exists
+        const originalGeneratePDF = window.customLabelsGeneratePDF || function() {
+            alert('Generate PDF function not loaded. Please ensure custom-labels.js is loaded.');
+        };
+
+        // Enhanced PDF generation with barcode support
+        window.customLabelsGeneratePDF = function() {
+            const textarea = document.getElementById('custom-label-text');
+            if (!textarea) {
+                alert('Could not find custom label text area.');
+                return;
+            }
+
+            const lines = textarea.value.split('\n').filter(line => line.trim() !== '');
+            if (lines.length === 0) {
+                alert('Please enter at least one label before generating PDF.');
+                return;
+            }
+
+            // Check if we have any barcodes
+            const hasBarcodes = lines.some(line => line.trim().startsWith('GC-'));
+
+            if (hasBarcodes) {
+                // Use the enhanced barcode PDF generator
+                generateBarcodePDF(lines);
+            } else {
+                // Fall back to original function
+                if (typeof originalGeneratePDF === 'function') {
+                    originalGeneratePDF();
+                } else {
+                    alert('PDF generation not available. Please ensure custom-labels.js is loaded.');
+                }
+            }
+        };
+
+        function generateBarcodePDF(lines) {
+    try {
+        const { jsPDF } = window.jspdf;
+        if (!jsPDF) {
+            alert('jsPDF library not loaded. Please check your internet connection.');
+            return;
+        }
+
+        // Get config values (reuse existing logic)
+        const config = window.dbConfigValues || {};
+        const getVal = (key, defaultVal) => {
+            const val = config[key];
+            if (val !== undefined && val !== null) {
+                return typeof val === 'object' ? val.value : val;
+            }
+            return defaultVal;
+        };
+
+        const labelWidth = parseFloat(getVal('LABEL_WIDTH_MM', 63.5));
+        const labelHeight = parseFloat(getVal('LABEL_HEIGHT_MM', 33.9));
+        const leftMargin = parseFloat(getVal('LEFT_MARGIN_MM', 11.1));
+        const topMargin = parseFloat(getVal('TOP_MARGIN_MM', 12.7));
+        const gutter = parseFloat(getVal('GUTTER_SPACING_MM', 3.2));
+
+        const cols = 4;
+        const rows = 15;
+        const pageWidth = 215.9; // A4 width in mm
+        const pageHeight = 279.4; // A4 height in mm
+
+        const doc = new jsPDF('portrait', 'mm', 'a4');
+        let currentPage = 1;
+
+        // Get starting position
+        const startRow = parseInt(document.getElementById('custom-label-start-row')?.value || 1);
+        const startCol = parseInt(document.getElementById('custom-label-start-col')?.value || 1);
+
+        // Calculate positions
+        const totalWidth = labelWidth * cols + gutter * (cols - 1);
+        const startX = (pageWidth - totalWidth) / 2;
+        const totalHeight = labelHeight * rows + gutter * (rows - 1);
+        const startY = (pageHeight - totalHeight) / 2;
+
+        let labelIndex = 0;
+        let position = 0;
+
+        // Skip to starting position
+        const startPos = (startRow - 1) * cols + (startCol - 1);
+        for (let i = 0; i < startPos && labelIndex < lines.length; i++) {
+            position++;
+            if (position >= cols * rows) {
+                doc.addPage();
+                currentPage++;
+                position = 0;
+            }
+        }
+
+        // Process each line
+        for (let idx = 0; idx < lines.length; idx++) {
+            const line = lines[idx].trim();
+            if (!line) continue;
+
+            const col = position % cols;
+            const row = Math.floor(position / cols);
+            const x = startX + col * (labelWidth + gutter);
+            const y = startY + row * (labelHeight + gutter);
+
+            // Draw label border (optional)
+            const printBorders = getVal('PRINT_BORDERS', true);
+            if (printBorders) {
+                doc.setDrawColor(200, 200, 200);
+                doc.setLineWidth(0.2);
+                doc.rect(x, y, labelWidth, labelHeight);
+            }
+
+            // Check if this is a barcode line (starts with GC-)
+            if (line.startsWith('GC-')) {
+                // Render barcode with proper sizing
+                try {
+                    const canvas = document.createElement('canvas');
+                    // Render barcode with fixed canvas height 60px
+                    JsBarcode(canvas, line, {
+                        format: 'CODE128',
+                        width: 1.5,
+                        height: 60,
+                        displayValue: false,
+                        fontSize: 0,
+                        margin: 0,
+                        background: '#ffffff'
+                    });
+
+                    // Calculate available space inside label (leave 3mm padding each side)
+                    const maxWidth = labelWidth - 6;
+                    const maxHeight = labelHeight * 0.65; // 65% of label height for barcode
+
+                    // Get actual canvas dimensions
+                    const canvasWidth = canvas.width;
+                    const canvasHeight = canvas.height;
+
+                    // Calculate scaled dimensions preserving aspect ratio
+                    let imgWidth = maxWidth;
+                    let imgHeight = (canvasHeight / canvasWidth) * imgWidth;
+                    if (imgHeight > maxHeight) {
+                        imgHeight = maxHeight;
+                        imgWidth = (canvasWidth / canvasHeight) * imgHeight;
+                    }
+
+                    const imgX = x + (labelWidth - imgWidth) / 2;
+                    const imgY = y + (labelHeight - imgHeight - 5) / 2; // center, leave room for text below
+
+                    doc.addImage(canvas.toDataURL('image/png'), 'PNG', imgX, imgY, imgWidth, imgHeight);
+
+                    // Add human-readable text below the barcode
+                    doc.setFontSize(6);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(50, 50, 50);
+                    const textWidth = doc.getTextWidth(line);
+                    const textX = x + (labelWidth - textWidth) / 2;
+                    const textY = y + labelHeight - 2; // 2mm from bottom
+                    doc.text(line, textX, textY);
+
+                } catch (barcodeError) {
+                    console.error('Error rendering barcode for', line, barcodeError);
+                    // Fallback: render as text
+                    doc.setFontSize(8);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(0, 0, 0);
+                    const textWidth = doc.getTextWidth(line);
+                    const textX = x + (labelWidth - textWidth) / 2;
+                    const textY = y + labelHeight / 2 + 3;
+                    doc.text(line, textX, textY);
+                }
+            } else {
+                // Render as text (multi-line support with | separator)
+                const parts = line.split('|').map(p => p.trim());
+                if (parts.length === 1) {
+                    doc.setFontSize(10);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(0, 0, 0);
+                    const textWidth = doc.getTextWidth(parts[0]);
+                    const textX = x + (labelWidth - textWidth) / 2;
+                    const textY = y + labelHeight / 2 + 3;
+                    doc.text(parts[0], textX, textY);
+                } else {
+                    const lineHeight = 6;
+                    const totalLines = parts.length;
+                    const startTextY = y + (labelHeight - (totalLines * lineHeight)) / 2 + 4;
+                    doc.setFontSize(8);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(0, 0, 0);
+                    parts.forEach((part, i) => {
+                        const textWidth = doc.getTextWidth(part);
+                        const textX = x + (labelWidth - textWidth) / 2;
+                        const textY = startTextY + i * lineHeight;
+                        doc.text(part, textX, textY);
+                    });
+                }
+            }
+
+            position++;
+            labelIndex++;
+
+            // Check if we need a new page
+            if (position >= cols * rows) {
+                if (labelIndex < lines.length) {
+                    doc.addPage();
+                    currentPage++;
+                    position = 0;
+                }
+            }
+        }
+
+        // Save the PDF
+        const filename = `custom-labels-barcodes-${new Date().toISOString().slice(0,10)}.pdf`;
+        doc.save(filename);
+
+    } catch (error) {
+        console.error('Error generating barcode PDF:', error);
+        alert('Error generating PDF: ' + error.message);
+    }
+}
+
+        // ===== Placeholder functions for other actions =====
+        function customLabelsUpdateStartPosition() {
+            const row = document.getElementById('custom-label-start-row').value;
+            const col = document.getElementById('custom-label-start-col').value;
+            document.getElementById('custom-label-start-display').textContent = row + ', ' + col;
+            alert('Starting position updated to Row ' + row + ', Column ' + col);
+        }
+
+        function customLabelsClearText() {
+            document.getElementById('custom-label-text').value = '';
+            document.getElementById('custom-label-text').dispatchEvent(new Event('input'));
+        }
+
+        function customLabelsLoadSample() {
+            document.getElementById('custom-label-text').value =
+                'Summer Sale 50% Off\nNew Arrivals|Vinyl Records\nStore Credit Available\nBuy One Get One Free|Limited Time\nClearance|All Sales Final';
+            document.getElementById('custom-label-text').dispatchEvent(new Event('input'));
+        }
+
+        // Update preview on input
+        document.addEventListener('DOMContentLoaded', function() {
+            const labelText = document.getElementById('custom-label-text');
+            if (labelText) {
+                labelText.addEventListener('input', window.updateCustomLabelPreview);
+                window.updateCustomLabelPreview();
             }
         });
     </script>
