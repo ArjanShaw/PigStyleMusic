@@ -83,6 +83,9 @@ async function loadStatsData() {
         // Render individual purchases as bar chart with dates
         renderPurchasesChart(purchases);
         
+        // NEW: Load Scans per Bin chart (location counts)
+        await loadLocationCountsChart();
+        
         // Load artist table (replaces the bar chart)
         loadArtistsTable(topArtists);
         
@@ -663,6 +666,140 @@ function renderPurchasesChart(data) {
             }
         }
     });
+}
+
+// ================================================================
+// NEW: Load Location Counts Chart (Scans per Bin)
+// ================================================================
+async function loadLocationCountsChart() {
+    const canvas = document.getElementById('locationCountsChart');
+    if (!canvas) return;
+
+    if (charts.locationCounts) {
+        charts.locationCounts.destroy();
+    }
+
+    try {
+        const response = await fetch(AppConfig.baseUrl + '/api/records/location-counts', {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        const result = await response.json();
+
+        if (result.status !== 'success') {
+            console.error('Failed to load location counts:', result.error);
+            canvas.style.display = 'none';
+            const container = canvas.parentElement;
+            let msg = container.querySelector('.no-location-data');
+            if (!msg) {
+                msg = document.createElement('p');
+                msg.className = 'no-location-data';
+                msg.style.textAlign = 'center';
+                msg.style.color = '#999';
+                msg.style.padding = '40px';
+                msg.innerHTML = 'No location data available.';
+                container.appendChild(msg);
+            }
+            return;
+        }
+
+        const container = canvas.parentElement;
+        const existingMsg = container.querySelector('.no-location-data');
+        if (existingMsg) existingMsg.remove();
+
+        const data = result.data;
+        if (!data || data.length === 0) {
+            canvas.style.display = 'none';
+            const msg = document.createElement('p');
+            msg.className = 'no-location-data';
+            msg.style.textAlign = 'center';
+            msg.style.color = '#999';
+            msg.style.padding = '40px';
+            msg.innerHTML = 'No location data available.';
+            container.appendChild(msg);
+            return;
+        }
+
+        canvas.style.display = 'block';
+
+        const labels = data.map(item => item.location_name);
+        const counts = data.map(item => item.record_count);
+
+        charts.locationCounts = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Record Count',
+                    data: counts,
+                    backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1,
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Number of Records'
+                        },
+                        ticks: {
+                            stepSize: 1,
+                            precision: 0
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Bin / Location'
+                        },
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45,
+                            autoSkip: true,
+                            maxTicksLimit: 15
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return 'Records: ' + context.raw;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (result.cutoff_applied) {
+            console.log('Location counts filtered by cutoff date');
+        }
+
+    } catch (error) {
+        console.error('Error loading location counts chart:', error);
+        canvas.style.display = 'none';
+        const container = canvas.parentElement;
+        let msg = container.querySelector('.no-location-data');
+        if (!msg) {
+            msg = document.createElement('p');
+            msg.className = 'no-location-data';
+            msg.style.textAlign = 'center';
+            msg.style.color = '#999';
+            msg.style.padding = '40px';
+            msg.innerHTML = 'Error loading location data.';
+            container.appendChild(msg);
+        }
+    }
 }
 
 // Load artists into table

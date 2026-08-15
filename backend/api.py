@@ -13594,5 +13594,56 @@ def mark_all_orders_read():
     return jsonify({'status': 'success', 'updated': updated})
 
 
+@app.route('/api/records/location-counts', methods=['GET'])
+def get_records_location_counts():
+    """
+    Get count of records by location, based on last_seen after cutoff.
+    Uses LEFT JOIN to include all locations (even those with 0 recent scans).
+    Filters by LAST_SEEN_CUTOFF_DATE from app_config.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Fetch cutoff date from app_config
+        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'LAST_SEEN_CUTOFF_DATE'")
+        row = cursor.fetchone()
+        cutoff_date = row['config_value'] if row else None
+
+        # Build query – LEFT JOIN to include all locations
+        query = '''
+            SELECT l.name AS location_name, COUNT(r.id) AS record_count
+            FROM locations l
+            LEFT JOIN records r ON r.location_id = l.id
+        '''
+        params = []
+
+        if cutoff_date:
+            # Move filter into the ON clause to keep all locations
+            query += " AND date(r.last_seen) >= date(?)"
+            params.append(cutoff_date)
+
+        query += ' GROUP BY l.id, l.name ORDER BY l.name'
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+
+        result = [
+            {'location_name': row['location_name'], 'record_count': row['record_count']}
+            for row in rows
+        ]
+
+        return jsonify({
+            'status': 'success',
+            'data': result,
+            'count': len(result),
+            'cutoff_applied': cutoff_date is not None
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error getting location counts: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
