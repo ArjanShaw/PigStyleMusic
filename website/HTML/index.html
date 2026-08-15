@@ -33,612 +33,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
-    <style>
-        /* ===== Header & mini-nav ===== */
-        .mini-nav {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 6px;
-            flex-wrap: nowrap;
-            padding: 2px 0;
-            width: 100%;
-            background: transparent;
-            border: none;
-            border-radius: 0;
-        }
-        .mini-nav-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-decoration: none;
-            color: #ddd;
-            font-size: 0.7rem;
-            padding: 4px 8px;
-            border-radius: 6px;
-            transition: all 0.2s;
-            min-width: 40px;
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            font-family: inherit;
-            white-space: nowrap;
-            position: relative;
-        }
-        .mini-nav-item i {
-            font-size: 1.5rem;
-            margin-bottom: 2px;
-            color: #ccc;
-            transition: color 0.2s;
-        }
-        .mini-nav-item span {
-            font-size: 0.7rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: #ccc;
-        }
-        .mini-nav-item:hover i,
-        .mini-nav-item.active i {
-            color: #ff6b6b;
-        }
-        .mini-nav-item:hover span,
-        .mini-nav-item.active span {
-            color: #fff;
-        }
-        .mini-nav-item.active {
-            background: rgba(255, 107, 107, 0.12);
-        }
-
-        /* Cart badge on the mini-nav-item */
-        .mini-nav-item .cart-badge {
-            position: absolute;
-            top: -2px;
-            right: -4px;
-            background: #ff6b6b;
-            color: white;
-            border-radius: 50%;
-            font-size: 0.5rem;
-            font-weight: 600;
-            min-width: 16px;
-            height: 16px;
-            line-height: 16px;
-            text-align: center;
-            padding: 0 4px;
-            display: none;
-        }
-        .mini-nav-item.has-items .cart-badge {
-            display: block;
-        }
-        .mini-nav-item.has-items i {
-            color: #ff6b6b;
-        }
-
-        .mini-nav-item.login-link {
-            text-decoration: none;
-            color: #ddd;
-        }
-        .mini-nav-item.login-link:hover i {
-            color: #ff6b6b;
-        }
-        .mini-nav-item.login-link:hover span {
-            color: #fff;
-        }
-
-        /* ===== Flip hint ===== */
-        .flip-hint {
-            position: absolute;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 1rem;
-            color: #ffffff !important;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            animation: pulse 2s ease-in-out infinite;
-            background: rgba(0, 0, 0, 0.5);
-            padding: 8px 20px;
-            border-radius: 30px;
-            text-shadow: 0 0 10px rgba(0,0,0,0.8);
-            z-index: 10;
-            pointer-events: auto;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        .flip-card-back .flip-hint {
-            bottom: 20px;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 0.7; }
-            50% { opacity: 1; }
-        }
-
-        /* ===== Unified popup ===== */
-        .merch-popup-content {
-            background: white;
-            border-radius: 20px;
-            width: 100%;
-            max-width: 600px;
-            max-height: 90vh;
-            overflow-y: auto;
-            padding: 30px;
-            box-sizing: border-box;
-            position: relative;
-        }
-        .merch-popup-content .popup-close {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(0,0,0,0.1);
-            color: #333;
-            border: none;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            font-size: 24px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-            z-index: 10;
-        }
-        .merch-popup-content .popup-close:hover {
-            background: rgba(0,0,0,0.2);
-        }
-        .merch-popup-content h2 {
-            text-align: center;
-            color: #333;
-            margin-bottom: 20px;
-        }
-        .merch-popup-content .popup-image {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .merch-popup-content .popup-image img {
-            max-width: 100%;
-            max-height: 200px;
-            object-fit: contain;
-            border-radius: 10px;
-        }
-        .merch-popup-content .popup-price {
-            text-align: center;
-            font-size: 1.2rem;
-            color: #333;
-            font-weight: bold;
-        }
-        .merch-popup-content .popup-description {
-            text-align: center;
-            color: #666;
-            margin-bottom: 15px;
-        }
-        .merch-popup-content .popup-stock {
-            padding: 10px;
-            border-radius: 8px;
-            text-align: center;
-            font-weight: 600;
-            margin-bottom: 20px;
-        }
-        .merch-popup-content .popup-stock.in-stock {
-            background: #e8f5e9;
-            color: #2E7D32;
-        }
-        .merch-popup-content .popup-stock.out-of-stock {
-            background: #ffebee;
-            color: #c62828;
-        }
-        .merch-popup-content .add-to-cart-btn {
-            width: 100%;
-            padding: 14px;
-            background: #ff6b6b;
-            color: white;
-            border: none;
-            border-radius: 30px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .merch-popup-content .add-to-cart-btn:hover {
-            background: #ff5252;
-        }
-        .merch-popup-content .add-to-cart-btn:disabled {
-            background: #ccc;
-            color: #666;
-            cursor: not-allowed;
-        }
-
-        /* ===== Social icons ===== */
-        .social-icons {
-            margin-top: 15px;
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-            font-size: 2rem;
-        }
-        .social-icons a {
-            color: #555;
-            transition: color 0.2s;
-        }
-        .social-icons a:hover {
-            color: #ff6b6b;
-        }
-
-        /* ===== UNIFIED STATUS MESSAGES (Order, Alert, Connect) ===== */
-        .order-status,
-        .alert-status,
-        .connect-message {
-            display: none;
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-top: 12px;
-            font-size: 14px;
-            font-weight: 500;
-            text-align: center;
-            width: 100%;
-            box-sizing: border-box;
-        }
-
-        .order-status.success,
-        .alert-status.success,
-        .connect-message.success {
-            display: block;
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .order-status.error,
-        .alert-status.error,
-        .connect-message.error {
-            display: block;
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .order-status.info,
-        .alert-status.info,
-        .connect-message.info {
-            display: block;
-            background: #cce5ff;
-            color: #004085;
-            border: 1px solid #b8daff;
-        }
-
-        /* ===== Cart tile content (no flip, static) ===== */
-        .cart-tile-content {
-            width: 100%;
-            height: 100%;
-            padding: 20px;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto;
-            background: white;
-            border-radius: 16px;
-        }
-        .cart-tile-content .cart-header {
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 12px;
-            border-bottom: 2px solid #ff6b6b;
-            padding-bottom: 8px;
-        }
-        .cart-tile-content .cart-items-list {
-            flex: 1;
-            overflow-y: auto;
-            margin-bottom: 12px;
-        }
-        .cart-tile-content .cart-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid #f5f5f5;
-            font-size: 0.95rem;
-        }
-        .cart-tile-content .cart-item .item-title {
-            color: #333;
-        }
-        .cart-tile-content .cart-item .item-price {
-            color: #ff6b6b;
-            font-weight: bold;
-        }
-        .cart-tile-content .cart-item .remove-item-btn {
-            background: none;
-            border: none;
-            color: #c62828;
-            cursor: pointer;
-            font-size: 1.2rem;
-            padding: 0 4px;
-            margin-left: 8px;
-            line-height: 1;
-        }
-        .cart-tile-content .cart-total-row {
-            display: flex;
-            justify-content: space-between;
-            font-weight: bold;
-            font-size: 1.1rem;
-            border-top: 2px solid #ddd;
-            padding-top: 8px;
-            margin-top: 8px;
-        }
-        .cart-tile-content .shipping-section {
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid #eee;
-        }
-        .cart-tile-content .shipping-options {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            margin-bottom: 10px;
-        }
-        .cart-tile-content .shipping-options label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 0.9rem;
-            color: #333;
-            cursor: pointer;
-        }
-        .cart-tile-content .shipping-options input[type="radio"] {
-            margin: 0;
-            width: 16px;
-            height: 16px;
-            accent-color: #ff6b6b;
-        }
-        .cart-tile-content .address-fields {
-            display: none;
-            margin-top: 8px;
-            padding: 10px;
-            background: #f8f9fa;
-            border-radius: 6px;
-        }
-        .cart-tile-content .address-fields.visible {
-            display: block;
-        }
-        .cart-tile-content .address-fields input {
-            width: 100%;
-            padding: 6px 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 0.9rem;
-            margin-bottom: 6px;
-            box-sizing: border-box;
-        }
-        .cart-tile-content .address-fields .address-row {
-            display: flex;
-            gap: 8px;
-        }
-        .cart-tile-content .address-fields .address-row input {
-            flex: 1;
-        }
-        .cart-tile-content .btn-group {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-        }
-        .cart-tile-content .btn-group button {
-            flex: 1;
-            padding: 10px 12px;
-            border: none;
-            border-radius: 30px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        .cart-tile-content .btn-group .checkout-btn {
-            background: #ff6b6b;
-            color: white;
-        }
-        .cart-tile-content .btn-group .checkout-btn:hover {
-            background: #ff5252;
-        }
-        .cart-tile-content .btn-group .clear-btn {
-            background: #f5f5f5;
-            color: #666;
-        }
-        .cart-tile-content .btn-group .clear-btn:hover {
-            background: #eee;
-        }
-        .cart-tile-content .empty-cart {
-            text-align: center;
-            color: #888;
-            padding: 40px 0;
-            font-size: 1.1rem;
-        }
-        /* Ensure the tile background is white and fills */
-        .tile[data-index="7"] .flip-card {
-            background: white;
-            border-radius: 16px;
-            overflow: hidden;
-        }
-        .tile[data-index="7"] .flip-card .flip-card-front,
-        .tile[data-index="7"] .flip-card .flip-card-back {
-            display: none;
-        }
-        .tile[data-index="7"] .flip-card .cart-tile-content {
-            display: flex;
-        }
-        /* Hide flip hint for cart tile */
-        .tile[data-index="7"] .flip-hint {
-            display: none;
-        }
-        /* Disable pointer events on the flip card for tile 7 to prevent flipping */
-        .tile[data-index="7"] .flip-card {
-            pointer-events: auto;
-        }
-        /* Confirmation message style */
-        .confirmation-message {
-            padding: 12px 16px;
-            background: #d4edda;
-            color: #155724;
-            border-radius: 8px;
-            margin-bottom: 12px;
-            border: 1px solid #c3e6cb;
-            font-weight: 500;
-            display: none;
-        }
-
-        /* ===== BROWSE PAGINATION (new) – with top‑right positioning ===== */
-        .browse-pagination-container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 20px;
-            padding: 15px 10px;
-            border-top: 1px solid #ddd;
-            flex-wrap: wrap;
-            gap: 15px;
-            background: transparent;
-        }
-        .browse-pagination-info {
-            color: #888;
-            font-size: 14px;
-        }
-        .browse-pagination-controls {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        .browse-pagination-btn {
-            background: #f8f9fa;
-            border: 1px solid #ddd;
-            color: #333;
-            padding: 6px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            min-width: 36px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-        }
-        .browse-pagination-btn:hover:not(:disabled) {
-            background: #e9ecef;
-            border-color: #ccc;
-        }
-        .browse-pagination-btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-        .browse-page-info {
-            font-size: 14px;
-            color: #333;
-            padding: 0 8px;
-            font-weight: 500;
-        }
-        .browse-page-size-selector {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            color: #888;
-            font-size: 13px;
-        }
-        .browse-page-size-selector select {
-            background: white;
-            border: 1px solid #ddd;
-            color: #333;
-            padding: 4px 6px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 13px;
-        }
-        .browse-page-size-selector select:hover {
-            background: #f8f9fa;
-        }
-        .browse-page-size-selector select:focus {
-            outline: none;
-            border-color: #ff6b6b;
-        }
-
-        /* ===== Pig Head – ensure "Welcome" text stays yellow ===== */
-        .desktop-record-container {
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .pig-head {
-            max-width: 100%;
-            height: auto;
-            display: block;
-        }
-        .desktop-record-container::before,
-        .desktop-record-container::after {
-            display: none;
-        }
-
-        /* ===== FIX: Shop tile scrollable & pagination top‑right ===== */
-        .tile[data-index="1"] .flip-card-back {
-            overflow: hidden !important;
-        }
-        .tile[data-index="1"] .back-content {
-            overflow-y: auto !important;
-            display: block !important;
-            height: 100% !important;
-            padding: 20px !important;
-            box-sizing: border-box !important;
-        }
-        #browseComponent {
-            display: grid !important;
-            grid-template-columns: 1fr auto;
-            grid-template-rows: auto auto 1fr auto;
-            gap: 10px 20px;
-            height: 100% !important;
-            align-content: start;
-        }
-        .browse-search-wrapper {
-            grid-column: 1 / -1;
-        }
-        .browse-filter-section {
-            grid-column: 1;
-            grid-row: 2;
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 8px;
-        }
-        .browse-pagination-container {
-            grid-column: 2;
-            grid-row: 2;
-            align-self: center;
-            justify-self: end;
-            margin: 0 !important;
-            padding: 0 !important;
-            border: none !important;
-            flex-wrap: nowrap;
-            gap: 6px;
-        }
-        #browseFilterStatusRow {
-            grid-column: 1 / -1;
-            grid-row: 3;
-        }
-        #browseCatalogContainer {
-            grid-column: 1 / -1;
-            grid-row: 4;
-            overflow-y: auto;
-            min-height: 0;
-        }
-        .browse-pagination-controls {
-            flex-wrap: nowrap;
-        }
-        .browse-pagination-info,
-        .browse-page-size-selector {
-            display: inline-flex;
-            align-items: center;
-            font-size: 13px;
-        }
-        .browse-pagination-info {
-            margin-right: 8px;
-        }
-    </style>
 </head>
 <body>
     <!-- Background Container -->
@@ -816,8 +210,9 @@
                                         <i class="fas fa-record-vinyl"></i> New Vinyl
                                     </button>
                                 </div>
-                                <div id="browseFilterStatusRow" class="browse-filter-status-row">
-                                    <div class="browse-filter-summary" id="browseFilterSummary"></div>
+                                <!-- Filter Status Row -->
+                                <div id="browseFilterStatusRow" class="browse-filter-status-row visible">
+                                    <div class="browse-filter-summary" id="browseFilterSummary">New Arrivals (last 7 days) <span class="result-count-badge">2 results</span></div>
                                     <button id="browseClearAllFiltersBtn" class="browse-clear-filters-link">Clear all ✕</button>
                                 </div>
                                 <div id="browseCatalogContainer">
@@ -832,7 +227,7 @@
                                     </div>
                                 </div>
 
-                                <!-- ===== BROWSE PAGINATION ===== -->
+                                <!-- BROWSE PAGINATION -->
                                 <div class="browse-pagination-container">
                                     <div class="browse-pagination-info">
                                         Showing <span id="browseShowingRange">0-0</span> of <span id="browseTotalRecords">0</span> records
@@ -854,7 +249,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <!-- ===== END BROWSE PAGINATION ===== -->
+                                <!-- END BROWSE PAGINATION -->
 
                             </div>
                         </div>
@@ -1595,7 +990,6 @@
             var genre = record.discogs_genre_raw ? record.discogs_genre_raw.split(',')[0].trim() : '';
             var formatName = record.format_name || '';
             
-            // ---- Build location string ----
             var locationText = '';
             if (record.location_name) {
                 locationText = record.location_name;
@@ -1765,7 +1159,6 @@
         var flippedState = [];
 
         function initFlipHints() {
-            // Flip hint click – skip cart tile
             document.querySelectorAll('.flip-hint').forEach(function(hint) {
                 hint.addEventListener('click', function(e) {
                     e.stopPropagation();
@@ -1773,24 +1166,22 @@
                     if (card) {
                         var tile = card.closest('.tile');
                         var index = parseInt(tile.dataset.index);
-                        if (index === 7) return; // skip cart
+                        if (index === 7) return;
                         card.classList.toggle('flipped');
                         flippedState[index] = card.classList.contains('flipped');
                     }
                 });
             });
 
-            // Flip card click – skip cart tile
             document.querySelectorAll('.flip-card').forEach(function(card) {
                 card.addEventListener('click', function(e) {
-                    // Ignore clicks on interactive elements
                     if (e.target.closest('.merch-item, .browse-record-card, .record-card, .merch-card, .add-to-cart-btn, .amount-btn, .design-option, .merch-product, input, select, button, a')) return;
                     if (e.target.closest('.flip-hint')) return;
                     if (e.target.closest('.fixed-header')) return;
 
                     var tile = this.closest('.tile');
                     var index = parseInt(tile.dataset.index);
-                    if (index === 7) return; // skip cart
+                    if (index === 7) return;
                     if (!this.classList.contains('flipped')) {
                         this.classList.toggle('flipped');
                         flippedState[index] = this.classList.contains('flipped');
@@ -1798,7 +1189,6 @@
                 });
             });
 
-            // Initialize flippedState
             document.querySelectorAll('.tile').forEach(function(tile) {
                 var index = parseInt(tile.dataset.index);
                 var card = tile.querySelector('.flip-card');
@@ -1834,7 +1224,6 @@
                 });
             }
 
-            // Expose goToTile globally so payment handler can use it
             window.goToTile = goToTile;
 
             navButtons.forEach(function(btn, index) {
@@ -1885,7 +1274,6 @@
                 var touch = e.touches[0];
                 var diffX = touch.clientX - startX;
                 var diffY = touch.clientY - startY;
-                // Only activate if horizontal swipe and not vertical (to avoid conflict with scrolling)
                 if (Math.abs(diffX) > 10 && Math.abs(diffX) > Math.abs(diffY) * 1.5) {
                     isSwiping = true;
                 }
@@ -1898,7 +1286,7 @@
                 }
                 var endX = e.changedTouches[0].clientX;
                 var diff = endX - startX;
-                var threshold = 50; // minimum swipe distance
+                var threshold = 50;
 
                 if (Math.abs(diff) > threshold) {
                     var navButtons = document.querySelectorAll('.mini-nav-item[data-index]');
@@ -1909,12 +1297,10 @@
                         }
                     });
                     if (diff < 0) {
-                        // Swipe left → next tile
                         if (currentIndex < navButtons.length - 1) {
                             goToTile(currentIndex + 1);
                         }
                     } else {
-                        // Swipe right → previous tile
                         if (currentIndex > 0) {
                             goToTile(currentIndex - 1);
                         }
@@ -1942,18 +1328,15 @@
                     }
                 }
 
-                // Clear the cart
                 if (window.cart) {
                     window.cart.clear();
                     updateCartUI();
                 }
 
-                // Navigate to cart tile (index 7)
                 if (typeof window.goToTile === 'function') {
                     window.goToTile(7);
                 }
 
-                // Clean URL (remove query parameters)
                 if (window.history && window.history.replaceState) {
                     window.history.replaceState({}, document.title, window.location.pathname);
                 }
@@ -2149,7 +1532,7 @@
             updateCartUI();
             initFlipHints();
             initNavigation();
-            initSwipe();   // <-- swipe support added
+            initSwipe();
             checkPaymentStatus();
 
             var popup = document.getElementById('merchPopup');

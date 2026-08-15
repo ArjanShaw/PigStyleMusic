@@ -191,19 +191,17 @@ function displayBrowseRecords(records) {
     container.appendChild(grid);
 }
 
+// ===== CORRECTED: loadBrowseCatalogData with proper pagination =====
 function loadBrowseCatalogData() {
     browseCurrentSearchTerm = document.getElementById('browseSearchBox')?.value.trim() || '';
     
     var params = new URLSearchParams();
     params.append('status_ids', '2');
     
-    // ---- Search filters ----
     if (browseCurrentSearchTerm) {
-        // For 'all' search, we send artist, title (partial), AND barcode (exact)
-        // The backend will match barcode exactly (and also id if numeric)
         params.append('artist', browseCurrentSearchTerm);
         params.append('title', browseCurrentSearchTerm);
-        params.append('barcode', browseCurrentSearchTerm);  // exact match on barcode + id
+        params.append('barcode', browseCurrentSearchTerm);
     }
     
     if (browseSelectedGenres.length > 0) {
@@ -214,17 +212,20 @@ function loadBrowseCatalogData() {
         params.append('format_ids', browseSelectedFormatIds.join(','));
     }
     
+    // ---- Date filter ----
     if (browseNewArrivalsActive) {
         var sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         params.append('created_after', sevenDaysAgo.toISOString().split('T')[0]);
+    } else {
+        params.append('created_after', '1970-01-01'); // get all
     }
     
     params.append('require_image', 'true');
     params.append('order_by', 'created_at');
     params.append('order_dir', 'DESC');
     
-    // ---- Pagination ----
+    // ---- Pagination parameters ----
     var limit = browsePageSize;
     var offset = (browseCurrentPage - 1) * limit;
     params.append('limit', limit);
@@ -250,8 +251,9 @@ function loadBrowseCatalogData() {
         .then(function(data) {
             if (data.status === 'success') {
                 var records = data.records || [];
+                // ★★★ CRITICAL FIX: set total records and compute total pages ★★★
                 browseTotalRecords = data.total || records.length;
-                browseTotalPages = Math.ceil(browseTotalRecords / browsePageSize) || 1;
+                browseTotalPages = Math.max(1, Math.ceil(browseTotalRecords / browsePageSize));
                 
                 if (browseNewVinylActive) {
                     records = records.filter(function(r) { return isBrowseNewVinyl(r); });
@@ -267,7 +269,7 @@ function loadBrowseCatalogData() {
                 populateBrowseGenreDropdown();
                 displayBrowseRecords(browseRecords);
                 updateBrowseFilterUI();
-                updatePaginationUI();
+                updatePaginationUI(); // this will enable/disable buttons
             }
         })
         .catch(function(error) {
@@ -277,6 +279,7 @@ function loadBrowseCatalogData() {
         });
 }
 
+// ===== CORRECTED: updatePaginationUI uses browseTotalPages =====
 function updatePaginationUI() {
     var start = (browseCurrentPage - 1) * browsePageSize + 1;
     var end = Math.min(browseCurrentPage * browsePageSize, browseTotalRecords);
@@ -294,6 +297,7 @@ function updatePaginationUI() {
         pageInfo.textContent = browseCurrentPage + ' / ' + browseTotalPages;
     }
     
+    // Enable/disable based on browseTotalPages
     document.getElementById('browseFirstPage').disabled = browseCurrentPage <= 1;
     document.getElementById('browsePrevPage').disabled = browseCurrentPage <= 1;
     document.getElementById('browseNextPage').disabled = browseCurrentPage >= browseTotalPages;
