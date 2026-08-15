@@ -89,6 +89,7 @@
     cursor: pointer;
     font-family: inherit;
     white-space: nowrap;
+    position: relative;
 }
 
 .fixed-header .mini-nav-item i {
@@ -117,6 +118,45 @@
 
 .fixed-header .mini-nav-item.active {
     background: rgba(255, 107, 107, 0.12);
+}
+
+/* Cart badge on the mini-nav-item */
+.fixed-header .mini-nav-item .cart-badge {
+    position: absolute;
+    top: -2px;
+    right: -4px;
+    background: #ff6b6b;
+    color: white;
+    border-radius: 50%;
+    font-size: 0.5rem;
+    font-weight: 600;
+    min-width: 16px;
+    height: 16px;
+    line-height: 16px;
+    text-align: center;
+    padding: 0 4px;
+    display: none;
+}
+
+.fixed-header .mini-nav-item.has-items .cart-badge {
+    display: block;
+}
+
+.fixed-header .mini-nav-item.has-items i {
+    color: #ff6b6b;
+}
+
+.fixed-header .mini-nav-item.login-link {
+    text-decoration: none;
+    color: #ddd;
+}
+
+.fixed-header .mini-nav-item.login-link:hover i {
+    color: #ff6b6b;
+}
+
+.fixed-header .mini-nav-item.login-link:hover span {
+    color: #fff;
 }
 
 .fixed-header .mini-nav-item.flip-btn {
@@ -333,6 +373,39 @@
 }
 
 /* ============================================================
+   FLIP HINT
+   ============================================================ */
+
+.flip-hint {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 1rem;
+    color: #ffffff !important;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    animation: pulse 2s ease-in-out infinite;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 8px 20px;
+    border-radius: 30px;
+    text-shadow: 0 0 10px rgba(0,0,0,0.8);
+    z-index: 10;
+    pointer-events: auto;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.flip-card-back .flip-hint {
+    bottom: 20px;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
+}
+
+/* ============================================================
    HOME BACK - Two tiles with white background
    ============================================================ */
 
@@ -405,71 +478,611 @@
 }
 
 /* ============================================================
-   FRONT SIDE CONTENT (fallback – hidden now)
+   SOCIAL ICONS
    ============================================================ */
 
-.front-icon {
-    font-size: 4.5rem;
-    color: #ff6b6b;
-    margin-bottom: 15px;
-    display: block;
-    text-shadow: 0 2px 20px rgba(255, 107, 107, 0.3);
-}
-
-.front-title {
+.social-icons {
+    margin-top: 15px;
+    display: flex;
+    gap: 20px;
+    justify-content: center;
     font-size: 2rem;
-    font-weight: bold;
-    margin-bottom: 8px;
-    color: #fff;
-    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
 }
 
-.front-description {
-    font-size: 1rem;
-    color: #eee;
-    line-height: 1.5;
-    max-width: 320px;
-    margin: 0 auto;
-    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+.social-icons a {
+    color: #555;
+    transition: color 0.2s;
 }
 
-.front-action {
-    margin-top: 18px;
-    display: inline-block;
-    padding: 10px 30px;
-    background: rgba(255, 255, 255, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    color: white;
-    border-radius: 30px;
-    font-size: 0.85rem;
-    font-weight: 600;
-    transition: background 0.2s;
-    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+.social-icons a:hover {
+    color: #ff6b6b;
 }
 
-.front-action:hover {
-    background: rgba(255, 255, 255, 0.3);
+/* ============================================================
+   UNIFIED STATUS MESSAGES (Order, Alert, Connect)
+   ============================================================ */
+
+.order-status,
+.alert-status,
+.connect-message {
+    display: none;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-top: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: center;
+    width: 100%;
+    box-sizing: border-box;
 }
 
-/* Flip hint - small text at bottom */
-.flip-hint {
-    position: absolute;
-    bottom: 30px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 0.7rem;
-    color: rgba(255, 255, 255, 0.4);
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    animation: pulse 2s ease-in-out infinite;
-    background: rgba(0,0,0,0.3);
-    padding: 6px 16px;
+.order-status.success,
+.alert-status.success,
+.connect-message.success {
+    display: block;
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.order-status.error,
+.alert-status.error,
+.connect-message.error {
+    display: block;
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.order-status.info,
+.alert-status.info,
+.connect-message.info {
+    display: block;
+    background: #cce5ff;
+    color: #004085;
+    border: 1px solid #b8daff;
+}
+
+/* ============================================================
+   UNIFIED POPUP
+   ============================================================ */
+
+.merch-popup-content {
+    background: white;
     border-radius: 20px;
+    width: 100%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 30px;
+    box-sizing: border-box;
+    position: relative;
 }
 
-@keyframes pulse {
-    0%, 100% { opacity: 0.4; }
-    50% { opacity: 1; }
+.merch-popup-content .popup-close {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(0,0,0,0.1);
+    color: #333;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    font-size: 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    z-index: 10;
+}
+
+.merch-popup-content .popup-close:hover {
+    background: rgba(0,0,0,0.2);
+}
+
+.merch-popup-content h2 {
+    text-align: center;
+    color: #333;
+    margin-bottom: 20px;
+}
+
+.merch-popup-content .popup-image {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.merch-popup-content .popup-image img {
+    max-width: 100%;
+    max-height: 200px;
+    object-fit: contain;
+    border-radius: 10px;
+}
+
+.merch-popup-content .popup-price {
+    text-align: center;
+    font-size: 1.2rem;
+    color: #333;
+    font-weight: bold;
+}
+
+.merch-popup-content .popup-description {
+    text-align: center;
+    color: #666;
+    margin-bottom: 15px;
+}
+
+.merch-popup-content .popup-stock {
+    padding: 10px;
+    border-radius: 8px;
+    text-align: center;
+    font-weight: 600;
+    margin-bottom: 20px;
+}
+
+.merch-popup-content .popup-stock.in-stock {
+    background: #e8f5e9;
+    color: #2E7D32;
+}
+
+.merch-popup-content .popup-stock.out-of-stock {
+    background: #ffebee;
+    color: #c62828;
+}
+
+.merch-popup-content .add-to-cart-btn {
+    width: 100%;
+    padding: 14px;
+    background: #ff6b6b;
+    color: white;
+    border: none;
+    border-radius: 30px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.merch-popup-content .add-to-cart-btn:hover {
+    background: #ff5252;
+}
+
+.merch-popup-content .add-to-cart-btn:disabled {
+    background: #ccc;
+    color: #666;
+    cursor: not-allowed;
+}
+
+/* ============================================================
+   CART TILE CONTENT (no flip, static)
+   ============================================================ */
+
+.cart-tile-content {
+    width: 100%;
+    height: 100%;
+    padding: 20px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    background: white;
+    border-radius: 16px;
+}
+
+.cart-tile-content .cart-header {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 12px;
+    border-bottom: 2px solid #ff6b6b;
+    padding-bottom: 8px;
+}
+
+.cart-tile-content .cart-items-list {
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 12px;
+}
+
+.cart-tile-content .cart-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #f5f5f5;
+    font-size: 0.95rem;
+}
+
+.cart-tile-content .cart-item .item-title {
+    color: #333;
+}
+
+.cart-tile-content .cart-item .item-price {
+    color: #ff6b6b;
+    font-weight: bold;
+}
+
+.cart-tile-content .cart-item .remove-item-btn {
+    background: none;
+    border: none;
+    color: #c62828;
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 0 4px;
+    margin-left: 8px;
+    line-height: 1;
+}
+
+.cart-tile-content .cart-total-row {
+    display: flex;
+    justify-content: space-between;
+    font-weight: bold;
+    font-size: 1.1rem;
+    border-top: 2px solid #ddd;
+    padding-top: 8px;
+    margin-top: 8px;
+}
+
+.cart-tile-content .shipping-section {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #eee;
+}
+
+.cart-tile-content .shipping-options {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.cart-tile-content .shipping-options label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    color: #333;
+    cursor: pointer;
+}
+
+.cart-tile-content .shipping-options input[type="radio"] {
+    margin: 0;
+    width: 16px;
+    height: 16px;
+    accent-color: #ff6b6b;
+}
+
+.cart-tile-content .address-fields {
+    display: none;
+    margin-top: 8px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 6px;
+}
+
+.cart-tile-content .address-fields.visible {
+    display: block;
+}
+
+.cart-tile-content .address-fields input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    margin-bottom: 6px;
+    box-sizing: border-box;
+}
+
+.cart-tile-content .address-fields .address-row {
+    display: flex;
+    gap: 8px;
+}
+
+.cart-tile-content .address-fields .address-row input {
+    flex: 1;
+}
+
+.cart-tile-content .btn-group {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.cart-tile-content .btn-group button {
+    flex: 1;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 30px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.cart-tile-content .btn-group .checkout-btn {
+    background: #ff6b6b;
+    color: white;
+}
+
+.cart-tile-content .btn-group .checkout-btn:hover {
+    background: #ff5252;
+}
+
+.cart-tile-content .btn-group .clear-btn {
+    background: #f5f5f5;
+    color: #666;
+}
+
+.cart-tile-content .btn-group .clear-btn:hover {
+    background: #eee;
+}
+
+.cart-tile-content .empty-cart {
+    text-align: center;
+    color: #888;
+    padding: 40px 0;
+    font-size: 1.1rem;
+}
+
+/* Ensure the tile background is white and fills */
+.tile[data-index="7"] .flip-card {
+    background: white;
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.tile[data-index="7"] .flip-card .flip-card-front,
+.tile[data-index="7"] .flip-card .flip-card-back {
+    display: none;
+}
+
+.tile[data-index="7"] .flip-card .cart-tile-content {
+    display: flex;
+}
+
+/* Hide flip hint for cart tile */
+.tile[data-index="7"] .flip-hint {
+    display: none;
+}
+
+/* Disable pointer events on the flip card for tile 7 to prevent flipping */
+.tile[data-index="7"] .flip-card {
+    pointer-events: auto;
+}
+
+/* Confirmation message style */
+.confirmation-message {
+    padding: 12px 16px;
+    background: #d4edda;
+    color: #155724;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    border: 1px solid #c3e6cb;
+    font-weight: 500;
+    display: none;
+}
+
+/* ============================================================
+   SHOP TILE – FIX: only catalog scrolls, pagination always visible
+   ============================================================ */
+
+/* 1. Remove overflow from flip-card back and back-content */
+.tile[data-index="1"] .flip-card-back {
+    overflow: hidden !important;
+}
+
+.tile[data-index="1"] .back-content {
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    padding: 20px !important;
+    box-sizing: border-box !important;
+}
+
+/* 2. Browse component as flex column */
+#browseComponent {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    gap: 10px;
+}
+
+/* 3. Fixed-height elements (don't grow) */
+.browse-search-wrapper {
+    flex-shrink: 0;
+}
+
+.browse-filter-section {
+    flex-shrink: 0;
+}
+
+#browseFilterStatusRow {
+    flex-shrink: 0;
+}
+
+/* 4. Compact filter status row */
+#browseFilterStatusRow {
+    padding: 4px 12px !important;
+    margin: 4px 0 !important;
+    background: rgba(255, 107, 107, 0.06) !important;
+    border-radius: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    flex-wrap: wrap !important;
+    gap: 4px 12px !important;
+    min-height: 32px !important;
+    height: auto !important;
+}
+
+#browseFilterStatusRow .browse-filter-summary {
+    font-size: 13px !important;
+    color: #555 !important;
+    font-weight: 400 !important;
+    line-height: 1.4 !important;
+}
+
+#browseFilterStatusRow .browse-filter-summary .result-count-badge {
+    background: #ff6b6b !important;
+    color: white !important;
+    font-size: 11px !important;
+    padding: 1px 10px !important;
+    border-radius: 12px !important;
+    margin-left: 6px !important;
+    font-weight: 600 !important;
+}
+
+#browseClearAllFiltersBtn {
+    font-size: 12px !important;
+    color: #999 !important;
+    background: none !important;
+    border: none !important;
+    cursor: pointer !important;
+    padding: 2px 6px !important;
+    text-decoration: underline !important;
+    line-height: 1.4 !important;
+}
+
+#browseClearAllFiltersBtn:hover {
+    color: #ff6b6b !important;
+}
+
+/* 5. Catalog container: scrolls vertically, no horizontal overflow */
+#browseCatalogContainer {
+    flex: 1 1 auto !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    min-height: 0 !important;
+    width: 100% !important;
+}
+
+/* 6. Pagination container: always at bottom, wraps on narrow screens */
+.browse-pagination-container {
+    flex-shrink: 0 !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    gap: 8px 16px !important;
+    padding: 12px 0 !important;
+    border-top: 1px solid #ddd !important;
+    margin-top: 4px !important;
+    background: white !important;
+    width: 100% !important;
+    min-width: 0 !important;
+}
+
+.browse-pagination-info {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+    font-size: 13px !important;
+    color: #888 !important;
+}
+
+.browse-pagination-controls {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-shrink: 1 !important;
+    min-width: 0 !important;
+}
+
+.browse-pagination-btn {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    color: #333;
+    padding: 4px 10px !important;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px !important;
+    min-width: 32px !important;
+    height: 32px !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.browse-pagination-btn:hover:not(:disabled) {
+    background: #e9ecef;
+    border-color: #ccc;
+}
+
+.browse-pagination-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.browse-page-info {
+    font-size: 13px !important;
+    color: #333 !important;
+    padding: 0 6px !important;
+    font-weight: 500;
+}
+
+.browse-page-size-selector {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #888;
+    font-size: 12px !important;
+    flex-shrink: 0 !important;
+}
+
+.browse-page-size-selector select {
+    background: white;
+    border: 1px solid #ddd;
+    color: #333;
+    padding: 3px 6px !important;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px !important;
+}
+
+.browse-page-size-selector select:hover {
+    background: #f8f9fa;
+}
+
+.browse-page-size-selector select:focus {
+    outline: none;
+    border-color: #ff6b6b;
+}
+
+/* 7. Compact filter buttons */
+.browse-filter-btn {
+    font-size: 12px !important;
+    padding: 4px 10px !important;
+}
+
+/* 8. Mobile: stack pagination info and controls */
+@media (max-width: 768px) {
+    .browse-pagination-container {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 6px !important;
+        padding: 8px 4px !important;
+    }
+
+    .browse-pagination-info {
+        text-align: center !important;
+        white-space: normal !important;
+    }
+
+    .browse-pagination-controls {
+        justify-content: center !important;
+        flex-wrap: wrap !important;
+    }
+
+    .browse-pagination-btn {
+        padding: 4px 8px !important;
+        font-size: 12px !important;
+        min-width: 28px !important;
+        height: 28px !important;
+    }
 }
 
 /* ============================================================
@@ -721,11 +1334,6 @@
     }
 }
 
-/* Remove pagination */
-.browse-pagination-controls {
-    display: none !important;
-}
-
 .browse-record-card {
     background: white;
     border-radius: 8px;
@@ -816,6 +1424,16 @@
     margin-right: 3px;
 }
 
+.browse-record-card-location {
+    font-size: 9px;
+    color: #999;
+    margin-top: 2px;
+}
+
+.browse-record-card-location i {
+    margin-right: 3px;
+}
+
 .browse-loading-indicator {
     text-align: center;
     padding: 30px 0;
@@ -870,144 +1488,6 @@
     color: #ff6b6b;
     margin-bottom: 10px;
     display: block;
-}
-
-/* Record Modal */
-.browse-record-modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0,0,0,0.7);
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-}
-
-.browse-record-modal {
-    background: white;
-    border-radius: 12px;
-    max-width: 400px;
-    width: 100%;
-    max-height: 90vh;
-    overflow-y: auto;
-    border: 1px solid #eee;
-}
-
-.browse-record-modal::-webkit-scrollbar {
-    width: 4px;
-}
-.browse-record-modal::-webkit-scrollbar-thumb {
-    background: rgba(0,0,0,0.2);
-    border-radius: 4px;
-}
-
-.browse-record-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 16px;
-    border-bottom: 1px solid #eee;
-}
-
-.browse-record-modal-header h3 {
-    color: #333;
-    font-size: 1rem;
-    margin: 0;
-}
-
-.browse-record-modal-close {
-    background: none;
-    border: none;
-    color: #999;
-    font-size: 1.5rem;
-    cursor: pointer;
-    padding: 0 4px;
-}
-
-.browse-record-modal-close:hover {
-    color: #333;
-}
-
-.browse-record-modal-image {
-    height: 200px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #f5f5f5;
-}
-
-.browse-record-modal-image img {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-}
-
-.browse-record-modal-image.default-bg i {
-    font-size: 3rem;
-    color: #ddd;
-}
-
-.browse-record-modal-info {
-    padding: 14px 16px 16px;
-}
-
-.browse-record-modal-title {
-    color: #666;
-    font-size: 0.9rem;
-    margin-bottom: 8px;
-}
-
-.browse-record-modal-details {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px 16px;
-    margin: 8px 0;
-}
-
-.browse-detail-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 2px 0;
-    font-size: 12px;
-    color: #333;
-    border-bottom: 1px solid #f5f5f5;
-}
-
-.browse-detail-row .detail-label {
-    color: #888;
-}
-
-.browse-record-modal-price {
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: #ff6b6b;
-    margin: 10px 0;
-    text-align: center;
-}
-
-.browse-record-modal-actions {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    margin-top: 12px;
-}
-
-.browse-record-modal-actions .close-modal-btn {
-    padding: 8px 30px;
-    border-radius: 30px;
-    border: 1px solid #ddd;
-    background: white;
-    color: #666;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.browse-record-modal-actions .close-modal-btn:hover {
-    background: #f5f5f5;
 }
 
 /* ============================================================
@@ -2017,6 +2497,28 @@
 }
 
 /* ============================================================
+   PIG HEAD – ensure "Welcome" text stays yellow
+   ============================================================ */
+
+.desktop-record-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pig-head {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
+.desktop-record-container::before,
+.desktop-record-container::after {
+    display: none;
+}
+
+/* ============================================================
    MOBILE FIXES – tile layout (flip hint & swipe)
    ============================================================ */
 
@@ -2053,7 +2555,7 @@
 
     /* ----- Flip hint – position under the header on mobile ----- */
     .flip-hint {
-        top: 56px !important;       /* just below the fixed header */
+        top: 56px !important;
         bottom: auto !important;
         left: 50%;
         transform: translateX(-50%);
@@ -2148,29 +2650,6 @@
     .cart-tile-content .address-fields .address-row {
         flex-direction: column;
         gap: 6px;
-    }
-
-    /* ----- Browse pagination – wrap & shrink ----- */
-    .browse-pagination-container {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 10px;
-        padding: 10px 5px;
-    }
-
-    .browse-pagination-controls {
-        justify-content: center;
-        flex-wrap: wrap;
-    }
-
-    .browse-pagination-btn {
-        padding: 4px 8px;
-        font-size: 12px;
-        min-width: 30px;
-    }
-
-    .browse-page-size-selector {
-        font-size: 12px;
     }
 
     /* ----- Connect tile – full width form ----- */
