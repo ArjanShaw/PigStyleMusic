@@ -13655,5 +13655,22 @@ def get_records_location_counts():
         app.logger.error(f"Error getting location counts: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/events', methods=['GET'])
+def get_events():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, title, description, event_date, image_url, rsvp_count,
+               repeat_type, repeat_interval, repeat_end_date,
+               repeat_day_of_week, repeat_week_of_month, is_recurring
+        FROM events
+        WHERE event_date >= date('now')
+        ORDER BY event_date ASC
+    ''')
+    rows = cursor.fetchall()
+    conn.close()
+    events = [dict(row) for row in rows]
+    return jsonify({'status': 'success', 'events': events})
+
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
