@@ -2130,8 +2130,6 @@ def create_record():
         conn.close()
         return jsonify({'status': 'error', 'error': f"Database error: {str(e)}"}), 500
 
-
-
 @app.route('/records', methods=['GET'])
 def get_records():
     """Get records with filtering, pagination, and a generic search."""
@@ -2141,12 +2139,14 @@ def get_records():
         cursor = conn.cursor()
 
         # ---------- Base query (all joins) ----------
+        # ADDED: LEFT JOIN locations to get genre_id
         base_query = """
             SELECT 
                 r.*,
                 f.name AS format_name,
                 s.status_name AS status_name,
                 l.name AS location_name,
+                l.genre_id,                     -- <-- ADD THIS LINE
                 cd.condition_name AS disc_condition_name,
                 cd.abbreviation AS disc_abbr,
                 cd.quality_index AS disc_quality,
@@ -2163,7 +2163,7 @@ def get_records():
             FROM records r
             LEFT JOIN formats f ON r.format_id = f.id
             LEFT JOIN d_status s ON r.status_id = s.id
-            LEFT JOIN locations l ON r.location_id = l.id
+            LEFT JOIN locations l ON r.location_id = l.id       -- <-- ADD THIS JOIN
             LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
             WHERE 1=1
@@ -2215,7 +2215,7 @@ def get_records():
                 where_clauses.append(f"r.id IN ({placeholders})")
                 params.extend(ids)
 
-        # --- NEW: Generic search (LIKE on id, barcode, artist, title, catalog_number) ---
+        # --- Generic search (LIKE on id, barcode, artist, title, catalog_number) ---
         search = request.args.get('search')
         if search:
             search_like = f'%{search}%'
@@ -2239,7 +2239,17 @@ def get_records():
                 where_clauses.append(f"r.format_id IN ({placeholders})")
                 params.extend(ids)
 
-        # --- Genres (OR logic, partial match) ---
+        # ---------- NEW: genre_ids filter (numeric IDs) ----------
+        genre_ids_param = request.args.get('genre_ids')
+        if genre_ids_param:
+            ids = [int(x.strip()) for x in genre_ids_param.split(',') if x.strip()]
+            if ids:
+                placeholders = ','.join(['?'] * len(ids))
+                # Filter by locations.genre_id (joined table)
+                where_clauses.append(f"l.genre_id IN ({placeholders})")
+                params.extend(ids)
+
+        # --- Legacy 'genres' filter (string-based, OR LIKE on discogs_genre_raw) ---
         genres = request.args.get('genres')
         if genres:
             genre_list = [x.strip() for x in genres.split(',') if x.strip()]
@@ -2289,7 +2299,7 @@ def get_records():
             where_sql = ""
 
         # ---------- Count query (no ORDER BY / LIMIT / OFFSET) ----------
-        count_query = f"SELECT COUNT(*) AS total FROM records r WHERE 1=1 {where_sql}"
+        count_query = f"SELECT COUNT(*) AS total FROM records r LEFT JOIN locations l ON r.location_id = l.id WHERE 1=1 {where_sql}"
         cursor.execute(count_query, params)
         total = cursor.fetchone()['total']
 
@@ -3425,7 +3435,7 @@ def get_genres():
     """Get all genres from the genres table"""
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('SELECT id, name, created_at FROM genres ORDER BY name')
+    cursor.execute('SELECT id, name FROM genres ORDER BY name')
     genres = cursor.fetchall()
     conn.close()
     return jsonify({'status': 'success', 'genres': [dict(g) for g in genres]})

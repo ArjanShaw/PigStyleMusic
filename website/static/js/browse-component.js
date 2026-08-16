@@ -1,10 +1,10 @@
 // ============================================================
-// browse-component.js - Shop Tile with Pagination + Exact Search
+// browse-component.js - Shop Tile with Pagination + Genre IDs
 // ============================================================
 
 var browseRecords = [];
-var browseAvailableGenres = [];
-var browseSelectedGenres = [];
+var browseAllGenres = [];          // [{ id, name }, ...]
+var browseSelectedGenreIds = [];   // array of genre IDs (numbers)
 var browseSelectedFormatIds = [];
 var browseCurrentSearchTerm = '';
 var browseNewArrivalsActive = true;
@@ -23,14 +23,57 @@ function initBrowseComponent() {
     browseInitialized = true;
     
     fetchBrowseFormats();
-    loadBrowseCatalogData();
+    fetchBrowseGenres();   // <-- loads genres and then records
     setupBrowseEventListeners();
     setupPaginationEventListeners();
 }
 
+// ============== fetch genres from the normalized table ==============
+function fetchBrowseGenres() {
+    fetch(AppConfig.baseUrl + '/api/genres')
+        .then(function(response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
+        .then(function(data) {
+            console.log('📦 Genres API response:', data);
+            
+            // Parse the wrapped response
+            var genres = null;
+            if (data && data.genres && Array.isArray(data.genres)) {
+                genres = data.genres;   // { status: "success", genres: [...] }
+            } else if (data && Array.isArray(data)) {
+                genres = data;
+            }
+            
+            if (genres && genres.length > 0) {
+                browseAllGenres = genres;
+                console.log('✅ Loaded ' + browseAllGenres.length + ' genres');
+            } else {
+                console.warn('⚠️ No genres found, using empty list');
+                browseAllGenres = [];
+            }
+            
+            populateBrowseGenreDropdown();
+            loadBrowseCatalogData();   // load records
+        })
+        .catch(function(e) {
+            console.error('❌ Error fetching genres:', e);
+            browseAllGenres = [];
+            populateBrowseGenreDropdown();
+            loadBrowseCatalogData();
+        });
+}
+
+function getBrowseGenreName(genreId) {
+    if (!genreId) return null;
+    var genre = browseAllGenres.find(function(g) { return g.id === genreId; });
+    return genre ? genre.name : null;
+}
+
 function setupBrowseEventListeners() {
     document.getElementById('browseClearAllFiltersBtn')?.addEventListener('click', function() { 
-        browseSelectedGenres = []; 
+        browseSelectedGenreIds = []; 
         browseSelectedFormatIds = [];
         browseCurrentSearchTerm = ''; 
         browseNewArrivalsActive = true; 
@@ -94,7 +137,7 @@ function setupBrowseEventListeners() {
     });
     
     document.getElementById('browseApplyGenres')?.addEventListener('click', function() { 
-        browseSelectedGenres = Array.from(document.querySelectorAll('#browseGenreList input:checked')).map(function(cb) { return cb.value; }); 
+        browseSelectedGenreIds = Array.from(document.querySelectorAll('#browseGenreList input:checked')).map(function(cb) { return parseInt(cb.value, 10); }); 
         genreDropdown.classList.remove('show'); 
         browseCurrentPage = 1;
         loadBrowseCatalogData(); 
@@ -152,12 +195,6 @@ function getBrowseFormatName(formatId) {
     return format ? format.name : null;
 }
 
-function extractBrowseGenre(discogs_genre_raw) {
-    if (!discogs_genre_raw || discogs_genre_raw === 'NULL' || discogs_genre_raw.trim() === '') return null;
-    var genres = discogs_genre_raw.split(',').map(function(g) { return g.trim(); });
-    return genres[0] || null;
-}
-
 function getBrowseConditionDisplayName(conditionId) {
     var map = {1: 'Mint', 2: 'Near Mint', 3: 'VG+', 4: 'VG', 5: 'G+', 6: 'G', 7: 'Fair', 8: 'Poor'};
     return map[conditionId] || 'Unknown';
@@ -191,7 +228,7 @@ function displayBrowseRecords(records) {
     container.appendChild(grid);
 }
 
-// ===== CORRECTED: loadBrowseCatalogData with proper pagination =====
+// ============== LOAD CATALOG DATA (with genre_ids) ==============
 function loadBrowseCatalogData() {
     browseCurrentSearchTerm = document.getElementById('browseSearchBox')?.value.trim() || '';
     
@@ -199,13 +236,12 @@ function loadBrowseCatalogData() {
     params.append('status_ids', '2');
     
     if (browseCurrentSearchTerm) {
-        params.append('artist', browseCurrentSearchTerm);
-        params.append('title', browseCurrentSearchTerm);
-        params.append('barcode', browseCurrentSearchTerm);
+        params.append('search', browseCurrentSearchTerm);
     }
     
-    if (browseSelectedGenres.length > 0) {
-        params.append('genres', browseSelectedGenres.join(','));
+    // ---- Genre filter: send genre IDs ----
+    if (browseSelectedGenreIds.length > 0) {
+        params.append('genre_ids', browseSelectedGenreIds.join(','));
     }
     
     if (browseSelectedFormatIds.length > 0) {
@@ -218,7 +254,7 @@ function loadBrowseCatalogData() {
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         params.append('created_after', sevenDaysAgo.toISOString().split('T')[0]);
     } else {
-        params.append('created_after', '1970-01-01'); // get all
+        params.append('created_after', '1970-01-01');
     }
     
     params.append('require_image', 'true');
@@ -251,7 +287,6 @@ function loadBrowseCatalogData() {
         .then(function(data) {
             if (data.status === 'success') {
                 var records = data.records || [];
-                // ★★★ CRITICAL FIX: set total records and compute total pages ★★★
                 browseTotalRecords = data.total || records.length;
                 browseTotalPages = Math.max(1, Math.ceil(browseTotalRecords / browsePageSize));
                 
@@ -260,16 +295,9 @@ function loadBrowseCatalogData() {
                 }
                 browseRecords = records;
                 
-                var genreSet = new Set();
-                records.forEach(function(r) {
-                    var genre = extractBrowseGenre(r.discogs_genre_raw);
-                    if (genre) genreSet.add(genre);
-                });
-                browseAvailableGenres = Array.from(genreSet).sort();
-                populateBrowseGenreDropdown();
                 displayBrowseRecords(browseRecords);
                 updateBrowseFilterUI();
-                updatePaginationUI(); // this will enable/disable buttons
+                updatePaginationUI();
             }
         })
         .catch(function(error) {
@@ -279,7 +307,6 @@ function loadBrowseCatalogData() {
         });
 }
 
-// ===== CORRECTED: updatePaginationUI uses browseTotalPages =====
 function updatePaginationUI() {
     var start = (browseCurrentPage - 1) * browsePageSize + 1;
     var end = Math.min(browseCurrentPage * browsePageSize, browseTotalRecords);
@@ -297,7 +324,6 @@ function updatePaginationUI() {
         pageInfo.textContent = browseCurrentPage + ' / ' + browseTotalPages;
     }
     
-    // Enable/disable based on browseTotalPages
     document.getElementById('browseFirstPage').disabled = browseCurrentPage <= 1;
     document.getElementById('browsePrevPage').disabled = browseCurrentPage <= 1;
     document.getElementById('browseNextPage').disabled = browseCurrentPage >= browseTotalPages;
@@ -307,15 +333,16 @@ function updatePaginationUI() {
 function populateBrowseGenreDropdown() {
     var genreList = document.getElementById('browseGenreList');
     if (!genreList) return;
-    if (browseAvailableGenres.length === 0) {
+    if (browseAllGenres.length === 0) {
         genreList.innerHTML = '<div style="color: #999; text-align: center; padding: 20px; font-size: 12px;">No genres available</div>';
         return;
     }
-    genreList.innerHTML = browseAvailableGenres.map(function(genre) {
-        return '<div class="browse-filter-checkbox-item"><input type="checkbox" id="browse_genre_' + escapeBrowseHtml(genre) + '" value="' + escapeBrowseHtml(genre) + '"><label for="browse_genre_' + escapeBrowseHtml(genre) + '">' + escapeBrowseHtml(genre) + '</label></div>';
+    genreList.innerHTML = browseAllGenres.map(function(genre) {
+        return '<div class="browse-filter-checkbox-item"><input type="checkbox" id="browse_genre_' + genre.id + '" value="' + genre.id + '"><label for="browse_genre_' + genre.id + '">' + escapeBrowseHtml(genre.name) + '</label></div>';
     }).join('');
+    // Preserve selected state
     document.querySelectorAll('#browseGenreList input').forEach(function(cb) {
-        if (browseSelectedGenres.includes(cb.value)) cb.checked = true;
+        if (browseSelectedGenreIds.includes(parseInt(cb.value, 10))) cb.checked = true;
     });
 }
 
@@ -334,6 +361,7 @@ function populateBrowseFormatDropdown(formats) {
     });
 }
 
+// ============== CORRECTED: shows TOTAL records, not page count ==============
 function updateBrowseFilterUI() {
     var arrivalsBtn = document.getElementById('browseNewArrivalsBtn');
     var vinylBtn = document.getElementById('browseNewVinylBtn');
@@ -354,7 +382,10 @@ function updateBrowseFilterUI() {
     if (browseNewArrivalsActive) filters.push('New Arrivals (last 7 days)');
     if (!browseNewArrivalsActive) filters.push('All Records');
     if (browseNewVinylActive) filters.push('New Vinyl Only');
-    if (browseSelectedGenres.length > 0) filters.push('Genre: ' + browseSelectedGenres.join(', '));
+    if (browseSelectedGenreIds.length > 0) {
+        var genreNames = browseSelectedGenreIds.map(function(id) { return getBrowseGenreName(id) || 'Unknown'; }).join(', ');
+        filters.push('Genre: ' + genreNames);
+    }
     if (browseSelectedFormatIds.length > 0) {
         var formatNames = browseSelectedFormatIds.map(function(id) { return getBrowseFormatName(id) || 'Format ' + id; }).join(', ');
         filters.push('Format: ' + formatNames);
@@ -363,15 +394,16 @@ function updateBrowseFilterUI() {
     var statusRow = document.getElementById('browseFilterStatusRow');
     var summaryDiv = document.getElementById('browseFilterSummary');
     
+    // --- Use browseTotalRecords (total matches) NOT browseRecords.length ---
     if (filters.length === 0 && browseNewArrivalsActive) {
         statusRow.classList.add('visible');
-        summaryDiv.innerHTML = 'New Arrivals (last 7 days) <span class="result-count-badge">' + browseRecords.length + ' results</span>';
+        summaryDiv.innerHTML = 'New Arrivals (last 7 days) <span class="result-count-badge">' + browseTotalRecords + ' results</span>';
     } else if (filters.length === 0 && !browseNewArrivalsActive) {
         statusRow.classList.add('visible');
-        summaryDiv.innerHTML = 'All Records <span class="result-count-badge">' + browseRecords.length + ' results</span>';
+        summaryDiv.innerHTML = 'All Records <span class="result-count-badge">' + browseTotalRecords + ' results</span>';
     } else if (filters.length > 0) {
         statusRow.classList.add('visible');
-        summaryDiv.innerHTML = filters.join(' · ') + ' <span class="result-count-badge">' + browseRecords.length + ' results</span>';
+        summaryDiv.innerHTML = filters.join(' · ') + ' <span class="result-count-badge">' + browseTotalRecords + ' results</span>';
     } else {
         statusRow.classList.remove('visible');
     }
@@ -381,7 +413,7 @@ function createBrowseRecordCard(record) {
     var card = document.createElement('div');
     card.className = 'browse-record-card';
     
-    var genre = extractBrowseGenre(record.discogs_genre_raw);
+    var genreName = getBrowseGenreName(record.genre_id);
     var combinedCondition = getBrowseCombinedCondition(record.condition_disc_id, record.condition_sleeve_id);
     var formatName = getBrowseFormatName(record.format_id);
     
@@ -396,8 +428,8 @@ function createBrowseRecordCard(record) {
         '<div class="browse-record-card-price">$' + parseFloat(record.store_price).toFixed(2) + '</div>' +
         '<span class="browse-record-card-condition">' + escapeBrowseHtml(combinedCondition) + '</span>';
     
-    if (genre) {
-        innerHtml += '<div class="browse-record-card-genre"><i class="fas fa-music"></i> ' + escapeBrowseHtml(genre) + '</div>';
+    if (genreName) {
+        innerHtml += '<div class="browse-record-card-genre"><i class="fas fa-music"></i> ' + escapeBrowseHtml(genreName) + '</div>';
     }
     
     if (formatName) {
