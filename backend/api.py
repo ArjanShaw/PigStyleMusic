@@ -13709,5 +13709,110 @@ def rsvp_event(event_id):
         app.logger.error(f"Error processing RSVP: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+# ---------- EVENTS CRUD ----------
+
+# GET single event (for editing)
+@app.route('/api/events/<int:event_id>', methods=['GET'])
+def get_event(event_id):
+    conn = get_db()
+    event = conn.execute('SELECT * FROM events WHERE id = ?', (event_id,)).fetchone()
+    conn.close()
+    if event:
+        return jsonify({'status': 'success', 'event': dict(event)})
+    return jsonify({'status': 'error', 'error': 'Event not found'}), 404
+
+# POST create event
+@app.route('/api/events', methods=['POST'])
+def create_event():
+    data = request.json
+    required = ['title', 'event_date']
+    for field in required:
+        if field not in data:
+            return jsonify({'status': 'error', 'error': f'Missing field: {field}'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO events (
+            title, description, event_date, image_url,
+            repeat_type, repeat_interval, repeat_end_date,
+            repeat_day_of_week, repeat_week_of_month, is_recurring
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        data['title'],
+        data.get('description', ''),
+        data['event_date'],
+        data.get('image_url', ''),
+        data.get('repeat_type', 'none'),
+        data.get('repeat_interval', 1),
+        data.get('repeat_end_date'),
+        data.get('repeat_day_of_week'),
+        data.get('repeat_week_of_month'),
+        data.get('is_recurring', 0)
+    ))
+    conn.commit()
+    event_id = cursor.lastrowid
+    conn.close()
+    return jsonify({'status': 'success', 'id': event_id}), 201
+
+# PUT update event
+@app.route('/api/events/<int:event_id>', methods=['PUT'])
+def update_event(event_id):
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM events WHERE id = ?', (event_id,))
+    if not cursor.fetchone():
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'Event not found'}), 404
+
+    cursor.execute('''
+        UPDATE events SET
+            title = ?,
+            description = ?,
+            event_date = ?,
+            image_url = ?,
+            repeat_type = ?,
+            repeat_interval = ?,
+            repeat_end_date = ?,
+            repeat_day_of_week = ?,
+            repeat_week_of_month = ?,
+            is_recurring = ?
+        WHERE id = ?
+    ''', (
+        data['title'],
+        data.get('description', ''),
+        data['event_date'],
+        data.get('image_url', ''),
+        data.get('repeat_type', 'none'),
+        data.get('repeat_interval', 1),
+        data.get('repeat_end_date'),
+        data.get('repeat_day_of_week'),
+        data.get('repeat_week_of_month'),
+        data.get('is_recurring', 0),
+        event_id
+    ))
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success'})
+
+# DELETE event
+@app.route('/api/events/<int:event_id>', methods=['DELETE'])
+def delete_event(event_id):
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id FROM events WHERE id = ?', (event_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Event not found'}), 404
+        cursor.execute('DELETE FROM events WHERE id = ?', (event_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        app.logger.error(f"Error deleting event {event_id}: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
