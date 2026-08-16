@@ -1,7 +1,50 @@
 // events-component.js - Events Tile (Public)
-// Expanded recurring events, compact cards, and clickable RSVP count.
+// 3‑column layout: Image | Title+Desc+RSVP link | Date+Buttons.
 
 var eventsInitialized = false;
+
+// --- Helper: download .ics file ---
+function downloadICS(event, occurrenceDate) {
+    const dt = new Date(occurrenceDate);
+    const formatICSDate = (d) => {
+        return d.getUTCFullYear() +
+            String(d.getUTCMonth() + 1).padStart(2, '0') +
+            String(d.getUTCDate()).padStart(2, '0') + 'T' +
+            String(d.getUTCHours()).padStart(2, '0') +
+            String(d.getUTCMinutes()).padStart(2, '0') +
+            String(d.getUTCSeconds()).padStart(2, '0') + 'Z';
+    };
+
+    const dtstart = formatICSDate(dt);
+    const dtend = formatICSDate(new Date(dt.getTime() + 2 * 60 * 60 * 1000));
+
+    const title = event.title || 'Event';
+    const desc = event.description || '';
+
+    const icsContent = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//PigStyle Music//Events//EN',
+        'BEGIN:VEVENT',
+        'UID:' + event.id + '-' + dtstart + '@pigstylemusic.com',
+        'DTSTAMP:' + formatICSDate(new Date()),
+        'DTSTART:' + dtstart,
+        'DTEND:' + dtend,
+        'SUMMARY:' + title.replace(/,/g, '\\,').replace(/;/g, '\\;'),
+        'DESCRIPTION:' + desc.replace(/,/g, '\\,').replace(/;/g, '\\;'),
+        'END:VEVENT',
+        'END:VCALENDAR'
+    ].join('\r\n');
+
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'event.ics';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+}
 
 function loadEvents() {
     const listEl = document.getElementById('eventsList');
@@ -17,11 +60,10 @@ function loadEvents() {
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success' && data.events.length) {
-                // --- Expand recurring events ---
                 const expandedEvents = [];
                 const now = new Date();
-                const oneYearLater = new Date(now);
-                oneYearLater.setFullYear(now.getFullYear() + 1);
+                const maxDays = 90;
+                const limit = 20;
 
                 data.events.forEach(ev => {
                     const repeatType = ev.repeat_type || 'none';
@@ -32,13 +74,13 @@ function loadEvents() {
                         return;
                     }
 
-                    let current = new Date(baseDate);
-                    if (current < now) current = new Date(now);
-
+                    let current = new Date(Math.max(baseDate, now));
                     let count = 0;
-                    const maxOccurrences = 52;
 
-                    while (current <= oneYearLater && count < maxOccurrences) {
+                    while (count < limit) {
+                        const diffDays = (current - now) / (1000 * 60 * 60 * 24);
+                        if (diffDays > maxDays) break;
+
                         const occurrence = { ...ev };
                         occurrence.event_date = current.toISOString();
                         expandedEvents.push(occurrence);
@@ -53,27 +95,91 @@ function loadEvents() {
 
                 expandedEvents.sort((a, b) => new Date(a.event_date) - new Date(b.event_date));
 
-                // --- Render compact cards ---
-                let html = '';
+                // --- Build HTML via array ---
+                const htmlParts = [];
                 expandedEvents.forEach(ev => {
                     const date = new Date(ev.event_date);
                     const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                     const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
                     const rsvpCount = ev.rsvp_count || 0;
-                    const isRecurring = ev.repeat_type && ev.repeat_type !== 'none';
 
+                    // Column 1: Image
                     const imageHtml = ev.image_url
-                        ? `<div style="display:flex; align-items:stretch; flex-shrink:0; height:140px; width:140px;">
+                        ? `<div style="flex:0 0 140px; height:140px; overflow:hidden;">
                             <img src="${ev.image_url}" alt="${ev.title}" style="
-                                height:100%;
                                 width:100%;
+                                height:100%;
                                 object-fit:cover;
-                                border-radius:12px 0 0 12px;
                             ">
                         </div>`
                         : '';
 
-                    html += `
+                    // Column 2: Title + Description (top), RSVP link (bottom left)
+                    const contentHtml = `
+                        <div style="flex:1; padding:8px 12px; display:flex; flex-direction:column; justify-content:space-between; overflow:hidden; min-width:0;">
+                            <div>
+                                <strong style="font-size:1rem; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;">${escapeHtml(ev.title)}</strong>
+                                ${ev.description ? `<p style="margin:4px 0 0; color:#555; font-size:0.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(ev.description)}</p>` : ''}
+                            </div>
+                            <span class="rsvp-count-display" data-event-id="${ev.id}" style="cursor:pointer; color:#007bff; text-decoration:underline; font-weight:500; font-size:0.8rem; align-self:flex-start; margin-top:4px;">
+                                👥 ${rsvpCount} RSVPs
+                            </span>
+                        </div>
+                    `;
+
+                    // Column 3: Date/Time badge (same size as buttons), Calendar, RSVP
+                    const dateBadge = `<div style="
+                        width:100%;
+                        background:#ff6b6b;
+                        color:white;
+                        border-radius:20px;
+                        padding:5px 0;
+                        font-size:0.7rem;
+                        font-weight:600;
+                        text-align:center;
+                    ">${dateStr} ${timeStr}</div>`;
+
+                    const calBtn = `<button class="cal-btn" data-event='${JSON.stringify(ev).replace(/'/g, "&#39;")}' data-date="${ev.event_date}" style="
+                        width:100%;
+                        background:#6c757d;
+                        color:white;
+                        border:none;
+                        border-radius:20px;
+                        padding:5px 0;
+                        font-size:0.7rem;
+                        cursor:pointer;
+                        transition:all 0.2s;
+                        font-weight:600;
+                        text-align:center;
+                    ">
+                        <i class="fas fa-calendar-plus"></i> Calendar
+                    </button>`;
+
+                    const rsvpBtn = `<button class="rsvp-btn" data-event-id="${ev.id}" style="
+                        width:100%;
+                        background:#ff6b6b;
+                        color:white;
+                        border:none;
+                        border-radius:20px;
+                        padding:5px 0;
+                        font-size:0.7rem;
+                        cursor:pointer;
+                        transition:all 0.2s;
+                        font-weight:600;
+                        text-align:center;
+                    ">
+                        <i class="fas fa-user-plus"></i> RSVP
+                    </button>`;
+
+                    const rightColumnHtml = `
+                        <div style="flex:0 0 160px; padding:6px 10px 6px 0; display:flex; flex-direction:column; justify-content:center; align-items:stretch; gap:4px;">
+                            ${dateBadge}
+                            ${calBtn}
+                            ${rsvpBtn}
+                        </div>
+                    `;
+
+                    htmlParts.push(`
                         <div class="event-card" data-event-id="${ev.id}" style="
                             display:flex;
                             align-items:stretch;
@@ -86,47 +192,13 @@ function loadEvents() {
                             height:140px;
                         ">
                             ${imageHtml}
-                            <div style="
-                                flex:1;
-                                padding:10px 16px;
-                                display:flex;
-                                flex-direction:column;
-                                justify-content:center;
-                                overflow:hidden;
-                            ">
-                                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
-                                    <strong style="font-size:1rem; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(ev.title)}</strong>
-                                    <span style="background:#ff6b6b; color:white; padding:2px 10px; border-radius:16px; font-size:0.7rem; white-space:nowrap;">${dateStr}</span>
-                                </div>
-                                ${ev.description ? `<p style="margin:4px 0 0; color:#555; font-size:0.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(ev.description)}</p>` : ''}
-                                <div style="margin-top:6px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
-                                    <div style="font-size:0.75rem; color:#888;">
-                                        🕐 ${timeStr}
-                                        ${isRecurring ? ' &nbsp;🔁 Recurring' : ''}
-                                        <span class="rsvp-count-display" data-event-id="${ev.id}" style="cursor:pointer; margin-left:8px; color:#007bff; text-decoration:underline; font-weight:500;">
-                                            👥 ${rsvpCount}
-                                        </span>
-                                    </div>
-                                    <button class="rsvp-btn" data-event-id="${ev.id}" style="
-                                        background:#ff6b6b;
-                                        color:white;
-                                        border:none;
-                                        border-radius:20px;
-                                        padding:4px 14px;
-                                        font-size:0.75rem;
-                                        cursor:pointer;
-                                        transition:all 0.2s;
-                                        font-weight:600;
-                                    ">
-                                        <i class="fas fa-user-plus"></i> RSVP
-                                    </button>
-                                </div>
-                            </div>
+                            ${contentHtml}
+                            ${rightColumnHtml}
                         </div>
-                    `;
+                    `);
                 });
 
-                listEl.innerHTML = html;
+                listEl.innerHTML = htmlParts.join('');
 
                 // --- Attach event listeners ---
                 document.querySelectorAll('.rsvp-btn').forEach(btn => {
@@ -154,8 +226,22 @@ function loadEvents() {
                             } else {
                                 console.warn('showRsvpList not defined');
                             }
-                        } else {
-                            console.warn('No eventId found on RSVP count element');
+                        }
+                    });
+                });
+
+                document.querySelectorAll('.cal-btn').forEach(btn => {
+                    btn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        const eventData = this.dataset.event;
+                        const date = this.dataset.date;
+                        if (eventData && date) {
+                            try {
+                                const ev = JSON.parse(eventData);
+                                downloadICS(ev, date);
+                            } catch (err) {
+                                console.error('Calendar error:', err);
+                            }
                         }
                     });
                 });
