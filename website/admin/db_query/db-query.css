@@ -1,18 +1,23 @@
 /* admin/db_query/db-query.css */
-/* Most styles come from admin.css – additional overrides if needed */
 
+/* ---- Main container: side-by-side, no wrapping ---- */
 .db-query-container {
     display: flex;
     gap: 20px;
-    flex-wrap: wrap;
+    /* Remove flex-wrap: wrap; → prevents stacking */
+    align-items: flex-start;
 }
 
+/* ---- Left panel: fixed width, stays in place ---- */
 .db-tree-panel {
-    flex: 1 1 300px;
+    flex: 0 0 300px;   /* fixed width, never shrinks or wraps */
+    min-width: 0;
     background: #f8f9fa;
     border: 1px solid #ddd;
     border-radius: 4px;
     padding: 10px;
+    max-height: 70vh;   /* limit height, scroll if needed */
+    overflow-y: auto;
 }
 
 .db-tree-header {
@@ -24,12 +29,178 @@
 }
 
 .db-tree-content {
-    max-height: 400px;
-    overflow-y: auto;
     font-size: 14px;
 }
 
-/* ---- Schema tree styling ---- */
+/* ---- Right panel: fills remaining space, never wraps ---- */
+.db-query-panel {
+    flex: 1;            /* takes all remaining width */
+    min-width: 0;       /* prevents overflow */
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+/* ---- Query editor ---- */
+.db-query-editor {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px;
+    flex-shrink: 0;
+}
+
+.db-query-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.db-query-textarea {
+    width: 100%;
+    height: 150px;
+    font-family: 'Courier New', monospace;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+    color: #333;
+    font-size: 14px;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.db-query-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #666;
+    margin-top: 5px;
+}
+
+/* ---- Query builder ---- */
+.db-query-builder {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 15px;
+    flex-shrink: 0;
+}
+
+.builder-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.builder-field {
+    display: flex;
+    flex-direction: column;
+}
+
+.builder-field label {
+    font-weight: 500;
+    font-size: 13px;
+    margin-bottom: 4px;
+}
+
+.builder-field input,
+.builder-field select {
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+    color: #333;
+}
+
+.sql-preview {
+    margin-top: 10px;
+    padding: 10px;
+    background: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* ---- Results panel: fixed height, scrollable ---- */
+.db-results-panel {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    max-height: 450px;   /* fixed max height */
+}
+
+.db-results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    flex-shrink: 0;
+}
+
+.db-results-stats {
+    font-size: 12px;
+    color: #666;
+}
+
+/* ---- The actual results container: scrolls both ways ---- */
+#query-results {
+    overflow: auto;      /* both horizontal and vertical scroll */
+    flex: 1;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px;
+    min-height: 100px;
+}
+
+/* ---- Results table: stays inside scrollable area ---- */
+#query-results table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    table-layout: auto;  /* adapts to content, scrollbar handles width */
+}
+
+#query-results th {
+    background: #e9ecef;
+    text-align: left;
+    padding: 8px;
+    border: 1px solid #dee2e6;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+#query-results td {
+    padding: 6px 8px;
+    border: 1px solid #dee2e6;
+    vertical-align: top;
+    white-space: nowrap;   /* keeps columns from wrapping, scroll handles overflow */
+}
+
+#query-results tbody tr:nth-child(even) {
+    background: #f8f9fa;
+}
+
+#query-results tbody tr:hover {
+    background: #e2e6ea;
+}
+
+.db-message {
+    color: #666;
+    text-align: center;
+    padding: 20px;
+}
+
+/* ---- Schema tree styling (unchanged, just clean) ---- */
 .db-tree-content ul {
     list-style: none;
     padding-left: 0;
@@ -86,164 +257,15 @@
     margin-left: 4px;
 }
 
-/* ---- Query panel ---- */
-.db-query-panel {
-    flex: 3 1 500px;
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.db-query-editor {
-    background: #f8f9fa;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 10px;
-}
-
-.db-query-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-}
-
-.db-query-textarea {
-    width: 100%;
-    height: 150px;
-    font-family: 'Courier New', monospace;
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    background: white;
-    color: #333;
-    font-size: 14px;
-    resize: vertical;
-}
-
-.db-query-info {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
-    color: #666;
-    margin-top: 5px;
-}
-
-.db-query-builder {
-    background: #f8f9fa;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 15px;
-}
-
-.builder-fields {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-}
-
-.builder-field {
-    display: flex;
-    flex-direction: column;
-}
-
-.builder-field label {
-    font-weight: 500;
-    font-size: 13px;
-    margin-bottom: 4px;
-}
-
-.builder-field input,
-.builder-field select {
-    padding: 6px 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    background: white;
-    color: #333;
-}
-
-.sql-preview {
-    margin-top: 10px;
-    padding: 10px;
-    background: #f0f0f0;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-family: 'Courier New', monospace;
-    white-space: pre-wrap;
-}
-
-/* ---- Results panel ---- */
-.db-results-panel {
-    background: #f8f9fa;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 10px;
-}
-
-.db-results-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-}
-
-.db-results-stats {
-    font-size: 12px;
-    color: #666;
-}
-
-#query-results {
-    max-height: 400px;
-    overflow-y: auto;
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 10px;
-}
-
-/* ---- Results table styling ---- */
-#query-results table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-}
-
-#query-results th {
-    background: #e9ecef;
-    text-align: left;
-    padding: 8px;
-    border: 1px solid #dee2e6;
-    position: sticky;
-    top: 0;
-    z-index: 2;
-}
-
-#query-results td {
-    padding: 6px 8px;
-    border: 1px solid #dee2e6;
-    vertical-align: top;
-}
-
-#query-results tbody tr:nth-child(even) {
-    background: #f8f9fa;
-}
-
-#query-results tbody tr:hover {
-    background: #e2e6ea;
-}
-
-.db-message {
-    color: #666;
-    text-align: center;
-    padding: 20px;
-}
-
-/* ---- Responsive ---- */
+/* ---- Responsive: on small screens, allow wrapping ---- */
 @media (max-width: 768px) {
+    .db-query-container {
+        flex-wrap: wrap;   /* only wrap on mobile */
+    }
+    .db-tree-panel {
+        flex: 1 1 100%;
+    }
     .builder-fields {
         grid-template-columns: 1fr;
-    }
-    .db-query-container {
-        flex-direction: column;
     }
 }
