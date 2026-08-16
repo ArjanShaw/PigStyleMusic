@@ -13672,5 +13672,42 @@ def get_events():
     events = [dict(row) for row in rows]
     return jsonify({'status': 'success', 'events': events})
 
+
+@app.route('/api/events/<int:event_id>/rsvp', methods=['POST'])
+def rsvp_event(event_id):
+    """Public RSVP - increments RSVP count for an event."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if event exists
+        cursor.execute('SELECT id FROM events WHERE id = ?', (event_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Event not found'}), 404
+        
+        # Increment RSVP count
+        cursor.execute('''
+            UPDATE events 
+            SET rsvp_count = COALESCE(rsvp_count, 0) + 1 
+            WHERE id = ?
+        ''', (event_id,))
+        conn.commit()
+        
+        # Get updated count
+        cursor.execute('SELECT rsvp_count FROM events WHERE id = ?', (event_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'RSVP recorded successfully',
+            'rsvp_count': row['rsvp_count'] if row else 0
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error processing RSVP: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
