@@ -3941,3 +3941,85 @@ select.form-control option {
         grid-template-columns: 1fr;
     }
 }
+
+/* ============================================================
+   OVERRIDES FOR FULL-WIDTH LAYOUT (Match item management)
+   ============================================================ */
+
+/* Remove background image and overlay – use solid white */
+body {
+    background: #ffffff !important;
+}
+body::before {
+    display: none !important;
+}
+
+/* Admin container – full width, no max-width, white background */
+.admin-container {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 25px 30px !important;
+    background: #ffffff !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+}
+
+.admin-container h1 {
+    color: #000000 !important;
+    border-bottom-color: #ddd !important;
+}
+
+/* Tab content – no max-width, consistent padding */
+.tab-content {
+    padding: 25px 30px !important;
+    max-width: none !important;
+    background: #ffffff !important;
+    border: 1px solid #e0e0e0;
+    border-radius: 0 0 8px 8px;
+}
+
+/* Inner containers – full width, no limitations */
+.inventory-container,
+.user-form-section,
+.records-table-container,
+.stats-grid-container,
+.db-query-container,
+.gift-card-section,
+.admin-config-section,
+.alert-container,
+.order-container,
+.connect-container,
+.browse-container,
+.cart-tile-content {
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+}
+
+/* Stats tab – override max-width */
+#stats-tab .stats-grid-container,
+#stats-tab {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* Ensure tables expand fully */
+.records-table-container {
+    overflow-x: auto;
+}
+.records-table {
+    width: 100%;
+}
+
+/* Tab container – full width */
+.tab-container {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Stats rows – use full width */
+.stats-row {
+    width: 100%;
+}
