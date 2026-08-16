@@ -1,0 +1,415 @@
+<!-- ==================== ADD RECORDS TAB ==================== -->
+<div id="add-records-tab" class="tab-content active">
+    <div class="inventory-container">
+        <!-- Stats Row -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-value" id="total-records">11899</div>
+                <div class="stat-label">Total Records</div>
+            </div>
+            <div class="stat-card" style="background: #fff3cd; border-left: 4px solid #ffc107;">
+                <div class="stat-value" id="new-records-count" style="color: #856404;">0</div>
+                <div class="stat-label">📋 New Records (status_id=1)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="last-added-record" style="font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">The Lumineers - Cleopatra - $22.99</div>
+                <div class="stat-label">📥 Last Added</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="commission-rate">28.0%</div>
+                <div class="stat-label">Commission Rate</div>
+            </div>
+        </div>
+
+        <!-- Mode Selector -->
+        <div class="search-section" style="margin-bottom: 15px;">
+            <div class="search-options-row">
+                <div class="search-field-select">
+                    <label for="searchMode"><i class="fas fa-cog"></i> Mode:</label>
+                    <select id="searchMode">
+                        <option value="add" selected>Add Record</option>
+                        <option value="scan">Scan / Locate</option>
+                        <option value="discogs">Post to Discogs</option>
+                        <option value="discogs_orders">Discogs Orders</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== MODE CONTAINERS ========== -->
+
+        <!-- ADD MODE CONTAINER -->
+        <div id="mode-container-add" style="display: block;">
+            <!-- Inventory Setup Panel -->
+            <div id="inventory-setup-panel" class="params-purchase-panel">
+                <div class="panel-header" onclick="toggleInventorySetupPanel()">
+                    <span><i class="fas fa-sliders-h"></i> Inventory Setup <span style="font-size: 12px; opacity: 0.7;">(defaults)</span></span>
+                    <span><i class="fas fa-chevron-down" id="inventory-setup-toggle-icon" style="transition: transform 0.3s;"></i></span>
+                </div>
+                <div class="panel-body expanded" id="inventory-setup-body">
+                    <!-- Default Parameters Section -->
+                    <div class="sub-panel">
+                        <div class="sub-panel-header" onclick="toggleDefaultParamsSub()">
+                            <span><i class="fas fa-sliders-h"></i> Default Parameters</span>
+                            <span><i class="fas fa-chevron-down" id="default-params-sub-toggle" style="transition: transform 0.3s;"></i></span>
+                        </div>
+                        <div class="sub-panel-body expanded" id="default-params-sub-body">
+                            <div class="params-grid">
+                                <div>
+                                    <label for="default-sleeve-condition">Default Sleeve Condition</label>
+                                    <select id="default-sleeve-condition" class="form-control"><option value="">Select...</option><option value="1">Mint (M)</option><option value="2">Near Mint (NM or M-)</option><option value="3">Very Good Plus (VG+)</option><option value="4">Very Good (VG)</option><option value="5">Good Plus (G+)</option><option value="6">Good (G)</option><option value="7">Fair (F)</option><option value="8">Poor (P)</option></select>
+                                </div>
+                                <div>
+                                    <label for="default-disc-condition">Default Disc Condition</label>
+                                    <select id="default-disc-condition" class="form-control"><option value="">Select...</option><option value="1">Mint (M)</option><option value="2">Near Mint (NM or M-)</option><option value="3">Very Good Plus (VG+)</option><option value="4">Very Good (VG)</option><option value="5">Good Plus (G+)</option><option value="6">Good (G)</option><option value="7">Fair (F)</option><option value="8">Poor (P)</option></select>
+                                </div>
+                                <div>
+                                    <label for="default-price">Default Price ($)</label>
+                                    <input type="number" id="default-price" class="form-control" step="1" min="0" placeholder="e.g., 19.99">
+                                </div>
+                                <div>
+                                    <label for="default-consignor">Default Consignor</label>
+                                    <select id="default-consignor" class="form-control"><option value="">None</option><option value="5">AndersonMuth (AndersonMuth)</option><option value="6">GeoffCowles (Geoff Cowles)</option><option value="9">johnsmidt (John Smith)</option></select>
+                                </div>
+                                <div>
+                                    <label for="default-format">Default Format</label>
+                                    <select id="default-format" class="form-control">
+                                        <option value="">Select...</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="default-purchase">Default Purchase</label>
+                                    <select id="default-purchase" class="form-control">
+                                        <option value="">Select a purchase...</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="params-actions">
+                                <button class="btn btn-sm btn-success" onclick="applyDefaultParams()">
+                                    <i class="fas fa-check"></i> Apply to Current Search Results
+                                </button>
+                                <button class="btn btn-sm btn-secondary" onclick="clearDefaultParams()">
+                                    <i class="fas fa-undo"></i> Clear Defaults
+                                </button>
+                                <span class="hint"><i class="fas fa-info-circle"></i> Defaults will auto-fill new records. Apply to bulk-fill existing search results.</span>
+                            </div>
+                            <div id="default-params-status" class="status-message" style="display: none;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current Purchase Display -->
+            <div id="current-purchase-display" style="display: none; background: #e8f4fd; padding: 10px 15px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #007bff;">
+                <i class="fas fa-shopping-bag"></i>
+                <strong>Adding to Purchase:</strong>
+                <span id="current-purchase-name">None selected</span>
+                <span id="current-purchase-id" style="margin-left: 10px; font-size: 12px; color: #666;"></span>
+            </div>
+
+            <!-- Purchases Table & Metadata -->
+            <div id="purchases-container">
+                <!-- Purchases Table -->
+                <div class="params-purchase-panel" style="margin-bottom:15px;">
+                    <div class="panel-header" style="background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%); color: white; cursor: pointer;" onclick="togglePurchaseTable()">
+                        <span><i class="fas fa-shopping-bag"></i> Inventory Purchases <span id="purchase-table-badge" style="font-size:12px; opacity:0.7; margin-left:8px;"></span></span>
+                        <span>
+                            <button class="btn btn-sm btn-light" onclick="event.stopPropagation(); refreshPurchases()" style="padding:2px 10px;"><i class="fas fa-sync-alt"></i></button>
+                            <button class="btn btn-sm btn-success" onclick="event.stopPropagation(); createNewPurchase()" style="padding:2px 10px; margin-left:5px;"><i class="fas fa-plus"></i> New</button>
+                            <i class="fas fa-chevron-down" id="purchase-table-toggle-icon" style="transition: transform 0.3s; margin-left:8px;"></i>
+                        </span>
+                    </div>
+                    <div class="panel-body expanded" id="purchase-table-body" style="padding:10px;">
+                        <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px;">
+                            <table class="records-table" id="purchases-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:40px;">#</th>
+                                        <th>Seller</th>
+                                        <th style="width:80px;">Status</th>
+                                        <th style="width:60px;">Recs</th>
+                                        <th style="width:80px;">Offer $</th>
+                                        <th style="width:100px;">Created</th>
+                                        <th style="width:60px;">Bill</th>
+                                        <th style="width:40px;">Del</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="purchases-body">
+                                    <tr><td colspan="8" style="text-align:center;padding:40px;">Loading purchases...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Metadata Editor -->
+                <div id="purchase-metadata-panel" style="display:none; background: #f8f9fa; border: 1px solid #007bff; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleMetadataPanel()">
+                        <h4 style="margin:0; display:flex; align-items:center; gap:10px;">
+                            <i class="fas fa-edit"></i> Edit Purchase Metadata
+                            <span id="purchase-id-display" style="font-weight:normal; font-size:14px; color:#666;"></span>
+                        </h4>
+                        <span><i class="fas fa-chevron-down" id="metadata-toggle-icon" style="transition: transform 0.3s;"></i></span>
+                    </div>
+                    <div id="metadata-body" style="margin-top:15px;">
+                        <input type="hidden" id="edit-purchase-id">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <label for="edit-seller-name">Seller Name *</label>
+                                <input type="text" id="edit-seller-name" class="form-control" placeholder="Seller name">
+                            </div>
+                            <div>
+                                <label for="edit-seller-contact">Contact</label>
+                                <input type="text" id="edit-seller-contact" class="form-control" placeholder="Phone or email">
+                            </div>
+                            <div style="grid-column: 1 / -1;">
+                                <label for="edit-description">Description</label>
+                                <input type="text" id="edit-description" class="form-control" placeholder="Brief description">
+                            </div>
+                            <div>
+                                <label for="edit-status">Status</label>
+                                <select id="edit-status" class="form-control">
+                                    <option value="draft">Draft</option>
+                                    <option value="complete">Complete</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="edit-bill-upload">Bill of Sale</label>
+                                <input type="file" id="edit-bill-upload" accept="image/*,application/pdf" onchange="uploadBillForPurchase()">
+                                <div id="edit-bill-preview" style="margin-top:8px;"></div>
+                            </div>
+                        </div>
+                        <div style="margin-top:15px; display:flex; gap:10px; flex-wrap:wrap;">
+                            <button class="btn btn-primary" onclick="savePurchaseMetadata()"><i class="fas fa-save"></i> Save Changes</button>
+                            <button class="btn btn-danger" onclick="deleteSelectedPurchase()" id="delete-purchase-btn"><i class="fas fa-trash"></i> Delete Purchase</button>
+                            <button class="btn btn-secondary" onclick="clearPurchaseSelection()">Deselect</button>
+                            <button class="btn btn-success" onclick="acceptDraft()" id="accept-draft-btn" style="display:none;"><i class="fas fa-check"></i> Accept Offer &amp; Complete</button>
+                        </div>
+                        <div id="purchase-metadata-status" style="margin-top:10px; display:none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- ========== END ADD MODE CONTAINER ========== -->
+
+        <!-- SCAN MODE CONTAINER -->
+        <div id="mode-container-scan" style="display: none;">
+            <!-- Location Builder -->
+            <div class="scan-location-builder">
+                <h3 style="display: flex; justify-content: space-between; align-items: center;">
+                    <span><i class="fas fa-map-pin"></i> Location Setup</span>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-light" id="prev-location-btn" onclick="cycleToPreviousLocation()" style="background: white; color: #333; padding: 4px 12px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer;">
+                            <i class="fas fa-arrow-left"></i> Previous
+                        </button>
+                        <button class="btn btn-light" id="next-location-btn" onclick="cycleToNextLocation()" style="background: white; color: #333; padding: 4px 12px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer;">
+                            <i class="fas fa-arrow-right"></i> Next
+                        </button>
+                    </div>
+                </h3>
+                <p class="text-muted">Select a location and start scanning. The index will auto-increment.</p>
+
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 8px; color: white;">Select Location:</label>
+                    <select id="scan-location-select" class="scan-location-select" style="background:white !important; color:#000000 !important;" onchange="clearScanError();">
+                        <option value="" style="background:white !important; color:#000000 !important;">-- Select Location --</option>
+                    </select>
+                </div>
+
+                <div class="location-preview">
+                    <span class="location-text" id="scan-location-display">-- Please select a location --</span>
+                    <span class="index-text" id="scan-index-display">📍 Index: 0</span>
+                </div>
+
+                <div id="scan-error-message" style="display: none; color: #ff6b6b; margin-top: 10px; font-weight: bold;"></div>
+
+                <div class="scan-input-area">
+                    <input type="text" id="scan-input" placeholder="Scan barcode or search..." disabled="">
+                    <button class="btn" id="scan-submit-btn" disabled=""><i class="fas fa-search"></i> Scan</button>
+                </div>
+            </div>
+
+            <!-- Recent Scans -->
+            <div class="recent-scans">
+                <div class="recent-header">
+                    <h4><i class="fas fa-history"></i> Recent Scans</h4>
+                    <span class="last-scan" id="last-scan-display">Last: --</span>
+                </div>
+                <div class="recent-list" id="recent-scans-list">
+                    <div class="no-recent-scans">No recent scans</div>
+                </div>
+            </div>
+        </div>
+        <!-- ========== END SCAN MODE CONTAINER ========== -->
+
+        <!-- DISCOGS MODE CONTAINER -->
+        <div id="mode-container-discogs" style="display: none;">
+            <!-- Discogs-specific filters -->
+            <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                        <div><i class="fas fa-calendar-alt" style="font-size: 20px;"></i><strong style="margin-left: 8px;">Last Seen Filter:</strong></div>
+                        <div>
+                            <label style="font-weight: normal;">Only post records last seen on or after:</label>
+                            <input type="date" id="last-seen-cutoff-date" class="filter-select" style="padding: 8px 12px; font-size: 14px; border-radius: 4px; border: 1px solid #ddd; margin-left: 10px; color: #333;">
+                            <button id="apply-last-seen-filter" class="btn btn-sm btn-secondary" style="padding: 6px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;"><i class="fas fa-sync-alt"></i> Apply Filter</button>
+                        </div>
+                    </div>
+                    <div style="margin-top: 10px; display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+                        <div style="flex: 2;">
+                            <label for="discogs-location-select"><i class="fas fa-map-marker-alt"></i> Select Location:</label>
+                            <select id="discogs-location-select" class="filter-select" style="min-width: 400px; padding: 8px 12px; font-size: 14px;">
+                                <option value="">-- All Locations --</option>
+                            </select>
+                        </div>
+                        <div>
+                            <button class="btn btn-secondary" onclick="refreshDiscogsLocations()"><i class="fas fa-sync-alt"></i> Refresh Locations</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Discogs markup UI -->
+                <div style="margin-top: 15px;">
+                    <div style="margin-bottom: 15px; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
+                        <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 10px 15px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;" onclick="toggleMarkupRules()">
+                            <span><i class="fas fa-chart-line"></i> Markup Rules (based on record age)</span>
+                            <span><i class="fas fa-chevron-down" id="markup-rules-toggle-icon" style="transition: transform 0.3s;"></i></span>
+                        </div>
+                        <div id="markup-rules-content" style="display: none; padding: 15px; background: #f8f9fa;">
+                            <div class="records-table-container">
+                                <table class="records-table">
+                                    <thead><tr><th>Days Old</th><th>Markup %</th><th>Description</th><th>Actions</th></tr></thead>
+                                    <tbody id="markup-rules-body"><tr><td colspan="4" style="text-align: center; padding: 20px;">Loading rules...</td></tr></tbody>
+                                </table>
+                            </div>
+                            <div style="margin-top: 10px;">
+                                <input type="number" id="new-rule-days" placeholder="Days" style="width: 80px; padding: 5px;">
+                                <input type="number" id="new-rule-percent" placeholder="%" step="1" style="width: 80px; padding: 5px;">
+                                <input type="text" id="new-rule-desc" placeholder="Description" style="width: 150px; padding: 5px;">
+                                <button class="btn btn-success btn-sm" onclick="addMarkupRule()">Add Rule</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
+                        <div style="background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%); color: white; padding: 10px 15px; cursor: pointer; display: flex; align-items: center; justify-content: space-between;" onclick="toggleMarkupCharts()">
+                            <span><i class="fas fa-chart-line"></i> Markup Analysis Charts</span>
+                            <span><i class="fas fa-chevron-down" id="markup-charts-toggle-icon" style="transition: transform 0.3s;"></i></span>
+                        </div>
+                        <div id="markup-charts-content" style="display: none; padding: 15px; background: #f8f9fa;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+                                <div style="background: white; padding: 10px; border-radius: 8px; border: 1px solid #dee2e6;">
+                                    <h4 style="margin-top: 0; margin-bottom: 8px; text-align: center; font-size: 13px;"><i class="fas fa-chart-line"></i> Markup Curve</h4>
+                                    <div style="height: 150px; position: relative;"><canvas id="markup-curve-chart"></canvas></div>
+                                </div>
+                                <div style="background: white; padding: 10px; border-radius: 8px; border: 1px solid #dee2e6;">
+                                    <h4 style="margin-top: 0; margin-bottom: 8px; text-align: center; font-size: 13px;"><i class="fas fa-chart-bar"></i> Markup Distribution</h4>
+                                    <div style="height: 150px; position: relative;"><canvas id="markup-distribution-chart"></canvas></div>
+                                </div>
+                                <div style="background: white; padding: 10px; border-radius: 8px; border: 1px solid #dee2e6;">
+                                    <h4 style="margin-top: 0; margin-bottom: 8px; text-align: center; font-size: 13px;"><i class="fas fa-calendar-alt"></i> Age Distribution</h4>
+                                    <div style="height: 150px; position: relative;"><canvas id="age-distribution-chart"></canvas></div>
+                                </div>
+                            </div>
+                            <div style="margin-top: 10px; font-size: 11px; color: #666; text-align: center; padding: 6px; background: #fff3cd; border-radius: 4px;">
+                                <span id="chart-record-count"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- ========== END DISCOGS MODE CONTAINER ========== -->
+
+        <!-- DISCOGS ORDERS MODE CONTAINER -->
+        <div id="mode-container-discogs_orders" style="display: none;">
+            <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 15px;">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                        <div>
+                            <label for="discogs-orders-status-filter"><i class="fas fa-filter"></i> Status:</label>
+                            <select id="discogs-orders-status-filter" class="filter-select" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px;">
+                                <option value="">All Statuses</option>
+                                <option value="Pending">⏳ Pending</option>
+                                <option value="Payment Received">✅ Payment Received</option>
+                                <option value="In Progress">🔄 In Progress</option>
+                                <option value="Shipped">📦 Shipped</option>
+                                <option value="Completed">✔️ Completed</option>
+                                <option value="Cancelled (Item Unavailable)">❌ Cancelled - Unavailable</option>
+                                <option value="Cancelled (Per Buyer's Request)">❌ Cancelled - Buyer</option>
+                            </select>
+                        </div>
+                        <div style="flex: 2; min-width: 250px;">
+                            <label for="discogs-order-select"><i class="fas fa-list-ul"></i> Select Order:</label>
+                            <select id="discogs-order-select" class="filter-select" style="width: 100%; padding: 8px 12px; font-size: 14px; border-radius: 4px; border: 1px solid #ddd;">
+                                <option value="">-- Select an order --</option>
+                            </select>
+                        </div>
+                        <div>
+                            <button class="btn btn-secondary" id="discogs-orders-refresh-btn"><i class="fas fa-sync-alt"></i> Refresh Orders</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- ========== END DISCOGS ORDERS MODE CONTAINER ========== -->
+
+        <!-- ========== GLOBAL SEARCH & RECORD TABLE ========== -->
+        <div class="search-section" style="margin-bottom: 15px;">
+            <div class="search-options-row">
+                <div class="search-field-select">
+                    <label for="searchField"><i class="fas fa-search"></i> Search by:</label>
+                    <select id="searchField" class="search-field-select">
+                        <option value="all">Barcode, Artist, or Title</option>
+                        <option value="barcode">Barcode</option>
+                        <option value="artist">Artist</option>
+                        <option value="title">Title</option>
+                    </select>
+                </div>
+                <form class="search-form" id="searchForm" action="javascript:void(0);">
+                    <input type="text" class="search-input" id="searchInput" placeholder="Search records...">
+                    <button id="searchButton" type="button" class="btn btn-primary" style="margin-left: 8px;"><i class="fas fa-search"></i> Search</button>
+                    <button type="button" class="btn btn-secondary" id="clearSearch"><i class="fas fa-times"></i> Clear</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Record Table -->
+        <div class="record-table-section" style="margin-top: 20px;">
+            <div class="table-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                    <span><strong>Selected:</strong> <span id="selected-count">0</span></span>
+                    <button class="btn btn-success" id="print-btn" style="display: none;" disabled="">🖨️ Print (all)</button>
+                    <button class="btn btn-secondary" id="cancel-range-btn" style="display: none;"><i class="fas fa-times"></i> Cancel Selection</button>
+                </div>
+            </div>
+
+            <div class="records-table-container" style="overflow-x:auto;">
+                <table class="records-table" style="width:100%; border-collapse:collapse;">
+                    <thead id="records-table-head"><tr><th style="width:100px;">Range</th><th>ID</th><th>Artist</th><th>Title</th><th>Price</th><th>Barcode</th><th>Action</th></tr></thead>
+                    <tbody id="records-table-body"><tr><td colspan="7" style="text-align:center;padding:40px;">No records found. Search to add records.</td></tr></tbody>
+                </table>
+            </div>
+
+            <div class="pagination" style="display:flex; justify-content:space-between; align-items:center; margin-top:15px; flex-wrap:wrap; gap:10px;">
+                <div class="pagination-info">
+                    Showing <span id="record-showing-start">1</span>-<span id="record-showing-end">0</span> of <span id="record-total-filtered">0</span> records
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button id="record-first-page" class="pagination-btn" disabled="">&lt;&lt;</button>
+                    <button id="record-prev-page" class="pagination-btn" disabled="">&lt;</button>
+                    <span>Page <input type="number" id="record-current-page" value="1" min="1" style="width:50px; padding:4px; text-align:center;"> of <span id="record-total-pages">1</span></span>
+                    <button id="record-next-page" class="pagination-btn" disabled="">&gt;</button>
+                    <button id="record-last-page" class="pagination-btn" disabled="">&gt;&gt;</button>
+                    <select id="record-page-size" style="padding:4px; border:1px solid #ddd; border-radius:4px;">
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                        <option value="500">500</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div id="status-message" class="status-message status-info" style="display: none;">Showing records</div>
+    </div>
+</div>
