@@ -21,80 +21,6 @@
     <link rel="stylesheet" href="../static/css/shared.css" />
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 
-    <style>
-        /* ===== OVERRIDE ADMIN.CSS TO MATCH ITEM MANAGEMENT LAYOUT ===== */
-        body {
-            background: white !important;
-            padding-top: 70px; /* navbar height */
-            margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-        body::before {
-            display: none !important;
-        }
-        .admin-container {
-            max-width: 100% !important;
-            margin: 0 !important;
-            padding: 25px 30px !important;
-            background: white !important;
-            border-radius: 0 !important;
-            box-shadow: none !important;
-            border: none !important;
-            color: #000 !important;
-        }
-        .admin-container h1 {
-            color: #000;
-            margin-bottom: 10px;
-        }
-        /* Tabs: keep the same but ensure background is white */
-        .tab-container {
-            background: white;
-            border-bottom: 2px solid #e0e0e0;
-        }
-        .tab {
-            background: #f5f5f5;
-            color: #000;
-            border: 1px solid #e0e0e0;
-        }
-        .tab.active {
-            background: #3498db;
-            color: #ffffff !important;
-            border-color: #3498db;
-        }
-        .tab-content {
-            background: white;
-            border: 1px solid #e0e0e0;
-            border-radius: 0 0 8px 8px;
-            color: #000;
-        }
-        /* STATS ROW – same as item management */
-        .stats-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        .stat-card {
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 20px;
-            text-align: center;
-            color: #000;
-        }
-        .stat-value {
-            font-size: 32px;
-            font-weight: bold;
-            color: #007bff;
-            margin-bottom: 5px;
-        }
-        .stat-label {
-            color: #333;
-            font-size: 14px;
-        }
-        /* All other admin.css styles remain, but we overwrite the container */
-    </style>
-
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/static/js/app-config.js"></script>
     <script src="/static/js/notification-bell.js"></script>
@@ -1939,7 +1865,7 @@ Example: SELECT * FROM records LIMIT 10;" onkeydown="handleQueryKeydown(event)">
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
 
-    <!-- ===== LABEL PRINTER - Single source of truth for all PDF generation ===== -->
+    <!-- ===== LABEL PRINTER ===== -->
     <script src="/static/js/label-printer.js"></script>
 
     <!-- ===== APPLICATION SCRIPTS ===== -->
