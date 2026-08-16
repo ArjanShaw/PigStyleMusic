@@ -1,0 +1,89 @@
+<!-- ==================== DB QUERY TAB ==================== -->
+<div id="db-query-tab" class="tab-content">
+    <h2><i class="fas fa-database"></i> Database Query Tool</h2>
+
+    <div class="db-query-container">
+        <div class="db-tree-panel">
+            <div class="db-tree-header">
+                <span><i class="fas fa-tree"></i> Database Schema</span>
+                <button onclick="refreshSchema()" title="Refresh Schema"><i class="fas fa-sync-alt"></i></button>
+            </div>
+            <div class="db-tree-content" id="schema-tree">
+                <div style="text-align: center; padding: 20px; color: #666;">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Loading schema...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="db-query-panel">
+            <div class="db-query-editor">
+                <div class="db-query-header">
+                    <h3><i class="fas fa-terminal"></i> SQL Query</h3>
+                    <div class="db-query-actions">
+                        <button class="btn btn-secondary btn-small" onclick="formatQuery()" title="Format SQL"><i class="fas fa-magic"></i> Format</button>
+                        <button class="btn btn-primary btn-small" onclick="executeQuery()" id="execute-query-btn"><i class="fas fa-play"></i> Execute (Ctrl+Enter)</button>
+                    </div>
+                </div>
+                <textarea id="sql-query" class="db-query-textarea" placeholder="Enter your SQL query here...
+Example: SELECT * FROM records LIMIT 10;" onkeydown="handleQueryKeydown(event)"></textarea>
+                <div class="db-query-info">
+                    <span><i class="fas fa-table"></i> Supports: SELECT, INSERT, UPDATE, DELETE</span>
+                    <span><i class="fas fa-history"></i> Query history: <span id="query-history-count">0</span></span>
+                </div>
+            </div>
+
+            <div class="db-query-builder" id="query-builder" style="display: none;">
+                <h4><i class="fas fa-tools"></i> Quick Query Builder</h4>
+                <div class="builder-fields">
+                    <div class="builder-field">
+                        <label>Operation</label>
+                        <select id="builder-operation" onchange="updateBuilderFields()">
+                            <option value="select">SELECT</option>
+                            <option value="insert">INSERT</option>
+                            <option value="update">UPDATE</option>
+                            <option value="delete">DELETE</option>
+                        </select>
+                    </div>
+                    <div class="builder-field">
+                        <label>Table</label>
+                        <select id="builder-table" onchange="updateBuilderFields()">
+                            <option value="">Select a table...</option>
+                        </select>
+                    </div>
+                    <div class="builder-field" id="builder-columns-field" style="display: none;">
+                        <label>Columns (comma-separated)</label>
+                        <input type="text" id="builder-columns" placeholder="e.g., id, artist, title">
+                    </div>
+                    <div class="builder-field" id="builder-values-field" style="display: none;">
+                        <label>Values (comma-separated)</label>
+                        <input type="text" id="builder-values" placeholder="e.g., 1, 'Artist', 'Title'">
+                    </div>
+                    <div class="builder-field" id="builder-where-field" style="display: none;">
+                        <label>WHERE clause</label>
+                        <input type="text" id="builder-where" placeholder="e.g., id = 1">
+                    </div>
+                    <div class="builder-field" id="builder-set-field" style="display: none;">
+                        <label>SET clause</label>
+                        <input type="text" id="builder-set" placeholder="e.g., artist = 'New Artist'">
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button class="btn btn-secondary btn-small" onclick="hideQueryBuilder()">Hide Builder</button>
+                    <button class="btn btn-success btn-small" onclick="buildQuery()">Build Query</button>
+                </div>
+                <div id="builder-preview" class="sql-preview"></div>
+            </div>
+
+            <div class="db-results-panel">
+                <div class="db-results-header">
+                    <h3><i class="fas fa-table"></i> Query Results</h3>
+                    <div class="db-results-stats" id="results-stats">Ready</div>
+                </div>
+                <div id="query-results">
+                    <div class="db-message"><i class="fas fa-info-circle"></i><span>Execute a query to see results</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
