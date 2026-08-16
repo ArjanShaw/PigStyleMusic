@@ -13655,14 +13655,14 @@ def get_records_location_counts():
         app.logger.error(f"Error getting location counts: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
 @app.route('/api/events', methods=['GET'])
 def get_events():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('''
         SELECT id, title, description, event_date, image_url, rsvp_count,
-               repeat_type, repeat_interval, repeat_end_date,
-               repeat_day_of_week, repeat_week_of_month, is_recurring
+               repeat_type
         FROM events
         WHERE event_date >= date('now')
         ORDER BY event_date ASC
@@ -13672,42 +13672,60 @@ def get_events():
     events = [dict(row) for row in rows]
     return jsonify({'status': 'success', 'events': events})
 
-
 @app.route('/api/events/<int:event_id>/rsvp', methods=['POST'])
-def rsvp_event(event_id):
-    """Public RSVP - increments RSVP count for an event."""
+def rsvp_event(event_id):  # <-- add event_id here
     try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+
+        name = data.get('name', '').strip()
+        email = data.get('email', '').strip().lower()
+
+        if not email:
+            return jsonify({'status': 'error', 'error': 'Email is required'}), 400
+        if '@' not in email or '.' not in email:
+            return jsonify({'status': 'error', 'error': 'Invalid email'}), 400
+
         conn = get_db()
         cursor = conn.cursor()
-        
-        # Check if event exists
+
+        # Check event exists
         cursor.execute('SELECT id FROM events WHERE id = ?', (event_id,))
         if not cursor.fetchone():
             conn.close()
             return jsonify({'status': 'error', 'error': 'Event not found'}), 404
-        
-        # Increment RSVP count
+
+        # Insert attendee
         cursor.execute('''
-            UPDATE events 
-            SET rsvp_count = COALESCE(rsvp_count, 0) + 1 
+            INSERT INTO event_rsvps (event_id, name, email)
+            VALUES (?, ?, ?)
+        ''', (event_id, name or None, email))
+
+        # Increment count
+        cursor.execute('''
+            UPDATE events
+            SET rsvp_count = COALESCE(rsvp_count, 0) + 1
             WHERE id = ?
         ''', (event_id,))
         conn.commit()
-        
-        # Get updated count
+
         cursor.execute('SELECT rsvp_count FROM events WHERE id = ?', (event_id,))
         row = cursor.fetchone()
+        new_count = row['rsvp_count'] if row else 0
+
         conn.close()
-        
+
         return jsonify({
             'status': 'success',
-            'message': 'RSVP recorded successfully',
-            'rsvp_count': row['rsvp_count'] if row else 0
+            'message': 'RSVP recorded',
+            'rsvp_count': new_count
         })
-        
+
     except Exception as e:
-        app.logger.error(f"Error processing RSVP: {str(e)}")
+        app.logger.error(f"RSVP error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 # ---------- EVENTS CRUD ----------
 
@@ -13721,7 +13739,6 @@ def get_event(event_id):
         return jsonify({'status': 'success', 'event': dict(event)})
     return jsonify({'status': 'error', 'error': 'Event not found'}), 404
 
-# POST create event
 @app.route('/api/events', methods=['POST'])
 def create_event():
     data = request.json
@@ -13734,28 +13751,20 @@ def create_event():
     cursor = conn.cursor()
     cursor.execute('''
         INSERT INTO events (
-            title, description, event_date, image_url,
-            repeat_type, repeat_interval, repeat_end_date,
-            repeat_day_of_week, repeat_week_of_month, is_recurring
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            title, description, event_date, image_url, repeat_type
+        ) VALUES (?, ?, ?, ?, ?)
     ''', (
         data['title'],
         data.get('description', ''),
         data['event_date'],
         data.get('image_url', ''),
-        data.get('repeat_type', 'none'),
-        data.get('repeat_interval', 1),
-        data.get('repeat_end_date'),
-        data.get('repeat_day_of_week'),
-        data.get('repeat_week_of_month'),
-        data.get('is_recurring', 0)
+        data.get('repeat_type', 'none')
     ))
     conn.commit()
     event_id = cursor.lastrowid
     conn.close()
     return jsonify({'status': 'success', 'id': event_id}), 201
 
-# PUT update event
 @app.route('/api/events/<int:event_id>', methods=['PUT'])
 def update_event(event_id):
     data = request.json
@@ -13772,12 +13781,7 @@ def update_event(event_id):
             description = ?,
             event_date = ?,
             image_url = ?,
-            repeat_type = ?,
-            repeat_interval = ?,
-            repeat_end_date = ?,
-            repeat_day_of_week = ?,
-            repeat_week_of_month = ?,
-            is_recurring = ?
+            repeat_type = ?
         WHERE id = ?
     ''', (
         data['title'],
@@ -13785,11 +13789,6 @@ def update_event(event_id):
         data['event_date'],
         data.get('image_url', ''),
         data.get('repeat_type', 'none'),
-        data.get('repeat_interval', 1),
-        data.get('repeat_end_date'),
-        data.get('repeat_day_of_week'),
-        data.get('repeat_week_of_month'),
-        data.get('is_recurring', 0),
         event_id
     ))
     conn.commit()
@@ -13813,6 +13812,31 @@ def delete_event(event_id):
     except Exception as e:
         app.logger.error(f"Error deleting event {event_id}: {e}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/events/<int:event_id>/rsvps', methods=['GET'])
+def get_event_rsvps(event_id):
+    """Get all RSVPs for a specific event."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, name, email, created_at
+        FROM event_rsvps
+        WHERE event_id = ?
+        ORDER BY created_at DESC
+    ''', (event_id,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    rsvps = []
+    for row in rows:
+        rsvps.append({
+            'id': row['id'],
+            'name': row['name'] or 'Anonymous',
+            'email': row['email'],
+            'created_at': row['created_at']
+        })
+
+    return jsonify({'status': 'success', 'rsvps': rsvps})
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)

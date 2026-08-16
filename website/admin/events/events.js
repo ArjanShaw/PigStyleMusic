@@ -1,12 +1,10 @@
-// admin/events/events.js
-// Admin CRUD for events – uses AppConfig.baseUrl
+// admin/events/events.js – simplified, uses AppConfig.baseUrl
 
-// Helper to get API URL
 function getApiBase() {
     if (typeof AppConfig !== 'undefined' && AppConfig.baseUrl) {
         return AppConfig.baseUrl;
     }
-    return ''; // fallback to relative
+    return ''; // fallback to relative (but this will break cross‑origin)
 }
 
 function loadEventsAdmin() {
@@ -22,7 +20,7 @@ function loadEventsAdmin() {
                 let html = '';
                 data.events.forEach(ev => {
                     const imageHtml = ev.image_url ? `<img src="${ev.image_url}" style="width:50px; height:50px; object-fit:cover; border-radius:4px;">` : '—';
-                    const recurring = ev.is_recurring ? `🔁 ${ev.repeat_type}` : '—';
+                    const recurring = ev.repeat_type && ev.repeat_type !== 'none' ? `🔁 ${ev.repeat_type}` : '—';
                     html += `
                         <tr>
                             <td>${ev.id}</td>
@@ -34,6 +32,7 @@ function loadEventsAdmin() {
                             <td>${recurring}</td>
                             <td>
                                 <button class="btn btn-sm btn-primary" onclick="editEvent(${ev.id})"><i class="fas fa-edit"></i></button>
+                                <button class="btn btn-sm btn-secondary" onclick="duplicateEvent(${ev.id})"><i class="fas fa-copy"></i></button>
                                 <button class="btn btn-sm btn-danger" onclick="deleteEvent(${ev.id})"><i class="fas fa-trash"></i></button>
                             </td>
                         </tr>
@@ -56,28 +55,33 @@ function saveEvent() {
     const description = document.getElementById('event-description').value.trim();
     const image_url = document.getElementById('event-image-url').value;
     const repeat_type = document.getElementById('event-repeat-type').value;
-    const repeat_interval = parseInt(document.getElementById('event-repeat-interval').value) || 1;
-    const repeat_end_date = document.getElementById('event-repeat-end-date').value || null;
-    const repeat_day_of_week = parseInt(document.getElementById('event-repeat-day-of-week').value) || null;
-    const repeat_week_of_month = parseInt(document.getElementById('event-repeat-week-of-month').value) || null;
-    const is_recurring = document.getElementById('event-is-recurring').checked ? 1 : 0;
 
     if (!title || !event_date) {
         showEventStatus('Title and Date are required.', 'error');
         return;
     }
 
+    const payload = {
+        title,
+        event_date,
+        description,
+        image_url,
+        repeat_type
+    };
+
     const base = getApiBase();
     const url = id ? `${base}/api/events/${id}` : `${base}/api/events`;
     const method = id ? 'PUT' : 'POST';
-    const payload = { title, event_date, description, image_url, repeat_type, repeat_interval, repeat_end_date, repeat_day_of_week, repeat_week_of_month, is_recurring };
 
     fetch(url, {
         method: method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     })
-    .then(res => res.json())
+    .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+    })
     .then(data => {
         if (data.status === 'success') {
             showEventStatus('Event saved successfully.', 'success');
@@ -87,14 +91,20 @@ function saveEvent() {
             showEventStatus(data.error || 'Save failed.', 'error');
         }
     })
-    .catch(() => showEventStatus('Network error.', 'error'));
+    .catch(err => {
+        console.error('Save error:', err);
+        showEventStatus('Network error: ' + err.message, 'error');
+    });
 }
 
 function deleteEvent(id) {
     if (!confirm('Are you sure you want to delete this event?')) return;
     const base = getApiBase();
     fetch(`${base}/api/events/${id}`, { method: 'DELETE' })
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+        })
         .then(data => {
             if (data.status === 'success') {
                 loadEventsAdmin();
@@ -103,13 +113,19 @@ function deleteEvent(id) {
                 showEventStatus('Delete failed.', 'error');
             }
         })
-        .catch(() => showEventStatus('Network error.', 'error'));
+        .catch(err => {
+            console.error('Delete error:', err);
+            showEventStatus('Network error: ' + err.message, 'error');
+        });
 }
 
 function editEvent(id) {
     const base = getApiBase();
     fetch(`${base}/api/events/${id}`)
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+        })
         .then(data => {
             if (data.status === 'success') {
                 const ev = data.event;
@@ -119,11 +135,6 @@ function editEvent(id) {
                 document.getElementById('event-description').value = ev.description || '';
                 document.getElementById('event-image-url').value = ev.image_url || '';
                 document.getElementById('event-repeat-type').value = ev.repeat_type || 'none';
-                document.getElementById('event-repeat-interval').value = ev.repeat_interval || 1;
-                document.getElementById('event-repeat-end-date').value = ev.repeat_end_date ? ev.repeat_end_date.slice(0, 10) : '';
-                document.getElementById('event-repeat-day-of-week').value = ev.repeat_day_of_week || '';
-                document.getElementById('event-repeat-week-of-month').value = ev.repeat_week_of_month || '';
-                document.getElementById('event-is-recurring').checked = ev.is_recurring ? true : false;
                 document.getElementById('event-form-title').textContent = 'Edit Event';
                 document.getElementById('event-submit-btn').textContent = 'Update Event';
                 if (ev.image_url) {
@@ -131,6 +142,41 @@ function editEvent(id) {
                     document.getElementById('event-image-preview-img').src = ev.image_url;
                 }
             }
+        })
+        .catch(err => {
+            console.error('Edit error:', err);
+            showEventStatus('Failed to load event: ' + err.message, 'error');
+        });
+}
+
+function duplicateEvent(id) {
+    const base = getApiBase();
+    fetch(`${base}/api/events/${id}`)
+        .then(res => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+        })
+        .then(data => {
+            if (data.status === 'success') {
+                const ev = data.event;
+                document.getElementById('event-id').value = '';
+                document.getElementById('event-title').value = 'Copy of ' + ev.title;
+                document.getElementById('event-date').value = ev.event_date.slice(0, 16);
+                document.getElementById('event-description').value = ev.description || '';
+                document.getElementById('event-image-url').value = ev.image_url || '';
+                document.getElementById('event-repeat-type').value = ev.repeat_type || 'none';
+                document.getElementById('event-form-title').textContent = 'Duplicate Event';
+                document.getElementById('event-submit-btn').textContent = 'Save as New Event';
+                if (ev.image_url) {
+                    document.getElementById('event-image-preview').style.display = 'block';
+                    document.getElementById('event-image-preview-img').src = ev.image_url;
+                }
+                document.querySelector('.user-form-section').scrollIntoView({ behavior: 'smooth' });
+            }
+        })
+        .catch(err => {
+            console.error('Duplicate error:', err);
+            showEventStatus('Failed to load event: ' + err.message, 'error');
         });
 }
 
@@ -141,11 +187,6 @@ function clearEventForm() {
     document.getElementById('event-description').value = '';
     document.getElementById('event-image-url').value = '';
     document.getElementById('event-repeat-type').value = 'none';
-    document.getElementById('event-repeat-interval').value = 1;
-    document.getElementById('event-repeat-end-date').value = '';
-    document.getElementById('event-repeat-day-of-week').value = '';
-    document.getElementById('event-repeat-week-of-month').value = '';
-    document.getElementById('event-is-recurring').checked = false;
     document.getElementById('event-form-title').textContent = 'Add New Event';
     document.getElementById('event-submit-btn').textContent = 'Save Event';
     document.getElementById('event-image-preview').style.display = 'none';
@@ -160,8 +201,6 @@ function uploadEventImage(input) {
     reader.onload = function(e) {
         document.getElementById('event-image-preview').style.display = 'block';
         document.getElementById('event-image-preview-img').src = e.target.result;
-        // For demo, store base64 in hidden field.
-        // In production, you should upload to server and set image_url to the returned URL.
         document.getElementById('event-image-url').value = e.target.result;
     };
     reader.readAsDataURL(file);
@@ -188,15 +227,23 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Auto-load when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.getElementById('events-admin-body')) {
+        loadEventsAdmin();
+    }
+});
+
 // Expose functions globally
 window.loadEventsAdmin = loadEventsAdmin;
 window.saveEvent = saveEvent;
 window.deleteEvent = deleteEvent;
 window.editEvent = editEvent;
+window.duplicateEvent = duplicateEvent;
 window.clearEventForm = clearEventForm;
 window.uploadEventImage = uploadEventImage;
 window.removeEventImage = removeEventImage;
 window.showEventStatus = showEventStatus;
 window.escapeHtml = escapeHtml;
 
-console.log('✅ events.js loaded (with AppConfig.baseUrl support)');
+console.log('✅ events.js loaded (with AppConfig.baseUrl)');

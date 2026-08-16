@@ -1564,15 +1564,15 @@ Example: SELECT * FROM records LIMIT 10;" onkeydown="handleQueryKeydown(event)">
             </div>
         </div>
 
-        <!-- ==================== EVENTS TAB (loaded from component) ==================== -->
-        <div id="events-tab" class="tab-content">
-            <div id="events-component-loader">
-                <div style="text-align:center; padding:60px; color:#999;">
-                    <i class="fas fa-spinner fa-pulse fa-3x"></i>
-                    <p style="margin-top:15px;">Loading Events Manager...</p>
-                </div>
-            </div>
+         <!-- ==================== EVENTS TAB (loaded from component) ==================== -->
+<div id="events-tab" class="tab-content">
+    <div id="events-component-loader">
+        <div style="text-align:center; padding:60px; color:#999;">
+            <i class="fas fa-spinner fa-pulse fa-3x"></i>
+            <p style="margin-top:15px;">Loading Events Manager...</p>
         </div>
+    </div>
+</div>
 
     </div> <!-- end admin-container -->
 
@@ -1891,46 +1891,47 @@ Example: SELECT * FROM records LIMIT 10;" onkeydown="handleQueryKeydown(event)">
 
     <!-- ===== DYNAMIC EVENTS COMPONENT LOADER ===== -->
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const eventsTab = document.querySelector('.tab[data-tab="events"]');
-            if (!eventsTab) return;
+         document.addEventListener('DOMContentLoaded', function() {
+    const eventsTab = document.querySelector('.tab[data-tab="events"]');
+    if (!eventsTab) return;
 
-            let eventsLoaded = false;
+    let eventsLoaded = false;
 
-            eventsTab.addEventListener('click', function() {
-                if (eventsLoaded) return;
-                const container = document.getElementById('events-component-loader');
-                if (!container) return;
+    eventsTab.addEventListener('click', function() {
+        if (eventsLoaded) return;
+        const container = document.getElementById('events-component-loader');
+        if (!container) return;
 
-                fetch('/admin-components/events/events.html')
-                    .then(res => {
-                        if (!res.ok) throw new Error('Component not found');
-                        return res.text();
-                    })
-                    .then(html => {
-                        container.innerHTML = html;
-                        // Load CSS
-                        const link = document.createElement('link');
-                        link.rel = 'stylesheet';
-                        link.href = '/admin-components/events/events.css';
-                        document.head.appendChild(link);
-                        // Load JS
-                        const script = document.createElement('script');
-                        script.src = '/admin-components/events/events.js';
-                        script.onload = function() {
-                            if (typeof loadEventsAdmin === 'function') {
-                                loadEventsAdmin();
-                            }
-                        };
-                        document.body.appendChild(script);
-                        eventsLoaded = true;
-                    })
-                    .catch(err => {
-                        console.error('Failed to load events component:', err);
-                        container.innerHTML = '<div style="text-align:center; padding:40px; color:#dc3545;"><i class="fas fa-exclamation-triangle"></i> Failed to load Events Manager.</div>';
-                    });
+        fetch('/admin-components/events/events.html')
+            .then(res => {
+                if (!res.ok) throw new Error('Component not found');
+                return res.text();
+            })
+            .then(html => {
+                container.innerHTML = html;
+                // Load CSS
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = '/admin-components/events/events.css';
+                document.head.appendChild(link);
+                // Load JS
+                const script = document.createElement('script');
+                script.src = '/admin-components/events/events.js';
+                script.onload = function() {
+                    if (typeof loadEventsAdmin === 'function') {
+                        loadEventsAdmin();
+                    }
+                };
+                document.body.appendChild(script);
+                eventsLoaded = true;
+            })
+            .catch(err => {
+                console.error('Failed to load events component:', err);
+                container.innerHTML = '<div style="text-align:center; padding:40px; color:#dc3545;"><i class="fas fa-exclamation-triangle"></i> Failed to load Events Manager.</div>';
             });
-        });
+    });
+});
+           
     </script>
 
     <!-- ===== INITIALIZATION ===== -->

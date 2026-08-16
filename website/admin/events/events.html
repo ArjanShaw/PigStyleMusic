@@ -3,7 +3,7 @@
     <h2><i class="fas fa-calendar-alt"></i> Manage Events</h2>
     <p class="text-muted">Create, edit, and delete events displayed on the public page.</p>
 
-    <!-- Event Form -->
+    <!-- Event Form (simplified) -->
     <div class="user-form-section" style="background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%);">
         <h3 style="margin-bottom: 20px;"><i class="fas fa-plus-circle"></i> <span id="event-form-title">Add New Event</span></h3>
         <input type="hidden" id="event-id" value="">
@@ -33,38 +33,15 @@
                 <p style="font-size: 12px; color: rgba(255,255,255,0.8); margin-top: 5px;">Upload an image (JPG, PNG, GIF, WebP). Max 5MB.</p>
             </div>
 
-            <!-- Recurring Fields -->
+            <!-- Recurrence (simplified) -->
             <div class="user-form-group">
-                <label for="event-repeat-type">Repeat Type</label>
+                <label for="event-repeat-type">Repeat</label>
                 <select id="event-repeat-type">
                     <option value="none">None</option>
                     <option value="daily">Daily</option>
                     <option value="weekly">Weekly</option>
                     <option value="monthly">Monthly</option>
-                    <option value="yearly">Yearly</option>
                 </select>
-            </div>
-            <div class="user-form-group">
-                <label for="event-repeat-interval">Interval</label>
-                <input type="number" id="event-repeat-interval" min="1" value="1">
-            </div>
-            <div class="user-form-group">
-                <label for="event-repeat-end-date">Repeat End Date</label>
-                <input type="date" id="event-repeat-end-date">
-            </div>
-            <div class="user-form-group">
-                <label for="event-repeat-day-of-week">Day of Week (0=Sun..6=Sat)</label>
-                <input type="number" id="event-repeat-day-of-week" min="0" max="6" placeholder="e.g., 1 for Monday">
-            </div>
-            <div class="user-form-group">
-                <label for="event-repeat-week-of-month">Week of Month (1-4)</label>
-                <input type="number" id="event-repeat-week-of-month" min="1" max="4" placeholder="e.g., 2 for 2nd week">
-            </div>
-            <div class="user-form-group" style="grid-column: 1 / -1;">
-                <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
-                    <input type="checkbox" id="event-is-recurring">
-                    <span>Recurring</span>
-                </label>
             </div>
         </div>
         <div class="action-buttons" style="justify-content: flex-start;">
