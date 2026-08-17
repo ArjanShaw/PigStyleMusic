@@ -9,7 +9,7 @@ const TabManager = (function() {
     let tabs = {};
     let initializers = {};
     let cleanupFunctions = {};
-    
+
     // Get active tab from sessionStorage
     function getStoredTab() {
         try {
@@ -19,7 +19,7 @@ const TabManager = (function() {
             return null;
         }
     }
-    
+
     // Save active tab to sessionStorage
     function saveStoredTab(tabName) {
         try {
@@ -28,7 +28,7 @@ const TabManager = (function() {
             console.warn('Could not save to sessionStorage:', e);
         }
     }
-    
+
     // Register tab initializers
     function registerInitializers() {
         // Inventory Ops Tab (formerly Add Records)
@@ -43,7 +43,7 @@ const TabManager = (function() {
                 throw new Error('initAddRecordsTab is not defined. inventory-ops.js may not be loaded.');
             }
         };
-        
+
         // Check Out Tab (removed from UI but kept for compatibility)
         initializers['check-out'] = () => {
             console.log('🔵 TabManager: Initializing Check Out tab');
@@ -57,7 +57,7 @@ const TabManager = (function() {
                 console.error('❌ initCheckout not found');
             }
         };
-        
+
         // Inventory Tab
         initializers['inventory'] = () => {
             console.log('🔵 TabManager: Initializing Inventory tab');
@@ -68,7 +68,7 @@ const TabManager = (function() {
                 console.warn('⚠️ initInventoryTab not found');
             }
         };
-        
+
         // Discogs Tab
         initializers['discogs'] = () => {
             console.log('🔵 TabManager: Initializing Discogs tab');
@@ -80,7 +80,7 @@ const TabManager = (function() {
                 console.log('Available window functions:', Object.keys(window).filter(k => k.toLowerCase().includes('discogs')));
             }
         };
-        
+
         // Discogs Orders Tab
         initializers['discogs-orders'] = () => {
             console.log('🔵 TabManager: Initializing Discogs Orders tab');
@@ -92,7 +92,7 @@ const TabManager = (function() {
                 console.log('Available window functions:', Object.keys(window).filter(k => k.toLowerCase().includes('discogs')));
             }
         };
-        
+
         // Accessories Tab
         initializers['accessories'] = () => {
             console.log('🔵 TabManager: Initializing Accessories tab');
@@ -106,7 +106,7 @@ const TabManager = (function() {
                 console.warn('⚠️ initAccessoriesTab not found');
             }
         };
-        
+
         // Users Tab
         initializers['users'] = () => {
             console.log('🔵 TabManager: Initializing Users tab');
@@ -120,7 +120,7 @@ const TabManager = (function() {
                 console.warn('⚠️ initUsersTab not found');
             }
         };
-        
+
         // Admin Config Tab
         initializers['admin-config'] = () => {
             console.log('🔵 TabManager: Initializing Admin Config tab');
@@ -134,7 +134,7 @@ const TabManager = (function() {
                 console.warn('⚠️ initAdminConfigTab not found');
             }
         };
-        
+
         // Price Tags Tab (kept for compatibility)
         initializers['price-tags'] = () => {
             console.log('🔵 TabManager: Initializing Price Tags tab');
@@ -148,7 +148,7 @@ const TabManager = (function() {
                 console.warn('⚠️ initPriceTagsTab not found');
             }
         };
-        
+
         // Custom Labels Tab
         initializers['custom-labels'] = () => {
             console.log('🔵 TabManager: Initializing Custom Labels tab');
@@ -161,7 +161,7 @@ const TabManager = (function() {
                 console.warn('⚠️ Custom labels functions not found');
             }
         };
-        
+
         // Orders Tab
         initializers['orders'] = () => {
             console.log('🔵 TabManager: Initializing Orders tab');
@@ -175,7 +175,7 @@ const TabManager = (function() {
                 console.warn('⚠️ initOrdersTab not found');
             }
         };
-        
+
         // Database Query Tab
         initializers['db-query'] = () => {
             console.log('🔵 TabManager: Initializing Database Query tab');
@@ -186,7 +186,7 @@ const TabManager = (function() {
                 console.warn('⚠️ initDbQueryTab not found');
             }
         };
-        
+
         // Sticky Notes Tab
         initializers['sticky-notes'] = () => {
             console.log('🔵 TabManager: Initializing Sticky Notes tab');
@@ -200,7 +200,7 @@ const TabManager = (function() {
                 console.warn('⚠️ Sticky Notes functions not found');
             }
         };
-        
+
         // Stats Tab
         initializers['stats'] = () => {
             console.log('🔵 TabManager: Initializing Stats tab');
@@ -211,7 +211,7 @@ const TabManager = (function() {
                 console.warn('⚠️ initStatsTab not found');
             }
         };
-        
+
         // Inventory Purchases Tab
         initializers['inventory-purchases'] = () => {
             console.log('🔵 TabManager: Initializing Inventory Purchases tab');
@@ -225,7 +225,7 @@ const TabManager = (function() {
                 console.warn('⚠️ initInventoryPurchasesTab not found');
             }
         };
-        
+
         // Creditors Tab
         initializers['creditors'] = () => {
             console.log('🔵 TabManager: Initializing Creditors tab');
@@ -357,8 +357,76 @@ const TabManager = (function() {
                 document.head.appendChild(script);
             }
         };
+
+        // ============================================================
+        // EVENTS TAB – NEW INITIALIZER
+        // ============================================================
+        initializers['events'] = () => {
+            console.log('🔵 TabManager: Initializing Events tab');
+            // Check if already loaded (look for the table container)
+            if (document.querySelector('#events-tab .records-table-container')) {
+                console.log('✅ Events tab already loaded, skipping.');
+                return;
+            }
+
+            const container = document.getElementById('events-component-loader');
+            if (!container) {
+                console.warn('⚠️ Events loader container (#events-component-loader) not found.');
+                return;
+            }
+
+            console.log('📦 Loading Events content from /admin-components/events/events.html');
+            fetch('/admin-components/events/events.html')
+                .then(res => {
+                    console.log(`📡 Fetch response: ${res.status} ${res.statusText}`);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    return res.text();
+                })
+                .then(html => {
+                    console.log('✅ Events HTML fetched, injecting into container.');
+                    container.innerHTML = html;
+
+                    // Load CSS
+                    const link = document.createElement('link');
+                    link.rel = 'stylesheet';
+                    link.href = '/admin-components/events/events.css';
+                    document.head.appendChild(link);
+                    console.log('📄 events.css added to head.');
+
+                    // Load JS
+                    const script = document.createElement('script');
+                    script.src = '/admin-components/events/events.js';
+                    script.onload = function() {
+                        console.log('✅ events.js loaded successfully.');
+                        if (typeof window.loadEventsAdmin === 'function') {
+                            console.log('📞 Calling loadEventsAdmin()...');
+                            window.loadEventsAdmin();
+                            console.log('📞 loadEventsAdmin() returned.');
+                        } else {
+                            console.warn('⚠️ loadEventsAdmin is not defined after loading events.js.');
+                        }
+                    };
+                    script.onerror = function() {
+                        console.error('❌ Failed to load events.js (network error or 404).');
+                        container.innerHTML = `<div style="text-align:center; padding:40px; color:#dc3545;">
+                            <i class="fas fa-exclamation-triangle fa-2x"></i>
+                            <p style="margin-top:10px;">Failed to load events.js. Check the console for details.</p>
+                        </div>`;
+                    };
+                    document.body.appendChild(script);
+                    console.log('📦 events.js script element appended to body.');
+                })
+                .catch(err => {
+                    console.error('❌ Events load error:', err);
+                    container.innerHTML = `<div style="text-align:center; padding:40px; color:#dc3545;">
+                        <i class="fas fa-exclamation-triangle fa-2x"></i>
+                        <p style="margin-top:10px;">Failed to load Events Manager: ${err.message}</p>
+                        <button class="btn btn-primary" onclick="window.TabManager.switchToTab('events')" style="margin-top:10px;">Retry</button>
+                    </div>`;
+                });
+        };
     }
-    
+
     // Register cleanup functions
     function registerCleanupFunctions() {
         cleanupFunctions = {
@@ -418,7 +486,7 @@ const TabManager = (function() {
             }
         };
     }
-    
+
     // Clean up current tab before switching
     function cleanupCurrentTab() {
         if (currentTab && cleanupFunctions[currentTab]) {
@@ -430,7 +498,7 @@ const TabManager = (function() {
             }
         }
     }
-    
+
     // Initialize a specific tab
     function initializeTab(tabName) {
         if (initializers[tabName]) {
@@ -446,17 +514,17 @@ const TabManager = (function() {
             return false;
         }
     }
-    
+
     // Activate a specific tab
     function activateTab(tabName) {
         if (!tabName) return false;
-        
+
         console.log(`🟡 TabManager: Switching to tab: ${tabName}`);
-        
+
         // Find all tab elements and contents
         const tabElements = document.querySelectorAll('.tab');
         const tabContents = document.querySelectorAll('.tab-content');
-        
+
         // Update tab elements active state
         let tabFound = false;
         tabElements.forEach(tab => {
@@ -469,11 +537,11 @@ const TabManager = (function() {
                 tab.classList.remove('active');
             }
         });
-        
+
         if (!tabFound) {
             console.warn(`⚠️ TabManager: Tab element not found for ${tabName}`);
         }
-        
+
         // Update tab contents active state
         let contentFound = false;
         tabContents.forEach(content => {
@@ -487,36 +555,36 @@ const TabManager = (function() {
                 content.classList.remove('active');
             }
         });
-        
+
         if (!contentFound) {
             console.warn(`⚠️ TabManager: Content element not found for ${tabName}-tab`);
         }
-        
+
         // Clean up previous tab
         cleanupCurrentTab();
-        
+
         // Initialize new tab
         const initSuccess = initializeTab(tabName);
-        
+
         if (initSuccess) {
             currentTab = tabName;
             saveStoredTab(tabName);
-            
+
             // Dispatch custom event for tab change
             const event = new CustomEvent('tabChanged', {
-                detail: { tabName: tabName, timestamp: Date.now() }
+                detail: { tab: tabName, timestamp: Date.now() }
             });
             document.dispatchEvent(event);
             console.log(`📢 TabManager: Dispatched tabChanged event for ${tabName}`);
         }
-        
+
         return initSuccess;
     }
-    
+
     // Set up tab click handlers
     function setupTabClickHandlers() {
         const tabElements = document.querySelectorAll('.tab');
-        
+
         tabElements.forEach(tab => {
             tab.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -527,10 +595,10 @@ const TabManager = (function() {
                 }
             });
         });
-        
+
         console.log(`✅ TabManager: Set up ${tabElements.length} tab click handlers`);
     }
-    
+
     // Handle hash changes (for deep linking)
     function handleHashChange() {
         const hash = window.location.hash.substring(1);
@@ -546,50 +614,50 @@ const TabManager = (function() {
             }
         }
     }
-    
+
     // Get all available tabs
     function getAvailableTabs() {
         const tabElements = document.querySelectorAll('.tab');
         return Array.from(tabElements).map(tab => tab.getAttribute('data-tab'));
     }
-    
+
     // Get current active tab
     function getCurrentTab() {
         return currentTab;
     }
-    
+
     // Check if tab exists
     function tabExists(tabName) {
         const tabsList = getAvailableTabs();
         return tabsList.includes(tabName);
     }
-    
+
     // Public API
     return {
         init: function() {
             console.log('🚀 TabManager: Initializing...');
-            
+
             registerInitializers();
             registerCleanupFunctions();
-            
+
             const availableTabs = getAvailableTabs();
             console.log(`📑 TabManager: Available tabs: ${availableTabs.join(', ')}`);
-            
+
             setupTabClickHandlers();
-            
+
             let initialTab = null;
             const storedTab = getStoredTab();
             if (storedTab && tabExists(storedTab)) {
                 initialTab = storedTab;
                 console.log(`💾 TabManager: Restoring stored tab: ${initialTab}`);
             }
-            
+
             const hash = window.location.hash.substring(1);
             if (hash && tabExists(hash)) {
                 initialTab = hash;
                 console.log(`🔗 TabManager: Using hash from URL: ${initialTab}`);
             }
-            
+
             if (!initialTab) {
                 const activeTabElement = document.querySelector('.tab.active');
                 if (activeTabElement) {
@@ -597,22 +665,22 @@ const TabManager = (function() {
                     console.log(`📌 TabManager: Found active tab in DOM: ${initialTab}`);
                 }
             }
-            
+
             if (!initialTab && availableTabs.length > 0) {
                 initialTab = availableTabs[0];
                 console.log(`🎯 TabManager: Using default tab: ${initialTab}`);
             }
-            
+
             if (initialTab) {
                 activateTab(initialTab);
             } else {
                 console.error('❌ TabManager: No tabs available to activate!');
             }
-            
+
             window.addEventListener('hashchange', handleHashChange);
             console.log('✅ TabManager: Initialization complete');
         },
-        
+
         switchToTab: function(tabName) {
             if (tabExists(tabName)) {
                 return activateTab(tabName);
@@ -621,7 +689,7 @@ const TabManager = (function() {
                 return false;
             }
         },
-        
+
         getCurrentTab: getCurrentTab,
         getTabs: getAvailableTabs,
         tabExists: tabExists,
@@ -630,7 +698,7 @@ const TabManager = (function() {
                 initializeTab(currentTab);
             }
         },
-        
+
         registerInitializer: function(tabName, initFunction) {
             if (typeof initFunction === 'function') {
                 initializers[tabName] = initFunction;
@@ -641,7 +709,7 @@ const TabManager = (function() {
                 return false;
             }
         },
-        
+
         registerCleanup: function(tabName, cleanupFunction) {
             if (typeof cleanupFunction === 'function') {
                 cleanupFunctions[tabName] = cleanupFunction;

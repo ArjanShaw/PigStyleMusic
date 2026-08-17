@@ -429,7 +429,6 @@
             var opt = document.createElement('option');
             opt.value = loc.id;
             opt.textContent = loc.name;
-            console.log('Adding location:', loc.id, loc.name);
             scanLocationSelect.appendChild(opt);
         });
         
