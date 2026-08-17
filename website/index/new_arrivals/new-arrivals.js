@@ -10,15 +10,26 @@
             return;
         }
 
-        // Build flip card HTML: front with image, back with browse component container
+        // Build flip card HTML: front with image, back with heading, banner, and browse component
         container.innerHTML = `
             <div class="new-arrivals-flip-card" id="newArrivalsFlipCard">
                 <div class="front">
                     <span class="new-arrivals-flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
                 </div>
                 <div class="back">
-                    <div class="new-arrivals-back-content" style="width:100%; height:100%; display:flex; flex-direction:column; padding:15px; box-sizing:border-box;">
+                    <div style="width:100%; height:100%; display:flex; flex-direction:column; padding:15px; box-sizing:border-box; background:white; border-radius:16px; overflow:hidden;">
+                        <!-- HEADING -->
                         <h2 style="text-align:center; margin:0 0 8px 0; color:#333; border-bottom:2px solid #ff6b6b; padding-bottom:6px; flex-shrink:0;">⭐ New Arrivals</h2>
+                        
+                        <!-- PROMINENT NOTIFICATION BANNER -->
+                        <div style="background: #fff3cd; border: 2px solid #ff6b6b; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(255,107,107,0.2); font-size: 15px; color: #333; display: flex; align-items: center; gap: 12px; flex-shrink:0;">
+                            <div style="background: #ff6b6b; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink:0;">
+                                <i class="fas fa-calendar-alt"></i>
+                            </div>
+                            <span style="font-weight: 500; line-height: 1.4;">Every Thursday, our new arrivals bin is refreshed with freshly listed records. Come visit us in-store to discover the latest additions!</span>
+                        </div>
+
+                        <!-- BROWSE COMPONENT CONTAINER -->
                         <div id="newArrivalsBrowseContainer" style="flex:1; min-height:0; overflow:hidden; width:100%;"></div>
                     </div>
                     <span class="new-arrivals-flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
@@ -30,6 +41,7 @@
 
         // ----- Flip logic -----
         flipCard.addEventListener('click', function(e) {
+            // Prevent flip if clicking on interactive elements inside the back
             if (e.target.closest('.browse-record-card') ||
                 e.target.closest('.new-arrivals-flip-hint') ||
                 e.target.closest('button, a, input, select, .browse-filter-btn, .browse-pagination-btn, .browse-filter-checkbox-item, .browse-filter-action-btn')) {
