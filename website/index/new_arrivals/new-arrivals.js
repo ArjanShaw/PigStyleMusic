@@ -10,17 +10,16 @@
             return;
         }
 
-        // Build flip card HTML: front with image, back with "Coming soon" message
+        // Build flip card HTML: front with image, back with browse component container
         container.innerHTML = `
             <div class="new-arrivals-flip-card" id="newArrivalsFlipCard">
                 <div class="front">
                     <span class="new-arrivals-flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
                 </div>
                 <div class="back">
-                    <div style="text-align:center; color:#888; font-size:1.2rem; padding:20px;">
-                        <i class="fas fa-box-open" style="font-size:3rem; display:block; margin-bottom:15px; color:#ccc;"></i>
-                        <p>New arrivals coming soon!</p>
-                        <p style="font-size:0.9rem; color:#999;">(Back content will be added later)</p>
+                    <div class="new-arrivals-back-content" style="width:100%; height:100%; display:flex; flex-direction:column; padding:15px; box-sizing:border-box;">
+                        <h2 style="text-align:center; margin:0 0 8px 0; color:#333; border-bottom:2px solid #ff6b6b; padding-bottom:6px; flex-shrink:0;">⭐ New Arrivals</h2>
+                        <div id="newArrivalsBrowseContainer" style="flex:1; min-height:0; overflow:hidden; width:100%;"></div>
                     </div>
                     <span class="new-arrivals-flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
                 </div>
@@ -29,18 +28,19 @@
 
         const flipCard = document.getElementById('newArrivalsFlipCard');
 
-        // ----- Flip logic: click on card toggles flip -----
+        // ----- Flip logic -----
         flipCard.addEventListener('click', function(e) {
-            // Don't flip if clicking on the hint itself (it's already a click target)
-            if (e.target.closest('.new-arrivals-flip-hint')) return;
+            if (e.target.closest('.browse-record-card') ||
+                e.target.closest('.new-arrivals-flip-hint') ||
+                e.target.closest('button, a, input, select, .browse-filter-btn, .browse-pagination-btn, .browse-filter-checkbox-item, .browse-filter-action-btn')) {
+                return;
+            }
             this.classList.toggle('flipped');
-            // Update global flippedState if it exists (for navigation persistence)
-            if (window.flippedState !== undefined) {
+            if (window.flippedState) {
                 window.flippedState[8] = this.classList.contains('flipped');
             }
         });
 
-        // Allow flip via hint clicks (stop propagation to avoid double flip)
         const hints = flipCard.querySelectorAll('.new-arrivals-flip-hint');
         hints.forEach(hint => {
             hint.addEventListener('click', function(e) {
@@ -48,12 +48,39 @@
                 const card = this.closest('.new-arrivals-flip-card');
                 if (card) {
                     card.classList.toggle('flipped');
-                    if (window.flippedState !== undefined) {
+                    if (window.flippedState) {
                         window.flippedState[8] = card.classList.contains('flipped');
                     }
                 }
             });
         });
+
+        // ----- Initialize the browse component inside the back -----
+        function initBrowse() {
+            if (typeof createBrowseComponent === 'function') {
+                var browseContainer = document.getElementById('newArrivalsBrowseContainer');
+                if (browseContainer) {
+                    var newArrivalsBrowse = createBrowseComponent('newArrivalsBrowseContainer', {
+                        statusIds: '1',
+                        defaultNewVinyl: false,
+                        requireImage: true,
+                        orderBy: 'created_at',
+                        orderDir: 'DESC'
+                    });
+                    newArrivalsBrowse.init();
+                    console.log('✅ New Arrivals browse component initialised.');
+                } else {
+                    console.warn('newArrivalsBrowseContainer not found – retrying...');
+                    setTimeout(initBrowse, 100);
+                }
+            } else {
+                console.warn('createBrowseComponent not available – retrying...');
+                setTimeout(initBrowse, 100);
+            }
+        }
+
+        // Try to initialise immediately, but retry if needed
+        initBrowse();
 
         // Initialize flip state for this tile (index 8)
         if (window.flippedState !== undefined) {
@@ -63,6 +90,6 @@
             window.flippedState[8] = false;
         }
 
-        console.log('✅ New Arrivals tile initialised (front image + empty back)');
+        console.log('✅ New Arrivals tile initialised (front image + browse component on back)');
     });
 })();
