@@ -11781,7 +11781,6 @@ def get_square_balance():
     total_balance = sum(p.get('amount_money', {}).get('amount', 0) for p in payments if p.get('status') == 'COMPLETED') / 100.0
     return jsonify({'status': 'success', 'balance': total_balance})
 
-
 @app.route('/api/accounting/external/plaid/balance', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -11795,16 +11794,13 @@ def get_plaid_balance():
         cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'plaid_access_token'")
     row = cursor.fetchone()
     conn.close()
-    # If row is None, this will raise AttributeError – no handling
-    access_token = row['config_value']
-    # No check for None – will cause Plaid client error
+    access_token = row['config_value']   # will raise AttributeError if row is None
     client = get_plaid_client()
-    request = plaid.model.accounts_balance_get_request.AccountsBalanceGetRequest(access_token=access_token)
-    response = client.accounts_balance_get(request)
+    plaid_request = plaid.model.accounts_balance_get_request.AccountsBalanceGetRequest(access_token=access_token)
+    response = client.accounts_balance_get(plaid_request)
     accounts = response['accounts']
     total_balance = sum(acc.get('balances', {}).get('current', 0) for acc in accounts)
     return jsonify({'status': 'success', 'balance': total_balance})
-
 
 # ==================== GENRES ====================
  
