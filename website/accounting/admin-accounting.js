@@ -113,135 +113,27 @@ function formatReconDate(dateStr) {
 }
 
 // ============================================================
-// PLAID RECONNECTION MODAL
+// PLAID RECONNECTION (DIRECT – NO MODAL)
 // ============================================================
 
-let reconnectModalActive = false;
-let reconnectSource = null;
-let reconnectResolve = null;
-
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function showReconnectModal(source, label, errorMsg) {
-    return new Promise((resolve) => {
-        if (reconnectModalActive) {
-            resolve(false);
-            return;
-        }
-        reconnectModalActive = true;
-        reconnectSource = source;
-
-        // Remove any existing modal
-        const existing = document.getElementById('plaid-reconnect-modal');
-        if (existing) existing.remove();
-
-        const overlay = document.createElement('div');
-        overlay.id = 'plaid-reconnect-modal';
-        overlay.style.cssText = `
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.6);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 100000;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        `;
-
-        const modal = document.createElement('div');
-        modal.style.cssText = `
-            background: white;
-            border-radius: 12px;
-            padding: 30px;
-            max-width: 480px;
-            width: 90%;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            position: relative;
-        `;
-
-        modal.innerHTML = `
-            <h3 style="margin-top:0; color:#dc3545;">
-                <i class="fas fa-exclamation-triangle"></i> ${label} Connection Error
-            </h3>
-            <p style="color:#333; margin:15px 0;">
-                <strong>Error:</strong> ${escapeHtml(errorMsg)}
-            </p>
-            <p style="color:#666; font-size:14px; margin-bottom:20px;">
-                Your ${label} connection needs to be re‑established.
-                Click the button below to reconnect via Plaid.
-            </p>
-            <div style="display:flex; gap:10px; justify-content:flex-end;">
-                <button id="plaid-reconnect-cancel" class="btn btn-secondary" style="padding:8px 16px; background:#6c757d; color:white; border:none; border-radius:4px; cursor:pointer;">
-                    Cancel
-                </button>
-                <button id="plaid-reconnect-btn" class="btn btn-primary" style="padding:8px 16px; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer;">
-                    <i class="fas fa-link"></i> Reconnect ${label}
-                </button>
-            </div>
-            <div id="plaid-reconnect-status" style="margin-top:15px; font-size:14px; color:#666; display:none;"></div>
-        `;
-
-        overlay.appendChild(modal);
-        document.body.appendChild(overlay);
-
-        // Cancel button
-        document.getElementById('plaid-reconnect-cancel').addEventListener('click', function() {
-            overlay.remove();
-            reconnectModalActive = false;
-            reconnectSource = null;
-            resolve(false);
-        });
-
-        // Reconnect button
-        document.getElementById('plaid-reconnect-btn').addEventListener('click', function() {
-            if (typeof Plaid === 'undefined') {
-                const statusDiv = document.getElementById('plaid-reconnect-status');
-                statusDiv.style.display = 'block';
-                statusDiv.innerHTML = '⚠️ Plaid library not loaded. Please refresh the page and try again.';
-                return;
-            }
-            launchPlaidReconnect(source, label);
-        });
-
-        // Close modal if clicked outside
-        overlay.addEventListener('click', function(e) {
-            if (e.target === overlay) {
-                overlay.remove();
-                reconnectModalActive = false;
-                reconnectSource = null;
-                resolve(false);
-            }
-        });
-
-        // Store resolve to resolve after reconnect
-        reconnectResolve = resolve;
-    });
-}
-
-function launchPlaidReconnect(source, label) {
-    const statusDiv = document.getElementById('plaid-reconnect-status');
-    const btn = document.getElementById('plaid-reconnect-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connecting...';
-    statusDiv.style.display = 'block';
-    statusDiv.textContent = 'Requesting link token...';
-
+function reconnectPlaid(source, label) {
+    console.log(`[PLAID] Reconnecting ${source}...`);
+    
     let endpoint;
+    let exchangeEndpoint;
+    
     if (source === 'fnbo') {
-        endpoint = `${AppConfig.baseUrl}/api/plaid/fnbo/create-link-token`;
+        endpoint = `${AppConfig.baseUrl}/api/plaid/create-link-token`;
+        exchangeEndpoint = `${AppConfig.baseUrl}/api/plaid/exchange`;
     } else if (source === 'paypal') {
         endpoint = `${AppConfig.baseUrl}/api/plaid/paypal/create-link-token`;
+        exchangeEndpoint = `${AppConfig.baseUrl}/api/plaid/paypal/exchange`;
     } else {
-        statusDiv.textContent = 'Unknown source';
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-link"></i> Reconnect';
+        showToast('Unknown source', 'error');
         return;
     }
+
+    showToast(`Connecting to ${label}...`, 'info');
 
     fetch(endpoint, {
         method: 'POST',
@@ -251,19 +143,15 @@ function launchPlaidReconnect(source, label) {
     .then(res => res.json())
     .then(data => {
         if (!data.link_token) {
-            statusDiv.textContent = 'Error: ' + (data.error || 'Failed to get link token');
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-link"></i> Reconnect';
+            showToast(`Failed to get link token: ${data.error || 'Unknown error'}`, 'error');
             return;
         }
-
-        statusDiv.textContent = 'Opening Plaid Link...';
 
         const handler = Plaid.create({
             token: data.link_token,
             onSuccess: async (public_token, metadata) => {
-                statusDiv.textContent = 'Exchanging public token...';
-                const exchangeRes = await fetch(`${AppConfig.baseUrl}/api/plaid/${source}/exchange`, {
+                showToast(`Exchanging token for ${label}...`, 'info');
+                const exchangeRes = await fetch(exchangeEndpoint, {
                     method: 'POST',
                     credentials: 'include',
                     headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
@@ -271,50 +159,25 @@ function launchPlaidReconnect(source, label) {
                 });
                 const exchangeData = await exchangeRes.json();
                 if (exchangeData.status === 'success') {
-                    statusDiv.textContent = '✅ Reconnected successfully! Refreshing...';
                     showToast(`${label} reconnected successfully!`, 'success');
-                    const overlay = document.getElementById('plaid-reconnect-modal');
-                    if (overlay) overlay.remove();
-                    reconnectModalActive = false;
-                    if (reconnectResolve) {
-                        reconnectResolve(true);
-                        reconnectResolve = null;
-                    }
-                    setTimeout(refreshAllBalances, 1000);
+                    refreshAllBalances();
+                    loadBankTransactions();
                 } else {
-                    statusDiv.textContent = '❌ Failed to exchange token: ' + (exchangeData.error || 'Unknown error');
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fas fa-link"></i> Reconnect';
-                    if (reconnectResolve) {
-                        reconnectResolve(false);
-                        reconnectResolve = null;
-                    }
+                    showToast(`Failed to exchange token: ${exchangeData.error || 'Unknown error'}`, 'error');
                 }
             },
             onExit: (err, metadata) => {
                 if (err) {
-                    statusDiv.textContent = '❌ Plaid error: ' + (err.display_message || err.error_message || 'User cancelled');
+                    showToast(`Plaid error: ${err.display_message || err.error_message || 'User cancelled'}`, 'error');
                 } else {
-                    statusDiv.textContent = '❌ Reconnection cancelled';
-                }
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-link"></i> Reconnect';
-                if (reconnectResolve) {
-                    reconnectResolve(false);
-                    reconnectResolve = null;
+                    showToast('Reconnection cancelled', 'warning');
                 }
             }
         });
         handler.open();
     })
     .catch(err => {
-        statusDiv.textContent = 'Error: ' + err.message;
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-link"></i> Reconnect';
-        if (reconnectResolve) {
-            reconnectResolve(false);
-            reconnectResolve = null;
-        }
+        showToast(`Error: ${err.message}`, 'error');
     });
 }
 
@@ -334,9 +197,10 @@ async function getSquareBalance() {
         return data.balance ?? 0;
     }
     const err = new Error(data.error || 'Unknown Square error');
-    err.plaidError = data; // attach for consistency
+    err.plaidError = data;
     throw err;
 }
+
 async function getPlaidBalance(source) {
     console.log(`[BALANCES] Fetching ${source} balance from Plaid...`);
     const res = await fetch(`${AppConfig.baseUrl}/api/accounting/external/plaid/balance?source=${source}`, {
@@ -344,7 +208,6 @@ async function getPlaidBalance(source) {
         headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
     });
     
-    // If the response is not OK, read the JSON error body
     if (!res.ok) {
         let errorData;
         try {
@@ -354,7 +217,7 @@ async function getPlaidBalance(source) {
         }
         console.log(`[BALANCES] ${source} balance error response:`, errorData);
         const err = new Error(errorData.error || 'Unknown error');
-        err.plaidError = errorData; // attach the full error response
+        err.plaidError = errorData;
         throw err;
     }
     
@@ -399,9 +262,7 @@ async function refreshAllBalances() {
         } catch (error) {
             anyError = true;
             const errorMsg = error.message || 'Unknown error';
-            const plaidError = error.plaidError;
             console.error(`[BALANCES] Error from ${src.label}:`, error);
-            console.error(`[BALANCES] plaidError object:`, plaidError);
 
             results.push({ id: src.id, balance: null, error: errorMsg });
 
@@ -410,17 +271,11 @@ async function refreshAllBalances() {
                 el.style.color = '#dc3545';
             }
 
-            // --- NEW: show alert for Plaid login required ---
-            if (plaidError && plaidError.error_code === 'ITEM_LOGIN_REQUIRED') {
-                alert(`🔔 ${src.label} connection needs re‑authentication.\nError: ${plaidError.error_message || 'Please reconnect via Plaid.'}`);
-            }
-
-            // ... rest of the modal logic (unchanged, but now plaidError will exist)
-            // You can still call showReconnectModal here if you want
+            showToast(`${src.label} error: ${errorMsg}`, 'error');
         }
     }
 
-    // Update total assets (unchanged)
+    // Update total assets
     const totalEl = document.getElementById('balance-total-assets');
     if (totalEl) {
         const validBalances = results
@@ -504,299 +359,6 @@ async function connectPayPalPlaid() {
         alert('Failed to initiate PayPal connection: ' + e.message);
     }
 }
-
-// ============================================================
-// INITIALIZATION
-// ============================================================
-
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('[INIT] DOM loaded');
-    const accountingContainer = document.getElementById('accounting-container');
-    if (!accountingContainer) {
-        console.error('[INIT] No accounting container found');
-        return;
-    }
-    console.log('[INIT] Accounting container found');
-
-    // Sub-tab switching
-    document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
-        tab.addEventListener('click', function() {
-            const sub = this.dataset.subtab;
-            console.log('[INIT] Tab clicked:', sub);
-            document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(t => t.classList.remove('active'));
-            this.classList.add('active');
-            document.querySelectorAll('#accounting-container .sub-tab-content').forEach(c => c.classList.remove('active'));
-            const target = document.getElementById('sub-' + sub);
-            if (target) target.classList.add('active');
-
-            if (sub === 'import') {
-                loadBankTransactions();
-                loadAccountBalances();
-            }
-            else if (sub === 'accounts') {
-                loadAccountsList();
-            }
-            else if (sub === 'journal') {
-                loadJournalEntries();
-            }
-            else if (sub === 'reconcile') {
-                loadReconcileAccountSelects();
-                loadReconcilePairsSummary();
-            }
-            else if (sub === 'cash-flow') {
-                console.log('[INIT] Cash Flow tab selected');
-                const now = new Date();
-                const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-                const endInput = document.getElementById('cash-flow-end');
-                if (!endInput.value) endInput.value = nextMonth.toISOString().slice(0, 7);
-                const startInput = document.getElementById('cash-flow-start');
-                if (!startInput.value) {
-                    const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-                    startInput.value = startDate.toISOString().slice(0, 7);
-                }
-                if (bankAccounts.length === 0) {
-                    loadBankAccountsForRowDropdowns().then(() => {
-                        loadCashFlow();
-                    });
-                } else {
-                    loadCashFlow();
-                }
-            }
-            else if (sub === 'monthly-pl') {
-                console.log('[INIT] Monthly P&L tab selected');
-                const now = new Date();
-                const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-                const endInput = document.getElementById('pl-end');
-                if (!endInput.value) endInput.value = nextMonth.toISOString().slice(0, 7);
-                const startInput = document.getElementById('pl-start');
-                if (!startInput.value) {
-                    const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-                    startInput.value = startDate.toISOString().slice(0, 7);
-                }
-                if (bankAccounts.length === 0) {
-                    loadBankAccountsForRowDropdowns().then(() => {
-                        loadMonthlyPL();
-                    });
-                } else {
-                    loadMonthlyPL();
-                }
-            }
-            else if (sub === 'balance-sheet') {
-                console.log('[INIT] Balance Sheet tab selected');
-                const now = new Date();
-                const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-                const endInput = document.getElementById('bs-end');
-                if (!endInput.value) endInput.value = nextMonth.toISOString().slice(0, 7);
-                const startInput = document.getElementById('bs-start');
-                if (!startInput.value) {
-                    const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-                    startInput.value = startDate.toISOString().slice(0, 7);
-                }
-                if (bankAccounts.length === 0) {
-                    loadBankAccountsForRowDropdowns().then(() => {
-                        loadBalanceSheet();
-                    });
-                } else {
-                    loadBalanceSheet();
-                }
-            }
-            else if (sub === 'reports') {
-                // nothing to auto-load
-            }
-        });
-    });
-
-    // Pagination for journal
-    document.getElementById('journal-prev')?.addEventListener('click', () => {
-        if (journalCurrentPage > 1) { journalCurrentPage--; loadJournalEntries(); }
-    });
-    document.getElementById('journal-next')?.addEventListener('click', () => {
-        const totalPages = Math.ceil(journalTotalEntries / journalPageSize);
-        if (journalCurrentPage < totalPages) { journalCurrentPage++; loadJournalEntries(); }
-    });
-
-    // Load accounts into dropdowns
-    loadAccountSelects();
-
-    // Load default date range for reports
-    const today = new Date().toISOString().split('T')[0];
-    const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
-    document.getElementById('report-date-from').value = firstDay;
-    document.getElementById('report-date-to').value = today;
-
-    // Load import (bank) by default
-    loadBankTransactions();
-    loadAccountBalances();
-
-    // ---- Handle OAuth redirect from Plaid ----
-    const urlParams = new URLSearchParams(window.location.search);
-    const publicToken = urlParams.get('public_token');
-    if (publicToken) {
-        console.log('[INIT] Plaid OAuth redirect detected');
-        fetch('/api/plaid/exchange', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            credentials: 'include',
-            body: JSON.stringify({public_token: publicToken})
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.status === 'success') {
-                alert('Bank connected successfully!');
-                window.history.replaceState({}, document.title, window.location.pathname);
-                loadBankTransactions();
-                loadAccountBalances();
-            } else {
-                alert('Failed to connect bank: ' + (data.error || 'Unknown error'));
-            }
-        })
-        .catch(err => {
-            alert('Error: ' + err.message);
-        });
-    }
-
-    // ---- Import (Bank) Tab: Search button and Enter key ----
-    document.getElementById('bank-search-btn')?.addEventListener('click', function() {
-        console.log('[BANK] Search button clicked');
-        loadBankTransactions();
-    });
-
-    document.getElementById('bank-filter')?.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            console.log('[BANK] Enter key pressed in search');
-            loadBankTransactions();
-        }
-    });
-
-    // Auto-load when source or view filter changes
-    document.getElementById('bank-source')?.addEventListener('change', function() {
-        loadBankTransactions();
-    });
-    document.getElementById('bank-view-filter')?.addEventListener('change', function() {
-        loadBankTransactions();
-    });
-
-    // Accounts tab - add account form
-    document.getElementById('add-account-btn')?.addEventListener('click', function() {
-        console.log('[INIT] Add account button clicked');
-        document.getElementById('add-account-modal').classList.add('active');
-    });
-
-    document.getElementById('close-add-account-modal')?.addEventListener('click', function() {
-        console.log('[INIT] Close add account modal');
-        document.getElementById('add-account-modal').classList.remove('active');
-    });
-
-    document.getElementById('save-account-btn')?.addEventListener('click', function() {
-        console.log('[INIT] Save account button clicked');
-        saveAccount();
-    });
-
-    // Close modal on overlay
-    document.querySelectorAll('.modal-overlay').forEach(modal => {
-        modal.addEventListener('click', function(e) {
-            if (e.target === this) {
-                console.log('[INIT] Modal overlay clicked, closing');
-                this.classList.remove('active');
-            }
-        });
-    });
-
-    // Save reconcile pair button
-    document.getElementById('save-reconcile-pair-btn')?.addEventListener('click', async function() {
-        const name = document.getElementById('reconcile-pair-name').value.trim();
-        const description = document.getElementById('reconcile-pair-description').value.trim();
-        const accountA = document.getElementById('reconcile-pair-account-a').value;
-        const accountB = document.getElementById('reconcile-pair-account-b').value;
-        if (!accountA || !accountB) {
-            alert('Please select both accounts.');
-            return;
-        }
-        if (accountA === accountB) {
-            alert('Accounts must be different.');
-            return;
-        }
-        try {
-            const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/pairs`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ account_a_id: parseInt(accountA), account_b_id: parseInt(accountB), name, description })
-            });
-            const data = await res.json();
-            if (data.status === 'success') {
-                document.getElementById('reconcile-pair-modal').classList.remove('active');
-                loadReconcilePairsSummary();
-            } else {
-                alert(data.error || 'Failed to add pair.');
-            }
-        } catch (err) {
-            console.error(err);
-            alert('Error adding pair.');
-        }
-    });
-
-    // Save edit reconcile pair button
-    document.getElementById('save-reconcile-edit-btn')?.addEventListener('click', async function() {
-        const id = document.getElementById('reconcile-edit-id').value;
-        const name = document.getElementById('reconcile-edit-name').value.trim();
-        const description = document.getElementById('reconcile-edit-description').value.trim();
-        if (!name) {
-            alert('Name is required.');
-            return;
-        }
-        try {
-            const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/pairs/${id}`, {
-                method: 'PUT',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, description })
-            });
-            const data = await res.json();
-            if (data.status === 'success') {
-                document.getElementById('reconcile-edit-modal').classList.remove('active');
-                loadReconcilePairsSummary();
-            } else {
-                alert(data.error || 'Failed to update pair.');
-            }
-        } catch (err) {
-            console.error(err);
-            alert('Error updating pair.');
-        }
-    });
-
-    // Bulk Post button
-    document.getElementById('post-updates-btn')?.addEventListener('click', function() {
-        bulkPostTransactions();
-    });
-
-    // Clear selections button
-    document.getElementById('clear-selections-btn')?.addEventListener('click', function() {
-        clearAllSelections();
-    });
-
-    // Select all checkbox
-    document.getElementById('select-all-tx')?.addEventListener('change', function() {
-        const checkboxes = document.querySelectorAll('#bank-body .tx-select:not(:disabled)');
-        checkboxes.forEach(cb => cb.checked = this.checked);
-        populateBulkAccountSelect();
-    });
-
-    // Bulk Assign Account button
-    document.getElementById('bulk-assign-btn')?.addEventListener('click', function() {
-        bulkAssignAccount();
-    });
-
-    // Bulk account select - show/hide based on selection
-    document.addEventListener('change', function(e) {
-        if (e.target.classList.contains('tx-select')) {
-            populateBulkAccountSelect();
-        }
-    });
-
-    console.log('[INIT] Initialization complete');
-});
 
 // ============================================================
 // ACCOUNT DROPDOWNS
@@ -3313,4 +2875,297 @@ async function loadBankAccountsForRowDropdowns() {
         console.error('[BANK] Failed to load accounts for row dropdowns:', e);
         throw e;
     }
-} 
+}
+
+// ============================================================
+// INITIALIZATION (the last piece – already included above)
+// ============================================================
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('[INIT] DOM loaded');
+    const accountingContainer = document.getElementById('accounting-container');
+    if (!accountingContainer) {
+        console.error('[INIT] No accounting container found');
+        return;
+    }
+    console.log('[INIT] Accounting container found');
+
+    // Sub-tab switching
+    document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            const sub = this.dataset.subtab;
+            console.log('[INIT] Tab clicked:', sub);
+            document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+            document.querySelectorAll('#accounting-container .sub-tab-content').forEach(c => c.classList.remove('active'));
+            const target = document.getElementById('sub-' + sub);
+            if (target) target.classList.add('active');
+
+            if (sub === 'import') {
+                loadBankTransactions();
+                loadAccountBalances();
+            }
+            else if (sub === 'accounts') {
+                loadAccountsList();
+            }
+            else if (sub === 'journal') {
+                loadJournalEntries();
+            }
+            else if (sub === 'reconcile') {
+                loadReconcileAccountSelects();
+                loadReconcilePairsSummary();
+            }
+            else if (sub === 'cash-flow') {
+                console.log('[INIT] Cash Flow tab selected');
+                const now = new Date();
+                const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+                const endInput = document.getElementById('cash-flow-end');
+                if (!endInput.value) endInput.value = nextMonth.toISOString().slice(0, 7);
+                const startInput = document.getElementById('cash-flow-start');
+                if (!startInput.value) {
+                    const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+                    startInput.value = startDate.toISOString().slice(0, 7);
+                }
+                if (bankAccounts.length === 0) {
+                    loadBankAccountsForRowDropdowns().then(() => {
+                        loadCashFlow();
+                    });
+                } else {
+                    loadCashFlow();
+                }
+            }
+            else if (sub === 'monthly-pl') {
+                console.log('[INIT] Monthly P&L tab selected');
+                const now = new Date();
+                const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+                const endInput = document.getElementById('pl-end');
+                if (!endInput.value) endInput.value = nextMonth.toISOString().slice(0, 7);
+                const startInput = document.getElementById('pl-start');
+                if (!startInput.value) {
+                    const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+                    startInput.value = startDate.toISOString().slice(0, 7);
+                }
+                if (bankAccounts.length === 0) {
+                    loadBankAccountsForRowDropdowns().then(() => {
+                        loadMonthlyPL();
+                    });
+                } else {
+                    loadMonthlyPL();
+                }
+            }
+            else if (sub === 'balance-sheet') {
+                console.log('[INIT] Balance Sheet tab selected');
+                const now = new Date();
+                const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+                const endInput = document.getElementById('bs-end');
+                if (!endInput.value) endInput.value = nextMonth.toISOString().slice(0, 7);
+                const startInput = document.getElementById('bs-start');
+                if (!startInput.value) {
+                    const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+                    startInput.value = startDate.toISOString().slice(0, 7);
+                }
+                if (bankAccounts.length === 0) {
+                    loadBankAccountsForRowDropdowns().then(() => {
+                        loadBalanceSheet();
+                    });
+                } else {
+                    loadBalanceSheet();
+                }
+            }
+            else if (sub === 'reports') {
+                // nothing to auto-load
+            }
+        });
+    });
+
+    // Pagination for journal
+    document.getElementById('journal-prev')?.addEventListener('click', () => {
+        if (journalCurrentPage > 1) { journalCurrentPage--; loadJournalEntries(); }
+    });
+    document.getElementById('journal-next')?.addEventListener('click', () => {
+        const totalPages = Math.ceil(journalTotalEntries / journalPageSize);
+        if (journalCurrentPage < totalPages) { journalCurrentPage++; loadJournalEntries(); }
+    });
+
+    // Load accounts into dropdowns
+    loadAccountSelects();
+
+    // Load default date range for reports
+    const today = new Date().toISOString().split('T')[0];
+    const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    document.getElementById('report-date-from').value = firstDay;
+    document.getElementById('report-date-to').value = today;
+
+    // Load import (bank) by default
+    loadBankTransactions();
+    loadAccountBalances();
+
+    // ---- Handle OAuth redirect from Plaid ----
+    const urlParams = new URLSearchParams(window.location.search);
+    const publicToken = urlParams.get('public_token');
+    if (publicToken) {
+        console.log('[INIT] Plaid OAuth redirect detected');
+        fetch('/api/plaid/exchange', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'include',
+            body: JSON.stringify({public_token: publicToken})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert('Bank connected successfully!');
+                window.history.replaceState({}, document.title, window.location.pathname);
+                loadBankTransactions();
+                loadAccountBalances();
+            } else {
+                alert('Failed to connect bank: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            alert('Error: ' + err.message);
+        });
+    }
+
+    // ---- Import (Bank) Tab: Search button and Enter key ----
+    document.getElementById('bank-search-btn')?.addEventListener('click', function() {
+        console.log('[BANK] Search button clicked');
+        loadBankTransactions();
+    });
+
+    document.getElementById('bank-filter')?.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            console.log('[BANK] Enter key pressed in search');
+            loadBankTransactions();
+        }
+    });
+
+    // Auto-load when source or view filter changes
+    document.getElementById('bank-source')?.addEventListener('change', function() {
+        loadBankTransactions();
+    });
+    document.getElementById('bank-view-filter')?.addEventListener('change', function() {
+        loadBankTransactions();
+    });
+
+    // Accounts tab - add account form
+    document.getElementById('add-account-btn')?.addEventListener('click', function() {
+        console.log('[INIT] Add account button clicked');
+        document.getElementById('add-account-modal').classList.add('active');
+    });
+
+    document.getElementById('close-add-account-modal')?.addEventListener('click', function() {
+        console.log('[INIT] Close add account modal');
+        document.getElementById('add-account-modal').classList.remove('active');
+    });
+
+    document.getElementById('save-account-btn')?.addEventListener('click', function() {
+        console.log('[INIT] Save account button clicked');
+        saveAccount();
+    });
+
+    // Close modal on overlay
+    document.querySelectorAll('.modal-overlay').forEach(modal => {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                console.log('[INIT] Modal overlay clicked, closing');
+                this.classList.remove('active');
+            }
+        });
+    });
+
+    // Save reconcile pair button
+    document.getElementById('save-reconcile-pair-btn')?.addEventListener('click', async function() {
+        const name = document.getElementById('reconcile-pair-name').value.trim();
+        const description = document.getElementById('reconcile-pair-description').value.trim();
+        const accountA = document.getElementById('reconcile-pair-account-a').value;
+        const accountB = document.getElementById('reconcile-pair-account-b').value;
+        if (!accountA || !accountB) {
+            alert('Please select both accounts.');
+            return;
+        }
+        if (accountA === accountB) {
+            alert('Accounts must be different.');
+            return;
+        }
+        try {
+            const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/pairs`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ account_a_id: parseInt(accountA), account_b_id: parseInt(accountB), name, description })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                document.getElementById('reconcile-pair-modal').classList.remove('active');
+                loadReconcilePairsSummary();
+            } else {
+                alert(data.error || 'Failed to add pair.');
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Error adding pair.');
+        }
+    });
+
+    // Save edit reconcile pair button
+    document.getElementById('save-reconcile-edit-btn')?.addEventListener('click', async function() {
+        const id = document.getElementById('reconcile-edit-id').value;
+        const name = document.getElementById('reconcile-edit-name').value.trim();
+        const description = document.getElementById('reconcile-edit-description').value.trim();
+        if (!name) {
+            alert('Name is required.');
+            return;
+        }
+        try {
+            const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/pairs/${id}`, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, description })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                document.getElementById('reconcile-edit-modal').classList.remove('active');
+                loadReconcilePairsSummary();
+            } else {
+                alert(data.error || 'Failed to update pair.');
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Error updating pair.');
+        }
+    });
+
+    // Bulk Post button
+    document.getElementById('post-updates-btn')?.addEventListener('click', function() {
+        bulkPostTransactions();
+    });
+
+    // Clear selections button
+    document.getElementById('clear-selections-btn')?.addEventListener('click', function() {
+        clearAllSelections();
+    });
+
+    // Select all checkbox
+    document.getElementById('select-all-tx')?.addEventListener('change', function() {
+        const checkboxes = document.querySelectorAll('#bank-body .tx-select:not(:disabled)');
+        checkboxes.forEach(cb => cb.checked = this.checked);
+        populateBulkAccountSelect();
+    });
+
+    // Bulk Assign Account button
+    document.getElementById('bulk-assign-btn')?.addEventListener('click', function() {
+        bulkAssignAccount();
+    });
+
+    // Bulk account select - show/hide based on selection
+    document.addEventListener('change', function(e) {
+        if (e.target.classList.contains('tx-select')) {
+            populateBulkAccountSelect();
+        }
+    });
+
+    console.log('[INIT] Initialization complete');
+});

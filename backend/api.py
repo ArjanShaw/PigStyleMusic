@@ -13828,5 +13828,45 @@ def get_event_rsvps(event_id):
 
     return jsonify({'status': 'success', 'rsvps': rsvps})
 
+
+@app.route('/api/plaid/create-link-token', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def plaid_create_link_token():
+    """
+    Create a Plaid Link token for the main (FNBO) connection.
+    Stores the token in app_config with key 'plaid_access_token' after exchange.
+    """
+    try:
+        client_id = os.environ.get('PLAID_CLIENT_ID')
+        secret = os.environ.get('PLAID_SECRET')
+        env = os.environ.get('PLAID_ENV', 'sandbox')
+        
+        if not client_id or not secret:
+            return jsonify({'status': 'error', 'error': 'Plaid not configured'}), 500
+        
+        host = plaid.Environment.Production if env == 'production' else plaid.Environment.Sandbox
+        configuration = plaid.Configuration(host=host, api_key={'clientId': client_id, 'secret': secret})
+        api_client = plaid.ApiClient(configuration)
+        client = plaid_api.PlaidApi(api_client)
+        
+        # Use the same user ID as the session
+        user_id = str(session.get('user_id', 'admin'))
+        
+        request = LinkTokenCreateRequest(
+            user=LinkTokenCreateRequestUser(client_user_id=user_id),
+            client_name="PigStyle Music",
+            products=[Products('transactions')],
+            country_codes=[CountryCode('US')],
+            language='en'
+        )
+        
+        response = client.link_token_create(request)
+        return jsonify({'link_token': response['link_token']})
+        
+    except Exception as e:
+        app.logger.error(f"FNBO link token error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
