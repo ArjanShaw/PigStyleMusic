@@ -112,14 +112,6 @@ function formatReconDate(dateStr) {
     }
 }
 
-// ============================================================
-// EXTERNAL BALANCE CARDS - FIXED VERSION
-// ============================================================
-
-/**
- * Load all external account balances and update the stats cards
- * Fetches from Plaid (FNBO, PayPal) and Square API
- */
 async function refreshAllBalances() {
     console.log('[BALANCES] Refreshing all external account balances...');
     
@@ -131,7 +123,6 @@ async function refreshAllBalances() {
     });
     
     try {
-        // Load balances in parallel with proper error handling
         const [squareBalance, fnboBalance, paypalBalance] = await Promise.all([
             getSquareBalance(),
             getPlaidBalance('fnbo'),
@@ -143,45 +134,58 @@ async function refreshAllBalances() {
         // Update Square balance
         const squareEl = document.getElementById('balance-square');
         if (squareEl) {
-            const displayAmount = squareBalance !== null && squareBalance !== undefined ? squareBalance : 0;
-            squareEl.textContent = formatCurrency(displayAmount);
-            squareEl.style.color = displayAmount >= 0 ? '#28a745' : '#dc3545';
+            if (squareBalance === null) {
+                squareEl.textContent = '⚠️ Error';
+                squareEl.style.color = '#dc3545';
+            } else {
+                squareEl.textContent = formatCurrency(squareBalance);
+                squareEl.style.color = squareBalance >= 0 ? '#28a745' : '#dc3545';
+            }
         }
         
         // Update FNBO balance
         const fnboEl = document.getElementById('balance-fnbo');
         if (fnboEl) {
-            const displayAmount = fnboBalance !== null && fnboBalance !== undefined ? fnboBalance : 0;
-            fnboEl.textContent = formatCurrency(displayAmount);
-            fnboEl.style.color = displayAmount >= 0 ? '#28a745' : '#dc3545';
+            if (fnboBalance === null) {
+                fnboEl.textContent = '⚠️ Error';
+                fnboEl.style.color = '#dc3545';
+            } else {
+                fnboEl.textContent = formatCurrency(fnboBalance);
+                fnboEl.style.color = fnboBalance >= 0 ? '#28a745' : '#dc3545';
+            }
         }
         
         // Update PayPal balance
         const paypalEl = document.getElementById('balance-paypal');
         if (paypalEl) {
-            const displayAmount = paypalBalance !== null && paypalBalance !== undefined ? paypalBalance : 0;
-            paypalEl.textContent = formatCurrency(displayAmount);
-            paypalEl.style.color = displayAmount >= 0 ? '#28a745' : '#dc3545';
+            if (paypalBalance === null) {
+                paypalEl.textContent = '⚠️ Error';
+                paypalEl.style.color = '#dc3545';
+            } else {
+                paypalEl.textContent = formatCurrency(paypalBalance);
+                paypalEl.style.color = paypalBalance >= 0 ? '#28a745' : '#dc3545';
+            }
         }
         
-        // Calculate total assets (sum of all external balances)
-        const totalAssets = (squareBalance || 0) + (fnboBalance || 0) + (paypalBalance || 0);
+        // Calculate total assets only if all are non-null
         const totalEl = document.getElementById('balance-total-assets');
         if (totalEl) {
-            totalEl.textContent = formatCurrency(totalAssets);
-            totalEl.style.color = '#6f42c1';
+            const validBalances = [squareBalance, fnboBalance, paypalBalance].filter(b => b !== null);
+            if (validBalances.length === 0) {
+                totalEl.textContent = '⚠️ Error';
+                totalEl.style.color = '#dc3545';
+            } else {
+                const totalAssets = validBalances.reduce((sum, b) => sum + b, 0);
+                totalEl.textContent = formatCurrency(totalAssets);
+                totalEl.style.color = '#6f42c1';
+            }
         }
         
-        console.log('[BALANCES] Updated all balance cards:', {
-            square: squareBalance,
-            fnbo: fnboBalance,
-            paypal: paypalBalance,
-            total: totalAssets
-        });
+        console.log('[BALANCES] Updated all balance cards with error handling');
         
     } catch (error) {
         console.error('[BALANCES] Error refreshing balances:', error);
-        // Show error state on cards
+        // Show error state on all cards
         const cardIds = ['balance-square', 'balance-fnbo', 'balance-paypal', 'balance-total-assets'];
         cardIds.forEach(id => {
             const el = document.getElementById(id);
@@ -225,9 +229,6 @@ async function getSquareBalance() {
     }
 }
 
-/**
- * Get Plaid balance for a specific source (fnbo or paypal)
- */
 async function getPlaidBalance(source) {
     try {
         console.log(`[BALANCES] Fetching ${source} balance from Plaid...`);
@@ -239,19 +240,19 @@ async function getPlaidBalance(source) {
         if (!res.ok) {
             const errorText = await res.text();
             console.warn(`[BALANCES] ${source} balance API error:`, res.status, errorText);
-            return 0;
+            return null;   // ← error indicator
         }
         
         const data = await res.json();
         console.log(`[BALANCES] ${source} balance response:`, data);
         
         if (data.status === 'success') {
-            return data.balance || 0;
+            return data.balance ?? 0;
         }
-        return 0;
+        return null;   // ← error indicator
     } catch (error) {
         console.warn(`[BALANCES] Error getting ${source} balance:`, error);
-        return 0;
+        return null;   // ← error indicator
     }
 }
 
