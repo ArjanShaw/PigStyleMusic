@@ -19,21 +19,19 @@
     <link rel="stylesheet" href="index.css">
     <link rel="stylesheet" href="/static/css/shared.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <!-- New Arrivals CSS -->
+    <!-- New Arrivals CSS (front image only) -->
     <link rel="stylesheet" href="new_arrivals/new-arrivals.css">
 
     <!-- JS FILES -->
     <script src="/static/js/app-config.js"></script>
     <script src="/static/js/shared.js"></script>
     <script src="/static/js/merchandise-store.js"></script>
-        <script src="/static/js/browse-component.js"></script>
-
+    <script src="/static/js/browse-component.js"></script>
     <script src="/static/js/index.js"></script>
     <script src="/static/js/events-component.js"></script>
     <script src="/static/js/connect-component.js"></script>
     <script src="/static/js/alerts-component.js"></script>
     <script src="/static/js/order-component.js"></script>
-    <!-- New Arrivals JS -->
     <script src="new_arrivals/new-arrivals.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
@@ -170,7 +168,7 @@
                 </div>
             </div>
 
-            <!-- Tile 1: Shop (Browse) - "New Arrivals" button REMOVED -->
+            <!-- Tile 1: Shop (Browse) - hardcoded HTML (New Arrivals button removed) -->
             <div class="tile" data-index="1">
                 <div class="flip-card" id="flipCard1">
                     <div class="flip-card-front shop-front">
@@ -220,7 +218,7 @@
                                 </div>
                                 <!-- Filter Status Row -->
                                 <div id="browseFilterStatusRow" class="browse-filter-status-row visible">
-                                    <div class="browse-filter-summary" id="browseFilterSummary">New Arrivals (last 7 days) <span class="result-count-badge">0 results</span></div>
+                                    <div class="browse-filter-summary" id="browseFilterSummary">All Records <span class="result-count-badge">0 results</span></div>
                                     <button id="browseClearAllFiltersBtn" class="browse-clear-filters-link">Clear all ✕</button>
                                 </div>
                                 <div id="browseCatalogContainer">
@@ -456,7 +454,6 @@
                 <div class="flip-card" id="flipCard7" style="background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
                     <div class="cart-tile-content" id="cartTileContent">
                         <div class="cart-header">🛒 Your Cart</div>
-                        <!-- Confirmation message -->
                         <div id="cartConfirmationMessage" class="confirmation-message">
                             ✅ Your order has been placed successfully! Thank you for shopping at PigStyle Music.
                         </div>
@@ -1630,14 +1627,11 @@
             const email = document.getElementById('rsvpEmail').value.trim();
             const errorDiv = document.getElementById('rsvpError');
 
-            // Name is now required
             if (!name) {
                 errorDiv.textContent = 'Name is required.';
                 errorDiv.style.display = 'block';
                 return;
             }
-
-            // Email is required
             if (!email) {
                 errorDiv.textContent = 'Email is required.';
                 errorDiv.style.display = 'block';
@@ -1691,7 +1685,6 @@
             });
         }
 
-        // Close RSVP modal when clicking outside
         document.addEventListener('DOMContentLoaded', function() {
             const modal = document.getElementById('rsvpModal');
             if (modal) {
@@ -1701,7 +1694,7 @@
             }
         });
 
-        // ============ RSVP LIST FUNCTIONS ============
+        // ============ RSVP LIST ============
         function showRsvpList(eventId) {
             const modal = document.getElementById('rsvpListModal');
             const content = document.getElementById('rsvpListContent');
@@ -1745,7 +1738,6 @@
             document.getElementById('rsvpListModal').style.display = 'none';
         }
 
-        // Close RSVP list modal when clicking outside
         document.addEventListener('DOMContentLoaded', function() {
             const modal = document.getElementById('rsvpListModal');
             if (modal) {
@@ -1755,7 +1747,6 @@
             }
         });
 
-        // Helper escape function for RSVP list
         function escapeHtml(text) {
             if (!text) return '';
             const div = document.createElement('div');
