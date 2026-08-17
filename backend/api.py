@@ -11781,6 +11781,11 @@ def get_square_balance():
     total_balance = sum(p.get('amount_money', {}).get('amount', 0) for p in payments if p.get('status') == 'COMPLETED') / 100.0
     return jsonify({'status': 'success', 'balance': total_balance})
 
+
+import json
+import plaid
+from plaid.exceptions import ApiException
+
 @app.route('/api/accounting/external/plaid/balance', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -11794,14 +11799,56 @@ def get_plaid_balance():
         cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'plaid_access_token'")
     row = cursor.fetchone()
     conn.close()
-    access_token = row['config_value']   # will raise AttributeError if row is None
-    client = get_plaid_client()
-    plaid_request = plaid.model.accounts_balance_get_request.AccountsBalanceGetRequest(access_token=access_token)
-    response = client.accounts_balance_get(plaid_request)
-    accounts = response['accounts']
-    total_balance = sum(acc.get('balances', {}).get('current', 0) for acc in accounts)
-    return jsonify({'status': 'success', 'balance': total_balance})
+    
+    if not row or not row['config_value']:
+        return jsonify({
+            'status': 'error',
+            'error': f'{source.capitalize()} not connected via Plaid',
+            'error_code': 'NO_TOKEN'
+        }), 400
 
+    access_token = row['config_value']
+    
+    try:
+        client = get_plaid_client()
+        plaid_request = plaid.model.accounts_balance_get_request.AccountsBalanceGetRequest(access_token=access_token)
+        response = client.accounts_balance_get(plaid_request)
+        accounts = response['accounts']
+        total_balance = sum(acc.get('balances', {}).get('current', 0) for acc in accounts)
+        return jsonify({'status': 'success', 'balance': total_balance})
+    
+    except ApiException as e:
+        # Parse the response body (which is a JSON string)
+        try:
+            error_body = json.loads(e.body) if e.body else {}
+        except:
+            error_body = {}
+        
+        error_code = error_body.get('error_code', 'UNKNOWN')
+        error_type = error_body.get('error_type', 'UNKNOWN')
+        error_message = error_body.get('error_message', str(e))
+        
+        # Return a structured error response with CORS headers
+        resp = jsonify({
+            'status': 'error',
+            'error': error_message,
+            'error_code': error_code,
+            'error_type': error_type,
+            'plaid_error': error_body
+        })
+        resp.status_code = 400
+        # Ensure CORS headers are set
+        resp.headers['Access-Control-Allow-Origin'] = 'http://localhost:8000'
+        resp.headers['Access-Control-Allow-Credentials'] = 'true'
+        return resp
+    
+    except Exception as e:
+        # Any other error
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'error_code': 'SERVER_ERROR'
+        }), 500
 # ==================== GENRES ====================
  
 @app.route('/api/formats', methods=['GET'])
