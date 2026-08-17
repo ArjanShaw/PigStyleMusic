@@ -14,7 +14,7 @@ ADMIN_DIR       = os.path.join(BASE_DIR, 'admin')          # website/admin
 INDEX_DIR       = os.path.join(BASE_DIR, 'index')          # website/HTML
 STATIC_DIR      = os.path.join(BASE_DIR, 'static')         # website/static
 COMPONENTS_DIR  = os.path.join(BASE_DIR, 'components')     # website/components (for public tile)
-ACCOUNTING_DIR  = os.path.join(BASE_DIR, 'accounting')     # website/accounting (for accounting page)
+ACCOUNTING_DIR  = os.path.join(BASE_DIR, 'accounting')     # website/accounting
 
 def is_admin():
     return session.get('logged_in') and session.get('role') == 'admin'
@@ -48,14 +48,12 @@ def admin_css():
 def admin_accounting():
     if not is_admin():
         return redirect('/access-denied')
-    # Try accounting/ first, then admin/, then index/ as fallback
-    for directory in [ACCOUNTING_DIR, ADMIN_DIR, INDEX_DIR]:
-        file_path = os.path.join(directory, 'admin-accounting.html')
-        if os.path.exists(file_path):
-            print(f"[DEBUG] Serving admin-accounting.html from {directory}")
-            return send_from_directory(directory, 'admin-accounting.html')
-    # If not found, return 404
-    abort(404, description="admin-accounting.html not found in accounting/, admin/, or index/ folders.")
+    return send_from_directory(ACCOUNTING_DIR, 'admin-accounting.html')
+
+# --- NEW: Serve static assets from accounting folder ---
+@app.route('/accounting/<path:filename>')
+def serve_accounting(filename):
+    return send_from_directory(ACCOUNTING_DIR, filename)
 
 # --- Admin component route (for events tab) ---
 @app.route('/admin-components/<component>/<path:filename>')
@@ -139,8 +137,8 @@ def debug():
     admin.html: {os.path.join(ADMIN_DIR, 'admin.html')} → exists? {os.path.exists(os.path.join(ADMIN_DIR, 'admin.html'))}<br>
     admin.css: {os.path.join(ADMIN_DIR, 'admin.css')} → exists? {os.path.exists(os.path.join(ADMIN_DIR, 'admin.css'))}<br>
     admin-accounting.html in ACCOUNTING_DIR: {os.path.join(ACCOUNTING_DIR, 'admin-accounting.html')} → exists? {os.path.exists(os.path.join(ACCOUNTING_DIR, 'admin-accounting.html'))}<br>
-    admin-accounting.html in ADMIN_DIR: {os.path.join(ADMIN_DIR, 'admin-accounting.html')} → exists? {os.path.exists(os.path.join(ADMIN_DIR, 'admin-accounting.html'))}<br>
-    admin-accounting.html in INDEX_DIR: {os.path.join(INDEX_DIR, 'admin-accounting.html')} → exists? {os.path.exists(os.path.join(INDEX_DIR, 'admin-accounting.html'))}<br>
+    admin-accounting.css in ACCOUNTING_DIR: {os.path.join(ACCOUNTING_DIR, 'admin-accounting.css')} → exists? {os.path.exists(os.path.join(ACCOUNTING_DIR, 'admin-accounting.css'))}<br>
+    admin-accounting.js in ACCOUNTING_DIR: {os.path.join(ACCOUNTING_DIR, 'admin-accounting.js')} → exists? {os.path.exists(os.path.join(ACCOUNTING_DIR, 'admin-accounting.js'))}<br>
     INDEX_DIR: {INDEX_DIR} → exists? {os.path.exists(INDEX_DIR)}<br>
     STATIC_DIR: {STATIC_DIR} → exists? {os.path.exists(STATIC_DIR)}<br>
     COMPONENTS_DIR: {COMPONENTS_DIR} → exists? {os.path.exists(COMPONENTS_DIR)}
