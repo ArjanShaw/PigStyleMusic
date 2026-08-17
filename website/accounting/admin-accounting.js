@@ -230,30 +230,17 @@ async function getSquareBalance() {
 }
 
 async function getPlaidBalance(source) {
-    try {
-        console.log(`[BALANCES] Fetching ${source} balance from Plaid...`);
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/external/plaid/balance?source=${source}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        
-        if (!res.ok) {
-            const errorText = await res.text();
-            console.warn(`[BALANCES] ${source} balance API error:`, res.status, errorText);
-            return null;   // ← error indicator
-        }
-        
-        const data = await res.json();
-        console.log(`[BALANCES] ${source} balance response:`, data);
-        
-        if (data.status === 'success') {
-            return data.balance ?? 0;
-        }
-        return null;   // ← error indicator
-    } catch (error) {
-        console.warn(`[BALANCES] Error getting ${source} balance:`, error);
-        return null;   // ← error indicator
+    console.log(`[BALANCES] Fetching ${source} balance from Plaid...`);
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/external/plaid/balance?source=${source}`, {
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    console.log(`[BALANCES] ${source} balance response:`, data);
+    if (data.status === 'success') {
+        return data.balance ?? 0;
     }
+    throw new Error(data.error || 'Unknown error');
 }
 
 /**
