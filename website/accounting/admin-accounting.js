@@ -112,140 +112,333 @@ function formatReconDate(dateStr) {
     }
 }
 
-async function refreshAllBalances() {
-    console.log('[BALANCES] Refreshing all external account balances...');
-    
-    // Show loading state
-    const cardIds = ['balance-square', 'balance-fnbo', 'balance-paypal', 'balance-total-assets'];
-    cardIds.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = 'Loading...';
+// ============================================================
+// PLAID RECONNECTION MODAL
+// ============================================================
+
+let reconnectModalActive = false;
+let reconnectSource = null;
+let reconnectResolve = null;
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showReconnectModal(source, label, errorMsg) {
+    return new Promise((resolve) => {
+        if (reconnectModalActive) {
+            resolve(false);
+            return;
+        }
+        reconnectModalActive = true;
+        reconnectSource = source;
+
+        // Remove any existing modal
+        const existing = document.getElementById('plaid-reconnect-modal');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'plaid-reconnect-modal';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100000;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        `;
+
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 480px;
+            width: 90%;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            position: relative;
+        `;
+
+        modal.innerHTML = `
+            <h3 style="margin-top:0; color:#dc3545;">
+                <i class="fas fa-exclamation-triangle"></i> ${label} Connection Error
+            </h3>
+            <p style="color:#333; margin:15px 0;">
+                <strong>Error:</strong> ${escapeHtml(errorMsg)}
+            </p>
+            <p style="color:#666; font-size:14px; margin-bottom:20px;">
+                Your ${label} connection needs to be re‑established.
+                Click the button below to reconnect via Plaid.
+            </p>
+            <div style="display:flex; gap:10px; justify-content:flex-end;">
+                <button id="plaid-reconnect-cancel" class="btn btn-secondary" style="padding:8px 16px; background:#6c757d; color:white; border:none; border-radius:4px; cursor:pointer;">
+                    Cancel
+                </button>
+                <button id="plaid-reconnect-btn" class="btn btn-primary" style="padding:8px 16px; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer;">
+                    <i class="fas fa-link"></i> Reconnect ${label}
+                </button>
+            </div>
+            <div id="plaid-reconnect-status" style="margin-top:15px; font-size:14px; color:#666; display:none;"></div>
+        `;
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        // Cancel button
+        document.getElementById('plaid-reconnect-cancel').addEventListener('click', function() {
+            overlay.remove();
+            reconnectModalActive = false;
+            reconnectSource = null;
+            resolve(false);
+        });
+
+        // Reconnect button
+        document.getElementById('plaid-reconnect-btn').addEventListener('click', function() {
+            if (typeof Plaid === 'undefined') {
+                const statusDiv = document.getElementById('plaid-reconnect-status');
+                statusDiv.style.display = 'block';
+                statusDiv.innerHTML = '⚠️ Plaid library not loaded. Please refresh the page and try again.';
+                return;
+            }
+            launchPlaidReconnect(source, label);
+        });
+
+        // Close modal if clicked outside
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) {
+                overlay.remove();
+                reconnectModalActive = false;
+                reconnectSource = null;
+                resolve(false);
+            }
+        });
+
+        // Store resolve to resolve after reconnect
+        reconnectResolve = resolve;
     });
-    
-    try {
-        const [squareBalance, fnboBalance, paypalBalance] = await Promise.all([
-            getSquareBalance(),
-            getPlaidBalance('fnbo'),
-            getPlaidBalance('paypal')
-        ]);
-        
-        console.log('[BALANCES] Raw balances:', { squareBalance, fnboBalance, paypalBalance });
-        
-        // Update Square balance
-        const squareEl = document.getElementById('balance-square');
-        if (squareEl) {
-            if (squareBalance === null) {
-                squareEl.textContent = '⚠️ Error';
-                squareEl.style.color = '#dc3545';
-            } else {
-                squareEl.textContent = formatCurrency(squareBalance);
-                squareEl.style.color = squareBalance >= 0 ? '#28a745' : '#dc3545';
-            }
-        }
-        
-        // Update FNBO balance
-        const fnboEl = document.getElementById('balance-fnbo');
-        if (fnboEl) {
-            if (fnboBalance === null) {
-                fnboEl.textContent = '⚠️ Error';
-                fnboEl.style.color = '#dc3545';
-            } else {
-                fnboEl.textContent = formatCurrency(fnboBalance);
-                fnboEl.style.color = fnboBalance >= 0 ? '#28a745' : '#dc3545';
-            }
-        }
-        
-        // Update PayPal balance
-        const paypalEl = document.getElementById('balance-paypal');
-        if (paypalEl) {
-            if (paypalBalance === null) {
-                paypalEl.textContent = '⚠️ Error';
-                paypalEl.style.color = '#dc3545';
-            } else {
-                paypalEl.textContent = formatCurrency(paypalBalance);
-                paypalEl.style.color = paypalBalance >= 0 ? '#28a745' : '#dc3545';
-            }
-        }
-        
-        // Calculate total assets only if all are non-null
-        const totalEl = document.getElementById('balance-total-assets');
-        if (totalEl) {
-            const validBalances = [squareBalance, fnboBalance, paypalBalance].filter(b => b !== null);
-            if (validBalances.length === 0) {
-                totalEl.textContent = '⚠️ Error';
-                totalEl.style.color = '#dc3545';
-            } else {
-                const totalAssets = validBalances.reduce((sum, b) => sum + b, 0);
-                totalEl.textContent = formatCurrency(totalAssets);
-                totalEl.style.color = '#6f42c1';
-            }
-        }
-        
-        console.log('[BALANCES] Updated all balance cards with error handling');
-        
-    } catch (error) {
-        console.error('[BALANCES] Error refreshing balances:', error);
-        // Show error state on all cards
-        const cardIds = ['balance-square', 'balance-fnbo', 'balance-paypal', 'balance-total-assets'];
-        cardIds.forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.textContent = '⚠️ Error';
-                el.style.color = '#dc3545';
-            }
-        });
-        showToast('Error loading external balances', 'error');
-    }
 }
 
-/**
- * Get Square balance from Square API
- * Returns the total of all completed payments
- */
+function launchPlaidReconnect(source, label) {
+    const statusDiv = document.getElementById('plaid-reconnect-status');
+    const btn = document.getElementById('plaid-reconnect-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connecting...';
+    statusDiv.style.display = 'block';
+    statusDiv.textContent = 'Requesting link token...';
+
+    let endpoint;
+    if (source === 'fnbo') {
+        endpoint = `${AppConfig.baseUrl}/api/plaid/fnbo/create-link-token`;
+    } else if (source === 'paypal') {
+        endpoint = `${AppConfig.baseUrl}/api/plaid/paypal/create-link-token`;
+    } else {
+        statusDiv.textContent = 'Unknown source';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-link"></i> Reconnect';
+        return;
+    }
+
+    fetch(endpoint, {
+        method: 'POST',
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (!data.link_token) {
+            statusDiv.textContent = 'Error: ' + (data.error || 'Failed to get link token');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-link"></i> Reconnect';
+            return;
+        }
+
+        statusDiv.textContent = 'Opening Plaid Link...';
+
+        const handler = Plaid.create({
+            token: data.link_token,
+            onSuccess: async (public_token, metadata) => {
+                statusDiv.textContent = 'Exchanging public token...';
+                const exchangeRes = await fetch(`${AppConfig.baseUrl}/api/plaid/${source}/exchange`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ public_token })
+                });
+                const exchangeData = await exchangeRes.json();
+                if (exchangeData.status === 'success') {
+                    statusDiv.textContent = '✅ Reconnected successfully! Refreshing...';
+                    showToast(`${label} reconnected successfully!`, 'success');
+                    const overlay = document.getElementById('plaid-reconnect-modal');
+                    if (overlay) overlay.remove();
+                    reconnectModalActive = false;
+                    if (reconnectResolve) {
+                        reconnectResolve(true);
+                        reconnectResolve = null;
+                    }
+                    setTimeout(refreshAllBalances, 1000);
+                } else {
+                    statusDiv.textContent = '❌ Failed to exchange token: ' + (exchangeData.error || 'Unknown error');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-link"></i> Reconnect';
+                    if (reconnectResolve) {
+                        reconnectResolve(false);
+                        reconnectResolve = null;
+                    }
+                }
+            },
+            onExit: (err, metadata) => {
+                if (err) {
+                    statusDiv.textContent = '❌ Plaid error: ' + (err.display_message || err.error_message || 'User cancelled');
+                } else {
+                    statusDiv.textContent = '❌ Reconnection cancelled';
+                }
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-link"></i> Reconnect';
+                if (reconnectResolve) {
+                    reconnectResolve(false);
+                    reconnectResolve = null;
+                }
+            }
+        });
+        handler.open();
+    })
+    .catch(err => {
+        statusDiv.textContent = 'Error: ' + err.message;
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-link"></i> Reconnect';
+        if (reconnectResolve) {
+            reconnectResolve(false);
+            reconnectResolve = null;
+        }
+    });
+}
+
+// ============================================================
+// EXTERNAL BALANCE CARDS
+// ============================================================
+
 async function getSquareBalance() {
-    try {
-        console.log('[BALANCES] Fetching Square balance...');
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/external/square/balance`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        
-        if (!res.ok) {
-            const errorText = await res.text();
-            console.warn('[BALANCES] Square balance API error:', res.status, errorText);
-            return 0;
-        }
-        
-        const data = await res.json();
-        console.log('[BALANCES] Square balance response:', data);
-        
-        if (data.status === 'success') {
-            return data.balance || 0;
-        }
-        return 0;
-    } catch (error) {
-        console.warn('[BALANCES] Error getting Square balance:', error);
-        return 0;
+    console.log('[BALANCES] Fetching Square balance...');
+    const res = await fetch(`${AppConfig.baseUrl}/api/accounting/external/square/balance`, {
+        credentials: 'include',
+        headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    console.log('[BALANCES] Square balance response:', data);
+    if (data.status === 'success') {
+        return data.balance ?? 0;
     }
+    const err = new Error(data.error || 'Unknown Square error');
+    err.plaidError = data; // attach for consistency
+    throw err;
 }
-
 async function getPlaidBalance(source) {
     console.log(`[BALANCES] Fetching ${source} balance from Plaid...`);
     const res = await fetch(`${AppConfig.baseUrl}/api/accounting/external/plaid/balance?source=${source}`, {
         credentials: 'include',
         headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
     });
+    
+    // If the response is not OK, read the JSON error body
+    if (!res.ok) {
+        let errorData;
+        try {
+            errorData = await res.json();
+        } catch (e) {
+            errorData = { error: `HTTP ${res.status}` };
+        }
+        console.log(`[BALANCES] ${source} balance error response:`, errorData);
+        const err = new Error(errorData.error || 'Unknown error');
+        err.plaidError = errorData; // attach the full error response
+        throw err;
+    }
+    
     const data = await res.json();
     console.log(`[BALANCES] ${source} balance response:`, data);
     if (data.status === 'success') {
         return data.balance ?? 0;
     }
-    throw new Error(data.error || 'Unknown error');
+    const err = new Error(data.error || 'Unknown error');
+    err.plaidError = data;
+    throw err;
 }
 
-/**
- * Format a number as currency
- */
+async function refreshAllBalances() {
+    console.log('[BALANCES] Refreshing all external account balances...');
+
+    // Show loading state
+    const cardIds = ['balance-square', 'balance-fnbo', 'balance-paypal', 'balance-total-assets'];
+    cardIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = 'Loading...';
+    });
+
+    const sources = [
+        { id: 'balance-square', label: 'Square', fetcher: getSquareBalance, source: 'square' },
+        { id: 'balance-fnbo', label: 'FNBO', fetcher: () => getPlaidBalance('fnbo'), source: 'fnbo' },
+        { id: 'balance-paypal', label: 'PayPal', fetcher: () => getPlaidBalance('paypal'), source: 'paypal' }
+    ];
+
+    let anyError = false;
+    const results = [];
+
+    for (const src of sources) {
+        const el = document.getElementById(src.id);
+        try {
+            const balance = await src.fetcher();
+            results.push({ id: src.id, balance, error: null });
+            if (el) {
+                el.textContent = formatCurrency(balance);
+                el.style.color = balance >= 0 ? '#28a745' : '#dc3545';
+            }
+        } catch (error) {
+            anyError = true;
+            const errorMsg = error.message || 'Unknown error';
+            const plaidError = error.plaidError;
+            console.error(`[BALANCES] Error from ${src.label}:`, error);
+            console.error(`[BALANCES] plaidError object:`, plaidError);
+
+            results.push({ id: src.id, balance: null, error: errorMsg });
+
+            if (el) {
+                el.textContent = '⚠️ Error';
+                el.style.color = '#dc3545';
+            }
+
+            // --- NEW: show alert for Plaid login required ---
+            if (plaidError && plaidError.error_code === 'ITEM_LOGIN_REQUIRED') {
+                alert(`🔔 ${src.label} connection needs re‑authentication.\nError: ${plaidError.error_message || 'Please reconnect via Plaid.'}`);
+            }
+
+            // ... rest of the modal logic (unchanged, but now plaidError will exist)
+            // You can still call showReconnectModal here if you want
+        }
+    }
+
+    // Update total assets (unchanged)
+    const totalEl = document.getElementById('balance-total-assets');
+    if (totalEl) {
+        const validBalances = results
+            .filter(r => r.error === null && r.balance !== null)
+            .map(r => r.balance);
+        if (validBalances.length === 0) {
+            totalEl.textContent = '⚠️ Error';
+            totalEl.style.color = '#dc3545';
+        } else {
+            const totalAssets = validBalances.reduce((sum, b) => sum + b, 0);
+            totalEl.textContent = formatCurrency(totalAssets);
+            totalEl.style.color = '#6f42c1';
+        }
+    }
+
+    console.log('[BALANCES] Balance refresh complete', results);
+}
+
 function formatCurrency(amount) {
     if (amount === undefined || amount === null || isNaN(amount)) {
         return '$0.00';
@@ -254,16 +447,13 @@ function formatCurrency(amount) {
     return sign + '$' + Math.abs(amount).toFixed(2);
 }
 
-/**
- * Load balances when the Import tab is shown
- */
 function loadAccountBalances() {
     console.log('[BALANCES] Loading external balances for Import tab');
     refreshAllBalances();
 }
 
 // ============================================================
-// PAYPAL PLAID CONNECTION
+// PAYPAL PLAID CONNECTION (initial)
 // ============================================================
 
 async function connectPayPalPlaid() {
@@ -275,17 +465,17 @@ async function connectPayPalPlaid() {
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
         });
         const data = await res.json();
-        
+
         if (!data.link_token) {
             alert('Failed to get link token: ' + (data.error || 'Unknown error'));
             return;
         }
-        
+
         const handler = Plaid.create({
             token: data.link_token,
             onSuccess: async (public_token, metadata) => {
                 console.log('[PLAID] PayPal connection success');
-                
+
                 const exchangeRes = await fetch(`${AppConfig.baseUrl}/api/plaid/paypal/exchange`, {
                     method: 'POST',
                     credentials: 'include',
@@ -624,7 +814,7 @@ async function loadAccountSelects() {
         if (data.status === 'success') {
             console.log('[ACCOUNTS] Loaded', data.accounts.length, 'accounts');
             cachedAccounts = data.accounts;
-            
+
             const selects = document.querySelectorAll('.manual-account, #journal-account-filter');
             selects.forEach(sel => {
                 const currentVal = sel.value;
@@ -684,19 +874,19 @@ async function loadReconcileAccountSelects() {
 function populateBulkAccountSelect() {
     const accountSelect = document.getElementById('bulk-account-select');
     const selectedCheckboxes = document.querySelectorAll('#bank-body .tx-select:checked');
-    
+
     if (selectedCheckboxes.length === 0) {
         accountSelect.style.display = 'none';
         accountSelect.innerHTML = '<option value="">Select Account</option>';
         return;
     }
-    
+
     accountSelect.style.display = 'inline-block';
-    
+
     let hasPositive = false;
     let hasNegative = false;
     let hasMixed = false;
-    
+
     selectedCheckboxes.forEach(cb => {
         const txId = cb.dataset.txId;
         const select = document.querySelector(`.post-select[data-tx-id="${txId}"]`);
@@ -706,11 +896,11 @@ function populateBulkAccountSelect() {
             if (amount < 0) hasNegative = true;
         }
     });
-    
+
     if (hasPositive && hasNegative) {
         hasMixed = true;
     }
-    
+
     const currentValue = accountSelect.value;
     let optionsHtml = '<option value="">Select Account</option>';
     const accountsToShow = cachedAccounts.filter(acc => {
@@ -719,35 +909,35 @@ function populateBulkAccountSelect() {
         if (hasNegative) return acc.type === 'expense';
         return false;
     });
-    
+
     accountsToShow.forEach(acc => {
         const selected = acc.id == currentValue ? 'selected' : '';
         optionsHtml += `<option value="${acc.id}" ${selected}>${acc.code} - ${acc.name}</option>`;
     });
-    
+
     accountSelect.innerHTML = optionsHtml;
 }
 
 function bulkAssignAccount() {
     const accountSelect = document.getElementById('bulk-account-select');
     const selectedAccount = accountSelect.value;
-    
+
     if (!selectedAccount) {
         showToast('Please select an account to assign.', 'warning');
         return;
     }
-    
+
     const selectedCheckboxes = document.querySelectorAll('#bank-body .tx-select:checked');
-    
+
     if (selectedCheckboxes.length === 0) {
         showToast('Please select at least one transaction.', 'warning');
         return;
     }
-    
+
     if (!confirm(`Assign account to ${selectedCheckboxes.length} selected transaction(s)?`)) {
         return;
     }
-    
+
     let assignedCount = 0;
     selectedCheckboxes.forEach(cb => {
         const txId = cb.dataset.txId;
@@ -760,9 +950,9 @@ function bulkAssignAccount() {
             assignedCount++;
         }
     });
-    
+
     showToast(`Account assigned to ${assignedCount} transaction(s)`, 'success');
-    
+
     accountSelect.value = '';
     document.getElementById('select-all-tx').checked = false;
     document.querySelectorAll('#bank-body .tx-select:checked').forEach(cb => cb.checked = false);
@@ -1284,13 +1474,13 @@ async function bulkPostTransactions() {
     selects.forEach(select => {
         const initialValue = select.dataset.initialAccount || '';
         const currentValue = select.value;
-        
+
         if (currentValue && currentValue !== initialValue && select.classList.contains('changed')) {
             changedCount++;
             const txId = select.dataset.txId;
             const sourceType = select.dataset.sourceType;
             const processed = select.dataset.processed === 'true';
-            
+
             updates.push({
                 transaction_id: txId,
                 source_type: sourceType,
@@ -1320,18 +1510,18 @@ async function bulkPostTransactions() {
         });
 
         const data = await res.json();
-        
+
         if (data.status === 'success') {
             const msg = `✅ ${data.processed} posted, ${data.created || 0} created, ${data.updated || 0} updated`;
             showToast(msg, 'success');
             statusEl.textContent = msg;
-            
+
             if (data.errors && data.errors.length > 0) {
                 console.error('[BANK] Errors:', data.errors);
                 statusEl.textContent += ` ⚠️ ${data.errors.length} error(s)`;
                 showToast(`⚠️ ${data.errors.length} transaction(s) failed. Check console.`, 'warning');
             }
-            
+
             setTimeout(() => {
                 loadBankTransactions();
                 refreshAllBalances();
@@ -1385,19 +1575,19 @@ async function loadBankTransactions() {
         'square': 'square',
         'paypal': 'paypal'
     };
-    
+
     const endpoint = sourceMap[source] || source;
-    
+
     let url = `${AppConfig.baseUrl}/api/accounting/bank/${endpoint}`;
     const params = new URLSearchParams();
     if (search) params.append('search', search);
-    
+
     if (viewFilter === 'unposted') {
         params.append('unprocessed_only', 'true');
     } else if (viewFilter === 'posted') {
         params.append('unprocessed_only', 'false');
     }
-    
+
     if (params.toString()) url += '?' + params.toString();
 
     try {
@@ -1405,7 +1595,7 @@ async function loadBankTransactions() {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
-        
+
         if (res.status === 400) {
             const data = await res.json();
             if (data.needs_connection) {
@@ -1418,17 +1608,17 @@ async function loadBankTransactions() {
             body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
             return;
         }
-        
+
         if (!res.ok) throw new Error('Failed to load transactions');
         const data = await res.json();
 
         if (data.status === 'success') {
             console.log('[BANK] Loaded', data.transactions.length, 'transactions');
-            
+
             if (cachedAccounts.length === 0) {
                 await loadAccountSelects();
             }
-            
+
             renderBankTransactions(data.transactions);
             updateBankCounts(data.unprocessed_count, data.total_count);
             document.getElementById('bank-pagination-info').textContent = `Showing ${data.transactions.length} entries (${data.total_count} total)`;
@@ -1447,10 +1637,10 @@ function renderBankTransactions(transactions) {
         body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
         return;
     }
-    
+
     let html = '';
     let selectIndex = 0;
-    
+
     transactions.forEach(t => {
         const amount = parseFloat(t.amount) || 0;
         const isDebit = amount < 0;
@@ -1460,27 +1650,27 @@ function renderBankTransactions(transactions) {
         const sourceType = t.source_type || 'unknown';
         const txId = t.id;
         const isProcessed = t.processed || false;
-        
+
         const filteredAccounts = cachedAccounts.filter(acc => {
             if (amount > 0) return acc.type === 'revenue';
             if (amount < 0) return acc.type === 'expense';
             return false;
         });
-        
+
         let optionsHtml = '<option value="">Select Account</option>';
         filteredAccounts.forEach(acc => {
             optionsHtml += `<option value="${acc.id}">${acc.code} - ${acc.name}</option>`;
         });
-        
+
         let initialAccount = '';
         if (isProcessed && t.account_id) {
             initialAccount = t.account_id;
         }
-        
+
         const dataAttrs = `data-tx-id="${txId}" data-source-type="${sourceType}" data-processed="${isProcessed}" data-initial-account="${initialAccount}" data-amount="${amount}"`;
-        
+
         const checkboxDisabled = isProcessed ? 'disabled' : '';
-        
+
         html += `<tr class="${rowClass}">
             <td><input type="checkbox" class="tx-select" data-tx-id="${txId}" ${checkboxDisabled}></td>
             <td>${t.date || ''}</td>
@@ -1498,13 +1688,13 @@ function renderBankTransactions(transactions) {
         selectIndex++;
     });
     body.innerHTML = html;
-    
+
     document.querySelectorAll('#bank-body .post-select').forEach(select => {
         const initialAccount = select.dataset.initialAccount || '';
         if (initialAccount) {
             select.value = initialAccount;
         }
-        
+
         select.addEventListener('change', function() {
             const initial = this.dataset.initialAccount || '';
             if (this.value && this.value !== initial) {
@@ -1515,7 +1705,7 @@ function renderBankTransactions(transactions) {
             document.getElementById('select-all-tx').checked = false;
         });
     });
-    
+
     populateBulkAccountSelect();
 }
 
@@ -1766,7 +1956,7 @@ async function saveAccount() {
 
 async function deleteAccount(accountId, accountName) {
     console.log('[ACCOUNTS] Deleting account:', accountId, accountName);
-    
+
     if (!confirm(`⚠️ Delete account "${accountName}"?\n\nThis will delete the account and UNPOST all associated transactions.\n\nAre you sure?`)) {
         console.log('[ACCOUNTS] Delete cancelled');
         return;
@@ -2475,7 +2665,7 @@ function renderLineChart(canvasId, data, options = {}) {
     });
 
     let chartInstance = null;
-    
+
     if (window[canvasId + 'Instance']) {
         window[canvasId + 'Instance'].destroy();
         window[canvasId + 'Instance'] = null;
@@ -3123,4 +3313,4 @@ async function loadBankAccountsForRowDropdowns() {
         console.error('[BANK] Failed to load accounts for row dropdowns:', e);
         throw e;
     }
-}
+} 
