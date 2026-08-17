@@ -11,7 +11,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # --- CORRECTED PATHS (no extra 'website' folder) ---
 ADMIN_DIR   = os.path.join(BASE_DIR, 'admin')          # website/admin
-HTML_DIR    = os.path.join(BASE_DIR, 'HTML')           # website/HTML
+INDEX_DIR    = os.path.join(BASE_DIR, 'index')           # website/HTML
 STATIC_DIR  = os.path.join(BASE_DIR, 'static')         # website/static
 COMPONENTS_DIR = os.path.join(BASE_DIR, 'components')  # website/components (for public tile)
 
@@ -21,15 +21,15 @@ def is_admin():
 # ---------- ROUTES ----------
 @app.route('/')
 def index():
-    return send_from_directory(HTML_DIR, 'index.html')
+    return send_from_directory(INDEX_DIR, 'index.html')
 
 @app.route('/login')
 def login():
-    return send_from_directory(HTML_DIR, 'login.html')
+    return send_from_directory(INDEX_DIR, 'login.html')
 
 @app.route('/dashboard')
 def dashboard():
-    return send_from_directory(HTML_DIR, 'dashboard.html')
+    return send_from_directory(INDEX_DIR, 'dashboard.html')
 
 # --- Admin panel (now in website/admin/) ---
 @app.route('/admin')
@@ -67,37 +67,37 @@ def serve_public_component(component, filename):
 def item_management():
     if not is_admin():
         return redirect('/access-denied')
-    return send_from_directory(HTML_DIR, 'item-management.html')
+    return send_from_directory(INDEX_DIR, 'item-management.html')
 
 @app.route('/admin/accounting')
 def admin_accounting():
     if not is_admin():
         return redirect('/access-denied')
-    return send_from_directory(HTML_DIR, 'admin-accounting.html')
+    return send_from_directory(INDEX_DIR, 'admin-accounting.html')
 
 @app.route('/access-denied')
 def access_denied():
-    return send_from_directory(HTML_DIR, 'access_denied.html')
+    return send_from_directory(INDEX_DIR, 'access_denied.html')
 
 @app.route('/inventory')
 def inventory():
-    return send_from_directory(HTML_DIR, 'inventory.html')
+    return send_from_directory(INDEX_DIR, 'inventory.html')
 
 @app.route('/consignment')
 def consignment():
-    return send_from_directory(HTML_DIR, 'consignment.html')
+    return send_from_directory(INDEX_DIR, 'consignment.html')
 
 @app.route('/youtube-linker')
 def youtube_linker():
-    return send_from_directory(HTML_DIR, 'youtube-linker.html')
+    return send_from_directory(INDEX_DIR, 'youtube-linker.html')
 
 @app.route('/kiosk')
 def kiosk():
-    return send_from_directory(HTML_DIR, 'kiosk.html')
+    return send_from_directory(INDEX_DIR, 'kiosk.html')
 
 @app.route('/payment-confirm')
 def payment_confirm():
-    return send_from_directory(HTML_DIR, 'payment-confirm.html')
+    return send_from_directory(INDEX_DIR, 'payment-confirm.html')
 
 # ---------- STATIC ----------
 @app.route('/static/<path:path>')
@@ -128,7 +128,7 @@ def debug():
     ADMIN_DIR: {ADMIN_DIR} → exists? {os.path.exists(ADMIN_DIR)}<br>
     admin.html: {os.path.join(ADMIN_DIR, 'admin.html')} → exists? {os.path.exists(os.path.join(ADMIN_DIR, 'admin.html'))}<br>
     admin.css: {os.path.join(ADMIN_DIR, 'admin.css')} → exists? {os.path.exists(os.path.join(ADMIN_DIR, 'admin.css'))}<br>
-    HTML_DIR: {HTML_DIR} → exists? {os.path.exists(HTML_DIR)}<br>
+    INDEX_DIR: {INDEX_DIR} → exists? {os.path.exists(INDEX_DIR)}<br>
     STATIC_DIR: {STATIC_DIR} → exists? {os.path.exists(STATIC_DIR)}<br>
     COMPONENTS_DIR: {COMPONENTS_DIR} → exists? {os.path.exists(COMPONENTS_DIR)}
     """
@@ -139,7 +139,7 @@ def serve_file(filename):
     static_file = os.path.join(STATIC_DIR, filename)
     if os.path.exists(static_file):
         return send_file(static_file)
-    html_file = os.path.join(HTML_DIR, filename)
+    html_file = os.path.join(INDEX_DIR, filename)
     if os.path.exists(html_file):
         return send_file(html_file)
     return "File not found", 404
