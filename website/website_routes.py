@@ -9,11 +9,12 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a7f8e9d3c5b1n2m4k6l7j8h9g0f
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# --- CORRECTED PATHS (no extra 'website' folder) ---
-ADMIN_DIR   = os.path.join(BASE_DIR, 'admin')          # website/admin
-INDEX_DIR    = os.path.join(BASE_DIR, 'index')           # website/HTML
-STATIC_DIR  = os.path.join(BASE_DIR, 'static')         # website/static
-COMPONENTS_DIR = os.path.join(BASE_DIR, 'components')  # website/components (for public tile)
+# --- CORRECTED PATHS ---
+ADMIN_DIR       = os.path.join(BASE_DIR, 'admin')          # website/admin
+INDEX_DIR       = os.path.join(BASE_DIR, 'index')          # website/HTML
+STATIC_DIR      = os.path.join(BASE_DIR, 'static')         # website/static
+COMPONENTS_DIR  = os.path.join(BASE_DIR, 'components')     # website/components (for public tile)
+ACCOUNTING_DIR  = os.path.join(BASE_DIR, 'accounting')     # website/accounting (for accounting page)
 
 def is_admin():
     return session.get('logged_in') and session.get('role') == 'admin'
@@ -31,7 +32,7 @@ def login():
 def dashboard():
     return send_from_directory(INDEX_DIR, 'dashboard.html')
 
-# --- Admin panel (now in website/admin/) ---
+# --- Admin panel (in website/admin/) ---
 @app.route('/admin')
 def admin_panel():
     if not is_admin():
@@ -41,6 +42,20 @@ def admin_panel():
 @app.route('/admin.css')
 def admin_css():
     return send_from_directory(ADMIN_DIR, 'admin.css')
+
+# --- Accounting page – now in website/accounting/ ---
+@app.route('/admin/accounting')
+def admin_accounting():
+    if not is_admin():
+        return redirect('/access-denied')
+    # Try accounting/ first, then admin/, then index/ as fallback
+    for directory in [ACCOUNTING_DIR, ADMIN_DIR, INDEX_DIR]:
+        file_path = os.path.join(directory, 'admin-accounting.html')
+        if os.path.exists(file_path):
+            print(f"[DEBUG] Serving admin-accounting.html from {directory}")
+            return send_from_directory(directory, 'admin-accounting.html')
+    # If not found, return 404
+    abort(404, description="admin-accounting.html not found in accounting/, admin/, or index/ folders.")
 
 # --- Admin component route (for events tab) ---
 @app.route('/admin-components/<component>/<path:filename>')
@@ -68,12 +83,6 @@ def item_management():
     if not is_admin():
         return redirect('/access-denied')
     return send_from_directory(INDEX_DIR, 'item-management.html')
-
-@app.route('/admin/accounting')
-def admin_accounting():
-    if not is_admin():
-        return redirect('/access-denied')
-    return send_from_directory(INDEX_DIR, 'admin-accounting.html')
 
 @app.route('/access-denied')
 def access_denied():
@@ -126,8 +135,12 @@ def debug():
     return f"""
     BASE_DIR: {BASE_DIR}<br>
     ADMIN_DIR: {ADMIN_DIR} → exists? {os.path.exists(ADMIN_DIR)}<br>
+    ACCOUNTING_DIR: {ACCOUNTING_DIR} → exists? {os.path.exists(ACCOUNTING_DIR)}<br>
     admin.html: {os.path.join(ADMIN_DIR, 'admin.html')} → exists? {os.path.exists(os.path.join(ADMIN_DIR, 'admin.html'))}<br>
     admin.css: {os.path.join(ADMIN_DIR, 'admin.css')} → exists? {os.path.exists(os.path.join(ADMIN_DIR, 'admin.css'))}<br>
+    admin-accounting.html in ACCOUNTING_DIR: {os.path.join(ACCOUNTING_DIR, 'admin-accounting.html')} → exists? {os.path.exists(os.path.join(ACCOUNTING_DIR, 'admin-accounting.html'))}<br>
+    admin-accounting.html in ADMIN_DIR: {os.path.join(ADMIN_DIR, 'admin-accounting.html')} → exists? {os.path.exists(os.path.join(ADMIN_DIR, 'admin-accounting.html'))}<br>
+    admin-accounting.html in INDEX_DIR: {os.path.join(INDEX_DIR, 'admin-accounting.html')} → exists? {os.path.exists(os.path.join(INDEX_DIR, 'admin-accounting.html'))}<br>
     INDEX_DIR: {INDEX_DIR} → exists? {os.path.exists(INDEX_DIR)}<br>
     STATIC_DIR: {STATIC_DIR} → exists? {os.path.exists(STATIC_DIR)}<br>
     COMPONENTS_DIR: {COMPONENTS_DIR} → exists? {os.path.exists(COMPONENTS_DIR)}
