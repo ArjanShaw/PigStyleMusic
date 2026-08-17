@@ -7,7 +7,6 @@ var browseAllGenres = [];          // [{ id, name }, ...]
 var browseSelectedGenreIds = [];   // array of genre IDs (numbers)
 var browseSelectedFormatIds = [];
 var browseCurrentSearchTerm = '';
-var browseNewArrivalsActive = true;
 var browseNewVinylActive = false;
 var browseAllFormats = [];
 var browseInitialized = false;
@@ -38,10 +37,9 @@ function fetchBrowseGenres() {
         .then(function(data) {
             console.log('📦 Genres API response:', data);
             
-            // Parse the wrapped response
             var genres = null;
             if (data && data.genres && Array.isArray(data.genres)) {
-                genres = data.genres;   // { status: "success", genres: [...] }
+                genres = data.genres;
             } else if (data && Array.isArray(data)) {
                 genres = data;
             }
@@ -55,7 +53,7 @@ function fetchBrowseGenres() {
             }
             
             populateBrowseGenreDropdown();
-            loadBrowseCatalogData();   // load records
+            loadBrowseCatalogData();
         })
         .catch(function(e) {
             console.error('❌ Error fetching genres:', e);
@@ -76,7 +74,6 @@ function setupBrowseEventListeners() {
         browseSelectedGenreIds = []; 
         browseSelectedFormatIds = [];
         browseCurrentSearchTerm = ''; 
-        browseNewArrivalsActive = true; 
         browseNewVinylActive = false; 
         browseCurrentPage = 1;
         document.getElementById('browseSearchBox').value = ''; 
@@ -85,11 +82,7 @@ function setupBrowseEventListeners() {
         loadBrowseCatalogData(); 
     });
     
-    document.getElementById('browseNewArrivalsBtn')?.addEventListener('click', function() { 
-        browseNewArrivalsActive = !browseNewArrivalsActive; 
-        browseCurrentPage = 1;
-        loadBrowseCatalogData(); 
-    });
+    // REMOVED: browseNewArrivalsBtn event listener
     
     document.getElementById('browseNewVinylBtn')?.addEventListener('click', function() { 
         browseNewVinylActive = !browseNewVinylActive; 
@@ -228,7 +221,7 @@ function displayBrowseRecords(records) {
     container.appendChild(grid);
 }
 
-// ============== LOAD CATALOG DATA (with genre_ids) ==============
+// ============== LOAD CATALOG DATA (no New Arrivals date filter) ==============
 function loadBrowseCatalogData() {
     browseCurrentSearchTerm = document.getElementById('browseSearchBox')?.value.trim() || '';
     
@@ -248,14 +241,8 @@ function loadBrowseCatalogData() {
         params.append('format_ids', browseSelectedFormatIds.join(','));
     }
     
-    // ---- Date filter ----
-    if (browseNewArrivalsActive) {
-        var sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        params.append('created_after', sevenDaysAgo.toISOString().split('T')[0]);
-    } else {
-        params.append('created_after', '1970-01-01');
-    }
+    // ---- REMOVED: Date filter (created_after) ----
+    // No date filter – show all records.
     
     params.append('require_image', 'true');
     params.append('order_by', 'created_at');
@@ -340,7 +327,6 @@ function populateBrowseGenreDropdown() {
     genreList.innerHTML = browseAllGenres.map(function(genre) {
         return '<div class="browse-filter-checkbox-item"><input type="checkbox" id="browse_genre_' + genre.id + '" value="' + genre.id + '"><label for="browse_genre_' + genre.id + '">' + escapeBrowseHtml(genre.name) + '</label></div>';
     }).join('');
-    // Preserve selected state
     document.querySelectorAll('#browseGenreList input').forEach(function(cb) {
         if (browseSelectedGenreIds.includes(parseInt(cb.value, 10))) cb.checked = true;
     });
@@ -361,26 +347,15 @@ function populateBrowseFormatDropdown(formats) {
     });
 }
 
-// ============== CORRECTED: shows TOTAL records, not page count ==============
+// ============== UPDATED: no "New Arrivals" button ==============
 function updateBrowseFilterUI() {
-    var arrivalsBtn = document.getElementById('browseNewArrivalsBtn');
     var vinylBtn = document.getElementById('browseNewVinylBtn');
-    
-    if (browseNewArrivalsActive) {
-        arrivalsBtn.classList.add('active');
-        arrivalsBtn.innerHTML = '<i class="fas fa-calendar-week"></i> New Arrivals';
-    } else {
-        arrivalsBtn.classList.remove('active');
-        arrivalsBtn.innerHTML = '<i class="fas fa-list"></i> All Records';
-    }
     
     if (browseNewVinylActive) vinylBtn.classList.add('active');
     else vinylBtn.classList.remove('active');
     
     var filters = [];
     if (browseCurrentSearchTerm) filters.push('Search: "' + browseCurrentSearchTerm + '"');
-    if (browseNewArrivalsActive) filters.push('New Arrivals (last 7 days)');
-    if (!browseNewArrivalsActive) filters.push('All Records');
     if (browseNewVinylActive) filters.push('New Vinyl Only');
     if (browseSelectedGenreIds.length > 0) {
         var genreNames = browseSelectedGenreIds.map(function(id) { return getBrowseGenreName(id) || 'Unknown'; }).join(', ');
@@ -394,18 +369,12 @@ function updateBrowseFilterUI() {
     var statusRow = document.getElementById('browseFilterStatusRow');
     var summaryDiv = document.getElementById('browseFilterSummary');
     
-    // --- Use browseTotalRecords (total matches) NOT browseRecords.length ---
-    if (filters.length === 0 && browseNewArrivalsActive) {
-        statusRow.classList.add('visible');
-        summaryDiv.innerHTML = 'New Arrivals (last 7 days) <span class="result-count-badge">' + browseTotalRecords + ' results</span>';
-    } else if (filters.length === 0 && !browseNewArrivalsActive) {
+    if (filters.length === 0) {
         statusRow.classList.add('visible');
         summaryDiv.innerHTML = 'All Records <span class="result-count-badge">' + browseTotalRecords + ' results</span>';
-    } else if (filters.length > 0) {
+    } else {
         statusRow.classList.add('visible');
         summaryDiv.innerHTML = filters.join(' · ') + ' <span class="result-count-badge">' + browseTotalRecords + ' results</span>';
-    } else {
-        statusRow.classList.remove('visible');
     }
 }
 
