@@ -1349,38 +1349,91 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
     </script>
 
     <!-- EVENTS -->
-    <script>
-        console.log('🔧 Events loader: script executed');
-        (function() {
-            let loaded = false;
-            function loadEvents() {
-                if (loaded) return;
-                const container = document.getElementById('events-component-loader');
-                if (!container) return;
-                console.log('📦 Loading Events...');
-                fetch('/admin-components/events/events.html')
-                    .then(res => { if (!res.ok) throw new Error('HTTP ' + res.status); return res.text(); })
-                    .then(html => {
-                        container.innerHTML = html;
-                        const link = document.createElement('link');
-                        link.rel = 'stylesheet';
-                        link.href = '/admin-components/events/events.css';
-                        document.head.appendChild(link);
-                        const script = document.createElement('script');
-                        script.src = '/admin-components/events/events.js';
-                        script.onload = () => { if (typeof loadEventsAdmin === 'function') loadEventsAdmin(); };
-                        document.body.appendChild(script);
-                        loaded = true;
-                    })
-                    .catch(err => { console.error('Events load error:', err); });
-            }
+    <!-- EVENTS -->
+<script>
+    console.log('🔧 Events loader: script executed');
+    (function() {
+        let loaded = false;
 
-            if (document.querySelector('.tab[data-tab="events"].active')) loadEvents();
-            document.addEventListener('tabChanged', function(e) {
-                if (e.detail.tab === 'events') loadEvents();
-            });
-        })();
-    </script>
+        function loadEvents() {
+            if (loaded) {
+                console.log('🔁 Events loader: already loaded, skipping.');
+                return;
+            }
+            const container = document.getElementById('events-component-loader');
+            if (!container) {
+                console.warn('❌ Events loader: container (#events-component-loader) not found.');
+                return;
+            }
+            console.log('📦 Events loader: starting fetch for /admin-components/events/events.html');
+            fetch('/admin-components/events/events.html')
+                .then(res => {
+                    console.log(`📡 Events fetch response: status ${res.status} ${res.statusText}`);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    return res.text();
+                })
+                .then(html => {
+                    console.log('✅ Events HTML fetched successfully (length: ' + html.length + '). Injecting into container.');
+                    container.innerHTML = html;
+
+                    console.log('📄 Loading events.css...');
+                    const link = document.createElement('link');
+                    link.rel = 'stylesheet';
+                    link.href = '/admin-components/events/events.css';
+                    document.head.appendChild(link);
+                    console.log('📄 events.css added to head.');
+
+                    console.log('📦 Loading events.js...');
+                    const script = document.createElement('script');
+                    script.src = '/admin-components/events/events.js';
+                    script.onload = function() {
+                        console.log('✅ events.js loaded successfully.');
+                        if (typeof loadEventsAdmin === 'function') {
+                            console.log('📞 Calling loadEventsAdmin()...');
+                            loadEventsAdmin();
+                            console.log('📞 loadEventsAdmin() returned.');
+                        } else {
+                            console.warn('⚠️ loadEventsAdmin is not defined after loading events.js.');
+                        }
+                    };
+                    script.onerror = function() {
+                        console.error('❌ Failed to load events.js (network error or 404).');
+                        container.innerHTML = `<div style="text-align:center; padding:40px; color:#dc3545;">
+                            <i class="fas fa-exclamation-triangle fa-2x"></i>
+                            <p style="margin-top:10px;">Failed to load events.js. Check the console for details.</p>
+                        </div>`;
+                    };
+                    document.body.appendChild(script);
+                    console.log('📦 events.js script element appended to body.');
+                    loaded = true;
+                })
+                .catch(err => {
+                    console.error('❌ Events loader error:', err);
+                    container.innerHTML = `<div style="text-align:center; padding:40px; color:#dc3545;">
+                        <i class="fas fa-exclamation-triangle fa-2x"></i>
+                        <p style="margin-top:10px;">Failed to load Events Manager: ${err.message}</p>
+                        <button class="btn btn-primary" onclick="loadEvents()" style="margin-top:10px;">Retry</button>
+                    </div>`;
+                });
+        }
+
+        // Check if the Events tab is already active
+        if (document.querySelector('.tab[data-tab="events"].active')) {
+            console.log('🟢 Events tab is active on page load – calling loadEvents().');
+            loadEvents();
+        } else {
+            console.log('🟡 Events tab is not active on page load – will load when clicked.');
+        }
+
+        // Listen for tab changes
+        document.addEventListener('tabChanged', function(e) {
+            if (e.detail.tab === 'events') {
+                console.log('🔄 tabChanged event: switching to events tab – calling loadEvents().');
+                loadEvents();
+            }
+        });
+    })();
+</script>
 
     <!-- ===== INITIALIZATION ===== -->
     <script>
