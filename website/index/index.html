@@ -168,21 +168,23 @@
                 </div>
             </div>
 
-           <!-- Tile 1: Shop (Browse) -->
+         <!-- Tile 1: Shop (Browse) -->
 <div class="tile" data-index="1">
     <div class="flip-card" id="flipCard1">
         <div class="flip-card-front shop-front">
             <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
         </div>
         <div class="flip-card-back">
-            <!-- back-content now has a white background -->
-            <div class="back-content" id="shopContent" style="background: white; border-radius: 16px; padding: 20px;">
+            <!-- back-content with full width, white background, and padding -->
+            <div class="back-content" id="shopContent" style="background: white; border-radius: 16px; padding: 20px; width: 100%; box-sizing: border-box;">
                 <!-- HEADING -->
                 <h2 style="text-align:center; margin:0 0 8px 0; color:#333; border-bottom:2px solid #ff6b6b; padding-bottom:6px; flex-shrink:0;">⭐ Shop</h2>
                 <div class="browse-container" id="browseComponent">
+                    <!-- SEARCH -->
                     <div class="browse-search-wrapper">
                         <input type="text" id="browseSearchBox" placeholder="Search by artist or record title...">
                     </div>
+                    <!-- FILTERS -->
                     <div class="browse-filter-section">
                         <div class="browse-filter-group">
                             <button id="browseGenreFilterBtn" class="browse-filter-btn">
@@ -214,7 +216,7 @@
                                 </div>
                             </div>
                         </div>
-                        <!-- browseNewArrivalsBtn removed -->
+                        <!-- New Vinyl button (New Arrivals button removed) -->
                         <button id="browseNewVinylBtn" class="browse-filter-btn">
                             <i class="fas fa-record-vinyl"></i> New Vinyl
                         </button>
@@ -224,6 +226,7 @@
                         <div class="browse-filter-summary" id="browseFilterSummary">All Records <span class="result-count-badge">0 results</span></div>
                         <button id="browseClearAllFiltersBtn" class="browse-clear-filters-link">Clear all ✕</button>
                     </div>
+                    <!-- RECORDS GRID CONTAINER -->
                     <div id="browseCatalogContainer">
                         <div class="browse-loading-indicator">
                             <div class="browse-loading-dots">
@@ -235,8 +238,7 @@
                             <p style="font-size: 13px;">Loading records...</p>
                         </div>
                     </div>
-
-                    <!-- BROWSE PAGINATION -->
+                    <!-- PAGINATION -->
                     <div class="browse-pagination-container">
                         <div class="browse-pagination-info">
                             Showing <span id="browseShowingRange">0-0</span> of <span id="browseTotalRecords">0</span> records
@@ -258,7 +260,6 @@
                             </div>
                         </div>
                     </div>
-                    <!-- END BROWSE PAGINATION -->
                 </div>
             </div>
             <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
