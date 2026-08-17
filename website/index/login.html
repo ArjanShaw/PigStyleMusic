@@ -369,9 +369,7 @@
     <!-- ===== NAVBAR PLACEHOLDER ===== -->
     <div id="navbar-placeholder"></div>
 
-    <!-- ===== SUBSCRIPTION MODAL PLACEHOLDER ===== -->
-    <div id="subscription-modal-placeholder"></div>
-
+     
     <div class="login-container">
         <a href="/" class="back-link">
             <i class="fas fa-arrow-left"></i> Back to PigStyle Music
@@ -452,13 +450,7 @@
                 console.warn('loadNavbar function not found, make sure shared.js is loaded');
             }
             
-            // Load subscription modal from shared component
-            if (typeof loadSubscriptionModal === 'function') {
-                loadSubscriptionModal();
-            } else {
-                console.warn('loadSubscriptionModal function not found, make sure shared.js is loaded');
-            }
-            
+             
             // Initialize subscription modal
             if (typeof initSubscriptionModal === 'function') {
                 initSubscriptionModal();

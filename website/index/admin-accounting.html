@@ -288,8 +288,7 @@
     <!-- ===== NAVBAR PLACEHOLDER ===== -->
     <div id="navbar-placeholder"></div>
 
-    <!-- ===== SUBSCRIPTION MODAL PLACEHOLDER ===== -->
-    <div id="subscription-modal-placeholder"></div>
+     
 
     <div class="admin-container" id="accounting-container">
         <h1 class="accounting-title"><i class="fas fa-calculator"></i> Accounting</h1>
@@ -774,17 +773,7 @@
                 console.warn('loadNavbar function not found, make sure shared.js is loaded');
             }
             
-            // Load subscription modal from shared component
-            if (typeof loadSubscriptionModal === 'function') {
-                loadSubscriptionModal();
-            } else {
-                console.warn('loadSubscriptionModal function not found, make sure shared.js is loaded');
-            }
             
-            // Initialize subscription modal
-            if (typeof initSubscriptionModal === 'function') {
-                initSubscriptionModal();
-            }
         });
     </script>
 </body>
