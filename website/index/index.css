@@ -302,7 +302,7 @@
 
 .flip-card-front.merch-front {
     background: transparent !important;
-    background-image: url('/static/images/merch_front_pig_shitting_gifts.png') !important;
+    background-image: url('/static/images/pig_with_merch.png') !important;
     background-size: contain !important;
     background-position: center !important;
     background-repeat: no-repeat !important;
