@@ -112,9 +112,6 @@ function formatReconDate(dateStr) {
     }
 }
 
-// ============================================================
-// PLAID RECONNECTION (DIRECT – NO MODAL)
-// ============================================================
 
 function reconnectPlaid(source, label) {
     console.log(`[PLAID] Reconnecting ${source}...`);
@@ -133,6 +130,8 @@ function reconnectPlaid(source, label) {
         return;
     }
 
+    console.log(`[PLAID] endpoint: ${endpoint}`);
+    console.log(`[PLAID] exchangeEndpoint: ${exchangeEndpoint}`);
     showToast(`Connecting to ${label}...`, 'info');
 
     fetch(endpoint, {
@@ -140,9 +139,14 @@ function reconnectPlaid(source, label) {
         credentials: 'include',
         headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
     })
-    .then(res => res.json())
+    .then(res => {
+        console.log(`[PLAID] link token response status: ${res.status}`);
+        return res.json();
+    })
     .then(data => {
+        console.log(`[PLAID] link token response:`, data);
         if (!data.link_token) {
+            console.error(`[PLAID] No link_token in response`);
             showToast(`Failed to get link token: ${data.error || 'Unknown error'}`, 'error');
             return;
         }
@@ -150,23 +154,32 @@ function reconnectPlaid(source, label) {
         const handler = Plaid.create({
             token: data.link_token,
             onSuccess: async (public_token, metadata) => {
+                console.log(`[PLAID] Plaid onSuccess called. public_token present: ${!!public_token}`);
+                console.log(`[PLAID] metadata:`, metadata);
                 showToast(`Exchanging token for ${label}...`, 'info');
+                console.log(`[PLAID] Sending exchange request to ${exchangeEndpoint}`);
                 const exchangeRes = await fetch(exchangeEndpoint, {
                     method: 'POST',
                     credentials: 'include',
                     headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ public_token })
                 });
+                console.log(`[PLAID] exchange response status: ${exchangeRes.status}`);
                 const exchangeData = await exchangeRes.json();
+                console.log(`[PLAID] exchange response body:`, exchangeData);
                 if (exchangeData.status === 'success') {
+                    console.log(`[PLAID] exchange successful for ${label}`);
                     showToast(`${label} reconnected successfully!`, 'success');
                     refreshAllBalances();
                     loadBankTransactions();
                 } else {
+                    console.error(`[PLAID] exchange failed:`, exchangeData);
                     showToast(`Failed to exchange token: ${exchangeData.error || 'Unknown error'}`, 'error');
                 }
             },
             onExit: (err, metadata) => {
+                console.log(`[PLAID] Plaid onExit called. err:`, err);
+                console.log(`[PLAID] metadata:`, metadata);
                 if (err) {
                     showToast(`Plaid error: ${err.display_message || err.error_message || 'User cancelled'}`, 'error');
                 } else {
@@ -174,9 +187,11 @@ function reconnectPlaid(source, label) {
                 }
             }
         });
+        console.log(`[PLAID] Plaid handler created, calling open()`);
         handler.open();
     })
     .catch(err => {
+        console.error(`[PLAID] fetch error for ${endpoint}:`, err);
         showToast(`Error: ${err.message}`, 'error');
     });
 }

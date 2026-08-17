@@ -13833,16 +13833,16 @@ def get_event_rsvps(event_id):
 @login_required
 @role_required(['admin'])
 def plaid_create_link_token():
-    """
-    Create a Plaid Link token for the main (FNBO) connection.
-    Stores the token in app_config with key 'plaid_access_token' after exchange.
-    """
+    app.logger.info("=" * 60)
+    app.logger.info("[PLAID] create-link-token called")
     try:
         client_id = os.environ.get('PLAID_CLIENT_ID')
         secret = os.environ.get('PLAID_SECRET')
         env = os.environ.get('PLAID_ENV', 'sandbox')
+        app.logger.info(f"[PLAID] env={env}, client_id present={bool(client_id)}, secret present={bool(secret)}")
         
         if not client_id or not secret:
+            app.logger.error("[PLAID] client_id or secret missing")
             return jsonify({'status': 'error', 'error': 'Plaid not configured'}), 500
         
         host = plaid.Environment.Production if env == 'production' else plaid.Environment.Sandbox
@@ -13850,10 +13850,13 @@ def plaid_create_link_token():
         api_client = plaid.ApiClient(configuration)
         client = plaid_api.PlaidApi(api_client)
         
-        # Use the same user ID as the session
-        user_id = str(session.get('user_id', 'admin'))
+        existing_token = get_plaid_access_token()
+        app.logger.info(f"[PLAID] existing_token present: {bool(existing_token)}")
         
-        request = LinkTokenCreateRequest(
+        user_id = str(session.get('user_id', 'admin'))
+        app.logger.info(f"[PLAID] user_id={user_id}")
+        
+        link_request = LinkTokenCreateRequest(
             user=LinkTokenCreateRequestUser(client_user_id=user_id),
             client_name="PigStyle Music",
             products=[Products('transactions')],
@@ -13861,11 +13864,61 @@ def plaid_create_link_token():
             language='en'
         )
         
-        response = client.link_token_create(request)
-        return jsonify({'link_token': response['link_token']})
+        if existing_token:
+            app.logger.info("[PLAID] using update mode (access_token provided)")
+            link_request.access_token = existing_token
+        else:
+            app.logger.info("[PLAID] using new mode (no access_token)")
+        
+        response = client.link_token_create(link_request)
+        link_token = response['link_token']
+        app.logger.info(f"[PLAID] link_token created: {link_token[:20]}...")
+        return jsonify({'link_token': link_token})
         
     except Exception as e:
-        app.logger.error(f"FNBO link token error: {str(e)}")
+        app.logger.error(f"[PLAID] create-link-token error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/plaid/exchange', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def plaid_exchange():
+    app.logger.info("=" * 60)
+    app.logger.info("[PLAID] exchange called")
+    try:
+        data = request.json
+        public_token = data.get('public_token')
+        app.logger.info(f"[PLAID] public_token present: {bool(public_token)}")
+        if not public_token:
+            app.logger.error("[PLAID] public_token missing")
+            return jsonify({'status': 'error', 'error': 'public_token required'}), 400
+        
+        client = get_plaid_client()
+        app.logger.info("[PLAID] Plaid client initialized")
+        
+        exchange_request = ItemPublicTokenExchangeRequest(public_token=public_token)
+        response = client.item_public_token_exchange(exchange_request)
+        access_token = response['access_token']
+        item_id = response['item_id']
+        app.logger.info(f"[PLAID] exchange successful: item_id={item_id}")
+        app.logger.info(f"[PLAID] access_token: {access_token[:20]}...")
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR IGNORE INTO app_config (config_key, config_value) VALUES ('plaid_access_token', '')")
+        cursor.execute("INSERT OR IGNORE INTO app_config (config_key, config_value) VALUES ('plaid_item_id', '')")
+        cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'plaid_access_token'", (access_token,))
+        cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'plaid_item_id'", (item_id,))
+        conn.commit()
+        conn.close()
+        app.logger.info("[PLAID] token stored in app_config")
+        
+        return jsonify({'status': 'success', 'item_id': item_id})
+        
+    except Exception as e:
+        app.logger.error(f"[PLAID] exchange error: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 if __name__ == '__main__': 
