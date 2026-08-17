@@ -22,21 +22,7 @@ function loadNavbar() {
             console.error('Error loading navbar:', error);
         });
 }
-
-function loadSubscriptionModal() {
-    const placeholder = document.getElementById('subscription-modal-placeholder');
-    if (!placeholder) return;
-
-    fetch('/components/subscription-modal.html')
-        .then(response => response.text())
-        .then(html => {
-            placeholder.innerHTML = html;
-        })
-        .catch(error => {
-            console.error('Error loading subscription modal:', error);
-        });
-}
-
+ 
 // ===== SUBSCRIPTION MODAL INITIALIZATION =====
 function initSubscriptionModal() {
     const subscribeLink = document.getElementById('subscribe-link');
@@ -203,6 +189,5 @@ function applyAuthFromLocalStorage() {
 document.addEventListener('DOMContentLoaded', function() {
     // Load navbar if placeholder exists
     loadNavbar();
-    // Load subscription modal if placeholder exists
-    loadSubscriptionModal();
+    
 });

@@ -7,9 +7,7 @@ var browseInstances = {};
 
 document.addEventListener('DOMContentLoaded', function() {
     // Load subscription modal
-    if (typeof loadSubscriptionModal === 'function') {
-        loadSubscriptionModal();
-    }
+   
 
     // ============================================================
     // CAROUSEL NAVIGATION
