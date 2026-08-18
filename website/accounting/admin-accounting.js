@@ -447,6 +447,7 @@ async function loadReconcileAccountSelects() {
 // ============================================================
 // BULK ACCOUNT ASSIGNMENT
 // ============================================================
+
 function populateBulkAccountSelect() {
     const accountSelect = document.getElementById('bulk-account-select');
     const selectedCheckboxes = document.querySelectorAll('#bank-body .tx-select:checked');
@@ -482,7 +483,6 @@ function populateBulkAccountSelect() {
     const accountsToShow = cachedAccounts.filter(acc => {
         if (hasMixed) return true;
         if (hasPositive) return acc.type === 'revenue';
-        // ✅ FIX: add 'revenue' here for negative amounts
         if (hasNegative) return (acc.type === 'expense' || acc.type === 'revenue' || acc.type === 'liability');
         return false;
     });
@@ -510,7 +510,10 @@ function bulkAssignAccount() {
         showToast('Please select at least one transaction.', 'warning');
         return;
     }
- 
+
+    if (!confirm(`Assign account to ${selectedCheckboxes.length} selected transaction(s)?`)) {
+        return;
+    }
 
     let assignedCount = 0;
     selectedCheckboxes.forEach(cb => {
@@ -537,30 +540,16 @@ function bulkAssignAccount() {
 // RECONCILIATION – DATE RANGE SLIDER
 // ============================================================
 
-async function loadReconcileDateRange(account1, account2, callback) {
-    console.log('[RECONCILE] Loading date range for accounts:', account1, account2);
-    try {
-        const params = new URLSearchParams({ account1, account2 });
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/date-range?${params.toString()}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        if (!res.ok) throw new Error('Failed to fetch date range');
-        const data = await res.json();
-        if (data.status === 'success') {
-            const minDate = data.min_date;
-            const maxDate = data.max_date;
-            reconcileMinDate = new Date(minDate);
-            reconcileMaxDate = new Date(maxDate);
-            initReconcileSlider(reconcileMinDate, reconcileMaxDate);
-            if (callback) callback();
-        } else {
-            showToast('Error loading date range: ' + (data.error || 'Unknown error'), 'error');
-        }
-    } catch (err) {
-        console.error('[RECONCILE] Error loading date range:', err);
-        showToast('Error loading date range: ' + err.message, 'error');
-    }
+function loadReconcileDateRange(account1, account2, callback) {
+    console.log('[RECONCILE] Using hardcoded date range: Jan 1, 2025 – today');
+    const minDate = new Date('2025-01-01');
+    const maxDate = new Date();
+    reconcileMinDate = minDate;
+    reconcileMaxDate = maxDate;
+    initReconcileSlider(minDate, maxDate);
+    // Force a reload after setting the slider
+    loadReconcilePairsSummary();
+    if (callback) callback();
 }
 
 function initReconcileSlider(minDate, maxDate) {
@@ -621,6 +610,11 @@ function initReconcileSlider(minDate, maxDate) {
             loadReconciliationTimeline(accountA, accountB);
         }
     });
+
+    // Added set listener to reload when slider is moved programmatically or by user
+    sliderContainer.noUiSlider.on('set', function() {
+        loadReconcilePairsSummary();
+    });
 }
 
 function getReconcileDateRange() {
@@ -668,6 +662,7 @@ async function loadReconcilePairsSummary() {
         const dateRange = getReconcileDateRange();
         const start = dateRange.start;
         const end = dateRange.end;
+        console.log('[RECONCILE] Date range from slider:', dateRange);
 
         const pairPromises = pairs.map(async (p) => {
             const params = new URLSearchParams();
@@ -1143,7 +1138,7 @@ function clearAllSelections() {
 async function loadBankTransactions() {
     console.log('[BANK] Loading transactions');
     const body = document.getElementById('bank-body');
-    body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">Loading...</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px;">Loading...</td></tr>';
 
     const source = document.getElementById('bank-source').value;
     const search = document.getElementById('bank-filter').value.trim();
@@ -1182,10 +1177,10 @@ async function loadBankTransactions() {
                 if (confirm('PayPal not connected. Would you like to connect your PayPal account via Plaid?')) {
                     connectPayPalPlaid();
                 }
-                body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">PayPal not connected. Please connect your account.</td></tr>';
+                body.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px;">PayPal not connected. Please connect your account.</td></tr>';
                 return;
             }
-            body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
+            body.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
             return;
         }
 
@@ -1203,23 +1198,36 @@ async function loadBankTransactions() {
             updateBankCounts(data.unprocessed_count, data.total_count);
             document.getElementById('bank-pagination-info').textContent = `Showing ${data.transactions.length} entries (${data.total_count} total)`;
         } else {
-            body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
+            body.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
         }
     } catch (err) {
         console.error('[BANK] Error:', err);
-        body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:40px; color:#dc3545;">Error: ${err.message}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:40px; color:#dc3545;">Error: ${err.message}</td></tr>`;
     }
 }
 
 function renderBankTransactions(transactions) {
     const body = document.getElementById('bank-body');
     if (!transactions || transactions.length === 0) {
-        body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
+        body.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
         return;
     }
 
     let html = '';
     let selectIndex = 0;
+
+    html += `<thead>
+        <tr>
+            <th><input type="checkbox" id="select-all-tx"></th>
+            <th>ID</th>
+            <th>Date</th>
+            <th>Description</th>
+            <th>Amount</th>
+            <th>Category</th>
+            <th>Status</th>
+            <th>Post To</th>
+        </tr>
+    </thead><tbody>`;
 
     transactions.forEach(t => {
         const amount = parseFloat(t.amount) || 0;
@@ -1247,13 +1255,13 @@ function renderBankTransactions(transactions) {
             initialAccount = t.account_id;
         }
 
-        // --- FIX: add data-date attribute ---
         const dataAttrs = `data-tx-id="${txId}" data-source-type="${sourceType}" data-processed="${isProcessed}" data-initial-account="${initialAccount}" data-amount="${amount}" data-date="${t.date || ''}"`;
 
         const checkboxDisabled = isProcessed ? 'disabled' : '';
 
         html += `<tr class="${rowClass}">
             <td><input type="checkbox" class="tx-select" data-tx-id="${txId}" ${checkboxDisabled}></td>
+            <td style="font-size:11px; color:#666; font-family:monospace;">${txId}</td>
             <td>${t.date || ''}</td>
             <td>${t.description || ''}</td>
             <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
@@ -1268,6 +1276,8 @@ function renderBankTransactions(transactions) {
         </tr>`;
         selectIndex++;
     });
+
+    html += '</tbody>';
     body.innerHTML = html;
 
     document.querySelectorAll('#bank-body .post-select').forEach(select => {
