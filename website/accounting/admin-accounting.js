@@ -447,7 +447,6 @@ async function loadReconcileAccountSelects() {
 // ============================================================
 // BULK ACCOUNT ASSIGNMENT
 // ============================================================
-
 function populateBulkAccountSelect() {
     const accountSelect = document.getElementById('bulk-account-select');
     const selectedCheckboxes = document.querySelectorAll('#bank-body .tx-select:checked');
@@ -483,7 +482,8 @@ function populateBulkAccountSelect() {
     const accountsToShow = cachedAccounts.filter(acc => {
         if (hasMixed) return true;
         if (hasPositive) return acc.type === 'revenue';
-        if (hasNegative) return acc.type === 'expense';
+        // ✅ FIX: add 'revenue' here for negative amounts
+        if (hasNegative) return (acc.type === 'expense' || acc.type === 'revenue' || acc.type === 'liability');
         return false;
     });
 

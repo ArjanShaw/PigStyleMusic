@@ -11496,33 +11496,115 @@ def bank_paypal():
     })
 
 
-# ============================================================
-# EXTERNAL BALANCE ENDPOINTS
-# ============================================================
-@app.route('/api/accounting/external/square/balance', methods=['GET'])
-@login_required
-@role_required(['admin'])
+@app.route('/api/accounting/external/square/balance', methods=['GET', 'OPTIONS'])
 def get_square_balance():
-    access_token = os.environ.get('SQUARE_ACCESS_TOKEN')  # may be None – will cause error later
-    headers = {
-        'Authorization': f'Bearer {access_token}',
-        'Content-Type': 'application/json',
-        'Square-Version': '2026-01-22'
-    }
-    response = requests.get(
-        'https://connect.squareup.com/v2/payments',
-        headers=headers,
-        params={'limit': 100},
-        timeout=30
-    )
-    # If response not 200, requests will raise HTTPError if we call raise_for_status()
-    response.raise_for_status()
-    data = response.json()
-    payments = data.get('payments', [])
-    total_balance = sum(p.get('amount_money', {}).get('amount', 0) for p in payments if p.get('status') == 'COMPLETED') / 100.0
-    return jsonify({'status': 'success', 'balance': total_balance})
+    """Fetch the net available balance from Square (gross - fees - refunds - payouts)."""
+    # Handle preflight CORS
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 200
 
+    # Authentication check
+    if 'user_id' not in session or not session.get('logged_in'):
+        response = jsonify({'status': 'error', 'error': 'Authentication required'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 401
 
+    if session.get('role') != 'admin':
+        response = jsonify({'status': 'error', 'error': 'Admin access required'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 403
+
+    try:
+        access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+        if not access_token:
+            response = jsonify({'status': 'error', 'error': 'SQUARE_ACCESS_TOKEN not configured'})
+            response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+            response.headers.add('Access-Control-Allow-Credentials', 'true')
+            return response, 500
+
+        environment = os.environ.get('SQUARE_ENVIRONMENT', 'production')
+        base_url = 'https://connect.squareupsandbox.com' if environment == 'sandbox' else 'https://connect.squareup.com'
+
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'Square-Version': '2026-01-22'
+        }
+
+        total_net_credits = 0
+
+        # ---- 1. Fetch all COMPLETED payments ----
+        payments_url = f'{base_url}/v2/payments'
+        params = {'limit': 200, 'status': 'COMPLETED'}
+
+        while payments_url:
+            resp = requests.get(payments_url, headers=headers, params=params, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+
+            for payment in data.get('payments', []):
+                amount = payment.get('amount_money', {}).get('amount', 0)
+                fees = sum(fee.get('amount_money', {}).get('amount', 0) for fee in payment.get('processing_fee', []))
+                refunds = payment.get('refunded_money', {}).get('amount', 0)
+                total_net_credits += amount - fees - refunds
+
+            cursor = data.get('cursor')
+            if cursor:
+                params['cursor'] = cursor
+            else:
+                break
+
+        total_payouts = 0
+
+        # ---- 2. Fetch all payouts (no status filter) ----
+        payouts_url = f'{base_url}/v2/payouts'
+        params = {'limit': 200}
+
+        while payouts_url:
+            resp = requests.get(payouts_url, headers=headers, params=params, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+
+            for payout in data.get('payouts', []):
+                # Include both SENT and PAID statuses (completed transfers)
+                if payout.get('status') in ('SENT', 'PAID'):
+                    total_payouts += payout.get('amount_money', {}).get('amount', 0)
+
+            cursor = data.get('cursor')
+            if cursor:
+                params['cursor'] = cursor
+            else:
+                break
+
+        # Net available balance in dollars
+        available_balance = (total_net_credits - total_payouts) / 100.0
+
+        response = jsonify({'status': 'success', 'balance': available_balance})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+
+    except requests.exceptions.HTTPError as e:
+        app.logger.error(f"Square HTTP error: {e.response.text}")
+        response = jsonify({'status': 'error', 'error': f'Square API error: {str(e)}'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error fetching Square balance: {str(e)}")
+        response = jsonify({'status': 'error', 'error': str(e)})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 500
+
+        
 import json
 import plaid
 from plaid.exceptions import ApiException
