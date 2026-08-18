@@ -20,7 +20,7 @@ function createBrowseComponent(containerId, options) {
     var initialized = false;
 
     var currentPage = 1;
-    var pageSize = 20;
+    var pageSize = 24;
     var totalRecords = 0;
     var totalPages = 1;
 
