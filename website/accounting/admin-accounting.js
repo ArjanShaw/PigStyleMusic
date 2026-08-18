@@ -510,10 +510,7 @@ function bulkAssignAccount() {
         showToast('Please select at least one transaction.', 'warning');
         return;
     }
-
-    if (!confirm(`Assign account to ${selectedCheckboxes.length} selected transaction(s)?`)) {
-        return;
-    }
+ 
 
     let assignedCount = 0;
     selectedCheckboxes.forEach(cb => {
@@ -1058,11 +1055,17 @@ async function bulkPostTransactions() {
             const sourceType = select.dataset.sourceType;
             const processed = select.dataset.processed === 'true';
 
+            // --- FIX: read amount and date from data attributes ---
+            const amount = parseFloat(select.dataset.amount || 0);
+            const date = select.dataset.date || '';
+
             updates.push({
                 transaction_id: txId,
                 source_type: sourceType,
                 target_account_id: parseInt(currentValue),
-                is_update: processed
+                is_update: processed,
+                amount: amount,
+                date: date
             });
         }
     });
@@ -1244,7 +1247,8 @@ function renderBankTransactions(transactions) {
             initialAccount = t.account_id;
         }
 
-        const dataAttrs = `data-tx-id="${txId}" data-source-type="${sourceType}" data-processed="${isProcessed}" data-initial-account="${initialAccount}" data-amount="${amount}"`;
+        // --- FIX: add data-date attribute ---
+        const dataAttrs = `data-tx-id="${txId}" data-source-type="${sourceType}" data-processed="${isProcessed}" data-initial-account="${initialAccount}" data-amount="${amount}" data-date="${t.date || ''}"`;
 
         const checkboxDisabled = isProcessed ? 'disabled' : '';
 
