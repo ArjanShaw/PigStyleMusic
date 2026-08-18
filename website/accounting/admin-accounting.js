@@ -1233,7 +1233,7 @@ function renderBankTransactions(transactions) {
 
         const filteredAccounts = cachedAccounts.filter(acc => {
             if (amount > 0) return acc.type === 'revenue';
-            if (amount < 0) return acc.type === 'expense';
+            if (amount < 0) return (acc.type === 'expense' || acc.type === 'revenue' || acc.type === 'liability');
             return false;
         });
 
