@@ -5540,9 +5540,6 @@ def accounting_get_accounts():
         app.logger.error(f"Error fetching accounts: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-# ==================== COGS ASSUMPTION RATE HELPER ====================
- 
-# ==================== ACCOUNTING: JOURNAL ====================
 
 @app.route('/api/accounting/journal', methods=['GET'])
 @login_required
@@ -5553,12 +5550,13 @@ def accounting_get_journal():
         per_page = request.args.get('per_page', 20, type=int)
         account_id = request.args.get('account_id', type=int)
         search = request.args.get('search', '').strip()
+        unbalanced_only = request.args.get('unbalanced_only', 'false').lower() == 'true'
         offset = (page - 1) * per_page
 
         conn = get_db()
         cursor = conn.cursor()
 
-        # Base query for journal entries - NO DATE FILTERS
+        # Base query for journal entries
         entry_query = '''
             SELECT id, transaction_date, description, source_type, source_id
             FROM journal_entries
@@ -5581,6 +5579,16 @@ def accounting_get_journal():
                 AND jl.account_id = ?
             )'''
             params.append(account_id)
+
+        # NEW: Unbalanced only filter
+        if unbalanced_only:
+            entry_query += ''' AND journal_entries.id IN (
+                SELECT je2.id
+                FROM journal_entries je2
+                JOIN journal_lines jl2 ON jl2.journal_entry_id = je2.id
+                GROUP BY je2.id
+                HAVING COALESCE(SUM(jl2.debit_amount), 0) != COALESCE(SUM(jl2.credit_amount), 0)
+            )'''
 
         # Get total count
         count_query = entry_query.replace(
@@ -5624,6 +5632,9 @@ def accounting_get_journal():
                     if line['code']:
                         credit_account = f"{line['code']} - {line['name']}"
 
+            # Calculate difference
+            difference = debit_total - credit_total
+            
             entries.append({
                 'id': entry['id'],
                 'transaction_date': entry['transaction_date'],
@@ -5633,7 +5644,8 @@ def accounting_get_journal():
                 'debit_account': debit_account,
                 'debit_amount': debit_total,
                 'credit_account': credit_account,
-                'credit_amount': credit_total
+                'credit_amount': credit_total,
+                'difference': round(difference, 2)  # NEW: include difference
             })
 
         conn.close()
