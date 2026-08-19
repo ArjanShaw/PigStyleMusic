@@ -6143,7 +6143,7 @@ def accounting_reports():
         
         if report_type == 'pll':
             # ============================================================
-            # 1. REVENUE - FROM JOURNAL (FIXED)
+            # 1. REVENUE - FROM JOURNAL
             # ============================================================
             cursor.execute('''
                 SELECT 
@@ -6177,7 +6177,7 @@ def accounting_reports():
             revenue_rows = cursor.fetchall()
             
             # ============================================================
-            # 3. COGS - FROM JOURNAL (FIXED)
+            # 3. COGS - FROM JOURNAL (account 5000) - FIXED
             # ============================================================
             cursor.execute('''
                 SELECT 
@@ -6191,8 +6191,13 @@ def accounting_reports():
             ''', (date_from, date_from, date_to, date_to))
             total_cogs = cursor.fetchone()['cogs'] or 0
             
+            # Get COGS account info for display
+            cursor.execute('SELECT code, name FROM accounts WHERE code = "5000"')
+            cogs_account = cursor.fetchone()
+            cogs_label = f"{cogs_account['code']} - {cogs_account['name']}" if cogs_account else "COGS"
+            
             # ============================================================
-            # 4. OTHER EXPENSES - FROM JOURNAL (KEPT AS IS)
+            # 4. OTHER EXPENSES - FROM JOURNAL
             # ============================================================
             cursor.execute('''
                 SELECT a.code, a.name,
@@ -6215,16 +6220,16 @@ def accounting_reports():
             report_data = []
             total_expense = total_cogs
             
-            # Add revenue lines (breakdown by account)
+            # Add revenue lines
             for row in revenue_rows:
                 report_data.append({
                     'Account': f"{row['code']} - {row['name']}",
                     'Balance': row['balance']
                 })
             
-            # Add COGS line
+            # Add COGS line with account number
             report_data.append({
-                'Account': 'COGS',
+                'Account': cogs_label,
                 'Balance': total_cogs
             })
             
@@ -6238,8 +6243,6 @@ def accounting_reports():
                 total_expense += balance
             
             net_profit = revenue - total_expense
-            
-            # Format the summary
             summary = f"Total Revenue: ${revenue:.2f} | Total Expenses: ${total_expense:.2f} | Net Profit: ${net_profit:.2f}"
             
         elif report_type == 'balance-sheet':
