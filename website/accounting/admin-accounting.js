@@ -914,9 +914,6 @@ async function deleteSelectedPair() {
     }
 }
 
-// ============================================================
-// JOURNAL ENTRIES
-// ============================================================
 
 async function loadJournalEntries() {
     console.log('[JOURNAL] Loading journal entries');
@@ -926,10 +923,18 @@ async function loadJournalEntries() {
     const params = new URLSearchParams();
     params.append('page', journalCurrentPage);
     params.append('per_page', journalPageSize);
+    
     const account = document.getElementById('journal-account-filter').value;
     if (account) params.append('account_id', account);
+    
     const search = document.getElementById('journal-search').value.trim();
     if (search) params.append('search', search);
+    
+    // NEW: Add unbalanced filter
+    const unbalancedOnly = document.getElementById('journal-unbalanced-only').checked;
+    if (unbalancedOnly) {
+        params.append('unbalanced_only', 'true');
+    }
 
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/journal?${params.toString()}`, {
@@ -985,10 +990,12 @@ function updateJournalPagination() {
     document.getElementById('journal-page-info').textContent = `Page ${journalCurrentPage}`;
 }
 
+
 function resetJournalFilters() {
     console.log('[JOURNAL] Resetting filters');
     document.getElementById('journal-account-filter').value = '';
     document.getElementById('journal-search').value = '';
+    document.getElementById('journal-unbalanced-only').checked = false; // NEW
     journalCurrentPage = 1;
     loadJournalEntries();
 }

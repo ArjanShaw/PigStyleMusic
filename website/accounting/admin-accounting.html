@@ -223,25 +223,41 @@
         </div>
 
         <!-- JOURNAL TAB -->
-        <div id="sub-journal" class="sub-tab-content">
-            <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end;">
-                <div class="form-group"><label>Account</label><select id="journal-account-filter"><option value="">All Accounts</option></select></div>
-                <div class="form-group"><label>Search</label><input type="text" id="journal-search" placeholder="Description or order ID..."></div>
-                <button class="btn btn-primary" onclick="loadJournalEntries()"><i class="fas fa-search"></i> Filter</button>
-                <button class="btn btn-secondary" onclick="resetJournalFilters()"><i class="fas fa-undo"></i> Reset</button>
-                <button class="btn btn-success" onclick="exportJournalCSV()"><i class="fas fa-download"></i> Export CSV</button>
-            </div>
-            <div class="journal-table-container">
-                <table class="journal-table" id="journal-table">
-                    <thead><tr><th>ID</th><th>Date</th><th>Description</th><th>Account (Debit)</th><th>Debit</th><th>Account (Credit)</th><th>Credit</th><th>Source</th><th>Actions</th></tr></thead>
-                    <tbody id="journal-body"><tr><td colspan="9" style="text-align:center; padding:40px;">Loading journal entries...</td></tr></tbody>
-                </table>
-            </div>
-            <div style="margin-top:15px; display:flex; justify-content:space-between; align-items:center;">
-                <span id="journal-pagination-info">Showing 0 entries</span>
-                <div><button class="btn btn-sm btn-secondary" id="journal-prev" disabled>Prev</button><span id="journal-page-info">Page 1</span><button class="btn btn-sm btn-secondary" id="journal-next" disabled>Next</button></div>
-            </div>
+<div id="sub-journal" class="sub-tab-content">
+    <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px; align-items:flex-end;">
+        <div class="form-group">
+            <label>Account</label>
+            <select id="journal-account-filter">
+                <option value="">All Accounts</option>
+            </select>
         </div>
+        <div class="form-group">
+            <label>Search</label>
+            <input type="text" id="journal-search" placeholder="Description or order ID...">
+        </div>
+        <!-- NEW: Unbalanced filter -->
+        <div class="form-group" style="flex-direction:row; align-items:center; gap:8px; padding-top:5px;">
+            <input type="checkbox" id="journal-unbalanced-only" style="width:18px; height:18px; cursor:pointer;">
+            <label for="journal-unbalanced-only" style="font-weight:500; font-size:13px; color:#000; cursor:pointer; margin:0;">
+                <i class="fas fa-exclamation-triangle" style="color:#dc3545;"></i> Unbalanced Only
+            </label>
+        </div>
+        <button class="btn btn-primary" onclick="loadJournalEntries()"><i class="fas fa-search"></i> Filter</button>
+        <button class="btn btn-secondary" onclick="resetJournalFilters()"><i class="fas fa-undo"></i> Reset</button>
+        <button class="btn btn-success" onclick="exportJournalCSV()"><i class="fas fa-download"></i> Export CSV</button>
+    </div>
+    <!-- Rest of the journal table remains the same -->
+    <div class="journal-table-container">
+        <table class="journal-table" id="journal-table">
+            <thead><tr><th>ID</th><th>Date</th><th>Description</th><th>Account (Debit)</th><th>Debit</th><th>Account (Credit)</th><th>Credit</th><th>Source</th><th>Actions</th></tr></thead>
+            <tbody id="journal-body"><tr><td colspan="9" style="text-align:center; padding:40px;">Loading journal entries...</td></tr></tbody>
+        </table>
+    </div>
+    <div style="margin-top:15px; display:flex; justify-content:space-between; align-items:center;">
+        <span id="journal-pagination-info">Showing 0 entries</span>
+        <div><button class="btn btn-sm btn-secondary" id="journal-prev" disabled>Prev</button><span id="journal-page-info">Page 1</span><button class="btn btn-sm btn-secondary" id="journal-next" disabled>Next</button></div>
+    </div>
+</div>
 
         <!-- RECONCILIATION TAB -->
         <div id="sub-reconcile" class="sub-tab-content">
