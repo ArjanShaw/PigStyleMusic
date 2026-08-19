@@ -6127,7 +6127,7 @@ def accounting_auto_match():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 # ==================== ACCOUNTING: REPORTS ====================
- 
+
 @app.route('/api/accounting/reports', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -6142,59 +6142,61 @@ def accounting_reports():
         cursor = conn.cursor()
         
         if report_type == 'pll':
-            new_rate, used_rate = get_cogs_rates()
-            
-            # 1. Revenue from order_items
+            # ============================================================
+            # 1. REVENUE - FROM JOURNAL (FIXED)
+            # ============================================================
             cursor.execute('''
-                SELECT COALESCE(SUM(oi.price_at_time), 0) as revenue
-                FROM order_items oi
-                JOIN orders o ON oi.order_id = o.id
-                WHERE o.payment_status = 'paid'
-                  AND (? IS NULL OR o.created_at >= ?)
-                  AND (? IS NULL OR o.created_at <= ?)
+                SELECT 
+                    COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0) / 100.0 as revenue
+                FROM journal_lines jl
+                JOIN journal_entries je ON jl.journal_entry_id = je.id
+                JOIN accounts a ON a.id = jl.account_id
+                WHERE a.type = 'revenue'
+                  AND (? IS NULL OR je.transaction_date >= ?)
+                  AND (? IS NULL OR je.transaction_date <= ?)
             ''', (date_from, date_from, date_to, date_to))
             revenue = cursor.fetchone()['revenue'] or 0
             
-            # 2. COGS - using new rates
+            # ============================================================
+            # 2. REVENUE BREAKDOWN BY ACCOUNT
+            # ============================================================
             cursor.execute('''
                 SELECT 
-                    oi.price_at_time,
-                    r.batch_id,
-                    r.condition_sleeve_id,
-                    r.condition_disc_id
-                FROM order_items oi
-                JOIN orders o ON oi.order_id = o.id
-                LEFT JOIN records r ON oi.record_id = r.id
-                WHERE o.payment_status = 'paid'
-                  AND (? IS NULL OR o.created_at >= ?)
-                  AND (? IS NULL OR o.created_at <= ?)
+                    a.code,
+                    a.name,
+                    COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0) / 100.0 as balance
+                FROM journal_lines jl
+                JOIN journal_entries je ON jl.journal_entry_id = je.id
+                JOIN accounts a ON a.id = jl.account_id
+                WHERE a.type = 'revenue'
+                  AND (? IS NULL OR je.transaction_date >= ?)
+                  AND (? IS NULL OR je.transaction_date <= ?)
+                GROUP BY a.id, a.code, a.name
+                ORDER BY a.code
             ''', (date_from, date_from, date_to, date_to))
-            rows = cursor.fetchall()
+            revenue_rows = cursor.fetchall()
             
-            total_cogs = 0
-            for row in rows:
-                if row['batch_id']:
-                    # Calculate from batch
-                    cursor.execute('''
-                        SELECT 
-                            (SELECT COALESCE(SUM(store_price), 1) FROM records WHERE batch_id = ?) as total_store_price,
-                            (SELECT COALESCE(jl.debit_amount / 100.0, 0) FROM journal_lines jl 
-                             WHERE jl.journal_entry_id = ? AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050')) as batch_cost
-                    ''', (row['batch_id'], row['batch_id']))
-                    batch = cursor.fetchone()
-                    if batch and batch['total_store_price'] and batch['total_store_price'] > 0 and batch['batch_cost']:
-                        total_cogs += row['price_at_time'] / batch['total_store_price'] * batch['batch_cost']
-                else:
-                    # Use assumption rate based on condition
-                    if row['condition_sleeve_id'] == 1 and row['condition_disc_id'] == 1:
-                        total_cogs += row['price_at_time'] * new_rate
-                    else:
-                        total_cogs += row['price_at_time'] * used_rate
+            # ============================================================
+            # 3. COGS - FROM JOURNAL (FIXED)
+            # ============================================================
+            cursor.execute('''
+                SELECT 
+                    COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as cogs
+                FROM journal_lines jl
+                JOIN journal_entries je ON jl.journal_entry_id = je.id
+                JOIN accounts a ON a.id = jl.account_id
+                WHERE a.code = '5000'
+                  AND (? IS NULL OR je.transaction_date >= ?)
+                  AND (? IS NULL OR je.transaction_date <= ?)
+            ''', (date_from, date_from, date_to, date_to))
+            total_cogs = cursor.fetchone()['cogs'] or 0
             
-            # 3. Other expenses (excluding COGS account 5000)
+            # ============================================================
+            # 4. OTHER EXPENSES - FROM JOURNAL (KEPT AS IS)
+            # ============================================================
             cursor.execute('''
                 SELECT a.code, a.name,
-                       COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) as balance
+                       COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as balance
                 FROM journal_lines jl
                 JOIN journal_entries je ON jl.journal_entry_id = je.id
                 JOIN accounts a ON jl.account_id = a.id
@@ -6207,14 +6209,19 @@ def accounting_reports():
             ''', (date_from, date_from, date_to, date_to))
             expense_rows = cursor.fetchall()
             
+            # ============================================================
+            # 5. BUILD REPORT
+            # ============================================================
             report_data = []
             total_expense = total_cogs
             
-            # Add revenue line
-            report_data.append({
-                'Account': 'Sales Revenue',
-                'Balance': revenue
-            })
+            # Add revenue lines (breakdown by account)
+            for row in revenue_rows:
+                report_data.append({
+                    'Account': f"{row['code']} - {row['name']}",
+                    'Balance': row['balance']
+                })
+            
             # Add COGS line
             report_data.append({
                 'Account': 'COGS',
@@ -6223,7 +6230,7 @@ def accounting_reports():
             
             # Add other expense lines
             for row in expense_rows:
-                balance = row['balance'] / 100.0
+                balance = row['balance']
                 report_data.append({
                     'Account': f"{row['code']} - {row['name']}",
                     'Balance': balance
@@ -6231,6 +6238,8 @@ def accounting_reports():
                 total_expense += balance
             
             net_profit = revenue - total_expense
+            
+            # Format the summary
             summary = f"Total Revenue: ${revenue:.2f} | Total Expenses: ${total_expense:.2f} | Net Profit: ${net_profit:.2f}"
             
         elif report_type == 'balance-sheet':
@@ -6240,7 +6249,7 @@ def accounting_reports():
                     a.type,
                     a.code,
                     a.name,
-                    COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) as balance
+                    COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as balance
                 FROM accounts a
                 LEFT JOIN journal_lines jl ON jl.account_id = a.id
                 LEFT JOIN journal_entries je ON je.id = jl.journal_entry_id
@@ -6256,7 +6265,7 @@ def accounting_reports():
             total_liabilities = 0
             total_equity = 0
             for row in rows:
-                balance = row['balance'] / 100.0
+                balance = row['balance'] or 0
                 report_data.append({
                     'Type': row['type'],
                     'Account': f"{row['code']} - {row['name']}",
@@ -6343,38 +6352,20 @@ def accounting_reports():
             report_data = []
             total_profit = 0
             for row in rows:
-                # Calculate COGS for this order
+                # Calculate COGS for this order using journal account 5000
                 cursor.execute('''
                     SELECT 
-                        oi.price_at_time,
-                        r.batch_id,
-                        r.condition_sleeve_id,
-                        r.condition_disc_id
-                    FROM order_items oi
-                    LEFT JOIN records r ON oi.record_id = r.id
-                    WHERE oi.order_id = ?
+                        COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as order_cogs
+                    FROM journal_lines jl
+                    JOIN journal_entries je ON jl.journal_entry_id = je.id
+                    WHERE je.source_type = 'order' 
+                      AND je.source_id = ?
+                      AND jl.account_id = (SELECT id FROM accounts WHERE code = '5000')
                 ''', (row['order_id'],))
-                items = cursor.fetchall()
+                cogs_row = cursor.fetchone()
+                order_cogs = cogs_row['order_cogs'] if cogs_row else 0
                 
-                new_rate, used_rate = get_cogs_rates()
-                order_cogs = 0
-                for item in items:
-                    if item['batch_id']:
-                        cursor.execute('''
-                            SELECT 
-                                (SELECT COALESCE(SUM(store_price), 1) FROM records WHERE batch_id = ?) as total_store_price,
-                                (SELECT COALESCE(jl.debit_amount / 100.0, 0) FROM journal_lines jl 
-                                 WHERE jl.journal_entry_id = ? AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050')) as batch_cost
-                        ''', (item['batch_id'], item['batch_id']))
-                        batch = cursor.fetchone()
-                        if batch and batch['total_store_price'] and batch['total_store_price'] > 0 and batch['batch_cost']:
-                            order_cogs += item['price_at_time'] / batch['total_store_price'] * batch['batch_cost']
-                    else:
-                        if item['condition_sleeve_id'] == 1 and item['condition_disc_id'] == 1:
-                            order_cogs += item['price_at_time'] * new_rate
-                        else:
-                            order_cogs += item['price_at_time'] * used_rate
-                
+                # Calculate profit
                 profit = row['item_revenue'] + row['shipping_charged'] - order_cogs - row['fees'] - row['shipping_cost']
                 total_profit += profit
                 report_data.append({
@@ -6405,8 +6396,6 @@ def accounting_reports():
         app.logger.error(f"Report error: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
 
 # ===== PLAID INTEGRATION =====
 # Helper functions for Plaid client and token storage

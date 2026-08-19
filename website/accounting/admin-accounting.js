@@ -1327,22 +1327,16 @@ function updateBankCounts(unprocessed, total) {
     }
 }
 
-// ============================================================
-// REPORTS
-// ============================================================
-
 async function runReport() {
     console.log('[REPORTS] Generating report');
     const reportType = document.getElementById('report-type').value;
-    const dateFrom = document.getElementById('report-date-from').value;
-    const dateTo = document.getElementById('report-date-to').value;
     const container = document.getElementById('report-result');
     container.innerHTML = '<p class="text-muted">Loading...</p>';
 
     try {
         const params = new URLSearchParams({ type: reportType });
-        if (dateFrom) params.append('date_from', dateFrom);
-        if (dateTo) params.append('date_to', dateTo);
+        // Date parameters removed
+
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reports?${params.toString()}`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
@@ -3026,11 +3020,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load accounts into dropdowns
     loadAccountSelects();
 
-    // Load default date range for reports
-    const today = new Date().toISOString().split('T')[0];
-    const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
-    document.getElementById('report-date-from').value = firstDay;
-    document.getElementById('report-date-to').value = today;
+     
 
     // Load import (bank) by default
     loadBankTransactions();
