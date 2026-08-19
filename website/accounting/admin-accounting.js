@@ -995,7 +995,7 @@ function resetJournalFilters() {
     console.log('[JOURNAL] Resetting filters');
     document.getElementById('journal-account-filter').value = '';
     document.getElementById('journal-search').value = '';
-    document.getElementById('journal-unbalanced-only').checked = false; // NEW
+    document.getElementById('journal-unbalanced-only').checked = false;
     journalCurrentPage = 1;
     loadJournalEntries();
 }
@@ -1057,7 +1057,6 @@ async function bulkPostTransactions() {
             const sourceType = select.dataset.sourceType;
             const processed = select.dataset.processed === 'true';
 
-            // --- FIX: read amount and date from data attributes ---
             const amount = parseFloat(select.dataset.amount || 0);
             const date = select.dataset.date || '';
 
@@ -1328,7 +1327,7 @@ function updateBankCounts(unprocessed, total) {
 }
 
 // ============================================================
-// REPORTS
+// REPORTS TAB
 // ============================================================
 
 async function runReport() {
@@ -1339,8 +1338,7 @@ async function runReport() {
 
     try {
         const params = new URLSearchParams({ type: reportType });
-        // Date parameters removed - P&L now shows all data
-        
+
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reports?${params.toString()}`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
@@ -1413,6 +1411,224 @@ function exportReportCSV() {
     a.download = 'report.csv';
     a.click();
     window.URL.revokeObjectURL(url);
+}
+
+
+// ============================================================
+// MONTHLY P&L BAR CHART - EXACT COPY OF REPORTS DATA
+// ============================================================
+
+async function loadMonthlyPLBarChart() {
+    console.log('[MONTHLY-PL] Loading bar chart...');
+    const container = document.getElementById('monthly-pl-bar-chart-container');
+    if (!container) {
+        console.error('[MONTHLY-PL] Container not found');
+        return;
+    }
+
+    container.innerHTML = '<div style="text-align: center; font-size: 14px; color: #666; padding: 40px;">Loading chart...</div>';
+
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reports?type=pll`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        if (!res.ok) throw new Error('Failed to generate report');
+        const data = await res.json();
+        console.log('[MONTHLY-PL] API Response:', data);
+        if (data.status === 'success' && data.report && data.report.length > 0) {
+            renderMonthlyPLBarChart(data.report);
+        } else {
+            container.innerHTML = '<p style="text-align:center; padding:40px; color:#666;">No data available.</p>';
+        }
+    } catch (err) {
+        console.error('[MONTHLY-PL] Error:', err);
+        container.innerHTML = `<p style="text-align:center; padding:40px; color:#dc3545;">Error: ${err.message}</p>`;
+    }
+}
+
+function renderMonthlyPLBarChart(reportData) {
+    console.log('[MONTHLY-PL] Rendering bar chart...');
+    console.log('[MONTHLY-PL] Report data:', reportData);
+    const container = document.getElementById('monthly-pl-bar-chart-container');
+    if (!container) return;
+
+    // Define expense account codes - these are the ones from your P&L
+    const expenseCodePrefixes = ['5000', '5010', '5020', '5040', '6010', '6011', '6013', '6014', '6020', '6030', '6080', '6090', '6100', '1850'];
+    const revenueCodePrefixes = ['4000', '4001', '4003', '4090'];
+    
+    // Extract accounts and values - FORCE expenses to be negative
+    const accountNames = [];
+    const adjustedValues = [];
+    
+    reportData.forEach(item => {
+        const name = item.Account;
+        const value = item.Balance || 0;
+        accountNames.push(name);
+        
+        // Extract the numeric code from the account name
+        const code = name.split(' ')[0]; // e.g., "5000" from "5000 - Cost of Goods Sold"
+        
+        // Check if this is an expense account
+        const isExpense = expenseCodePrefixes.includes(code);
+        const isRevenue = revenueCodePrefixes.includes(code);
+        
+        console.log(`[MONTHLY-PL] Account: ${name}, Code: ${code}, IsExpense: ${isExpense}, Value: ${value}`);
+        
+        // If it's an expense, make it negative
+        if (isExpense) {
+            if (value > 0) {
+                console.log(`[MONTHLY-PL] Making expense negative: ${name} ${value} -> ${-value}`);
+                adjustedValues.push(-value);
+            } else {
+                adjustedValues.push(value);
+            }
+        } else if (isRevenue) {
+            // Revenue stays as is (positive or negative for sales returns)
+            adjustedValues.push(value);
+        } else {
+            // Unknown account type - keep as is
+            adjustedValues.push(value);
+        }
+    });
+    
+    console.log('[MONTHLY-PL] Adjusted values:', accountNames.map((n, i) => ({ name: n, value: adjustedValues[i] })));
+    
+    // Calculate Net Income (sum of all adjusted values)
+    let netIncome = 0;
+    adjustedValues.forEach(val => netIncome += val);
+    
+    // Add Net Income as the last bar
+    const allLabels = [...accountNames, 'Net Income'];
+    const allValues = [...adjustedValues, netIncome];
+
+    // Define colors
+    const revenueKeywords = ['revenue', 'sales', 'income'];
+    const expenseKeywords = ['cogs', 'expense', 'cost', 'shipping', 'fees', 'rent', 'utilities', 'insurance', 'advertising', 'software', 'supplies', 'equipment', 'leasehold', 'improvements'];
+    
+    const colors = allLabels.map(name => {
+        const lower = name.toLowerCase();
+        if (name === 'Net Income') {
+            return netIncome >= 0 ? 'rgba(40, 167, 69, 0.95)' : 'rgba(220, 53, 69, 0.95)';
+        }
+        if (revenueKeywords.some(k => lower.includes(k))) {
+            return 'rgba(40, 167, 69, 0.85)'; // Green - Revenue
+        }
+        if (expenseKeywords.some(k => lower.includes(k))) {
+            return 'rgba(220, 53, 69, 0.75)'; // Red - Expenses
+        }
+        return 'rgba(108, 117, 125, 0.7)'; // Gray - Other
+    });
+
+    // Build the HTML
+    container.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <div style="font-size: 14px; color: #000;">All Time</div>
+            <div style="font-size: 14px; color: #666;">
+                Net: <span style="font-weight: bold; color: ${netIncome >= 0 ? '#28a745' : '#dc3545'};">${netIncome >= 0 ? '+' : ''}$${netIncome.toFixed(2)}</span>
+            </div>
+        </div>
+        <div style="position: relative; height: 450px;">
+            <canvas id="monthly-pl-bar-chart"></canvas>
+        </div>
+        <div style="text-align: center; font-size: 11px; color: #999; margin-top: 10px;">
+            Click bar for details
+        </div>
+    `;
+
+    // Render the chart
+    setTimeout(() => {
+        const canvas = document.getElementById('monthly-pl-bar-chart');
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        
+        if (window._monthlyPLBarChart) {
+            window._monthlyPLBarChart.destroy();
+            window._monthlyPLBarChart = null;
+        }
+
+        const chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: allLabels,
+                datasets: [{
+                    label: 'Amount',
+                    data: allValues,
+                    backgroundColor: colors,
+                    borderColor: colors.map(c => c.replace('0.85', '1').replace('0.75', '1').replace('0.95', '1').replace('0.7', '1')),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                const val = ctx.raw;
+                                return (val >= 0 ? '+' : '') + '$' + val.toFixed(2);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value;
+                            },
+                            font: { size: 10 }
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45,
+                            font: { size: 9 }
+                        }
+                    }
+                },
+                onClick: function(e, elements) {
+                    if (elements.length === 0) return;
+                    const element = elements[0];
+                    const index = element.index;
+                    const label = allLabels[index];
+                    
+                    document.getElementById('monthly-tx-modal')?.classList.remove('active');
+                    
+                    if (label === 'Net Income') {
+                        showMonthlyTransactions('all', null, 'All Transactions', true);
+                        return;
+                    }
+                    
+                    if (label.includes('COGS') || label.includes('Cost of Goods Sold')) {
+                        showCOGSCalculation('all');
+                        return;
+                    }
+                    
+                    const trimmed = label.trim();
+                    const norm = trimmed.toLowerCase();
+                    let accountId = accountNameToId[norm] || accountNameToId[trimmed];
+                    if (!accountId) {
+                        const found = bankAccounts.find(a => a.name === trimmed);
+                        if (found) accountId = found.id;
+                    }
+                    
+                    if (accountId) {
+                        showMonthlyTransactions('all', accountId, label, true);
+                    } else {
+                        showMonthlyTransactions('all', null, label, true);
+                    }
+                }
+            }
+        });
+
+        window._monthlyPLBarChart = chart;
+    }, 100);
 }
 
 // ============================================================
@@ -2233,7 +2449,7 @@ function showMonthBreakdownModal(month, chartData, chartType) {
 }
 
 // ============================================================
-// SHARED LINE CHART RENDERER
+// SHARED LINE CHART RENDERER (For Cash Flow and Balance Sheet)
 // ============================================================
 
 function renderLineChart(canvasId, data, options = {}) {
@@ -2416,11 +2632,7 @@ function renderLineChart(canvasId, data, options = {}) {
     });
     const yMax = Math.ceil((maxVal * 1.25) / 100) * 100 || 100;
 
-    if (canvasId === 'pl-chart') {
-        plChartData = data;
-        plMonths = months;
-        allPLData = data;
-    } else if (canvasId === 'cash-flow-chart') {
+    if (canvasId === 'cash-flow-chart') {
         cashFlowChartData = data;
         cashFlowMonths = months;
         allCashFlowData = data;
@@ -2505,54 +2717,52 @@ function renderLineChart(canvasId, data, options = {}) {
 
     window[canvasId + 'Instance'] = chart;
 
-    if (canvasId === 'pl-chart') {
-        plChartInstance = chart;
-    } else if (canvasId === 'cash-flow-chart') {
+    if (canvasId === 'cash-flow-chart') {
         cashFlowChartInstance = chart;
     } else if (canvasId === 'bs-chart') {
         bsChartInstance = chart;
     }
 
-    // Add x-axis click handler
-    canvas.addEventListener('click', function(e) {
-        try {
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+    // Add x-axis click handler for Cash Flow and Balance Sheet
+    if (canvasId === 'cash-flow-chart' || canvasId === 'bs-chart') {
+        canvas.addEventListener('click', function(e) {
+            try {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
 
-            const chartInstance = window[canvasId + 'Instance'] || Chart.getChart(canvas);
-            if (!chartInstance) return;
+                const chartInstance = window[canvasId + 'Instance'] || Chart.getChart(canvas);
+                if (!chartInstance) return;
 
-            const chartArea = chartInstance.chartArea;
-            if (!chartArea) return;
+                const chartArea = chartInstance.chartArea;
+                if (!chartArea) return;
 
-            const chartHeight = chartArea.bottom - chartArea.top;
-            const yPos = (y - chartArea.top) / chartHeight;
+                const chartHeight = chartArea.bottom - chartArea.top;
+                const yPos = (y - chartArea.top) / chartHeight;
 
-            if (yPos < 0.8 || yPos > 1.1) return;
+                if (yPos < 0.8 || yPos > 1.1) return;
 
-            const xScale = chartInstance.scales.x;
-            if (!xScale) return;
+                const xScale = chartInstance.scales.x;
+                if (!xScale) return;
 
-            const pixelsPerTick = (xScale.right - xScale.left) / (months.length || 1);
-            const clickedIndex = Math.round((x - xScale.left) / pixelsPerTick);
+                const pixelsPerTick = (xScale.right - xScale.left) / (months.length || 1);
+                const clickedIndex = Math.round((x - xScale.left) / pixelsPerTick);
 
-            if (clickedIndex >= 0 && clickedIndex < months.length) {
-                const month = months[clickedIndex];
+                if (clickedIndex >= 0 && clickedIndex < months.length) {
+                    const month = months[clickedIndex];
 
-                document.getElementById('monthly-tx-modal')?.classList.remove('active');
+                    document.getElementById('monthly-tx-modal')?.classList.remove('active');
 
-                const dataToUse = canvasId === 'pl-chart' ? plChartData :
-                                 canvasId === 'cash-flow-chart' ? cashFlowChartData :
-                                 bsChartData;
-                if (dataToUse) {
-                    showMonthBreakdownModal(month, dataToUse, options.type || 'pl');
+                    const dataToUse = canvasId === 'cash-flow-chart' ? cashFlowChartData : bsChartData;
+                    if (dataToUse) {
+                        showMonthBreakdownModal(month, dataToUse, options.type || 'cashflow');
+                    }
                 }
+            } catch (err) {
+                console.error('[CHART-X] Error in click handler:', err);
             }
-        } catch (err) {
-            console.error('[CHART-X] Error in click handler:', err);
-        }
-    });
+        });
+    }
 
     // Double-click to expand for cash flow
     if (canvasId === 'cash-flow-chart') {
@@ -2755,69 +2965,6 @@ async function loadCashFlow() {
 }
 
 // ============================================================
-// MONTHLY P&L
-// ============================================================
-
-async function loadMonthlyPL() {
-    console.log('[MONTHLY-PL] LOAD MONTHLY P&L START');
-
-    const startInput = document.getElementById('pl-start');
-    const endInput = document.getElementById('pl-end');
-    const start = startInput ? startInput.value : '';
-    const end = endInput ? endInput.value : '';
-
-    if (!start || !end) {
-        alert('Please select both start and end months.');
-        return;
-    }
-
-    if (bankAccounts.length === 0) {
-        await loadBankAccountsForRowDropdowns();
-    }
-
-    try {
-        const startDate = new Date(start + '-01');
-        const endDate = new Date(end + '-01');
-        const lastDay = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
-        const startStr = startDate.toISOString().slice(0, 10);
-        const endStr = lastDay.toISOString().slice(0, 10);
-
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/monthly-pl?start=${startStr}&end=${endStr}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-
-        if (!res.ok) throw new Error('Failed to fetch P&L data');
-
-        const data = await res.json();
-
-        if (data.status === 'success') {
-            allPLData = data;
-            plMonths = data.months || [];
-
-            const dateRangeEl = document.getElementById('pl-date-range');
-            if (dateRangeEl && plMonths.length > 0) {
-                const formatMonth = (m) => {
-                    const [year, month] = m.split('-');
-                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    return `${monthNames[parseInt(month) - 1]} ${year}`;
-                };
-                dateRangeEl.textContent = `Showing ${formatMonth(plMonths[0])} to ${formatMonth(plMonths[plMonths.length - 1])}`;
-                dateRangeEl.style.display = 'block';
-            }
-
-            renderLineChart('pl-chart', data, { type: 'pl' });
-        } else {
-            console.error('[MONTHLY-PL] Error:', data.error);
-            document.getElementById('pl-chart-container').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
-        }
-    } catch (err) {
-        console.error('[MONTHLY-PL] Error:', err);
-        document.getElementById('pl-chart-container').innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
-    }
-}
-
-// ============================================================
 // BALANCE SHEET
 // ============================================================
 
@@ -2912,6 +3059,132 @@ async function loadBankAccountsForRowDropdowns() {
 }
 
 // ============================================================
+// TRANSACTION BALANCE TAB
+// ============================================================
+
+async function loadTransactionBalance() {
+    const tbody = document.getElementById('unbalanced-accounts-body');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">Loading...</td></tr>';
+
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/unbalanced-accounts`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!res.ok) throw new Error('Failed to load unbalanced accounts');
+        const data = await res.json();
+        if (data.status === 'success') {
+            renderUnbalancedAccounts(data.accounts);
+        } else {
+            tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
+        }
+    } catch (err) {
+        console.error('[TRANSACTION BALANCE] Error:', err);
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#dc3545;">Error: ${err.message}</td></tr>`;
+    }
+}
+
+function renderUnbalancedAccounts(accounts) {
+    const tbody = document.getElementById('unbalanced-accounts-body');
+    if (!accounts || accounts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">All accounts are balanced.</td></tr>';
+        return;
+    }
+
+    let html = '';
+    accounts.forEach(acc => {
+        html += `<tr>
+            <td>${acc.code}</td>
+            <td>${acc.name}</td>
+            <td>${acc.unbalanced_count}</td>
+            <td>
+                <button class="btn btn-sm btn-info" onclick="showUnbalancedTransactions(${acc.id}, '${acc.code} - ${acc.name}')">
+                    <i class="fas fa-eye"></i> View
+                </button>
+            </td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+}
+
+async function showUnbalancedTransactions(accountId, accountName) {
+    const detailContainer = document.getElementById('unbalanced-detail-container');
+    const detailBody = document.getElementById('unbalanced-detail-body');
+    const titleSpan = document.getElementById('selected-account-name');
+    titleSpan.textContent = accountName;
+    detailContainer.style.display = 'block';
+    detailBody.innerHTML = '<p>Loading...</p>';
+
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/unbalanced-transactions?account_id=${accountId}`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!res.ok) throw new Error('Failed to load transactions');
+        const data = await res.json();
+        if (data.status === 'success') {
+            renderUnbalancedTransactionsDetail(data.transactions, accountName);
+        } else {
+            detailBody.innerHTML = `<p style="color:#dc3545;">${data.error || 'Error'}</p>`;
+        }
+    } catch (err) {
+        console.error('[UNBALANCED DETAIL] Error:', err);
+        detailBody.innerHTML = `<p style="color:#dc3545;">Error: ${err.message}</p>`;
+    }
+}
+
+function renderUnbalancedTransactionsDetail(transactions, accountName) {
+    const detailBody = document.getElementById('unbalanced-detail-body');
+    if (!transactions || transactions.length === 0) {
+        detailBody.innerHTML = '<p>No unbalanced entries found for this account.</p>';
+        return;
+    }
+
+    let html = `<table>
+        <thead>
+            <tr>
+                <th>Entry ID</th>
+                <th>Date</th>
+                <th>Description</th>
+                <th>Total Debits</th>
+                <th>Total Credits</th>
+                <th>Difference</th>
+                <th>Source</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>`;
+    transactions.forEach(entry => {
+        const diff = (entry.total_debits || 0) - (entry.total_credits || 0);
+        const isUnbalanced = Math.abs(diff) > 0.01;
+        const diffColor = isUnbalanced ? '#dc3545' : '#28a745';
+        const diffSign = diff > 0 ? '+' : '';
+        
+        html += `<tr>
+            <td>${entry.id}</td>
+            <td>${entry.transaction_date || ''}</td>
+            <td>${entry.description || ''}</td>
+            <td>$${(entry.total_debits || 0).toFixed(2)}</td>
+            <td>$${(entry.total_credits || 0).toFixed(2)}</td>
+            <td style="color: ${diffColor}; font-weight: 600;">${diffSign}$${Math.abs(diff).toFixed(2)}</td>
+            <td>${entry.source_type || ''}: ${entry.source_id || ''}</td>
+            <td>
+                <button class="btn btn-sm btn-danger" onclick="unpostTransaction(${entry.id})">
+                    <i class="fas fa-undo"></i> Unpost
+                </button>
+            </td>
+        </tr>`;
+    });
+    html += '</tbody></table>';
+    detailBody.innerHTML = html;
+}
+
+function closeUnbalancedDetail() {
+    document.getElementById('unbalanced-detail-container').style.display = 'none';
+}
+
+// ============================================================
 // INITIALIZATION (the last piece – already included above)
 // ============================================================
 
@@ -2935,7 +3208,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const target = document.getElementById('sub-' + sub);
             if (target) target.classList.add('active');
 
-            if (sub === 'import') {
+            if (sub === 'transactions') {
                 loadBankTransactions();
                 loadAccountBalances();
             }
@@ -2970,22 +3243,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             else if (sub === 'monthly-pl') {
                 console.log('[INIT] Monthly P&L tab selected');
-                const now = new Date();
-                const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-                const endInput = document.getElementById('pl-end');
-                if (!endInput.value) endInput.value = nextMonth.toISOString().slice(0, 7);
-                const startInput = document.getElementById('pl-start');
-                if (!startInput.value) {
-                    const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-                    startInput.value = startDate.toISOString().slice(0, 7);
-                }
-                if (bankAccounts.length === 0) {
-                    loadBankAccountsForRowDropdowns().then(() => {
-                        loadMonthlyPL();
-                    });
-                } else {
-                    loadMonthlyPL();
-                }
+                loadMonthlyPLBarChart();
             }
             else if (sub === 'balance-sheet') {
                 console.log('[INIT] Balance Sheet tab selected');
@@ -3005,6 +3263,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     loadBalanceSheet();
                 }
+            }
+            else if (sub === 'transaction-balance') {
+                console.log('[INIT] Transaction Balance tab selected');
+                loadTransactionBalance();
             }
             else if (sub === 'reports') {
                 // nothing to auto-load
