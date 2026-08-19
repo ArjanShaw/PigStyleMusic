@@ -1327,6 +1327,10 @@ function updateBankCounts(unprocessed, total) {
     }
 }
 
+// ============================================================
+// REPORTS
+// ============================================================
+
 async function runReport() {
     console.log('[REPORTS] Generating report');
     const reportType = document.getElementById('report-type').value;
@@ -1335,8 +1339,8 @@ async function runReport() {
 
     try {
         const params = new URLSearchParams({ type: reportType });
-        // Date parameters removed
-
+        // Date parameters removed - P&L now shows all data
+        
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reports?${params.toString()}`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
@@ -3019,8 +3023,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load accounts into dropdowns
     loadAccountSelects();
-
-     
 
     // Load import (bank) by default
     loadBankTransactions();
