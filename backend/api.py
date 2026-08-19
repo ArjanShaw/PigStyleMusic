@@ -6172,7 +6172,7 @@ def accounting_reports():
                 
                 account_breakdown = {m: {} for m in months}
                 
-                # Revenue by month
+                # Revenue by month (credit - debit = positive)
                 cursor.execute('''
                     SELECT 
                         strftime('%Y-%m', je.transaction_date) as month,
@@ -6195,38 +6195,17 @@ def accounting_reports():
                         account_name = f"{row['code']} - {row['name']}"
                         account_breakdown[month][account_name] = row['balance']
                 
-                # COGS by month (account 5000)
-                cursor.execute('''
-                    SELECT 
-                        strftime('%Y-%m', je.transaction_date) as month,
-                        COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as cogs
-                    FROM journal_lines jl
-                    JOIN journal_entries je ON jl.journal_entry_id = je.id
-                    JOIN accounts a ON a.id = jl.account_id
-                    WHERE a.code = '5000'
-                      AND je.transaction_date >= ? AND je.transaction_date <= ?
-                    GROUP BY strftime('%Y-%m', je.transaction_date)
-                    ORDER BY month
-                ''', (date_from, date_to))
-                cogs_rows = cursor.fetchall()
-                cogs_by_month = {row['month']: row['cogs'] for row in cogs_rows}
-                
-                for month in months:
-                    if month in cogs_by_month and cogs_by_month[month] != 0:
-                        account_breakdown[month]['5000 - Cost of Goods Sold'] = cogs_by_month[month]
-                
-                # Other expenses by month
+                # Expenses by month (credit - debit = negative for expenses)
                 cursor.execute('''
                     SELECT 
                         strftime('%Y-%m', je.transaction_date) as month,
                         a.code,
                         a.name,
-                        COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as balance
+                        COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0) / 100.0 as balance
                     FROM journal_lines jl
                     JOIN journal_entries je ON jl.journal_entry_id = je.id
-                    JOIN accounts a ON jl.account_id = a.id
+                    JOIN accounts a ON a.id = jl.account_id
                     WHERE a.type = 'expense'
-                      AND a.code != '5000'
                       AND je.transaction_date >= ? AND je.transaction_date <= ?
                     GROUP BY month, a.id
                     ORDER BY month, a.code
@@ -6255,10 +6234,10 @@ def accounting_reports():
                 })
             
             # ============================================================
-            # Aggregated P&L (original behavior with date filters)
+            # Aggregated P&L
             # ============================================================
             
-            # Revenue from journal
+            # Revenue from journal (credit - debit = positive for revenue)
             cursor.execute('''
                 SELECT 
                     COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0) / 100.0 as revenue
@@ -6288,33 +6267,15 @@ def accounting_reports():
             ''', (date_from, date_from, date_to, date_to))
             revenue_rows = cursor.fetchall()
             
-            # COGS from journal (account 5000)
-            cursor.execute('''
-                SELECT 
-                    COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as cogs
-                FROM journal_lines jl
-                JOIN journal_entries je ON jl.journal_entry_id = je.id
-                JOIN accounts a ON a.id = jl.account_id
-                WHERE a.code = '5000'
-                  AND (? IS NULL OR je.transaction_date >= ?)
-                  AND (? IS NULL OR je.transaction_date <= ?)
-            ''', (date_from, date_from, date_to, date_to))
-            total_cogs = cursor.fetchone()['cogs'] or 0
-            
-            # Get COGS account info for display
-            cursor.execute('SELECT code, name FROM accounts WHERE code = "5000"')
-            cogs_account = cursor.fetchone()
-            cogs_label = f"{cogs_account['code']} - {cogs_account['name']}" if cogs_account else "COGS"
-            
-            # Other expenses
+            # Expenses from journal (credit - debit = negative for expenses)
+            # INCLUDES COGS (account 5000) - no separate query needed
             cursor.execute('''
                 SELECT a.code, a.name,
-                       COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as balance
+                       COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0) / 100.0 as balance
                 FROM journal_lines jl
                 JOIN journal_entries je ON jl.journal_entry_id = je.id
                 JOIN accounts a ON jl.account_id = a.id
                 WHERE a.type = 'expense'
-                  AND a.code != '5000'
                   AND (? IS NULL OR je.transaction_date >= ?)
                   AND (? IS NULL OR je.transaction_date <= ?)
                 GROUP BY a.id
@@ -6324,19 +6285,16 @@ def accounting_reports():
             
             # Build report
             report_data = []
-            total_expense = total_cogs
+            total_expense = 0
             
+            # Add revenue lines
             for row in revenue_rows:
                 report_data.append({
                     'Account': f"{row['code']} - {row['name']}",
                     'Balance': row['balance']
                 })
             
-            report_data.append({
-                'Account': cogs_label,
-                'Balance': total_cogs
-            })
-            
+            # Add expense lines (including COGS)
             for row in expense_rows:
                 balance = row['balance']
                 report_data.append({
@@ -6345,7 +6303,7 @@ def accounting_reports():
                 })
                 total_expense += balance
             
-            net_profit = revenue - total_expense
+            net_profit = revenue - abs(total_expense)
             summary = f"Total Revenue: ${revenue:.2f} | Total Expenses: ${total_expense:.2f} | Net Profit: ${net_profit:.2f}"
             
             conn.close()
