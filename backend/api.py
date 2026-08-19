@@ -6126,24 +6126,26 @@ def accounting_auto_match():
         app.logger.error(f"Auto-match error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-# ==================== ACCOUNTING: REPORTS ====================
 
 @app.route('/api/accounting/reports', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def accounting_reports():
-    """Generate financial reports: pll, balance-sheet, batch-profit, order-economics"""
+    """
+    Generate financial reports. ALWAYS returns ALL data - no date filters.
+    
+    Query params:
+        type: pll, balance-sheet, batch-profit, order-economics
+    """
     try:
         report_type = request.args.get('type', 'pll')
-        date_from = request.args.get('date_from')
-        date_to = request.args.get('date_to')
         
         conn = get_db()
         cursor = conn.cursor()
         
         if report_type == 'pll':
             # ============================================================
-            # 1. REVENUE - FROM JOURNAL
+            # 1. REVENUE - FROM JOURNAL (ALL TIME)
             # ============================================================
             cursor.execute('''
                 SELECT 
@@ -6152,9 +6154,7 @@ def accounting_reports():
                 JOIN journal_entries je ON jl.journal_entry_id = je.id
                 JOIN accounts a ON a.id = jl.account_id
                 WHERE a.type = 'revenue'
-                  AND (? IS NULL OR je.transaction_date >= ?)
-                  AND (? IS NULL OR je.transaction_date <= ?)
-            ''', (date_from, date_from, date_to, date_to))
+            ''')
             revenue = cursor.fetchone()['revenue'] or 0
             
             # ============================================================
@@ -6169,15 +6169,13 @@ def accounting_reports():
                 JOIN journal_entries je ON jl.journal_entry_id = je.id
                 JOIN accounts a ON a.id = jl.account_id
                 WHERE a.type = 'revenue'
-                  AND (? IS NULL OR je.transaction_date >= ?)
-                  AND (? IS NULL OR je.transaction_date <= ?)
                 GROUP BY a.id, a.code, a.name
                 ORDER BY a.code
-            ''', (date_from, date_from, date_to, date_to))
+            ''')
             revenue_rows = cursor.fetchall()
             
             # ============================================================
-            # 3. COGS - FROM JOURNAL (account 5000) - FIXED
+            # 3. COGS - FROM JOURNAL (account 5000)
             # ============================================================
             cursor.execute('''
                 SELECT 
@@ -6186,9 +6184,7 @@ def accounting_reports():
                 JOIN journal_entries je ON jl.journal_entry_id = je.id
                 JOIN accounts a ON a.id = jl.account_id
                 WHERE a.code = '5000'
-                  AND (? IS NULL OR je.transaction_date >= ?)
-                  AND (? IS NULL OR je.transaction_date <= ?)
-            ''', (date_from, date_from, date_to, date_to))
+            ''')
             total_cogs = cursor.fetchone()['cogs'] or 0
             
             # Get COGS account info for display
@@ -6197,7 +6193,7 @@ def accounting_reports():
             cogs_label = f"{cogs_account['code']} - {cogs_account['name']}" if cogs_account else "COGS"
             
             # ============================================================
-            # 4. OTHER EXPENSES - FROM JOURNAL
+            # 4. OTHER EXPENSES
             # ============================================================
             cursor.execute('''
                 SELECT a.code, a.name,
@@ -6207,11 +6203,9 @@ def accounting_reports():
                 JOIN accounts a ON jl.account_id = a.id
                 WHERE a.type = 'expense'
                   AND a.code != '5000'
-                  AND (? IS NULL OR je.transaction_date >= ?)
-                  AND (? IS NULL OR je.transaction_date <= ?)
                 GROUP BY a.id
                 ORDER BY a.code
-            ''', (date_from, date_from, date_to, date_to))
+            ''')
             expense_rows = cursor.fetchall()
             
             # ============================================================
@@ -6220,20 +6214,17 @@ def accounting_reports():
             report_data = []
             total_expense = total_cogs
             
-            # Add revenue lines
             for row in revenue_rows:
                 report_data.append({
                     'Account': f"{row['code']} - {row['name']}",
                     'Balance': row['balance']
                 })
             
-            # Add COGS line with account number
             report_data.append({
                 'Account': cogs_label,
                 'Balance': total_cogs
             })
             
-            # Add other expense lines
             for row in expense_rows:
                 balance = row['balance']
                 report_data.append({
@@ -6245,8 +6236,16 @@ def accounting_reports():
             net_profit = revenue - total_expense
             summary = f"Total Revenue: ${revenue:.2f} | Total Expenses: ${total_expense:.2f} | Net Profit: ${net_profit:.2f}"
             
+            conn.close()
+            return jsonify({
+                'status': 'success',
+                'report': report_data,
+                'summary': summary,
+                'type': report_type
+            })
+            
         elif report_type == 'balance-sheet':
-            # Balance Sheet: assets, liabilities, equity
+            # ... same, remove date filters
             cursor.execute('''
                 SELECT 
                     a.type,
@@ -6257,11 +6256,9 @@ def accounting_reports():
                 LEFT JOIN journal_lines jl ON jl.account_id = a.id
                 LEFT JOIN journal_entries je ON je.id = jl.journal_entry_id
                 WHERE a.type IN ('asset', 'liability', 'equity')
-                  AND (? IS NULL OR je.transaction_date >= ?)
-                  AND (? IS NULL OR je.transaction_date <= ?)
                 GROUP BY a.id
                 ORDER BY a.type, a.code
-            ''', (date_from, date_from, date_to, date_to))
+            ''')
             rows = cursor.fetchall()
             report_data = []
             total_assets = 0
@@ -6281,9 +6278,15 @@ def accounting_reports():
                 else:
                     total_equity += balance
             summary = f"Total Assets: ${total_assets:.2f} | Total Liabilities: ${total_liabilities:.2f} | Total Equity: ${total_equity:.2f} | (Assets = Liabilities + Equity: {abs(total_assets - (total_liabilities + total_equity)) < 0.01})"
+            conn.close()
+            return jsonify({
+                'status': 'success',
+                'report': report_data,
+                'summary': summary,
+                'type': report_type
+            })
             
         elif report_type == 'batch-profit':
-            # Batch profitability
             cursor.execute('''
                 SELECT 
                     je.id as batch_id,
@@ -6302,11 +6305,9 @@ def accounting_reports():
                 LEFT JOIN records r ON r.batch_id = je.id
                 WHERE je.source_type = 'purchase'
                   AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050')
-                  AND (? IS NULL OR je.transaction_date >= ?)
-                  AND (? IS NULL OR je.transaction_date <= ?)
                 GROUP BY je.id
                 ORDER BY je.transaction_date DESC
-            ''', (date_from, date_from, date_to, date_to))
+            ''')
             rows = cursor.fetchall()
             report_data = []
             for row in rows:
@@ -6326,9 +6327,15 @@ def accounting_reports():
                     'ROI %': round(roi, 1)
                 })
             summary = f"Total Batches: {len(report_data)}"
+            conn.close()
+            return jsonify({
+                'status': 'success',
+                'report': report_data,
+                'summary': summary,
+                'type': report_type
+            })
             
         elif report_type == 'order-economics':
-            # Per-order economics
             cursor.execute('''
                 SELECT 
                     o.id as order_id,
@@ -6346,16 +6353,13 @@ def accounting_reports():
                 LEFT JOIN fees f ON f.order_id = o.id
                 LEFT JOIN shipments s ON s.order_id = o.id
                 WHERE o.payment_status = 'paid'
-                  AND (? IS NULL OR o.created_at >= ?)
-                  AND (? IS NULL OR o.created_at <= ?)
                 GROUP BY o.id
                 ORDER BY o.created_at DESC
-            ''', (date_from, date_from, date_to, date_to))
+            ''')
             rows = cursor.fetchall()
             report_data = []
             total_profit = 0
             for row in rows:
-                # Calculate COGS for this order using journal account 5000
                 cursor.execute('''
                     SELECT 
                         COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as order_cogs
@@ -6368,7 +6372,6 @@ def accounting_reports():
                 cogs_row = cursor.fetchone()
                 order_cogs = cogs_row['order_cogs'] if cogs_row else 0
                 
-                # Calculate profit
                 profit = row['item_revenue'] + row['shipping_charged'] - order_cogs - row['fees'] - row['shipping_cost']
                 total_profit += profit
                 report_data.append({
@@ -6383,18 +6386,18 @@ def accounting_reports():
                     'Net Profit': profit
                 })
             summary = f"Total Orders: {len(report_data)} | Total Net Profit: ${total_profit:.2f}"
+            conn.close()
+            return jsonify({
+                'status': 'success',
+                'report': report_data,
+                'summary': summary,
+                'type': report_type
+            })
         
         else:
+            conn.close()
             return jsonify({'status': 'error', 'error': 'Invalid report type'}), 400
         
-        conn.close()
-        
-        return jsonify({
-            'status': 'success',
-            'report': report_data,
-            'summary': summary,
-            'type': report_type
-        })
     except Exception as e:
         app.logger.error(f"Report error: {str(e)}")
         app.logger.error(traceback.format_exc())
@@ -6967,153 +6970,6 @@ def monthly_account_transactions():
         'transactions': transactions
     })
 
-
-# ==================== ACCOUNTING: MONTHLY P&L (KEPT AS IS) ====================
-
-@app.route('/api/accounting/monthly-pl', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def monthly_pl():
-    """Monthly Profit & Loss - filters by account type (revenue and expense) instead of hardcoded codes."""
-    start = request.args.get('start')
-    end = request.args.get('end')
-    if not start or not end:
-        return jsonify({'status': 'error', 'error': 'start and end required'}), 400
-
-    from datetime import datetime, timedelta
-    start_date = datetime.strptime(start, '%Y-%m-%d')
-    end_date = datetime.strptime(end, '%Y-%m-%d')
-    
-    start_str = start_date.strftime('%Y-%m-%d')
-    end_str = end_date.strftime('%Y-%m-%d')
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    # Get revenue accounts (type = 'revenue')
-    cursor.execute('''
-        SELECT
-            strftime('%Y-%m', je.transaction_date) as month,
-            a.name,
-            COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0) / 100.0 as amount
-        FROM journal_lines jl
-        JOIN journal_entries je ON jl.journal_entry_id = je.id
-        JOIN accounts a ON jl.account_id = a.id
-        WHERE a.type = 'revenue'
-          AND je.transaction_date >= ? AND je.transaction_date <= ?
-          AND je.source_type != 'order'
-        GROUP BY month, a.id
-        ORDER BY month, a.code
-    ''', (start_str, end_str))
-    revenue_rows = cursor.fetchall()
-
-    # Get expense accounts (type = 'expense') - exclude COGS (handled separately)
-    cursor.execute('''
-        SELECT
-            strftime('%Y-%m', je.transaction_date) as month,
-            a.name,
-            COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as amount
-        FROM journal_lines jl
-        JOIN journal_entries je ON jl.journal_entry_id = je.id
-        JOIN accounts a ON jl.account_id = a.id
-        WHERE a.type = 'expense'
-          AND a.code != '5000'  -- Exclude COGS (handled separately)
-          AND je.transaction_date >= ? AND je.transaction_date <= ?
-          AND je.source_type != 'order'
-        GROUP BY month, a.id
-        ORDER BY month, a.code
-    ''', (start_str, end_str))
-    expense_rows = cursor.fetchall()
-
-    # Get COGS from records (calculated, not from journal)
-    cursor.execute('''
-        SELECT
-            strftime('%Y-%m', r.date_sold) as month,
-            COALESCE(SUM(
-                CASE 
-                    WHEN r.batch_id IS NOT NULL AND r.batch_id IN (SELECT id FROM journal_entries WHERE source_type = 'purchase') THEN
-                        r.store_price / (
-                            SELECT COALESCE(SUM(store_price), 1)
-                            FROM records r2
-                            WHERE r2.batch_id = r.batch_id
-                        ) * (
-                            SELECT COALESCE(jl.debit_amount / 100.0, 0)
-                            FROM journal_lines jl
-                            WHERE jl.journal_entry_id = r.batch_id
-                              AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050')
-                        )
-                    ELSE
-                        r.store_price * 
-                        CASE 
-                            WHEN r.condition_sleeve_id = 1 AND r.condition_disc_id = 1 THEN 0.55
-                            ELSE 0.30
-                        END
-                END
-            ), 0) as cogs
-        FROM records r
-        WHERE r.status_id = 3
-          AND r.date_sold >= ? AND r.date_sold <= ?
-        GROUP BY strftime('%Y-%m', r.date_sold)
-        ORDER BY month
-    ''', (start_str, end_str))
-    cogs_rows = cursor.fetchall()
-    cogs_by_month = {row['month']: row['cogs'] for row in cogs_rows}
-
-    conn.close()
-
-    # Build month list
-    months = []
-    current = start_date
-    while current <= end_date:
-        months.append(current.strftime('%Y-%m'))
-        if current.month == 12:
-            current = current.replace(year=current.year+1, month=1, day=1)
-        else:
-            current = current.replace(month=current.month+1, day=1)
-
-    # Build data structure
-    account_breakdown = {}
-
-    # Add revenue
-    for row in revenue_rows:
-        month = row['month']
-        if month not in account_breakdown:
-            account_breakdown[month] = {}
-        # Filter out near-zero values
-        if abs(row['amount']) > 0.01:
-            account_breakdown[month][row['name']] = row['amount']
-
-    # Add COGS (negative)
-    for month in months:
-        cogs = cogs_by_month.get(month, 0)
-        if abs(cogs) > 0.01:
-            if month not in account_breakdown:
-                account_breakdown[month] = {}
-            account_breakdown[month]['COGS'] = -cogs
-
-    # Add expenses (negative)
-    for row in expense_rows:
-        month = row['month']
-        if month not in account_breakdown:
-            account_breakdown[month] = {}
-        # Expenses are debits, so they show as negative
-        amount = -row['amount']
-        if abs(amount) > 0.01:
-            account_breakdown[month][row['name']] = amount
-
-    # Add Net Income for each month
-    for month in months:
-        if month not in account_breakdown:
-            account_breakdown[month] = {}
-        total = sum(account_breakdown[month].values())
-        if abs(total) > 0.01:
-            account_breakdown[month]['Net Income'] = total
-
-    return jsonify({
-        'status': 'success',
-        'months': months,
-        'account_breakdown': account_breakdown
-    })
 
 @app.route('/api/accounting/cash-flow-detail', methods=['GET'])
 @login_required
