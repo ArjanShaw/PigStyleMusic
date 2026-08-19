@@ -46,6 +46,10 @@ let selectedPairId = null;
 // Bank accounts for dropdowns (cached)
 let cachedAccounts = [];
 
+// Monthly P&L charts
+let monthlyPLCharts = [];
+let monthlyPLData = [];
+
 // ============================================================
 // TOAST NOTIFICATION
 // ============================================================
@@ -1413,221 +1417,320 @@ function exportReportCSV() {
     window.URL.revokeObjectURL(url);
 }
 
-
 // ============================================================
-// MONTHLY P&L BAR CHART - EXACT COPY OF REPORTS DATA
+// MONTHLY P&L BAR CHARTS - Last 6 Complete Months
 // ============================================================
 
 async function loadMonthlyPLBarChart() {
-    console.log('[MONTHLY-PL] Loading bar chart...');
+    console.log('[MONTHLY-PL] Loading bar charts for last 6 months...');
     const container = document.getElementById('monthly-pl-bar-chart-container');
     if (!container) {
         console.error('[MONTHLY-PL] Container not found');
         return;
     }
 
-    container.innerHTML = '<div style="text-align: center; font-size: 14px; color: #666; padding: 40px;">Loading chart...</div>';
+    container.innerHTML = '<div style="text-align: center; font-size: 14px; color: #666; padding: 40px;">Loading charts...</div>';
 
     try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reports?type=pll`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        if (!res.ok) throw new Error('Failed to generate report');
-        const data = await res.json();
-        console.log('[MONTHLY-PL] API Response:', data);
-        if (data.status === 'success' && data.report && data.report.length > 0) {
-            renderMonthlyPLBarChart(data.report);
-        } else {
-            container.innerHTML = '<p style="text-align:center; padding:40px; color:#666;">No data available.</p>';
+        // Get last 6 complete months
+        const months = getLastSixCompleteMonths();
+        console.log('[MONTHLY-PL] Months to fetch:', months);
+        
+        // Fetch data for each month
+        const allData = [];
+        for (const month of months) {
+            const dateFrom = `${month.year}-${String(month.month).padStart(2, '0')}-01`;
+            const lastDay = new Date(month.year, month.month, 0).getDate();
+            const dateTo = `${month.year}-${String(month.month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+            
+            console.log(`[MONTHLY-PL] Fetching ${month.label} (${dateFrom} to ${dateTo})...`);
+            
+            const res = await fetch(
+                `${AppConfig.baseUrl}/api/accounting/reports?type=pll&date_from=${dateFrom}&date_to=${dateTo}`,
+                {
+                    credentials: 'include',
+                    headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+                }
+            );
+            
+            if (!res.ok) throw new Error(`Failed to fetch data for ${month.label}`);
+            const data = await res.json();
+            
+            if (data.status === 'success' && data.report) {
+                allData.push({
+                    month: month,
+                    report: data.report,
+                    summary: data.summary
+                });
+            } else {
+                allData.push({
+                    month: month,
+                    report: [],
+                    summary: 'No data'
+                });
+            }
         }
+        
+        monthlyPLData = allData;
+        renderMonthlyPLBarCharts(allData);
+        
     } catch (err) {
         console.error('[MONTHLY-PL] Error:', err);
         container.innerHTML = `<p style="text-align:center; padding:40px; color:#dc3545;">Error: ${err.message}</p>`;
     }
 }
 
-function renderMonthlyPLBarChart(reportData) {
-    console.log('[MONTHLY-PL] Rendering bar chart...');
-    console.log('[MONTHLY-PL] Report data:', reportData);
+function getLastSixCompleteMonths() {
+    const now = new Date();
+    const months = [];
+    
+    let year = now.getFullYear();
+    let month = now.getMonth();
+    
+    for (let i = 0; i < 6; i++) {
+        let targetYear = year;
+        let targetMonth = month - 1 - i;
+        
+        while (targetMonth < 0) {
+            targetMonth += 12;
+            targetYear -= 1;
+        }
+        
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const label = `${monthNames[targetMonth]} ${targetYear}`;
+        
+        months.push({
+            year: targetYear,
+            month: targetMonth + 1,
+            label: label,
+            index: i
+        });
+    }
+    
+    console.log('[MONTHLY-PL] Last 6 complete months:', months);
+    return months;
+}
+
+function renderMonthlyPLBarCharts(allData) {
+    console.log('[MONTHLY-PL] Rendering bar charts...');
     const container = document.getElementById('monthly-pl-bar-chart-container');
     if (!container) return;
 
-    // Define expense account codes - these are the ones from your P&L
+    // Define expense account codes
     const expenseCodePrefixes = ['5000', '5010', '5020', '5040', '6010', '6011', '6013', '6014', '6020', '6030', '6080', '6090', '6100', '1850'];
     const revenueCodePrefixes = ['4000', '4001', '4003', '4090'];
-    
-    // Extract accounts and values - FORCE expenses to be negative
-    const accountNames = [];
-    const adjustedValues = [];
-    
-    reportData.forEach(item => {
-        const name = item.Account;
-        const value = item.Balance || 0;
-        accountNames.push(name);
+
+    // Build the HTML - 6 charts in a grid
+    let gridHtml = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; margin-bottom: 20px;">
+    `;
+
+    allData.forEach((monthData, index) => {
+        const { month, report, summary } = monthData;
         
-        // Extract the numeric code from the account name
-        const code = name.split(' ')[0]; // e.g., "5000" from "5000 - Cost of Goods Sold"
+        // Process data for this month
+        const accountNames = [];
+        const adjustedValues = [];
         
-        // Check if this is an expense account
-        const isExpense = expenseCodePrefixes.includes(code);
-        const isRevenue = revenueCodePrefixes.includes(code);
-        
-        console.log(`[MONTHLY-PL] Account: ${name}, Code: ${code}, IsExpense: ${isExpense}, Value: ${value}`);
-        
-        // If it's an expense, make it negative
-        if (isExpense) {
-            if (value > 0) {
-                console.log(`[MONTHLY-PL] Making expense negative: ${name} ${value} -> ${-value}`);
-                adjustedValues.push(-value);
+        report.forEach(item => {
+            const name = item.Account;
+            const value = item.Balance || 0;
+            accountNames.push(name);
+            
+            const code = name.split(' ')[0];
+            const isExpense = expenseCodePrefixes.includes(code);
+            
+            if (isExpense) {
+                adjustedValues.push(value > 0 ? -value : value);
             } else {
                 adjustedValues.push(value);
             }
-        } else if (isRevenue) {
-            // Revenue stays as is (positive or negative for sales returns)
-            adjustedValues.push(value);
-        } else {
-            // Unknown account type - keep as is
-            adjustedValues.push(value);
-        }
-    });
-    
-    console.log('[MONTHLY-PL] Adjusted values:', accountNames.map((n, i) => ({ name: n, value: adjustedValues[i] })));
-    
-    // Calculate Net Income (sum of all adjusted values)
-    let netIncome = 0;
-    adjustedValues.forEach(val => netIncome += val);
-    
-    // Add Net Income as the last bar
-    const allLabels = [...accountNames, 'Net Income'];
-    const allValues = [...adjustedValues, netIncome];
-
-    // Define colors
-    const revenueKeywords = ['revenue', 'sales', 'income'];
-    const expenseKeywords = ['cogs', 'expense', 'cost', 'shipping', 'fees', 'rent', 'utilities', 'insurance', 'advertising', 'software', 'supplies', 'equipment', 'leasehold', 'improvements'];
-    
-    const colors = allLabels.map(name => {
-        const lower = name.toLowerCase();
-        if (name === 'Net Income') {
-            return netIncome >= 0 ? 'rgba(40, 167, 69, 0.95)' : 'rgba(220, 53, 69, 0.95)';
-        }
-        if (revenueKeywords.some(k => lower.includes(k))) {
-            return 'rgba(40, 167, 69, 0.85)'; // Green - Revenue
-        }
-        if (expenseKeywords.some(k => lower.includes(k))) {
-            return 'rgba(220, 53, 69, 0.75)'; // Red - Expenses
-        }
-        return 'rgba(108, 117, 125, 0.7)'; // Gray - Other
-    });
-
-    // Build the HTML
-    container.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <div style="font-size: 14px; color: #000;">All Time</div>
-            <div style="font-size: 14px; color: #666;">
-                Net: <span style="font-weight: bold; color: ${netIncome >= 0 ? '#28a745' : '#dc3545'};">${netIncome >= 0 ? '+' : ''}$${netIncome.toFixed(2)}</span>
-            </div>
-        </div>
-        <div style="position: relative; height: 450px;">
-            <canvas id="monthly-pl-bar-chart"></canvas>
-        </div>
-        <div style="text-align: center; font-size: 11px; color: #999; margin-top: 10px;">
-            Click bar for details
-        </div>
-    `;
-
-    // Render the chart
-    setTimeout(() => {
-        const canvas = document.getElementById('monthly-pl-bar-chart');
-        if (!canvas) return;
-
-        const ctx = canvas.getContext('2d');
+        });
         
-        if (window._monthlyPLBarChart) {
-            window._monthlyPLBarChart.destroy();
-            window._monthlyPLBarChart = null;
-        }
+        // Calculate Net Income
+        let netIncome = 0;
+        adjustedValues.forEach(val => netIncome += val);
+        
+        // Add Net Income as the last bar
+        const allLabels = [...accountNames, 'Net Income'];
+        const allValues = [...adjustedValues, netIncome];
 
-        const chart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: allLabels,
-                datasets: [{
-                    label: 'Amount',
-                    data: allValues,
-                    backgroundColor: colors,
-                    borderColor: colors.map(c => c.replace('0.85', '1').replace('0.75', '1').replace('0.95', '1').replace('0.7', '1')),
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: function(ctx) {
-                                const val = ctx.raw;
-                                return (val >= 0 ? '+' : '') + '$' + val.toFixed(2);
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            callback: function(value) {
-                                return '$' + value;
-                            },
-                            font: { size: 10 }
-                        }
-                    },
-                    x: {
-                        ticks: {
-                            maxRotation: 45,
-                            minRotation: 45,
-                            font: { size: 9 }
-                        }
-                    }
-                },
-                onClick: function(e, elements) {
-                    if (elements.length === 0) return;
-                    const element = elements[0];
-                    const index = element.index;
-                    const label = allLabels[index];
-                    
-                    document.getElementById('monthly-tx-modal')?.classList.remove('active');
-                    
-                    if (label === 'Net Income') {
-                        showMonthlyTransactions('all', null, 'All Transactions', true);
-                        return;
-                    }
-                    
-                    if (label.includes('COGS') || label.includes('Cost of Goods Sold')) {
-                        showCOGSCalculation('all');
-                        return;
-                    }
-                    
-                    const trimmed = label.trim();
-                    const norm = trimmed.toLowerCase();
-                    let accountId = accountNameToId[norm] || accountNameToId[trimmed];
-                    if (!accountId) {
-                        const found = bankAccounts.find(a => a.name === trimmed);
-                        if (found) accountId = found.id;
-                    }
-                    
-                    if (accountId) {
-                        showMonthlyTransactions('all', accountId, label, true);
-                    } else {
-                        showMonthlyTransactions('all', null, label, true);
-                    }
-                }
+        // Colors
+        const revenueKeywords = ['revenue', 'sales', 'income'];
+        const expenseKeywords = ['cogs', 'expense', 'cost', 'shipping', 'fees', 'rent', 'utilities', 'insurance', 'advertising', 'software', 'supplies', 'equipment', 'leasehold', 'improvements'];
+        
+        const colors = allLabels.map(name => {
+            const lower = name.toLowerCase();
+            if (name === 'Net Income') {
+                return netIncome >= 0 ? 'rgba(40, 167, 69, 0.95)' : 'rgba(220, 53, 69, 0.95)';
             }
+            if (revenueKeywords.some(k => lower.includes(k))) {
+                return 'rgba(40, 167, 69, 0.85)';
+            }
+            if (expenseKeywords.some(k => lower.includes(k))) {
+                return 'rgba(220, 53, 69, 0.75)';
+            }
+            return 'rgba(108, 117, 125, 0.7)';
         });
 
-        window._monthlyPLBarChart = chart;
+        gridHtml += `
+            <div style="background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; position: relative; min-height: 400px;">
+                <div style="text-align: center; font-weight: 600; font-size: 16px; color: #000; margin-bottom: 10px;">${month.label}</div>
+                <div style="text-align: center; font-size: 12px; color: #666; margin-bottom: 10px;">
+                    Net: <span style="font-weight: bold; color: ${netIncome >= 0 ? '#28a745' : '#dc3545'};">${netIncome >= 0 ? '+' : ''}$${netIncome.toFixed(2)}</span>
+                </div>
+                <div style="position: relative; height: 280px;">
+                    <canvas id="monthly-pl-chart-${index}"></canvas>
+                </div>
+                <div style="text-align: center; font-size: 11px; color: #999; margin-top: 5px; cursor: pointer;" onclick="showMonthlyTransactions('${month.year}-${String(month.month).padStart(2, '0')}', null, 'All Transactions', true)">
+                    Click bar for details
+                </div>
+            </div>
+        `;
+    });
+
+    gridHtml += '</div>';
+    container.innerHTML = gridHtml;
+
+    // Render each chart
+    setTimeout(() => {
+        allData.forEach((monthData, index) => {
+            const { month, report } = monthData;
+            
+            const accountNames = [];
+            const adjustedValues = [];
+            
+            report.forEach(item => {
+                const name = item.Account;
+                const value = item.Balance || 0;
+                accountNames.push(name);
+                
+                const code = name.split(' ')[0];
+                const isExpense = expenseCodePrefixes.includes(code);
+                
+                if (isExpense) {
+                    adjustedValues.push(value > 0 ? -value : value);
+                } else {
+                    adjustedValues.push(value);
+                }
+            });
+            
+            let netIncome = 0;
+            adjustedValues.forEach(val => netIncome += val);
+            
+            const allLabels = [...accountNames, 'Net Income'];
+            const allValues = [...adjustedValues, netIncome];
+
+            const revenueKeywords = ['revenue', 'sales', 'income'];
+            const expenseKeywords = ['cogs', 'expense', 'cost', 'shipping', 'fees', 'rent', 'utilities', 'insurance', 'advertising', 'software', 'supplies', 'equipment', 'leasehold', 'improvements'];
+            
+            const colors = allLabels.map(name => {
+                const lower = name.toLowerCase();
+                if (name === 'Net Income') {
+                    return netIncome >= 0 ? 'rgba(40, 167, 69, 0.95)' : 'rgba(220, 53, 69, 0.95)';
+                }
+                if (revenueKeywords.some(k => lower.includes(k))) {
+                    return 'rgba(40, 167, 69, 0.85)';
+                }
+                if (expenseKeywords.some(k => lower.includes(k))) {
+                    return 'rgba(220, 53, 69, 0.75)';
+                }
+                return 'rgba(108, 117, 125, 0.7)';
+            });
+
+            const canvasId = `monthly-pl-chart-${index}`;
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            
+            if (window[`_monthlyPLChart_${index}`]) {
+                window[`_monthlyPLChart_${index}`].destroy();
+                window[`_monthlyPLChart_${index}`] = null;
+            }
+
+            const chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: allLabels,
+                    datasets: [{
+                        label: 'Amount',
+                        data: allValues,
+                        backgroundColor: colors,
+                        borderColor: colors.map(c => c.replace('0.85', '1').replace('0.75', '1').replace('0.95', '1').replace('0.7', '1')),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(ctx) {
+                                    const val = ctx.raw;
+                                    return (val >= 0 ? '+' : '') + '$' + val.toFixed(2);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value;
+                                },
+                                font: { size: 9 }
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45,
+                                font: { size: 8 }
+                            }
+                        }
+                    },
+                    onClick: function(e, elements) {
+                        if (elements.length === 0) return;
+                        const element = elements[0];
+                        const idx = element.index;
+                        const label = allLabels[idx];
+                        const monthKey = `${month.year}-${String(month.month).padStart(2, '0')}`;
+                        
+                        document.getElementById('monthly-tx-modal')?.classList.remove('active');
+                        
+                        if (label === 'Net Income') {
+                            showMonthlyTransactions(monthKey, null, 'All Transactions', true);
+                            return;
+                        }
+                        
+                        if (label.includes('COGS') || label.includes('Cost of Goods Sold')) {
+                            showCOGSCalculation(monthKey);
+                            return;
+                        }
+                        
+                        const trimmed = label.trim();
+                        const norm = trimmed.toLowerCase();
+                        let accountId = accountNameToId[norm] || accountNameToId[trimmed];
+                        if (!accountId) {
+                            const found = bankAccounts.find(a => a.name === trimmed);
+                            if (found) accountId = found.id;
+                        }
+                        
+                        if (accountId) {
+                            showMonthlyTransactions(monthKey, accountId, label, true);
+                        } else {
+                            showMonthlyTransactions(monthKey, null, label, true);
+                        }
+                    }
+                }
+            });
+
+            window[`_monthlyPLChart_${index}`] = chart;
+        });
     }, 100);
 }
 
