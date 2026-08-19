@@ -304,17 +304,26 @@
         </div>
 
         <!-- REPORTS TAB -->
-        <div id="sub-reports" class="sub-tab-content">
-            <h4 style="color:#000;"><i class="fas fa-chart-pie"></i> Financial Reports</h4>
-            <div class="report-selector">
-                <div class="form-group"><label style="color:#000;">Report Type</label><select id="report-type"><option value="pll">Profit & Loss</option><option value="balance-sheet">Balance Sheet</option><option value="batch-profit">Batch Profitability</option><option value="order-economics">Order Economics</option></select></div>
-                <div class="form-group"><label style="color:#000;">Date From</label><input type="date" id="report-date-from"></div>
-                <div class="form-group"><label style="color:#000;">Date To</label><input type="date" id="report-date-to"></div>
-                <button class="btn btn-primary" onclick="runReport()"><i class="fas fa-play"></i> Generate</button>
-                <button class="btn btn-success" onclick="exportReportCSV()"><i class="fas fa-download"></i> Export CSV</button>
-            </div>
-            <div id="report-result" class="report-result"><p class="text-muted">Select a report and click Generate.</p></div>
+<div id="sub-reports" class="sub-tab-content">
+    <h4 style="color:#000;"><i class="fas fa-chart-pie"></i> Financial Reports</h4>
+    <p class="text-muted" style="color:#666;">Select a report type and click Generate to view results.</p>
+
+    <div class="report-selector">
+        <div class="form-group">
+            <label style="color:#000;">Report Type</label>
+            <select id="report-type">
+                <option value="pll">Profit & Loss</option>
+                <option value="balance-sheet">Balance Sheet</option>
+                <option value="batch-profit">Batch Profitability</option>
+                <option value="order-economics">Order Economics</option>
+            </select>
         </div>
+        <!-- DATE RANGE REMOVED -->
+        <button class="btn btn-primary" onclick="runReport()"><i class="fas fa-play"></i> Generate</button>
+        <button class="btn btn-success" onclick="exportReportCSV()"><i class="fas fa-download"></i> Export CSV</button>
+    </div>
+    <div id="report-result" class="report-result"><p class="text-muted">Select a report and click Generate.</p></div>
+</div>
 
         <!-- CASH FLOW TAB -->
         <div id="sub-cash-flow" class="sub-tab-content">
