@@ -12,20 +12,13 @@ let bankAccounts = [];
 
 // Chart instances
 let plChartInstance = null;
-let cashFlowChartInstance = null;
 let bsChartInstance = null;
 let expandedChartInstance = null;
 let isExpanded = false;
 
 // Chart data cache for breakdown modal
-let plChartData = null;
-let cashFlowChartData = null;
 let bsChartData = null;
-let plMonths = [];
-let cashFlowMonths = [];
 let bsMonths = [];
-let allPLData = null;
-let allCashFlowData = null;
 let allBSData = null;
 
 // Account name to ID mapping
@@ -37,18 +30,20 @@ let currentBreakdownMonth = '';
 let currentBreakdownMonths = [];
 let currentBreakdownMonthIndex = -1;
 
-// Reconciliation slider instance
-let reconcileSlider = null;
-let reconcileMinDate = null;
-let reconcileMaxDate = null;
-let selectedPairId = null;
-
 // Bank accounts for dropdowns (cached)
 let cachedAccounts = [];
 
 // Monthly P&L charts
 let monthlyPLCharts = [];
 let monthlyPLData = [];
+
+// Custom P&L chart instance
+let customPLChartInstance = null;
+let currentCustomPLData = null;
+
+// Balance sheet chart instance
+let balanceChartInstance = null;
+let currentBalanceData = null;
 
 // ============================================================
 // TOAST NOTIFICATION
@@ -115,7 +110,6 @@ function formatReconDate(dateStr) {
         return dateStr;
     }
 }
-
 
 function reconnectPlaid(source, label) {
     console.log(`[PLAID] Reconnecting ${source}...`);
@@ -541,105 +535,10 @@ function bulkAssignAccount() {
 }
 
 // ============================================================
-// RECONCILIATION – DATE RANGE SLIDER
+// RECONCILIATION – PAIRS SUMMARY (NO SLIDER)
 // ============================================================
 
-function loadReconcileDateRange(account1, account2, callback) {
-    console.log('[RECONCILE] Using hardcoded date range: Jan 1, 2025 – today');
-    const minDate = new Date('2025-01-01');
-    const maxDate = new Date();
-    reconcileMinDate = minDate;
-    reconcileMaxDate = maxDate;
-    initReconcileSlider(minDate, maxDate);
-    // Force a reload after setting the slider
-    loadReconcilePairsSummary();
-    if (callback) callback();
-}
-
-function initReconcileSlider(minDate, maxDate) {
-    const sliderContainer = document.getElementById('reconcile-slider');
-    if (!sliderContainer) return;
-
-    if (typeof noUiSlider === 'undefined') {
-        console.error('[RECONCILE] noUiSlider library not loaded');
-        showToast('Slider library not loaded. Please refresh.', 'error');
-        return;
-    }
-
-    if (reconcileSlider) {
-        reconcileSlider.destroy();
-        reconcileSlider = null;
-    }
-
-    const minTimestamp = minDate.getTime();
-    const maxTimestamp = maxDate.getTime();
-
-    noUiSlider.create(sliderContainer, {
-        start: [minTimestamp, maxTimestamp],
-        connect: true,
-        range: {
-            'min': minTimestamp,
-            'max': maxTimestamp
-        },
-        step: 86400000,
-        format: {
-            to: function(value) {
-                return Math.round(value);
-            },
-            from: function(value) {
-                return Number(value);
-            }
-        }
-    });
-
-    reconcileSlider = sliderContainer.noUiSlider;
-
-    sliderContainer.noUiSlider.on('update', function(values, handle) {
-        const leftTimestamp = parseInt(values[0]);
-        const rightTimestamp = parseInt(values[1]);
-        const leftDate = new Date(leftTimestamp);
-        const rightDate = new Date(rightTimestamp);
-        const startLabel = document.getElementById('reconcile-date-start-label');
-        const endLabel = document.getElementById('reconcile-date-end-label');
-        if (startLabel) startLabel.textContent = formatReconDate(leftDate.toISOString().split('T')[0]);
-        if (endLabel) endLabel.textContent = formatReconDate(rightDate.toISOString().split('T')[0]);
-    });
-
-    sliderContainer.noUiSlider.on('change', function() {
-        loadReconcilePairsSummary();
-        const selectedRow = document.querySelector('#reconcile-pairs-body tr.selected-row');
-        if (selectedRow) {
-            const accountA = parseInt(selectedRow.dataset.accountA);
-            const accountB = parseInt(selectedRow.dataset.accountB);
-            loadReconciliationTimeline(accountA, accountB);
-        }
-    });
-
-    // Added set listener to reload when slider is moved programmatically or by user
-    sliderContainer.noUiSlider.on('set', function() {
-        loadReconcilePairsSummary();
-    });
-}
-
-function getReconcileDateRange() {
-    if (!reconcileSlider) {
-        const now = new Date();
-        const thirtyDaysAgo = new Date(now);
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        return { start: thirtyDaysAgo.toISOString().split('T')[0], end: now.toISOString().split('T')[0] };
-    }
-    const values = reconcileSlider.get();
-    const startDate = new Date(parseInt(values[0]));
-    const endDate = new Date(parseInt(values[1]));
-    return {
-        start: startDate.toISOString().split('T')[0],
-        end: endDate.toISOString().split('T')[0]
-    };
-}
-
-// ============================================================
-// RECONCILIATION – PAIRS SUMMARY
-// ============================================================
+let selectedPairId = null;
 
 async function loadReconcilePairsSummary() {
     const tbody = document.getElementById('reconcile-pairs-body');
@@ -663,17 +562,11 @@ async function loadReconcilePairsSummary() {
             return;
         }
 
-        const dateRange = getReconcileDateRange();
-        const start = dateRange.start;
-        const end = dateRange.end;
-        console.log('[RECONCILE] Date range from slider:', dateRange);
-
+        // Fetch all timeline data for each pair (no date filters)
         const pairPromises = pairs.map(async (p) => {
             const params = new URLSearchParams();
             params.append('account1', p.account_a_id);
             params.append('account2', p.account_b_id);
-            if (start) params.append('start', start);
-            if (end) params.append('end', end);
             const timelineRes = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/timeline?${params.toString()}`, {
                 credentials: 'include',
                 headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
@@ -759,7 +652,7 @@ function renderPairsSummary(pairSummaries) {
 }
 
 // ============================================================
-// RECONCILIATION – TIMELINE
+// RECONCILIATION – TIMELINE (NO SLIDER)
 // ============================================================
 
 async function loadReconciliationTimeline(account1, account2) {
@@ -782,14 +675,6 @@ async function loadReconciliationTimeline(account1, account2) {
         }
     }
 
-    if (!reconcileSlider) {
-        await loadReconcileDateRange(account1, account2);
-    }
-
-    const dateRange = getReconcileDateRange();
-    const start = dateRange.start;
-    const end = dateRange.end;
-
     const resultDiv = document.getElementById('reconcile-result');
     resultDiv.innerHTML = '<p style="color: #000; text-align: center; padding: 20px;">Loading...</p>';
 
@@ -797,8 +682,6 @@ async function loadReconciliationTimeline(account1, account2) {
         const params = new URLSearchParams();
         params.append('account1', account1);
         params.append('account2', account2);
-        if (start) params.append('start', start);
-        if (end) params.append('end', end);
 
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/timeline?${params.toString()}`, {
             credentials: 'include',
@@ -824,7 +707,7 @@ function renderReconciliationTimeline(data) {
     const account2Name = data.account2_name || 'Account B';
 
     if (entries.length === 0) {
-        resultDiv.innerHTML = `<p style="color: #000;">No transactions found for these accounts and date range.</p>`;
+        resultDiv.innerHTML = `<p style="color: #000;">No transactions found for these accounts.</p>`;
         return;
     }
 
@@ -934,7 +817,7 @@ async function loadJournalEntries() {
     const search = document.getElementById('journal-search').value.trim();
     if (search) params.append('search', search);
     
-    // NEW: Add unbalanced filter
+    // Add unbalanced filter
     const unbalancedOnly = document.getElementById('journal-unbalanced-only').checked;
     if (unbalancedOnly) {
         params.append('unbalanced_only', 'true');
@@ -971,6 +854,8 @@ function renderJournal(entries) {
     }
     let html = '';
     entries.forEach(e => {
+        const diff = e.difference || 0;
+        const diffColor = Math.abs(diff) > 0.01 ? '#dc3545' : '#28a745';
         html += `<tr>
             <td>${e.id}</td>
             <td>${e.transaction_date}</td>
@@ -980,7 +865,10 @@ function renderJournal(entries) {
             <td>${e.credit_account || ''}</td>
             <td class="credit">${e.credit_amount ? '$' + parseFloat(e.credit_amount).toFixed(2) : ''}</td>
             <td>${e.source_type}: ${e.source_id}</td>
-            <td><button class="btn btn-sm btn-info" onclick="viewJournalEntry(${e.id})"><i class="fas fa-eye"></i></button></td>
+            <td>
+                <button class="btn btn-sm btn-info" onclick="viewJournalEntry(${e.id})"><i class="fas fa-eye"></i></button>
+                ${Math.abs(diff) > 0.01 ? `<span style="color:#dc3545;font-size:11px;margin-left:5px;">⚖️ $${diff.toFixed(2)}</span>` : ''}
+            </td>
         </tr>`;
     });
     body.innerHTML = html;
@@ -1022,9 +910,10 @@ function exportJournalCSV() {
     .then(data => {
         if (data.status === 'success' && data.entries) {
             console.log('[JOURNAL] Exporting', data.entries.length, 'entries');
-            let csv = 'ID,Date,Description,Debit Account,Debit Amount,Credit Account,Credit Amount,Source\n';
+            let csv = 'ID,Date,Description,Debit Account,Debit Amount,Credit Account,Credit Amount,Source,Difference\n';
             data.entries.forEach(e => {
-                csv += `${e.id},${e.transaction_date},"${(e.description||'').replace(/"/g,'""')}","${e.debit_account||''}",${e.debit_amount||0},"${e.credit_account||''}",${e.credit_amount||0},${e.source_type}:${e.source_id}\n`;
+                const diff = (e.debit_amount || 0) - (e.credit_amount || 0);
+                csv += `${e.id},${e.transaction_date},"${(e.description||'').replace(/"/g,'""')}","${e.debit_account||''}",${e.debit_amount||0},"${e.credit_account||''}",${e.credit_amount||0},${e.source_type}:${e.source_id},${diff.toFixed(2)}\n`;
             });
             const blob = new Blob([csv], { type: 'text/csv' });
             const url = window.URL.createObjectURL(blob);
@@ -1249,9 +1138,31 @@ function renderBankTransactions(transactions) {
         const txId = t.id;
         const isProcessed = t.processed || false;
 
+        // ===== UPDATED FILTER LOGIC =====
+        // For positive amounts: show Revenue accounts
+        // For negative amounts: show Expense, Liability, AND certain Asset accounts
         const filteredAccounts = cachedAccounts.filter(acc => {
-            if (amount > 0) return acc.type === 'revenue';
-            if (amount < 0) return (acc.type === 'expense' || acc.type === 'revenue' || acc.type === 'liability');
+            if (amount > 0) {
+                // Positive = revenue/inflow
+                return acc.type === 'revenue';
+            }
+            if (amount < 0) {
+                // Negative = expense/outflow
+                // Allow Expense, Liability
+                if (acc.type === 'expense' || acc.type === 'liability') return true;
+                // Allow Asset accounts that are prepaids (1055), inventory (1050, 1051), or other asset purchases
+                // This covers: Prepaid Rent, Inventory, and any other asset that might be purchased
+                if (acc.type === 'asset') {
+                    // Allow specific asset codes for purchases
+                    const allowedAssetCodes = ['1050', '1051', '1055', '1056', '1057', '1058', '1059'];
+                    if (allowedAssetCodes.includes(acc.code)) return true;
+                    // Also allow by name pattern
+                    if (acc.name && (acc.name.includes('Prepaid') || acc.name.includes('Inventory') || acc.name.includes('Equipment') || acc.name.includes('Leasehold'))) {
+                        return true;
+                    }
+                }
+                return false;
+            }
             return false;
         });
 
@@ -1310,6 +1221,7 @@ function renderBankTransactions(transactions) {
     populateBulkAccountSelect();
 }
 
+
 function updateBankCounts(unprocessed, total) {
     const countEl = document.getElementById('bank-unprocessed-count');
     const labelEl = document.getElementById('bank-count-label');
@@ -1331,76 +1243,321 @@ function updateBankCounts(unprocessed, total) {
 }
 
 // ============================================================
-// REPORTS TAB
+// CUSTOM P&L TAB
 // ============================================================
 
-async function runReport() {
-    console.log('[REPORTS] Generating report');
-    const reportType = document.getElementById('report-type').value;
-    const container = document.getElementById('report-result');
-    container.innerHTML = '<p class="text-muted">Loading...</p>';
+function initCustomPL() {
+    console.log('[CUSTOM-PL] Initializing Custom P&L tab');
+    
+    // Set default date range: Jan 2025 to current month
+    const now = new Date();
+    const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    
+    const startInput = document.getElementById('custom-pl-start');
+    const endInput = document.getElementById('custom-pl-end');
+    
+    // Default start: January 2025
+    if (!startInput.value) {
+        startInput.value = '2025-01';
+    }
+    if (!endInput.value) {
+        endInput.value = currentMonth;
+    }
+    
+    // Add event listeners for auto-load
+    startInput.addEventListener('change', loadCustomPL);
+    endInput.addEventListener('change', loadCustomPL);
+    document.getElementById('custom-pl-show-bar-chart').addEventListener('change', loadCustomPL);
+    
+    // Load initial data
+    loadCustomPL();
+}
 
+async function loadCustomPL() {
+    console.log('[CUSTOM-PL] Loading P&L data...');
+    const container = document.getElementById('custom-pl-result');
+    container.innerHTML = '<p class="text-muted" style="color:#666;">Loading...</p>';
+    
+    const start = document.getElementById('custom-pl-start').value;
+    const end = document.getElementById('custom-pl-end').value;
+    const showBarChart = document.getElementById('custom-pl-show-bar-chart').checked;
+    
+    if (!start || !end) {
+        container.innerHTML = '<p class="text-muted" style="color:#666;">Please select both start and end dates.</p>';
+        return;
+    }
+    
+    // Convert month to date range
+    const startDate = new Date(start + '-01');
+    const endDate = new Date(end + '-01');
+    const lastDay = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
+    const startStr = startDate.toISOString().slice(0, 10);
+    const endStr = lastDay.toISOString().slice(0, 10);
+    
     try {
-        const params = new URLSearchParams({ type: reportType });
-
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reports?${params.toString()}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
-        });
-        if (!res.ok) throw new Error('Failed to generate report');
+        const res = await fetch(
+            `${AppConfig.baseUrl}/api/accounting/reports?type=pll&date_from=${startStr}&date_to=${endStr}`,
+            {
+                credentials: 'include',
+                headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+            }
+        );
+        
+        if (!res.ok) throw new Error('Failed to generate P&L');
         const data = await res.json();
+        
         if (data.status === 'success') {
-            console.log('[REPORTS] Report generated, type:', reportType);
-            currentReportData = data;
-            renderReport(data, reportType);
+            currentCustomPLData = data;
+            
+            if (showBarChart) {
+                renderCustomPLBarChart(data);
+            } else {
+                renderCustomPLTable(data);
+            }
         } else {
-            console.error('[REPORTS] Error:', data.error);
-            container.innerHTML = '<p class="text-muted" style="color:#dc3545;">' + (data.error || 'Error generating report') + '</p>';
+            container.innerHTML = `<p class="text-muted" style="color:#dc3545;">${data.error || 'Error loading P&L'}</p>`;
         }
     } catch (err) {
-        console.error('[REPORTS] Error:', err);
-        container.innerHTML = '<p class="text-muted" style="color:#dc3545;">Error: ' + err.message + '</p>';
+        console.error('[CUSTOM-PL] Error:', err);
+        container.innerHTML = `<p class="text-muted" style="color:#dc3545;">Error: ${err.message}</p>`;
     }
 }
 
-function renderReport(data, type) {
-    console.log('[REPORTS] Rendering report, type:', type);
-    const container = document.getElementById('report-result');
+function renderCustomPLTable(data) {
+    const container = document.getElementById('custom-pl-result');
     if (!data.report || data.report.length === 0) {
-        container.innerHTML = '<p class="text-muted">No data for this report.</p>';
+        container.innerHTML = '<p class="text-muted" style="color:#666;">No data for this period.</p>';
         return;
     }
-    let html = '<table><thead><tr>';
-    const headers = Object.keys(data.report[0]);
-    headers.forEach(h => html += `<th>${h}</th>`);
-    html += '</tr></thead><tbody>';
-    data.report.forEach(row => {
-        html += '<tr>';
-        headers.forEach(h => {
-            let val = row[h];
-            if (typeof val === 'number') val = val.toFixed(2);
-            html += `<td>${val !== null && val !== undefined ? val : ''}</td>`;
-        });
-        html += '</tr>';
+    
+    // Separate revenue and expenses
+    const revenueItems = [];
+    const expenseItems = [];
+    let totalRevenue = 0;
+    let totalExpenses = 0;
+    
+    data.report.forEach(item => {
+        const name = item.Account || '';
+        const balance = item.Balance || 0;
+        const isRevenue = name.toLowerCase().includes('revenue') || 
+                          name.toLowerCase().includes('sales') || 
+                          name.toLowerCase().includes('income') ||
+                          name.includes('4000') || name.includes('4001') || name.includes('4003');
+        
+        if (isRevenue && balance > 0) {
+            revenueItems.push(item);
+            totalRevenue += balance;
+        } else if (!isRevenue && balance < 0) {
+            expenseItems.push({...item, Balance: Math.abs(balance)});
+            totalExpenses += Math.abs(balance);
+        } else {
+            // Other accounts - put in appropriate section
+            if (balance > 0) {
+                revenueItems.push(item);
+                totalRevenue += balance;
+            } else if (balance < 0) {
+                expenseItems.push({...item, Balance: Math.abs(balance)});
+                totalExpenses += Math.abs(balance);
+            }
+        }
     });
-    html += '</tbody></table>';
-    if (data.summary) {
-        html += `<div style="margin-top:15px; background:#f0f0f0; padding:10px; border-radius:4px; color:#000;" class="summary-text">
-            <strong>Summary:</strong> ${data.summary}
-        </div>`;
-    }
+    
+    const netProfit = totalRevenue - totalExpenses;
+    const dateRange = `${document.getElementById('custom-pl-start').value} to ${document.getElementById('custom-pl-end').value}`;
+    
+    let html = `
+        <div style="margin-bottom:15px; padding:10px; background:#f8f9fa; border-radius:4px; color:#000;">
+            <strong>Period:</strong> ${dateRange}
+            <span style="margin-left:20px;"><strong>Total Revenue:</strong> <span style="color:#28a745;">$${totalRevenue.toFixed(2)}</span></span>
+            <span style="margin-left:20px;"><strong>Total Expenses:</strong> <span style="color:#dc3545;">$${totalExpenses.toFixed(2)}</span></span>
+            <span style="margin-left:20px;"><strong>Net Profit:</strong> <span style="color:${netProfit >= 0 ? '#28a745' : '#dc3545'};font-weight:bold;">$${netProfit.toFixed(2)}</span></span>
+        </div>
+        <table style="width:100%; border-collapse:collapse; font-size:14px; color:#000;">
+            <thead>
+                <tr style="background:#f8f9fa;">
+                    <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd; color:#000;">Account</th>
+                    <th style="padding:8px 12px; text-align:right; border-bottom:2px solid #ddd; color:#000;">Balance</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="background:#e8f5e9; font-weight:bold;">
+                    <td style="padding:8px 12px; color:#000;">REVENUE</td>
+                    <td style="padding:8px 12px; text-align:right; color:#28a745;">$${totalRevenue.toFixed(2)}</td>
+                </tr>
+    `;
+    
+    revenueItems.forEach(item => {
+        const balance = item.Balance || 0;
+        html += `<tr>
+            <td style="padding:8px 12px; border-bottom:1px solid #eee; color:#000;">${item.Account}</td>
+            <td style="padding:8px 12px; text-align:right; border-bottom:1px solid #eee; color:#28a745;">$${balance.toFixed(2)}</td>
+        </tr>`;
+    });
+    
+    html += `
+                <tr style="background:#ffebee; font-weight:bold;">
+                    <td style="padding:8px 12px; color:#000;">EXPENSES</td>
+                    <td style="padding:8px 12px; text-align:right; color:#dc3545;">$${totalExpenses.toFixed(2)}</td>
+                </tr>
+    `;
+    
+    expenseItems.forEach(item => {
+        const balance = Math.abs(item.Balance || 0);
+        html += `<tr>
+            <td style="padding:8px 12px; border-bottom:1px solid #eee; color:#000;">${item.Account}</td>
+            <td style="padding:8px 12px; text-align:right; border-bottom:1px solid #eee; color:#dc3545;">$${balance.toFixed(2)}</td>
+        </tr>`;
+    });
+    
+    html += `
+                <tr style="background:#e3f2fd; font-weight:bold;">
+                    <td style="padding:8px 12px; color:#000;">NET PROFIT</td>
+                    <td style="padding:8px 12px; text-align:right; color:${netProfit >= 0 ? '#28a745' : '#dc3545'};">$${netProfit.toFixed(2)}</td>
+                </tr>
+            </tbody>
+        </table>
+    `;
+    
     container.innerHTML = html;
 }
 
-function exportReportCSV() {
-    console.log('[REPORTS] Exporting CSV');
-    if (!currentReportData || !currentReportData.report) {
-        alert('Please generate a report first.');
+function renderCustomPLBarChart(data) {
+    const container = document.getElementById('custom-pl-result');
+    if (!data.report || data.report.length === 0) {
+        container.innerHTML = '<p class="text-muted" style="color:#666;">No data for this period.</p>';
         return;
     }
-    const headers = Object.keys(currentReportData.report[0]);
+    
+    // Extract accounts and balances
+    const accountNames = data.report.map(item => item.Account);
+    const accountValues = data.report.map(item => item.Balance || 0);
+    
+    // Determine colors
+    const revenueKeywords = ['revenue', 'sales', 'income'];
+    const expenseKeywords = ['cogs', 'expense', 'cost', 'shipping', 'fees', 'rent', 'utilities', 'insurance', 'advertising', 'software', 'supplies', 'equipment', 'leasehold', 'improvements'];
+    
+    const colors = accountNames.map(name => {
+        const lower = name.toLowerCase();
+        if (revenueKeywords.some(k => lower.includes(k))) {
+            return 'rgba(40, 167, 69, 0.85)'; // Green - Revenue
+        }
+        if (expenseKeywords.some(k => lower.includes(k))) {
+            return 'rgba(220, 53, 69, 0.75)'; // Red - Expenses
+        }
+        return 'rgba(108, 117, 125, 0.7)'; // Gray - Other
+    });
+    
+    const dateRange = `${document.getElementById('custom-pl-start').value} to ${document.getElementById('custom-pl-end').value}`;
+    
+    container.innerHTML = `
+        <div style="margin-top: 15px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <div style="font-size: 14px; color: #000; font-weight: 600;">Profit & Loss - ${dateRange}</div>
+                <div style="font-size: 12px; color: #666;">
+                    ${data.summary || ''}
+                </div>
+            </div>
+            <div style="position: relative; height: 400px;">
+                <canvas id="custom-pl-chart"></canvas>
+            </div>
+            <div style="text-align: center; font-size: 11px; color: #999; margin-top: 10px;">
+                Click bar for details
+            </div>
+        </div>
+    `;
+    
+    // Render the chart
+    setTimeout(() => {
+        const canvas = document.getElementById('custom-pl-chart');
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        
+        if (customPLChartInstance) {
+            customPLChartInstance.destroy();
+            customPLChartInstance = null;
+        }
+        
+        customPLChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: accountNames,
+                datasets: [{
+                    label: 'Balance',
+                    data: accountValues,
+                    backgroundColor: colors,
+                    borderColor: colors.map(c => c.replace('0.85', '1').replace('0.75', '1').replace('0.7', '1')),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                const val = ctx.raw;
+                                return (val >= 0 ? '+' : '') + '$' + val.toFixed(2);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value;
+                            },
+                            font: { size: 10 }
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45,
+                            font: { size: 9 }
+                        }
+                    }
+                },
+                onClick: function(e, elements) {
+                    if (elements.length === 0) return;
+                    const element = elements[0];
+                    const index = element.index;
+                    const label = accountNames[index];
+                    
+                    // Try to find the account ID
+                    const trimmed = label.trim();
+                    const norm = trimmed.toLowerCase();
+                    let accountId = accountNameToId[norm] || accountNameToId[trimmed];
+                    if (!accountId) {
+                        const found = bankAccounts.find(a => a.name === trimmed);
+                        if (found) accountId = found.id;
+                    }
+                    
+                    if (accountId) {
+                        showMonthlyTransactions('all', accountId, label, true);
+                    } else {
+                        showMonthlyTransactions('all', null, label, true);
+                    }
+                }
+            }
+        });
+    }, 100);
+}
+
+function exportCustomPLCSV() {
+    console.log('[CUSTOM-PL] Exporting CSV');
+    if (!currentCustomPLData || !currentCustomPLData.report) {
+        alert('Please load P&L data first.');
+        return;
+    }
+    
+    const headers = Object.keys(currentCustomPLData.report[0]);
     let csv = headers.join(',') + '\n';
-    currentReportData.report.forEach(row => {
+    currentCustomPLData.report.forEach(row => {
         const vals = headers.map(h => {
             let v = row[h];
             if (typeof v === 'string' && v.includes(',')) v = '"' + v + '"';
@@ -1408,11 +1565,133 @@ function exportReportCSV() {
         });
         csv += vals.join(',') + '\n';
     });
+    
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'report.csv';
+    a.download = `pl_${document.getElementById('custom-pl-start').value}_to_${document.getElementById('custom-pl-end').value}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+}
+
+// ============================================================
+// BALANCE SHEET TAB
+// ============================================================
+
+function initBalanceSheet() {
+    console.log('[BALANCE] Initializing Balance Sheet tab');
+    
+    // Set default date range: Jan 2025 to current month
+    const now = new Date();
+    const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    
+    const startInput = document.getElementById('balance-start');
+    const endInput = document.getElementById('balance-end');
+    
+    if (!startInput.value) {
+        startInput.value = '2025-01';
+    }
+    if (!endInput.value) {
+        endInput.value = currentMonth;
+    }
+    
+    // Add event listeners for auto-load
+    startInput.addEventListener('change', loadBalanceSheet);
+    endInput.addEventListener('change', loadBalanceSheet);
+    
+    // Load initial data
+    loadBalanceSheet();
+}
+
+
+async function loadBalanceSheet() {
+    console.log('[BALANCE] Loading Balance Sheet data...');
+    const container = document.getElementById('balance-result');
+    container.innerHTML = '<p class="text-muted" style="color:#666;">Loading...</p>';
+    
+    const url = `${AppConfig.baseUrl}/api/accounting/balance-sheet-v2`;
+    console.log('[BALANCE] REQUEST URL:', url);
+    
+    try {
+        const res = await fetch(url, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+        
+        console.log('[BALANCE] RESPONSE STATUS:', res.status);
+        
+        if (!res.ok) throw new Error('Failed to generate Balance Sheet');
+        const data = await res.json();
+        
+        console.log('[BALANCE] RESPONSE PAYLOAD:', JSON.stringify(data, null, 2));
+        
+        if (data.status === 'success') {
+            currentBalanceData = data;
+            renderBalanceSheet(data);
+        } else {
+            container.innerHTML = `<p class="text-muted" style="color:#dc3545;">${data.error || 'Error loading Balance Sheet'}</p>`;
+        }
+    } catch (err) {
+        console.error('[BALANCE] Error:', err);
+        container.innerHTML = `<p class="text-muted" style="color:#dc3545;">Error: ${err.message}</p>`;
+    }
+}
+
+function renderBalanceSheet(data) {
+    const container = document.getElementById('balance-result');
+    if (!data.report || data.report.length === 0) {
+        container.innerHTML = '<p class="text-muted" style="color:#666;">No data for this period.</p>';
+        return;
+    }
+    
+    let html = `<table style="width:100%; border-collapse:collapse; font-size:14px; color:#000;">
+        <thead>
+            <tr style="background:#f8f9fa;">
+                <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd; color:#000;">Account</th>
+                <th style="padding:8px 12px; text-align:right; border-bottom:2px solid #ddd; color:#000;">Balance</th>
+            </tr>
+        </thead>
+        <tbody>`;
+    
+    data.report.forEach(item => {
+        const balance = item.balance || 0;
+        const name = item.name || '';
+        
+        html += `<tr>
+            <td style="padding:8px 12px; border-bottom:1px solid #eee; color:#000;">${name}</td>
+            <td style="padding:8px 12px; text-align:right; border-bottom:1px solid #eee; color:#000;">$${balance.toFixed(2)}</td>
+        </tr>`;
+    });
+    
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+
+function exportBalanceCSV() {
+    console.log('[BALANCE] Exporting CSV');
+    if (!currentBalanceData || !currentBalanceData.report) {
+        alert('Please load Balance Sheet data first.');
+        return;
+    }
+    
+    const headers = Object.keys(currentBalanceData.report[0]);
+    let csv = headers.join(',') + '\n';
+    currentBalanceData.report.forEach(row => {
+        const vals = headers.map(h => {
+            let v = row[h];
+            if (typeof v === 'string' && v.includes(',')) v = '"' + v + '"';
+            return v;
+        });
+        csv += vals.join(',') + '\n';
+    });
+    
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `balance_${document.getElementById('balance-start').value}_to_${document.getElementById('balance-end').value}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
 }
@@ -1539,9 +1818,14 @@ function renderMonthlyPLBarCharts(allData) {
             
             const code = name.split(' ')[0];
             const isExpense = expenseCodePrefixes.includes(code);
+            const isRevenue = revenueCodePrefixes.includes(code);
             
             if (isExpense) {
+                // Expenses should be negative
                 adjustedValues.push(value > 0 ? -value : value);
+            } else if (isRevenue) {
+                // Revenue stays as is
+                adjustedValues.push(value);
             } else {
                 adjustedValues.push(value);
             }
@@ -1607,9 +1891,12 @@ function renderMonthlyPLBarCharts(allData) {
                 
                 const code = name.split(' ')[0];
                 const isExpense = expenseCodePrefixes.includes(code);
+                const isRevenue = revenueCodePrefixes.includes(code);
                 
                 if (isExpense) {
                     adjustedValues.push(value > 0 ? -value : value);
+                } else if (isRevenue) {
+                    adjustedValues.push(value);
                 } else {
                     adjustedValues.push(value);
                 }
@@ -1897,6 +2184,152 @@ async function deleteAccount(accountId, accountName) {
         console.error('[ACCOUNTS] Error:', e);
         showToast('Error: ' + e.message, 'error');
     }
+}
+
+// ============================================================
+// TRANSACTION BALANCE TAB
+// ============================================================
+
+async function loadTransactionBalance() {
+    const tbody = document.getElementById('unbalanced-accounts-body');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">Loading...</td></tr>';
+
+    try {
+        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/unbalanced-accounts`, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        if (!res.ok) throw new Error('Failed to load unbalanced accounts');
+        const data = await res.json();
+        if (data.status === 'success') {
+            renderUnbalancedAccounts(data.accounts);
+        } else {
+            tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
+        }
+    } catch (err) {
+        console.error('[TRANSACTION BALANCE] Error:', err);
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#dc3545;">Error: ${err.message}</td></tr>`;
+    }
+}
+
+function renderUnbalancedAccounts(accounts) {
+    const tbody = document.getElementById('unbalanced-accounts-body');
+    if (!accounts || accounts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">All accounts are balanced.</td></tr>';
+        return;
+    }
+
+    let html = '';
+    accounts.forEach(acc => {
+        const accountId = acc.account_id || acc.id;
+        const accountCode = acc.code || '';
+        const accountName = acc.name || '';
+        const unbalancedCount = acc.unbalanced_count || 0;
+        
+        html += `<tr>
+            <td>${accountCode}</td>
+            <td>${accountName}</td>
+            <td>${unbalancedCount}</td>
+            <td>
+                <button class="btn btn-sm btn-info" onclick="showUnbalancedTransactions(${accountId}, '${accountCode} - ${accountName}')">
+                    <i class="fas fa-eye"></i> View
+                </button>
+            </td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+}
+
+async function showUnbalancedTransactions(accountId, accountName) {
+    console.log('[UNBALANCED DETAIL] Called with:', { accountId, accountName });
+    
+    if (!accountId || accountId === 'undefined') {
+        console.error('[UNBALANCED DETAIL] accountId is undefined or null');
+        showToast('Error: Account ID is missing', 'error');
+        return;
+    }
+    
+    const detailContainer = document.getElementById('unbalanced-detail-container');
+    const detailBody = document.getElementById('unbalanced-detail-body');
+    const titleSpan = document.getElementById('selected-account-name');
+    titleSpan.textContent = accountName || 'Unknown Account';
+    detailContainer.style.display = 'block';
+    detailBody.innerHTML = '<p>Loading...</p>';
+
+    try {
+        const url = `${AppConfig.baseUrl}/api/accounting/unbalanced-transactions?account_id=${accountId}`;
+        console.log('[UNBALANCED DETAIL] Fetching URL:', url);
+        
+        const res = await fetch(url, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+        });
+        
+        if (!res.ok) throw new Error('Failed to load transactions');
+        const data = await res.json();
+        
+        if (data.status === 'success') {
+            renderUnbalancedTransactionsDetail(data.transactions, accountName);
+        } else {
+            detailBody.innerHTML = `<p style="color:#dc3545;">${data.error || 'Error loading transactions'}</p>`;
+        }
+    } catch (err) {
+        console.error('[UNBALANCED DETAIL] Error:', err);
+        detailBody.innerHTML = `<p style="color:#dc3545;">Error: ${err.message}</p>`;
+    }
+}
+
+function renderUnbalancedTransactionsDetail(transactions, accountName) {
+    const detailBody = document.getElementById('unbalanced-detail-body');
+    if (!transactions || transactions.length === 0) {
+        detailBody.innerHTML = '<p style="color:#000;">No unbalanced entries found for this account.</p>';
+        return;
+    }
+
+    let html = `<table style="width:100%; border-collapse:collapse; color:#000; background:#fff;">
+        <thead>
+            <tr style="background:#f8f9fa;">
+                <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd; color:#000;">Entry ID</th>
+                <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd; color:#000;">Date</th>
+                <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd; color:#000;">Description</th>
+                <th style="padding:8px 12px; text-align:right; border-bottom:2px solid #ddd; color:#000;">Total Debits</th>
+                <th style="padding:8px 12px; text-align:right; border-bottom:2px solid #ddd; color:#000;">Total Credits</th>
+                <th style="padding:8px 12px; text-align:right; border-bottom:2px solid #ddd; color:#000;">Difference</th>
+                <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd; color:#000;">Source</th>
+                <th style="padding:8px 12px; text-align:center; border-bottom:2px solid #ddd; color:#000;">Action</th>
+            </tr>
+        </thead>
+        <tbody>`;
+        
+    transactions.forEach(entry => {
+        const diff = (entry.total_debits || 0) - (entry.total_credits || 0);
+        const isUnbalanced = Math.abs(diff) > 0.01;
+        const diffColor = isUnbalanced ? '#dc3545' : '#28a745';
+        const diffSign = diff > 0 ? '+' : '';
+        
+        html += `<tr style="border-bottom:1px solid #eee;">
+            <td style="padding:8px 12px; color:#000;">${entry.id}</td>
+            <td style="padding:8px 12px; color:#000;">${entry.transaction_date || ''}</td>
+            <td style="padding:8px 12px; color:#000;">${entry.description || ''}</td>
+            <td style="padding:8px 12px; text-align:right; color:#28a745; font-weight:600;">$${(entry.total_debits || 0).toFixed(2)}</td>
+            <td style="padding:8px 12px; text-align:right; color:#dc3545; font-weight:600;">$${(entry.total_credits || 0).toFixed(2)}</td>
+            <td style="padding:8px 12px; text-align:right; color:${diffColor}; font-weight:600;">${diffSign}$${Math.abs(diff).toFixed(2)}</td>
+            <td style="padding:8px 12px; color:#000;">${entry.source_type || ''}: ${entry.source_id || ''}</td>
+            <td style="padding:8px 12px; text-align:center;">
+                <button class="btn btn-sm btn-danger" onclick="unpostTransaction(${entry.id})" style="padding:4px 10px; font-size:12px; background:#dc3545; color:white; border:none; border-radius:4px; cursor:pointer;">
+                    <i class="fas fa-undo"></i> Unpost
+                </button>
+            </td>
+        </tr>`;
+    });
+    
+    html += '</tbody></table>';
+    detailBody.innerHTML = html;
+}
+
+function closeUnbalancedDetail() {
+    document.getElementById('unbalanced-detail-container').style.display = 'none';
 }
 
 // ============================================================
@@ -2552,7 +2985,7 @@ function showMonthBreakdownModal(month, chartData, chartType) {
 }
 
 // ============================================================
-// SHARED LINE CHART RENDERER (For Cash Flow and Balance Sheet)
+// BALANCE SHEET LINE CHART RENDERER
 // ============================================================
 
 function renderLineChart(canvasId, data, options = {}) {
@@ -2735,11 +3168,7 @@ function renderLineChart(canvasId, data, options = {}) {
     });
     const yMax = Math.ceil((maxVal * 1.25) / 100) * 100 || 100;
 
-    if (canvasId === 'cash-flow-chart') {
-        cashFlowChartData = data;
-        cashFlowMonths = months;
-        allCashFlowData = data;
-    } else if (canvasId === 'bs-chart') {
+    if (canvasId === 'bs-chart') {
         bsChartData = data;
         bsMonths = months;
         allBSData = data;
@@ -2820,14 +3249,12 @@ function renderLineChart(canvasId, data, options = {}) {
 
     window[canvasId + 'Instance'] = chart;
 
-    if (canvasId === 'cash-flow-chart') {
-        cashFlowChartInstance = chart;
-    } else if (canvasId === 'bs-chart') {
+    if (canvasId === 'bs-chart') {
         bsChartInstance = chart;
     }
 
-    // Add x-axis click handler for Cash Flow and Balance Sheet
-    if (canvasId === 'cash-flow-chart' || canvasId === 'bs-chart') {
+    // Add x-axis click handler for Balance Sheet
+    if (canvasId === 'bs-chart') {
         canvas.addEventListener('click', function(e) {
             try {
                 const rect = canvas.getBoundingClientRect();
@@ -2856,9 +3283,9 @@ function renderLineChart(canvasId, data, options = {}) {
 
                     document.getElementById('monthly-tx-modal')?.classList.remove('active');
 
-                    const dataToUse = canvasId === 'cash-flow-chart' ? cashFlowChartData : bsChartData;
+                    const dataToUse = bsChartData;
                     if (dataToUse) {
-                        showMonthBreakdownModal(month, dataToUse, options.type || 'cashflow');
+                        showMonthBreakdownModal(month, dataToUse, options.type || 'balancesheet');
                     }
                 }
             } catch (err) {
@@ -2867,267 +3294,7 @@ function renderLineChart(canvasId, data, options = {}) {
         });
     }
 
-    // Double-click to expand for cash flow
-    if (canvasId === 'cash-flow-chart') {
-        canvas.addEventListener('dblclick', function(e) {
-            e.stopPropagation();
-            expandChart(canvasId);
-        });
-    }
-
     return chart;
-}
-
-// ============================================================
-// EXPAND CHART (Full Screen) - Cash Flow only
-// ============================================================
-
-function expandChart(canvasId) {
-    if (canvasId !== 'cash-flow-chart') {
-        return;
-    }
-
-    if (isExpanded) {
-        collapseChart();
-        return;
-    }
-
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-
-    const chart = window[canvasId + 'Instance'] || Chart.getChart(canvas);
-    if (!chart) return;
-
-    isExpanded = true;
-
-    const container = document.createElement('div');
-    container.id = 'expanded-chart-container';
-
-    container.innerHTML = `
-        <div class="chart-header">
-            <h3>Cash Flow - Expanded</h3>
-            <button class="btn btn-secondary" onclick="collapseChart()">
-                <i class="fas fa-times"></i> Close
-            </button>
-        </div>
-        <div class="chart-body">
-            <canvas id="expanded-chart-canvas"></canvas>
-        </div>
-    `;
-
-    document.body.appendChild(container);
-
-    const newCanvas = document.getElementById('expanded-chart-canvas');
-    const newCtx = newCanvas.getContext('2d');
-
-    const expandedChart = new Chart(newCtx, {
-        type: 'line',
-        data: chart.data,
-        options: {
-            ...chart.options,
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                ...chart.options.plugins,
-                legend: {
-                    position: 'bottom',
-                    labels: {
-                        usePointStyle: true,
-                        pointStyle: false,
-                        padding: 25,
-                        font: { size: 15, weight: 'bold' },
-                        color: '#000000',
-                        boxWidth: 18,
-                        boxHeight: 18
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    ticks: {
-                        maxRotation: 45,
-                        minRotation: 45,
-                        font: { size: 15, weight: 'bold' },
-                        color: '#000000'
-                    },
-                    grid: {
-                        color: 'rgba(0,0,0,0.2)'
-                    }
-                },
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: function(value) {
-                            return '$' + value;
-                        },
-                        font: { size: 15, weight: 'bold' },
-                        color: '#000000'
-                    },
-                    grid: {
-                        color: 'rgba(0,0,0,0.15)'
-                    }
-                }
-            }
-        }
-    });
-
-    window._expandedChart = expandedChart;
-
-    const resizeObserver = new ResizeObserver(() => {
-        if (expandedChart) expandedChart.resize();
-    });
-    const chartBody = container.querySelector('.chart-body');
-    if (chartBody) {
-        resizeObserver.observe(chartBody);
-    }
-    window._expandedResizeObserver = resizeObserver;
-}
-
-function collapseChart() {
-    isExpanded = false;
-
-    if (window._expandedChart) {
-        window._expandedChart.destroy();
-        window._expandedChart = null;
-    }
-
-    if (window._expandedResizeObserver) {
-        window._expandedResizeObserver.disconnect();
-        window._expandedResizeObserver = null;
-    }
-
-    const container = document.getElementById('expanded-chart-container');
-    if (container) {
-        container.remove();
-    }
-
-    if (cashFlowChartInstance) {
-        try { cashFlowChartInstance.resize(); } catch(e) {}
-    }
-}
-
-// ============================================================
-// CASH FLOW
-// ============================================================
-
-async function loadCashFlow() {
-    console.log('[CASHFLOW] LOAD CASH FLOW START');
-
-    const startInput = document.getElementById('cash-flow-start');
-    const endInput = document.getElementById('cash-flow-end');
-    const start = startInput.value;
-    const end = endInput.value;
-
-    if (!start || !end) {
-        alert('Please select both start and end months.');
-        return;
-    }
-
-    if (bankAccounts.length === 0) {
-        await loadBankAccountsForRowDropdowns();
-    }
-
-    try {
-        const startDate = new Date(start + '-01');
-        const endDate = new Date(end + '-01');
-        const lastDay = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
-        const startStr = startDate.toISOString().slice(0, 10);
-        const endStr = lastDay.toISOString().slice(0, 10);
-
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/cash-flow-detail?start=${startStr}&end=${endStr}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        if (!res.ok) throw new Error('Failed to fetch cash flow data');
-        const data = await res.json();
-
-        if (data.status === 'success') {
-            allCashFlowData = data;
-            cashFlowMonths = data.months || [];
-
-            const dateRangeEl = document.getElementById('cash-flow-date-range');
-            if (dateRangeEl && cashFlowMonths.length > 0) {
-                const formatMonth = (m) => {
-                    const [year, month] = m.split('-');
-                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    return `${monthNames[parseInt(month) - 1]} ${year}`;
-                };
-                dateRangeEl.textContent = `Showing ${formatMonth(cashFlowMonths[0])} to ${formatMonth(cashFlowMonths[cashFlowMonths.length - 1])}`;
-                dateRangeEl.style.display = 'block';
-            }
-
-            renderLineChart('cash-flow-chart', data, { type: 'cashflow' });
-        } else {
-            console.error('[CASHFLOW] Error:', data.error);
-            document.getElementById('cash-flow-chart-container').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
-        }
-    } catch (err) {
-        console.error('[CASHFLOW] Error:', err);
-        document.getElementById('cash-flow-chart-container').innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
-    }
-}
-
-// ============================================================
-// BALANCE SHEET
-// ============================================================
-
-async function loadBalanceSheet() {
-    console.log('[BALANCE-SHEET] LOAD BALANCE SHEET START');
-
-    const startInput = document.getElementById('bs-start');
-    const endInput = document.getElementById('bs-end');
-    const start = startInput ? startInput.value : '';
-    const end = endInput ? endInput.value : '';
-
-    if (!start || !end) {
-        alert('Please select both start and end months.');
-        return;
-    }
-
-    if (bankAccounts.length === 0) {
-        await loadBankAccountsForRowDropdowns();
-    }
-
-    try {
-        const startDate = new Date(start + '-01');
-        const endDate = new Date(end + '-01');
-        const lastDay = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
-        const startStr = startDate.toISOString().slice(0, 10);
-        const endStr = lastDay.toISOString().slice(0, 10);
-
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/balance-sheet?start=${startStr}&end=${endStr}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-
-        if (!res.ok) throw new Error('Failed to fetch Balance Sheet data');
-
-        const data = await res.json();
-
-        if (data.status === 'success') {
-            allBSData = data;
-            bsMonths = data.months || [];
-
-            const dateRangeEl = document.getElementById('bs-date-range');
-            if (dateRangeEl && bsMonths.length > 0) {
-                const formatMonth = (m) => {
-                    const [year, month] = m.split('-');
-                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    return `${monthNames[parseInt(month) - 1]} ${year}`;
-                };
-                dateRangeEl.textContent = `Showing ${formatMonth(bsMonths[0])} to ${formatMonth(bsMonths[bsMonths.length - 1])}`;
-                dateRangeEl.style.display = 'block';
-            }
-
-            renderLineChart('bs-chart', data, { type: 'balancesheet' });
-        } else {
-            console.error('[BALANCE-SHEET] Error:', data.error);
-            document.getElementById('bs-chart-container').innerHTML = `<p class="monthly-error">${data.error || 'Error loading data'}</p>`;
-        }
-    } catch (err) {
-        console.error('[BALANCE-SHEET] Error:', err);
-        document.getElementById('bs-chart-container').innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
-    }
 }
 
 // ============================================================
@@ -3162,133 +3329,7 @@ async function loadBankAccountsForRowDropdowns() {
 }
 
 // ============================================================
-// TRANSACTION BALANCE TAB
-// ============================================================
-
-async function loadTransactionBalance() {
-    const tbody = document.getElementById('unbalanced-accounts-body');
-    if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">Loading...</td></tr>';
-
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/unbalanced-accounts`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        if (!res.ok) throw new Error('Failed to load unbalanced accounts');
-        const data = await res.json();
-        if (data.status === 'success') {
-            renderUnbalancedAccounts(data.accounts);
-        } else {
-            tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
-        }
-    } catch (err) {
-        console.error('[TRANSACTION BALANCE] Error:', err);
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#dc3545;">Error: ${err.message}</td></tr>`;
-    }
-}
-
-function renderUnbalancedAccounts(accounts) {
-    const tbody = document.getElementById('unbalanced-accounts-body');
-    if (!accounts || accounts.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">All accounts are balanced.</td></tr>';
-        return;
-    }
-
-    let html = '';
-    accounts.forEach(acc => {
-        html += `<tr>
-            <td>${acc.code}</td>
-            <td>${acc.name}</td>
-            <td>${acc.unbalanced_count}</td>
-            <td>
-                <button class="btn btn-sm btn-info" onclick="showUnbalancedTransactions(${acc.id}, '${acc.code} - ${acc.name}')">
-                    <i class="fas fa-eye"></i> View
-                </button>
-            </td>
-        </tr>`;
-    });
-    tbody.innerHTML = html;
-}
-
-async function showUnbalancedTransactions(accountId, accountName) {
-    const detailContainer = document.getElementById('unbalanced-detail-container');
-    const detailBody = document.getElementById('unbalanced-detail-body');
-    const titleSpan = document.getElementById('selected-account-name');
-    titleSpan.textContent = accountName;
-    detailContainer.style.display = 'block';
-    detailBody.innerHTML = '<p>Loading...</p>';
-
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/unbalanced-transactions?account_id=${accountId}`, {
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
-        });
-        if (!res.ok) throw new Error('Failed to load transactions');
-        const data = await res.json();
-        if (data.status === 'success') {
-            renderUnbalancedTransactionsDetail(data.transactions, accountName);
-        } else {
-            detailBody.innerHTML = `<p style="color:#dc3545;">${data.error || 'Error'}</p>`;
-        }
-    } catch (err) {
-        console.error('[UNBALANCED DETAIL] Error:', err);
-        detailBody.innerHTML = `<p style="color:#dc3545;">Error: ${err.message}</p>`;
-    }
-}
-
-function renderUnbalancedTransactionsDetail(transactions, accountName) {
-    const detailBody = document.getElementById('unbalanced-detail-body');
-    if (!transactions || transactions.length === 0) {
-        detailBody.innerHTML = '<p>No unbalanced entries found for this account.</p>';
-        return;
-    }
-
-    let html = `<table>
-        <thead>
-            <tr>
-                <th>Entry ID</th>
-                <th>Date</th>
-                <th>Description</th>
-                <th>Total Debits</th>
-                <th>Total Credits</th>
-                <th>Difference</th>
-                <th>Source</th>
-                <th>Action</th>
-            </tr>
-        </thead>
-        <tbody>`;
-    transactions.forEach(entry => {
-        const diff = (entry.total_debits || 0) - (entry.total_credits || 0);
-        const isUnbalanced = Math.abs(diff) > 0.01;
-        const diffColor = isUnbalanced ? '#dc3545' : '#28a745';
-        const diffSign = diff > 0 ? '+' : '';
-        
-        html += `<tr>
-            <td>${entry.id}</td>
-            <td>${entry.transaction_date || ''}</td>
-            <td>${entry.description || ''}</td>
-            <td>$${(entry.total_debits || 0).toFixed(2)}</td>
-            <td>$${(entry.total_credits || 0).toFixed(2)}</td>
-            <td style="color: ${diffColor}; font-weight: 600;">${diffSign}$${Math.abs(diff).toFixed(2)}</td>
-            <td>${entry.source_type || ''}: ${entry.source_id || ''}</td>
-            <td>
-                <button class="btn btn-sm btn-danger" onclick="unpostTransaction(${entry.id})">
-                    <i class="fas fa-undo"></i> Unpost
-                </button>
-            </td>
-        </tr>`;
-    });
-    html += '</tbody></table>';
-    detailBody.innerHTML = html;
-}
-
-function closeUnbalancedDetail() {
-    document.getElementById('unbalanced-detail-container').style.display = 'none';
-}
-
-// ============================================================
-// INITIALIZATION (the last piece – already included above)
+// INITIALIZATION
 // ============================================================
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -3321,58 +3362,25 @@ document.addEventListener('DOMContentLoaded', function() {
             else if (sub === 'journal') {
                 loadJournalEntries();
             }
-            else if (sub === 'reconcile') {
-                loadReconcileAccountSelects();
-                loadReconcilePairsSummary();
-            }
-            else if (sub === 'cash-flow') {
-                console.log('[INIT] Cash Flow tab selected');
-                const now = new Date();
-                const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-                const endInput = document.getElementById('cash-flow-end');
-                if (!endInput.value) endInput.value = nextMonth.toISOString().slice(0, 7);
-                const startInput = document.getElementById('cash-flow-start');
-                if (!startInput.value) {
-                    const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-                    startInput.value = startDate.toISOString().slice(0, 7);
-                }
-                if (bankAccounts.length === 0) {
-                    loadBankAccountsForRowDropdowns().then(() => {
-                        loadCashFlow();
-                    });
-                } else {
-                    loadCashFlow();
-                }
-            }
-            else if (sub === 'monthly-pl') {
-                console.log('[INIT] Monthly P&L tab selected');
-                loadMonthlyPLBarChart();
-            }
-            else if (sub === 'balance-sheet') {
-                console.log('[INIT] Balance Sheet tab selected');
-                const now = new Date();
-                const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-                const endInput = document.getElementById('bs-end');
-                if (!endInput.value) endInput.value = nextMonth.toISOString().slice(0, 7);
-                const startInput = document.getElementById('bs-start');
-                if (!startInput.value) {
-                    const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-                    startInput.value = startDate.toISOString().slice(0, 7);
-                }
-                if (bankAccounts.length === 0) {
-                    loadBankAccountsForRowDropdowns().then(() => {
-                        loadBalanceSheet();
-                    });
-                } else {
-                    loadBalanceSheet();
-                }
-            }
             else if (sub === 'transaction-balance') {
                 console.log('[INIT] Transaction Balance tab selected');
                 loadTransactionBalance();
             }
-            else if (sub === 'reports') {
-                // nothing to auto-load
+            else if (sub === 'reconcile') {
+                loadReconcileAccountSelects();
+                loadReconcilePairsSummary();
+            }
+            else if (sub === 'custom-pl') {
+                console.log('[INIT] Custom P&L tab selected');
+                initCustomPL();
+            }
+            else if (sub === 'balance') {
+                console.log('[INIT] Balance tab selected');
+                initBalanceSheet();
+            }
+            else if (sub === 'monthly-pl') {
+                console.log('[INIT] Monthly P&L tab selected');
+                loadMonthlyPLBarChart();
             }
         });
     });

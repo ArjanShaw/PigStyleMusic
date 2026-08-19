@@ -6126,6 +6126,36 @@ def accounting_auto_match():
         app.logger.error(f"Auto-match error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/accounting/balance-sheet-v2', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def balance_sheet_v2():
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                a.name, 
+                (SUM(jl.debit_amount) - SUM(jl.credit_amount)) / 100.0 as balance
+            FROM journal_lines jl
+            JOIN accounts a ON a.id = jl.account_id
+            GROUP BY a.code, a.name
+        ''')
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'report': [dict(row) for row in rows]
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Balance Sheet V2 error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 @app.route('/api/accounting/reports', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -6134,7 +6164,7 @@ def accounting_reports():
     Generate financial reports.
     
     Query params:
-        type: pll, balance-sheet, batch-profit, order-economics
+        type: pll, balance-sheet
         date_from: YYYY-MM-DD (optional, filters transactions after this date)
         date_to: YYYY-MM-DD (optional, filters transactions before this date)
         group_by_month: true/false (optional, defaults to false)
@@ -6315,154 +6345,56 @@ def accounting_reports():
             })
             
         elif report_type == 'balance-sheet':
+            # ============================================================
+            # FIXED: Calculate running balance up to date_to for each account
+            # ============================================================
+            
+            # Get all accounts
             cursor.execute('''
-                SELECT 
-                    a.type,
-                    a.code,
-                    a.name,
-                    COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as balance
-                FROM accounts a
-                LEFT JOIN journal_lines jl ON jl.account_id = a.id
-                LEFT JOIN journal_entries je ON je.id = jl.journal_entry_id
-                WHERE a.type IN ('asset', 'liability', 'equity')
-                  AND (? IS NULL OR je.transaction_date >= ?)
-                  AND (? IS NULL OR je.transaction_date <= ?)
-                GROUP BY a.id
-                ORDER BY a.type, a.code
-            ''', (date_from, date_from, date_to, date_to))
-            rows = cursor.fetchall()
+                SELECT id, code, name, type 
+                FROM accounts 
+                WHERE type IN ('asset', 'liability', 'equity')
+                ORDER BY type, code
+            ''')
+            accounts = cursor.fetchall()
+            
             report_data = []
             total_assets = 0
             total_liabilities = 0
             total_equity = 0
-            for row in rows:
-                balance = row['balance'] or 0
+            
+            for account in accounts:
+                # Calculate running balance up to date_to (or current date if no date_to)
+                cursor.execute('''
+                    SELECT COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as balance
+                    FROM journal_lines jl
+                    JOIN journal_entries je ON jl.journal_entry_id = je.id
+                    WHERE jl.account_id = ?
+                      AND (? IS NULL OR je.transaction_date <= ?)
+                ''', (account['id'], date_to, date_to))
+                
+                row = cursor.fetchone()
+                balance = row['balance'] if row else 0
+                
+                # For liability accounts, invert the sign (liabilities are credit balances)
+                # Actually, keep as-is since the balance calculation already handles the sign
+                # based on debit - credit
+                
                 report_data.append({
-                    'Type': row['type'],
-                    'Account': f"{row['code']} - {row['name']}",
+                    'Type': account['type'],
+                    'Account': f"{account['code']} - {account['name']}",
                     'Balance': balance
                 })
-                if row['type'] == 'asset':
+                
+                if account['type'] == 'asset':
                     total_assets += balance
-                elif row['type'] == 'liability':
+                elif account['type'] == 'liability':
                     total_liabilities += balance
                 else:
                     total_equity += balance
+            
             summary = f"Total Assets: ${total_assets:.2f} | Total Liabilities: ${total_liabilities:.2f} | Total Equity: ${total_equity:.2f} | (Assets = Liabilities + Equity: {abs(total_assets - (total_liabilities + total_equity)) < 0.01})"
-            conn.close()
-            return jsonify({
-                'status': 'success',
-                'report': report_data,
-                'summary': summary,
-                'type': report_type
-            })
             
-        elif report_type == 'batch-profit':
-            cursor.execute('''
-                SELECT 
-                    je.id as batch_id,
-                    je.description,
-                    je.transaction_date as purchase_date,
-                    jl.debit_amount / 100.0 as total_cost,
-                    COUNT(r.id) as total_records,
-                    SUM(CASE WHEN r.status_id = 3 THEN r.store_price ELSE 0 END) as revenue,
-                    SUM(CASE WHEN r.status_id = 3 THEN 
-                        r.store_price / (
-                            SELECT COALESCE(SUM(store_price), 1) FROM records WHERE batch_id = je.id
-                        ) * jl.debit_amount / 100.0
-                    ELSE 0 END) as cogs
-                FROM journal_entries je
-                JOIN journal_lines jl ON jl.journal_entry_id = je.id
-                LEFT JOIN records r ON r.batch_id = je.id
-                WHERE je.source_type = 'purchase'
-                  AND jl.account_id = (SELECT id FROM accounts WHERE code = '1050')
-                  AND (? IS NULL OR je.transaction_date >= ?)
-                  AND (? IS NULL OR je.transaction_date <= ?)
-                GROUP BY je.id
-                ORDER BY je.transaction_date DESC
-            ''', (date_from, date_from, date_to, date_to))
-            rows = cursor.fetchall()
-            report_data = []
-            for row in rows:
-                revenue = row['revenue'] or 0
-                cogs = row['cogs'] or 0
-                profit = revenue - cogs
-                roi = (profit / row['total_cost'] * 100) if row['total_cost'] and row['total_cost'] > 0 else 0
-                report_data.append({
-                    'Batch ID': row['batch_id'],
-                    'Description': row['description'],
-                    'Acquired': row['purchase_date'],
-                    'Total Cost': row['total_cost'] or 0,
-                    'Records': row['total_records'] or 0,
-                    'Revenue': revenue,
-                    'COGS': cogs,
-                    'Profit': profit,
-                    'ROI %': round(roi, 1)
-                })
-            summary = f"Total Batches: {len(report_data)}"
-            conn.close()
-            return jsonify({
-                'status': 'success',
-                'report': report_data,
-                'summary': summary,
-                'type': report_type
-            })
-            
-        elif report_type == 'order-economics':
-            cursor.execute('''
-                SELECT 
-                    o.id as order_id,
-                    o.created_at as order_date,
-                    o.channel,
-                    o.total as order_total,
-                    COALESCE(SUM(oi.price_at_time), 0) as item_revenue,
-                    COALESCE(o.shipping_charged, 0) as shipping_charged,
-                    COALESCE(SUM(r.batch_id), 0) as has_batch,
-                    COALESCE(SUM(f.amount), 0) as fees,
-                    COALESCE(s.postage_cost, 0) as shipping_cost
-                FROM orders o
-                LEFT JOIN order_items oi ON oi.order_id = o.id
-                LEFT JOIN records r ON oi.record_id = r.id
-                LEFT JOIN fees f ON f.order_id = o.id
-                LEFT JOIN shipments s ON s.order_id = o.id
-                WHERE o.payment_status = 'paid'
-                  AND (? IS NULL OR o.created_at >= ?)
-                  AND (? IS NULL OR o.created_at <= ?)
-                GROUP BY o.id
-                ORDER BY o.created_at DESC
-            ''', (date_from, date_from, date_to, date_to))
-            rows = cursor.fetchall()
-            report_data = []
-            total_profit = 0
-            for row in rows:
-                cursor.execute('''
-                    SELECT 
-                        COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as order_cogs
-                    FROM journal_lines jl
-                    JOIN journal_entries je ON jl.journal_entry_id = je.id
-                    WHERE je.source_type = 'order' 
-                      AND je.source_id = ?
-                      AND jl.account_id = (SELECT id FROM accounts WHERE code = '5000')
-                        AND (? IS NULL OR je.transaction_date >= ?)
-                        AND (? IS NULL OR je.transaction_date <= ?)
-                ''', (row['order_id'], date_from, date_from, date_to, date_to))
-                cogs_row = cursor.fetchone()
-                order_cogs = cogs_row['order_cogs'] if cogs_row else 0
-                
-                profit = row['item_revenue'] + row['shipping_charged'] - order_cogs - row['fees'] - row['shipping_cost']
-                total_profit += profit
-                report_data.append({
-                    'Order ID': row['order_id'][:12] + '...' if row['order_id'] else '',
-                    'Date': row['order_date'],
-                    'Channel': row['channel'],
-                    'Revenue': row['item_revenue'],
-                    'Shipping Charged': row['shipping_charged'],
-                    'COGS': order_cogs,
-                    'Fees': row['fees'],
-                    'Shipping Cost': row['shipping_cost'],
-                    'Net Profit': profit
-                })
-            summary = f"Total Orders: {len(report_data)} | Total Net Profit: ${total_profit:.2f}"
             conn.close()
             return jsonify({
                 'status': 'success',
@@ -6479,7 +6411,6 @@ def accounting_reports():
         app.logger.error(f"Report error: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 # ===== PLAID INTEGRATION =====
 # Helper functions for Plaid client and token storage
 
@@ -7280,43 +7211,7 @@ def accounting_get_account_transactions():
         app.logger.error(f"Account transactions error: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
-@app.route('/api/accounting/journal/<int:entry_id>', methods=['DELETE'])
-@login_required
-@role_required(['admin'])
-def accounting_delete_journal_entry(entry_id):
-    """
-    Delete a journal entry and all its lines.
-    """
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Check if entry exists
-        cursor.execute('SELECT id, source_id, source_type FROM journal_entries WHERE id = ?', (entry_id,))
-        entry = cursor.fetchone()
-        if not entry:
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Journal entry not found'}), 404
-        
-        # Delete journal lines first (foreign key constraint)
-        cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (entry_id,))
-        # Delete the journal entry
-        cursor.execute('DELETE FROM journal_entries WHERE id = ?', (entry_id,))
-        
-        conn.commit()
-        conn.close()
-        
-        app.logger.info(f"Deleted journal entry #{entry_id}")
-        return jsonify({
-            'status': 'success',
-            'message': f'Journal entry #{entry_id} deleted successfully'
-        })
-    except Exception as e:
-        app.logger.error(f"Error deleting journal entry: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
+ 
 
 @app.route('/api/records/<int:record_id>/mark-discogs-sold', methods=['POST'])
 @login_required
@@ -13823,6 +13718,227 @@ def apply_multiple_transactions():
     except Exception as e:
         app.logger.error(f"Error in apply_multiple_transactions: {str(e)}")
         app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+# ==================== ACCOUNTING: UNBALANCED ACCOUNTS ====================
+
+@app.route('/api/accounting/unbalanced-accounts', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def accounting_unbalanced_accounts():
+    """
+    Get a summary of accounts with unbalanced journal entries.
+    Groups by account and shows the count of unbalanced entries.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # First, find all unbalanced journal entries
+        cursor.execute('''
+            SELECT 
+                je.id AS entry_id,
+                je.transaction_date,
+                je.description,
+                je.source_type,
+                je.source_id,
+                COALESCE(SUM(jl.debit_amount), 0) * 0.01 AS total_debit,
+                COALESCE(SUM(jl.credit_amount), 0) * 0.01 AS total_credit,
+                (COALESCE(SUM(jl.debit_amount), 0) - COALESCE(SUM(jl.credit_amount), 0)) * 0.01 AS difference,
+                GROUP_CONCAT(DISTINCT a.code || ' - ' || a.name) AS accounts
+            FROM journal_entries je
+            JOIN journal_lines jl ON jl.journal_entry_id = je.id
+            JOIN accounts a ON a.id = jl.account_id
+            GROUP BY je.id, je.transaction_date, je.description, je.source_type, je.source_id
+            HAVING COALESCE(SUM(jl.debit_amount), 0) != COALESCE(SUM(jl.credit_amount), 0)
+            ORDER BY ABS(
+                COALESCE(SUM(jl.debit_amount), 0) - COALESCE(SUM(jl.credit_amount), 0)
+            ) * 0.01 DESC, je.transaction_date DESC
+        ''')
+        
+        unbalanced_entries = cursor.fetchall()
+        
+        if not unbalanced_entries:
+            conn.close()
+            return jsonify({
+                'status': 'success',
+                'accounts': [],
+                'message': 'All accounts are balanced'
+            })
+        
+        # Extract account IDs from the unbalanced entries to get account details
+        # We need to find which accounts are affected
+        entry_ids = [str(e['entry_id']) for e in unbalanced_entries]
+        
+        if entry_ids:
+            placeholders = ','.join('?' for _ in entry_ids)
+            cursor.execute(f'''
+                SELECT DISTINCT
+                    a.id AS account_id,
+                    a.code,
+                    a.name,
+                    a.type,
+                    COUNT(DISTINCT jl.journal_entry_id) AS unbalanced_count
+                FROM journal_lines jl
+                JOIN accounts a ON a.id = jl.account_id
+                WHERE jl.journal_entry_id IN ({placeholders})
+                GROUP BY a.id, a.code, a.name, a.type
+                ORDER BY a.code
+            ''', entry_ids)
+            
+            accounts = cursor.fetchall()
+        else:
+            accounts = []
+        
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'accounts': [dict(row) for row in accounts],
+            'unbalanced_entries_count': len(unbalanced_entries)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching unbalanced accounts: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+# ==================== ACCOUNTING: UNBALANCED TRANSACTIONS DETAIL ====================
+
+@app.route('/api/accounting/unbalanced-transactions', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def accounting_unbalanced_transactions():
+    """
+    Get detailed list of unbalanced transactions for a specific account.
+    """
+    try:
+        account_id = request.args.get('account_id', type=int)
+        
+        if not account_id:
+            return jsonify({'status': 'error', 'error': 'account_id required'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Verify account exists
+        cursor.execute('SELECT id, code, name FROM accounts WHERE id = ?', (account_id,))
+        account = cursor.fetchone()
+        if not account:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Account not found'}), 404
+        
+        # Find all journal entries for this account that are unbalanced
+        cursor.execute('''
+            SELECT 
+                je.id,
+                je.transaction_date,
+                je.description,
+                je.source_type,
+                je.source_id,
+                COALESCE(SUM(jl.debit_amount), 0) * 0.01 AS total_debit,
+                COALESCE(SUM(jl.credit_amount), 0) * 0.01 AS total_credit,
+                (COALESCE(SUM(jl.debit_amount), 0) - COALESCE(SUM(jl.credit_amount), 0)) * 0.01 AS difference,
+                GROUP_CONCAT(DISTINCT a.code || ' - ' || a.name) AS accounts
+            FROM journal_entries je
+            JOIN journal_lines jl ON jl.journal_entry_id = je.id
+            JOIN accounts a ON a.id = jl.account_id
+            WHERE je.id IN (
+                SELECT DISTINCT jl2.journal_entry_id
+                FROM journal_lines jl2
+                WHERE jl2.account_id = ?
+            )
+            GROUP BY je.id, je.transaction_date, je.description, je.source_type, je.source_id
+            HAVING COALESCE(SUM(jl.debit_amount), 0) != COALESCE(SUM(jl.credit_amount), 0)
+            ORDER BY ABS(
+                COALESCE(SUM(jl.debit_amount), 0) - COALESCE(SUM(jl.credit_amount), 0)
+            ) * 0.01 DESC, je.transaction_date DESC
+        ''', (account_id,))
+        
+        transactions = cursor.fetchall()
+        conn.close()
+        
+        result = []
+        for row in transactions:
+            result.append({
+                'id': row['id'],
+                'transaction_date': row['transaction_date'],
+                'description': row['description'] or '',
+                'source_type': row['source_type'] or '',
+                'source_id': row['source_id'] or '',
+                'total_debits': float(row['total_debit'] or 0),
+                'total_credits': float(row['total_credit'] or 0),
+                'difference': float(row['difference'] or 0),
+                'accounts': row['accounts'] or ''
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'transactions': result,
+            'count': len(result),
+            'account': {
+                'id': account['id'],
+                'code': account['code'],
+                'name': account['name']
+            }
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching unbalanced transactions: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+# ==================== ACCOUNTING: DELETE JOURNAL ENTRY ====================
+
+@app.route('/api/accounting/journal/<int:entry_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def accounting_delete_journal_entry(entry_id):
+    """
+    Delete a journal entry and all its lines.
+    If it's a bank transaction, mark it as unprocessed.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if entry exists
+        cursor.execute('''
+            SELECT id, source_type, source_id 
+            FROM journal_entries 
+            WHERE id = ?
+        ''', (entry_id,))
+        entry = cursor.fetchone()
+        
+        if not entry:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Journal entry not found'}), 404
+        
+        source_type = entry['source_type']
+        source_id = entry['source_id']
+        
+        # If it's a bank transaction, mark as unprocessed
+        if source_type in ('plaid', 'historic', 'paypal'):
+            if source_type == 'historic':
+                cursor.execute('UPDATE bank_transactions SET processed = 0 WHERE id = ?', (int(source_id),))
+            # Plaid and PayPal transactions are not stored in bank_transactions
+        
+        # Delete journal lines and entry
+        cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (entry_id,))
+        cursor.execute('DELETE FROM journal_entries WHERE id = ?', (entry_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Journal entry #{entry_id} deleted successfully',
+            'unposted': source_type in ('plaid', 'historic', 'paypal')
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error deleting journal entry: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
