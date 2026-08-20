@@ -998,7 +998,25 @@ async function loadBankTransactions() {
     body.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px;">Loading transactions...</td></tr>';
 
     try {
-        const response = await fetch(`${AppConfig.baseUrl}/api/accounting/bank-transactions-full`, {
+        // Get the filter value
+        const filterValue = document.getElementById('unposted-filter')?.value || 'unposted';
+        console.log('[BANK] Filter:', filterValue);
+        
+        // Build URL with filter
+        let url = `${AppConfig.baseUrl}/api/accounting/bank-transactions-full`;
+        
+        // Add filter parameter
+        if (filterValue === 'unposted') {
+            url += '?filter=unposted';
+        } else if (filterValue === 'posted') {
+            url += '?filter=posted';
+        } else {
+            url += '?filter=all';
+        }
+        
+        console.log('[BANK] Fetching URL:', url);
+
+        const response = await fetch(url, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
@@ -1789,7 +1807,6 @@ function getLastSixCompleteMonths() {
     return months;
 }
 
-
 function renderMonthlyPLBarCharts(allData) {
     console.log('[MONTHLY-PL] Rendering bar charts...');
     const container = document.getElementById('monthly-pl-bar-chart-container');
@@ -1807,24 +1824,21 @@ function renderMonthlyPLBarCharts(allData) {
         
         const accountNames = [];
         const adjustedValues = [];
-        const accountIds = [];  // <-- ADD THIS: store account IDs
+        const accountIds = [];
         
         report.forEach(item => {
             const name = item.Account;
             const value = item.Balance || 0;
             
-            // Extract account code and find account ID
             const code = name.split(' ')[0];
             let accountId = null;
-            
-            // Try to find account by code
             const foundAccount = bankAccounts.find(a => a.code === code);
             if (foundAccount) {
                 accountId = foundAccount.id;
             }
             
             accountNames.push(name);
-            accountIds.push(accountId);  // <-- STORE account ID
+            accountIds.push(accountId);
             
             const isExpense = expenseCodePrefixes.includes(code);
             const isRevenue = revenueCodePrefixes.includes(code);
@@ -1843,7 +1857,7 @@ function renderMonthlyPLBarCharts(allData) {
         
         const allLabels = [...accountNames, 'Net Income'];
         const allValues = [...adjustedValues, netIncome];
-        const allAccountIds = [...accountIds, null];  // <-- Net Income has no account ID
+        const allAccountIds = [...accountIds, null];
 
         const revenueKeywords = ['revenue', 'sales', 'income'];
         const expenseKeywords = ['cogs', 'expense', 'cost', 'shipping', 'fees', 'rent', 'utilities', 'insurance', 'advertising', 'software', 'supplies', 'equipment', 'leasehold', 'improvements'];
@@ -1887,7 +1901,7 @@ function renderMonthlyPLBarCharts(allData) {
             
             const accountNames = [];
             const adjustedValues = [];
-            const accountIds = [];  // <-- ADD THIS
+            const accountIds = [];
             
             report.forEach(item => {
                 const name = item.Account;
@@ -1960,7 +1974,6 @@ function renderMonthlyPLBarCharts(allData) {
                         backgroundColor: colors,
                         borderColor: colors.map(c => c.replace('0.85', '1').replace('0.75', '1').replace('0.95', '1').replace('0.7', '1')),
                         borderWidth: 1,
-                        // <-- STORE account IDs in the dataset
                         accountIds: allAccountIds
                     }]
                 },
@@ -2001,14 +2014,12 @@ function renderMonthlyPLBarCharts(allData) {
                         const element = elements[0];
                         const idx = element.index;
                         
-                        // <-- GET ACCOUNT ID DIRECTLY from the stored data
                         const accountId = this.data.datasets[0].accountIds[idx];
                         const label = this.data.labels[idx];
                         const monthKey = `${month.year}-${String(month.month).padStart(2, '0')}`;
                         
                         console.log('[MONTHLY-PL] Bar clicked:', label, 'Account ID:', accountId);
                         
-                        // Close any open modal
                         document.getElementById('monthly-tx-modal')?.classList.remove('active');
                         
                         if (label === 'Net Income') {
@@ -2017,15 +2028,13 @@ function renderMonthlyPLBarCharts(allData) {
                         }
                         
                         if (label.includes('COGS') || label.includes('Cost of Goods Sold')) {
-                            showCOGSCalculation(monthKey);
+                            showMonthlyTransactions(monthKey, 4, 'COGS', true);
                             return;
                         }
                         
-                        // <-- USE THE DIRECT accountId from the chart data
                         if (accountId) {
                             showMonthlyTransactions(monthKey, accountId, label, true);
                         } else {
-                            // Fallback: try to find by name
                             const trimmed = label.trim();
                             const found = bankAccounts.find(a => a.name === trimmed);
                             if (found) {
@@ -2363,7 +2372,6 @@ function closeMonthlyModal() {
     document.getElementById('monthly-tx-modal').classList.remove('active');
 }
 
-
 function showMonthlyTransactions(month, accountId, accountName, excludeOrders = false, accountCode = null) {
     console.log('==================================================');
     console.log('SHOW MONTHLY TRANSACTIONS CALLED');
@@ -2479,6 +2487,11 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
             body.innerHTML = '<p class="monthly-error">Error: ' + error.message + '</p>';
             showToast('Error: ' + error.message, 'error');
         });
+
+        console.log('==================================================');
+        console.log('SHOW MONTHLY TRANSACTIONS FUNCTION COMPLETE');
+        console.log('Waiting for fetch response...');
+        console.log('==================================================');
 
     } catch (error) {
         console.error('==================================================');
@@ -2601,7 +2614,6 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     body.innerHTML = html;
     console.log('[MODAL] Render complete');
 }
-
 
 async function unpostTransaction(entryId) {
     console.log('[MODAL] Unposting transaction:', entryId);
@@ -3493,6 +3505,14 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(err => {
             alert('Error: ' + err.message);
+        });
+    }
+
+    // ---- Unposted filter ----
+    const unpostedFilter = document.getElementById('unposted-filter');
+    if (unpostedFilter) {
+        unpostedFilter.addEventListener('change', function() {
+            loadBankTransactions();
         });
     }
 

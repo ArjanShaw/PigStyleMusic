@@ -62,6 +62,19 @@
             <span class="text-muted" id="bank-count-label" style="color:#666;"> unprocessed transactions</span>
             <span class="text-muted" id="bank-total-count" style="margin-left:10px; color:#666;">(0 total)</span>
         </div>
+        
+        <!-- UNPOSTED FILTER -->
+        <div style="display:flex; align-items:center; gap:10px;">
+            <label for="unposted-filter" style="font-weight:500; font-size:13px; color:#000; margin:0;">
+                <i class="fas fa-filter"></i> Show:
+            </label>
+            <select id="unposted-filter" style="padding:6px 12px; border:1px solid #ddd; border-radius:4px; font-size:13px; color:#000; background:#fff; cursor:pointer;">
+                <option value="all">All Transactions</option>
+                <option value="unposted" selected>Unposted Only</option>
+                <option value="posted">Posted Only</option>
+            </select>
+        </div>
+        
         <div style="margin-left:auto; display:flex; gap:10px;">
             <button class="btn btn-success" id="post-updates-btn" style="padding:8px 20px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer;">
                 <i class="fas fa-check-double"></i> Post Updates

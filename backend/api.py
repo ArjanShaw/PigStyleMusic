@@ -6925,6 +6925,7 @@ def monthly_account_transactions():
     conn = get_db()
     cursor = conn.cursor()
 
+    # If account_id is provided, only return transactions for THAT account
     query = '''
         SELECT 
             je.id as journal_entry_id,
@@ -6942,6 +6943,7 @@ def monthly_account_transactions():
     '''
     params = [month]
 
+    # THIS IS THE KEY FIX - filter by account_id
     if account_id is not None:
         query += ' AND jl.account_id = ?'
         params.append(account_id)
@@ -13945,12 +13947,16 @@ def accounting_delete_journal_entry(entry_id):
 @login_required
 @role_required(['admin'])
 def bank_transactions_full():
-    """Get all bank transactions with post_from and post_to account names."""
+    """Get all bank transactions with post_from and post_to account names.
+       Optional filter parameter: ?filter=unposted|posted|all
+    """
     try:
+        filter_param = request.args.get('filter', 'unposted')  # default to unposted
+        
         conn = get_db()
         cursor = conn.cursor()
         
-        cursor.execute('''
+        query = '''
             SELECT 
                 bt.id,
                 bt.transaction_date,
@@ -13967,21 +13973,38 @@ def bank_transactions_full():
             FROM bank_transactions bt
             LEFT JOIN accounts a1 ON a1.id = bt.post_from
             LEFT JOIN accounts a2 ON a2.id = bt.post_to
-            ORDER BY bt.transaction_date DESC, bt.id DESC
-        ''')
+        '''
         
+        # Apply filter
+        if filter_param == 'unposted':
+            query += ' WHERE bt.processed = 0 OR bt.processed IS NULL'
+        elif filter_param == 'posted':
+            query += ' WHERE bt.processed = 1'
+        # else: 'all' - no filter
+        
+        query += ' ORDER BY bt.transaction_date DESC, bt.id DESC'
+        
+        cursor.execute(query)
         rows = cursor.fetchall()
         conn.close()
         
         transactions = []
+        unprocessed_count = 0
+        total_count = 0
+        
         for row in rows:
+            processed = bool(row['processed']) if row['processed'] is not None else False
+            if not processed:
+                unprocessed_count += 1
+            total_count += 1
+            
             transactions.append({
                 'id': row['id'],
                 'transaction_date': row['transaction_date'],
                 'description': row['description'],
                 'amount': row['amount'],
                 'additional_info': row['additional_info'],
-                'processed': bool(row['processed']) if row['processed'] is not None else False,
+                'processed': processed,
                 'post_from': row['post_from'],
                 'post_to': row['post_to'],
                 'post_from_account_name': row['post_from_account_name'],
@@ -13989,9 +14012,6 @@ def bank_transactions_full():
                 'post_to_account_name': row['post_to_account_name'],
                 'post_to_account_code': row['post_to_account_code']
             })
-        
-        total_count = len(transactions)
-        unprocessed_count = len([t for t in transactions if not t['processed']])
         
         return jsonify({
             'status': 'success',
@@ -14003,6 +14023,7 @@ def bank_transactions_full():
     except Exception as e:
         app.logger.error(f"Error in bank_transactions_full: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/api/accounting/bank/apply-all-unprocessed', methods=['POST'])
 @login_required
