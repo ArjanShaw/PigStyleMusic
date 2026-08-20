@@ -6161,7 +6161,7 @@ def balance_sheet_v2():
 @role_required(['admin'])
 def accounting_reports():
     """
-    Generate financial reports.
+    Generate financial reports directly from bank_transactions.
     
     Query params:
         type: pll, balance-sheet
@@ -6186,67 +6186,36 @@ def accounting_reports():
                 if not date_from or not date_to:
                     return jsonify({'status': 'error', 'error': 'date_from and date_to required for monthly breakdown'}), 400
                 
-                from datetime import datetime
-                start_date = datetime.strptime(date_from, '%Y-%m-%d')
-                end_date = datetime.strptime(date_to, '%Y-%m-%d')
+                # Monthly P&L from bank_transactions
+                cursor.execute('''
+                    SELECT 
+                        strftime('%Y-%m', bt.transaction_date) AS month,
+                        a.code,
+                        a.name,
+                        SUM(bt.amount) AS balance
+                    FROM bank_transactions bt
+                    JOIN accounts a ON bt.post_to = a.id
+                    WHERE bt.processed = 1
+                      AND a.type IN ('revenue', 'expense')
+                      AND (? IS NULL OR bt.transaction_date >= ?)
+                      AND (? IS NULL OR bt.transaction_date <= ?)
+                    GROUP BY strftime('%Y-%m', bt.transaction_date), a.id, a.code, a.name
+                    ORDER BY month, a.type DESC, a.code
+                ''', (date_from, date_from, date_to, date_to))
+                
+                rows = cursor.fetchall()
+                conn.close()
                 
                 # Build month list
                 months = []
-                current = start_date
-                while current <= end_date:
-                    months.append(current.strftime('%Y-%m'))
-                    if current.month == 12:
-                        current = current.replace(year=current.year+1, month=1, day=1)
-                    else:
-                        current = current.replace(month=current.month+1, day=1)
-                
-                account_breakdown = {m: {} for m in months}
-                
-                # Revenue by month (credit - debit = positive)
-                cursor.execute('''
-                    SELECT 
-                        strftime('%Y-%m', je.transaction_date) as month,
-                        a.code,
-                        a.name,
-                        COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0) / 100.0 as balance
-                    FROM journal_lines jl
-                    JOIN journal_entries je ON jl.journal_entry_id = je.id
-                    JOIN accounts a ON a.id = jl.account_id
-                    WHERE a.type = 'revenue'
-                      AND je.transaction_date >= ? AND je.transaction_date <= ?
-                    GROUP BY month, a.id
-                    ORDER BY month, a.code
-                ''', (date_from, date_to))
-                revenue_rows = cursor.fetchall()
-                
-                for row in revenue_rows:
+                account_breakdown = {}
+                for row in rows:
                     month = row['month']
-                    if month in account_breakdown:
-                        account_name = f"{row['code']} - {row['name']}"
-                        account_breakdown[month][account_name] = row['balance']
-                
-                # Expenses by month (credit - debit = negative for expenses)
-                cursor.execute('''
-                    SELECT 
-                        strftime('%Y-%m', je.transaction_date) as month,
-                        a.code,
-                        a.name,
-                        COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0) / 100.0 as balance
-                    FROM journal_lines jl
-                    JOIN journal_entries je ON jl.journal_entry_id = je.id
-                    JOIN accounts a ON a.id = jl.account_id
-                    WHERE a.type = 'expense'
-                      AND je.transaction_date >= ? AND je.transaction_date <= ?
-                    GROUP BY month, a.id
-                    ORDER BY month, a.code
-                ''', (date_from, date_to))
-                expense_rows = cursor.fetchall()
-                
-                for row in expense_rows:
-                    month = row['month']
-                    if month in account_breakdown:
-                        account_name = f"{row['code']} - {row['name']}"
-                        account_breakdown[month][account_name] = row['balance']
+                    if month not in months:
+                        months.append(month)
+                        account_breakdown[month] = {}
+                    account_name = f"{row['code']} - {row['name']}"
+                    account_breakdown[month][account_name] = row['balance']
                 
                 # Add Net Income for each month
                 for month in months:
@@ -6255,152 +6224,127 @@ def accounting_reports():
                         if abs(total) > 0.01:
                             account_breakdown[month]['Net Income'] = total
                 
-                conn.close()
                 return jsonify({
                     'status': 'success',
                     'months': months,
                     'account_breakdown': account_breakdown,
-                    'type': 'pll_monthly'
+                    'type': 'pll_monthly',
+                    'source': 'bank_transactions'
                 })
             
             # ============================================================
             # Aggregated P&L
             # ============================================================
-            
-            # Revenue from journal (credit - debit = positive for revenue)
             cursor.execute('''
                 SELECT 
-                    COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0) / 100.0 as revenue
-                FROM journal_lines jl
-                JOIN journal_entries je ON jl.journal_entry_id = je.id
-                JOIN accounts a ON a.id = jl.account_id
-                WHERE a.type = 'revenue'
-                  AND (? IS NULL OR je.transaction_date >= ?)
-                  AND (? IS NULL OR je.transaction_date <= ?)
-            ''', (date_from, date_from, date_to, date_to))
-            revenue = cursor.fetchone()['revenue'] or 0
-            
-            # Revenue breakdown by account
-            cursor.execute('''
-                SELECT 
+                    a.type,
                     a.code,
                     a.name,
-                    COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0) / 100.0 as balance
-                FROM journal_lines jl
-                JOIN journal_entries je ON jl.journal_entry_id = je.id
-                JOIN accounts a ON a.id = jl.account_id
-                WHERE a.type = 'revenue'
-                  AND (? IS NULL OR je.transaction_date >= ?)
-                  AND (? IS NULL OR je.transaction_date <= ?)
-                GROUP BY a.id, a.code, a.name
-                ORDER BY a.code
+                    SUM(bt.amount) AS balance
+                FROM bank_transactions bt
+                JOIN accounts a ON bt.post_to = a.id
+                WHERE bt.processed = 1
+                  AND a.type IN ('revenue', 'expense')
+                  AND (? IS NULL OR bt.transaction_date >= ?)
+                  AND (? IS NULL OR bt.transaction_date <= ?)
+                GROUP BY a.id, a.code, a.name, a.type
+                ORDER BY a.type DESC, a.code
             ''', (date_from, date_from, date_to, date_to))
-            revenue_rows = cursor.fetchall()
             
-            # Expenses from journal (credit - debit = negative for expenses)
-            # INCLUDES COGS (account 5000) - no separate query needed
-            cursor.execute('''
-                SELECT a.code, a.name,
-                       COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0) / 100.0 as balance
-                FROM journal_lines jl
-                JOIN journal_entries je ON jl.journal_entry_id = je.id
-                JOIN accounts a ON jl.account_id = a.id
-                WHERE a.type = 'expense'
-                  AND (? IS NULL OR je.transaction_date >= ?)
-                  AND (? IS NULL OR je.transaction_date <= ?)
-                GROUP BY a.id
-                ORDER BY a.code
-            ''', (date_from, date_from, date_to, date_to))
-            expense_rows = cursor.fetchall()
+            rows = cursor.fetchall()
+            conn.close()
             
-            # Build report
+            total_revenue = 0
+            total_expenses = 0
             report_data = []
-            total_expense = 0
             
-            # Add revenue lines
-            for row in revenue_rows:
+            for row in rows:
+                balance = row['balance'] or 0
+                if row['type'] == 'revenue':
+                    total_revenue += balance
+                elif row['type'] == 'expense':
+                    total_expenses += balance
+                
                 report_data.append({
-                    'Account': f"{row['code']} - {row['name']}",
-                    'Balance': row['balance']
-                })
-            
-            # Add expense lines (including COGS)
-            for row in expense_rows:
-                balance = row['balance']
-                report_data.append({
+                    'Type': row['type'],
                     'Account': f"{row['code']} - {row['name']}",
                     'Balance': balance
                 })
-                total_expense += balance
             
-            net_profit = revenue - abs(total_expense)
-            summary = f"Total Revenue: ${revenue:.2f} | Total Expenses: ${total_expense:.2f} | Net Profit: ${net_profit:.2f}"
+            net_profit = total_revenue + total_expenses  # expenses are negative
+            summary = f"Total Revenue: ${total_revenue:.2f} | Total Expenses: ${abs(total_expenses):.2f} | Net Profit: ${net_profit:.2f}"
             
-            conn.close()
             return jsonify({
                 'status': 'success',
                 'report': report_data,
                 'summary': summary,
-                'type': report_type
+                'type': report_type,
+                'source': 'bank_transactions'
             })
-            
+        
         elif report_type == 'balance-sheet':
             # ============================================================
-            # FIXED: Calculate running balance up to date_to for each account
+            # Balance Sheet from bank_transactions
             # ============================================================
-            
-            # Get all accounts
             cursor.execute('''
-                SELECT id, code, name, type 
-                FROM accounts 
-                WHERE type IN ('asset', 'liability', 'equity')
-                ORDER BY type, code
-            ''')
-            accounts = cursor.fetchall()
+                SELECT 
+                    a.type,
+                    a.code,
+                    a.name,
+                    COALESCE(SUM(
+                        CASE 
+                            WHEN bt.post_to = a.id THEN bt.amount
+                            WHEN bt.post_from = a.id THEN -bt.amount
+                            ELSE 0
+                        END
+                    ), 0) AS balance
+                FROM accounts a
+                LEFT JOIN bank_transactions bt ON bt.post_to = a.id OR bt.post_from = a.id
+                WHERE a.type IN ('asset', 'liability', 'equity')
+                  AND bt.processed = 1
+                  AND (? IS NULL OR bt.transaction_date <= ?)
+                GROUP BY a.id, a.code, a.name, a.type
+                HAVING ABS(COALESCE(SUM(
+                    CASE 
+                        WHEN bt.post_to = a.id THEN bt.amount
+                        WHEN bt.post_from = a.id THEN -bt.amount
+                        ELSE 0
+                    END
+                ), 0)) > 0.01
+                ORDER BY a.type, a.code
+            ''', (date_to, date_to))
             
-            report_data = []
+            rows = cursor.fetchall()
+            conn.close()
+            
             total_assets = 0
             total_liabilities = 0
             total_equity = 0
+            report_data = []
             
-            for account in accounts:
-                # Calculate running balance up to date_to (or current date if no date_to)
-                cursor.execute('''
-                    SELECT COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as balance
-                    FROM journal_lines jl
-                    JOIN journal_entries je ON jl.journal_entry_id = je.id
-                    WHERE jl.account_id = ?
-                      AND (? IS NULL OR je.transaction_date <= ?)
-                ''', (account['id'], date_to, date_to))
-                
-                row = cursor.fetchone()
-                balance = row['balance'] if row else 0
-                
-                # For liability accounts, invert the sign (liabilities are credit balances)
-                # Actually, keep as-is since the balance calculation already handles the sign
-                # based on debit - credit
+            for row in rows:
+                balance = row['balance'] or 0
+                if row['type'] == 'asset':
+                    total_assets += balance
+                elif row['type'] == 'liability':
+                    total_liabilities += balance
+                elif row['type'] == 'equity':
+                    total_equity += balance
                 
                 report_data.append({
-                    'Type': account['type'],
-                    'Account': f"{account['code']} - {account['name']}",
+                    'Type': row['type'],
+                    'Account': f"{row['code']} - {row['name']}",
                     'Balance': balance
                 })
-                
-                if account['type'] == 'asset':
-                    total_assets += balance
-                elif account['type'] == 'liability':
-                    total_liabilities += balance
-                else:
-                    total_equity += balance
             
             summary = f"Total Assets: ${total_assets:.2f} | Total Liabilities: ${total_liabilities:.2f} | Total Equity: ${total_equity:.2f} | (Assets = Liabilities + Equity: {abs(total_assets - (total_liabilities + total_equity)) < 0.01})"
             
-            conn.close()
             return jsonify({
                 'status': 'success',
                 'report': report_data,
                 'summary': summary,
-                'type': report_type
+                'type': report_type,
+                'source': 'bank_transactions'
             })
         
         else:
@@ -6411,8 +6355,6 @@ def accounting_reports():
         app.logger.error(f"Report error: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-# ===== PLAID INTEGRATION =====
-# Helper functions for Plaid client and token storage
 
 def get_plaid_client():
     """Initialize Plaid client using environment credentials."""
