@@ -13941,6 +13941,182 @@ def accounting_delete_journal_entry(entry_id):
         app.logger.error(f"Error deleting journal entry: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/accounting/bank-transactions-full', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def bank_transactions_full():
+    """Get all bank transactions with post_from and post_to account names."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                bt.id,
+                bt.transaction_date,
+                bt.description,
+                bt.amount,
+                bt.additional_info,
+                bt.processed,
+                bt.post_from,
+                bt.post_to,
+                a1.name AS post_from_account_name,
+                a1.code AS post_from_account_code,
+                a2.name AS post_to_account_name,
+                a2.code AS post_to_account_code
+            FROM bank_transactions bt
+            LEFT JOIN accounts a1 ON a1.id = bt.post_from
+            LEFT JOIN accounts a2 ON a2.id = bt.post_to
+            ORDER BY bt.transaction_date DESC, bt.id DESC
+        ''')
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        transactions = []
+        for row in rows:
+            transactions.append({
+                'id': row['id'],
+                'transaction_date': row['transaction_date'],
+                'description': row['description'],
+                'amount': row['amount'],
+                'additional_info': row['additional_info'],
+                'processed': bool(row['processed']) if row['processed'] is not None else False,
+                'post_from': row['post_from'],
+                'post_to': row['post_to'],
+                'post_from_account_name': row['post_from_account_name'],
+                'post_from_account_code': row['post_from_account_code'],
+                'post_to_account_name': row['post_to_account_name'],
+                'post_to_account_code': row['post_to_account_code']
+            })
+        
+        total_count = len(transactions)
+        unprocessed_count = len([t for t in transactions if not t['processed']])
+        
+        return jsonify({
+            'status': 'success',
+            'transactions': transactions,
+            'total_count': total_count,
+            'unprocessed_count': unprocessed_count
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error in bank_transactions_full: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/accounting/bank/apply-all-unprocessed', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def apply_all_unprocessed():
+    """
+    Apply journal entries for ALL unprocessed transactions.
+    Expects JSON: {
+        "updates": [
+            {
+                "transaction_id": 1,
+                "post_from": 1,
+                "post_to": 17
+            }
+        ]
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data or 'updates' not in data:
+            return jsonify({'status': 'error', 'error': 'Missing updates list'}), 400
+
+        updates = data['updates']
+        results = {'processed': 0, 'errors': []}
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Get cash account for historic transactions (Bluevine = 1)
+        cash_account_id = 1  # Bluevine Bank
+
+        for update in updates:
+            transaction_id = update.get('transaction_id')
+            post_from = update.get('post_from')
+            post_to = update.get('post_to')
+
+            if not transaction_id or not post_from or not post_to:
+                results['errors'].append(f"Missing fields for transaction {transaction_id}")
+                continue
+
+            # Get the transaction details
+            cursor.execute('''
+                SELECT transaction_date, amount, description
+                FROM bank_transactions
+                WHERE id = ?
+            ''', (transaction_id,))
+            row = cursor.fetchone()
+
+            if not row:
+                results['errors'].append(f"Transaction {transaction_id} not found")
+                continue
+
+            amount_cents = int(round(row['amount'] * 100))
+            transaction_date = row['transaction_date']
+            description = row['description'] or ''
+
+            # Check if already posted (shouldn't happen, but just in case)
+            cursor.execute('''
+                SELECT id FROM journal_entries
+                WHERE source_type = 'historic' AND source_id = ?
+            ''', (str(transaction_id),))
+            if cursor.fetchone():
+                # Skip if already posted
+                results['processed'] += 1
+                continue
+
+            # Create journal entry
+            journal_description = f"Bank transaction: {description}"
+
+            cursor.execute('''
+                INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+                VALUES (?, ?, ?, ?)
+            ''', (transaction_date, journal_description, 'historic', str(transaction_id)))
+            entry_id = cursor.lastrowid
+
+            if amount_cents > 0:
+                # Positive amount: Debit post_from, Credit post_to
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, post_from, amount_cents, 0))
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, post_to, 0, amount_cents))
+            else:
+                # Negative amount: Debit post_to, Credit post_from
+                abs_amount = abs(amount_cents)
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, post_to, abs_amount, 0))
+                cursor.execute('''
+                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (entry_id, post_from, 0, abs_amount))
+
+            # Mark as processed
+            cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (transaction_id,))
+            results['processed'] += 1
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'processed': results['processed'],
+            'errors': results['errors']
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error in apply_all_unprocessed: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)

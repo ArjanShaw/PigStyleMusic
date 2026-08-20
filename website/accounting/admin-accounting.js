@@ -2,6 +2,8 @@
 // admin-accounting.js – Accounting Module (COMPLETE)
 // ============================================================
 
+console.log('[ADMIN-ACCOUNTING] Script started loading');
+
 let journalCurrentPage = 1;
 const journalPageSize = 20;
 let journalTotalEntries = 0;
@@ -9,6 +11,7 @@ let currentReportData = null;
 
 // Global list of accounts for bank dropdowns
 let bankAccounts = [];
+console.log('[ADMIN-ACCOUNTING] bankAccounts initialized');
 
 // Chart instances
 let plChartInstance = null;
@@ -45,12 +48,14 @@ let currentCustomPLData = null;
 let balanceChartInstance = null;
 let currentBalanceData = null;
 
+console.log('[ADMIN-ACCOUNTING] Variables initialized');
+
 // ============================================================
 // TOAST NOTIFICATION
 // ============================================================
 
 function showToast(message, type = 'success') {
-    console.log('[TOAST]', type, message);
+    console.log('[TOAST] Called with:', message, type);
     const toast = document.createElement('div');
     toast.className = `toast-notification ${type}`;
     toast.innerHTML = message;
@@ -65,7 +70,7 @@ function showToast(message, type = 'success') {
         z-index: 10000;
         animation: slideIn 0.3s ease;
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        background: ${type === 'success' ? '#28a745' : '#17a2b8'};
+        background: ${type === 'success' ? '#28a745' : type === 'error' ? '#dc3545' : '#17a2b8'};
         max-width: 400px;
     `;
     document.body.appendChild(toast);
@@ -74,10 +79,12 @@ function showToast(message, type = 'success') {
         toast.style.transition = 'opacity 0.3s';
         setTimeout(() => toast.remove(), 300);
     }, 3000);
+    console.log('[TOAST] Toast shown');
 }
 
 // Add animation styles if not present
 if (!document.getElementById('toast-styles')) {
+    console.log('[TOAST] Adding toast styles');
     const style = document.createElement('style');
     style.id = 'toast-styles';
     style.textContent = `
@@ -87,6 +94,7 @@ if (!document.getElementById('toast-styles')) {
         }
     `;
     document.head.appendChild(style);
+    console.log('[TOAST] Toast styles added');
 }
 
 // ============================================================
@@ -94,6 +102,7 @@ if (!document.getElementById('toast-styles')) {
 // ============================================================
 
 function formatReconDate(dateStr) {
+    console.log('[FORMAT] formatReconDate called with:', dateStr);
     if (!dateStr) return '—';
     try {
         let date = new Date(dateStr);
@@ -105,14 +114,17 @@ function formatReconDate(dateStr) {
         }
         if (isNaN(date.getTime())) return dateStr;
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+        const result = `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+        console.log('[FORMAT] formatReconDate result:', result);
+        return result;
     } catch (e) {
+        console.log('[FORMAT] formatReconDate error:', e);
         return dateStr;
     }
 }
 
 function reconnectPlaid(source, label) {
-    console.log(`[PLAID] Reconnecting ${source}...`);
+    console.log('[PLAID] reconnectPlaid called with source:', source, 'label:', label);
     
     let endpoint;
     let exchangeEndpoint;
@@ -128,8 +140,8 @@ function reconnectPlaid(source, label) {
         return;
     }
 
-    console.log(`[PLAID] endpoint: ${endpoint}`);
-    console.log(`[PLAID] exchangeEndpoint: ${exchangeEndpoint}`);
+    console.log('[PLAID] endpoint:', endpoint);
+    console.log('[PLAID] exchangeEndpoint:', exchangeEndpoint);
     showToast(`Connecting to ${label}...`, 'info');
 
     fetch(endpoint, {
@@ -138,13 +150,13 @@ function reconnectPlaid(source, label) {
         headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
     })
     .then(res => {
-        console.log(`[PLAID] link token response status: ${res.status}`);
+        console.log('[PLAID] link token response status:', res.status);
         return res.json();
     })
     .then(data => {
-        console.log(`[PLAID] link token response:`, data);
+        console.log('[PLAID] link token response:', data);
         if (!data.link_token) {
-            console.error(`[PLAID] No link_token in response`);
+            console.error('[PLAID] No link_token in response');
             showToast(`Failed to get link token: ${data.error || 'Unknown error'}`, 'error');
             return;
         }
@@ -152,32 +164,32 @@ function reconnectPlaid(source, label) {
         const handler = Plaid.create({
             token: data.link_token,
             onSuccess: async (public_token, metadata) => {
-                console.log(`[PLAID] Plaid onSuccess called. public_token present: ${!!public_token}`);
-                console.log(`[PLAID] metadata:`, metadata);
+                console.log('[PLAID] Plaid onSuccess called. public_token present:', !!public_token);
+                console.log('[PLAID] metadata:', metadata);
                 showToast(`Exchanging token for ${label}...`, 'info');
-                console.log(`[PLAID] Sending exchange request to ${exchangeEndpoint}`);
+                console.log('[PLAID] Sending exchange request to', exchangeEndpoint);
                 const exchangeRes = await fetch(exchangeEndpoint, {
                     method: 'POST',
                     credentials: 'include',
                     headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ public_token })
                 });
-                console.log(`[PLAID] exchange response status: ${exchangeRes.status}`);
+                console.log('[PLAID] exchange response status:', exchangeRes.status);
                 const exchangeData = await exchangeRes.json();
-                console.log(`[PLAID] exchange response body:`, exchangeData);
+                console.log('[PLAID] exchange response body:', exchangeData);
                 if (exchangeData.status === 'success') {
-                    console.log(`[PLAID] exchange successful for ${label}`);
+                    console.log('[PLAID] exchange successful for', label);
                     showToast(`${label} reconnected successfully!`, 'success');
                     refreshAllBalances();
                     loadBankTransactions();
                 } else {
-                    console.error(`[PLAID] exchange failed:`, exchangeData);
+                    console.error('[PLAID] exchange failed:', exchangeData);
                     showToast(`Failed to exchange token: ${exchangeData.error || 'Unknown error'}`, 'error');
                 }
             },
             onExit: (err, metadata) => {
-                console.log(`[PLAID] Plaid onExit called. err:`, err);
-                console.log(`[PLAID] metadata:`, metadata);
+                console.log('[PLAID] Plaid onExit called. err:', err);
+                console.log('[PLAID] metadata:', metadata);
                 if (err) {
                     showToast(`Plaid error: ${err.display_message || err.error_message || 'User cancelled'}`, 'error');
                 } else {
@@ -185,21 +197,21 @@ function reconnectPlaid(source, label) {
                 }
             }
         });
-        console.log(`[PLAID] Plaid handler created, calling open()`);
+        console.log('[PLAID] Plaid handler created, calling open()');
         handler.open();
     })
     .catch(err => {
-        console.error(`[PLAID] fetch error for ${endpoint}:`, err);
+        console.error('[PLAID] fetch error for', endpoint, err);
         showToast(`Error: ${err.message}`, 'error');
     });
 }
 
 // ============================================================
-// EXTERNAL BALANCE CARDS
+// EXTERNAL BALANCE CARDS (KEPT FOR OTHER TABS)
 // ============================================================
 
 async function getSquareBalance() {
-    console.log('[BALANCES] Fetching Square balance...');
+    console.log('[BALANCES] getSquareBalance called');
     const res = await fetch(`${AppConfig.baseUrl}/api/accounting/external/square/balance`, {
         credentials: 'include',
         headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
@@ -215,7 +227,7 @@ async function getSquareBalance() {
 }
 
 async function getPlaidBalance(source) {
-    console.log(`[BALANCES] Fetching ${source} balance from Plaid...`);
+    console.log('[BALANCES] getPlaidBalance called with source:', source);
     const res = await fetch(`${AppConfig.baseUrl}/api/accounting/external/plaid/balance?source=${source}`, {
         credentials: 'include',
         headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
@@ -228,14 +240,14 @@ async function getPlaidBalance(source) {
         } catch (e) {
             errorData = { error: `HTTP ${res.status}` };
         }
-        console.log(`[BALANCES] ${source} balance error response:`, errorData);
+        console.log('[BALANCES]', source, 'balance error response:', errorData);
         const err = new Error(errorData.error || 'Unknown error');
         err.plaidError = errorData;
         throw err;
     }
     
     const data = await res.json();
-    console.log(`[BALANCES] ${source} balance response:`, data);
+    console.log('[BALANCES]', source, 'balance response:', data);
     if (data.status === 'success') {
         return data.balance ?? 0;
     }
@@ -245,9 +257,7 @@ async function getPlaidBalance(source) {
 }
 
 async function refreshAllBalances() {
-    console.log('[BALANCES] Refreshing all external account balances...');
-
-    // Show loading state
+    console.log('[BALANCES] refreshAllBalances called');
     const cardIds = ['balance-square', 'balance-fnbo', 'balance-paypal', 'balance-total-assets'];
     cardIds.forEach(id => {
         const el = document.getElementById(id);
@@ -275,7 +285,7 @@ async function refreshAllBalances() {
         } catch (error) {
             anyError = true;
             const errorMsg = error.message || 'Unknown error';
-            console.error(`[BALANCES] Error from ${src.label}:`, error);
+            console.error('[BALANCES] Error from', src.label, error);
 
             results.push({ id: src.id, balance: null, error: errorMsg });
 
@@ -288,7 +298,6 @@ async function refreshAllBalances() {
         }
     }
 
-    // Update total assets
     const totalEl = document.getElementById('balance-total-assets');
     if (totalEl) {
         const validBalances = results
@@ -308,24 +317,27 @@ async function refreshAllBalances() {
 }
 
 function formatCurrency(amount) {
+    console.log('[FORMAT] formatCurrency called with amount:', amount);
     if (amount === undefined || amount === null || isNaN(amount)) {
         return '$0.00';
     }
     const sign = amount >= 0 ? '' : '-';
-    return sign + '$' + Math.abs(amount).toFixed(2);
+    const result = sign + '$' + Math.abs(amount).toFixed(2);
+    console.log('[FORMAT] formatCurrency result:', result);
+    return result;
 }
 
 function loadAccountBalances() {
-    console.log('[BALANCES] Loading external balances for Import tab');
+    console.log('[BALANCES] loadAccountBalances called');
     refreshAllBalances();
 }
 
 // ============================================================
-// PAYPAL PLAID CONNECTION (initial)
+// PAYPAL PLAID CONNECTION
 // ============================================================
 
 async function connectPayPalPlaid() {
-    console.log('[PLAID] Connecting PayPal');
+    console.log('[PLAID] connectPayPalPlaid called');
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/plaid/paypal/create-link-token`, {
             method: 'POST',
@@ -378,7 +390,7 @@ async function connectPayPalPlaid() {
 // ============================================================
 
 async function loadAccountSelects() {
-    console.log('[ACCOUNTS] Loading account dropdowns');
+    console.log('[ACCOUNTS] loadAccountSelects called');
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
             credentials: 'include',
@@ -388,7 +400,9 @@ async function loadAccountSelects() {
         const data = await res.json();
         if (data.status === 'success') {
             console.log('[ACCOUNTS] Loaded', data.accounts.length, 'accounts');
+            bankAccounts = data.accounts;
             cachedAccounts = data.accounts;
+            console.log('[ACCOUNTS] bankAccounts length:', bankAccounts.length);
 
             const selects = document.querySelectorAll('.manual-account, #journal-account-filter');
             selects.forEach(sel => {
@@ -405,13 +419,14 @@ async function loadAccountSelects() {
 
             populateBulkAccountSelect();
         }
+        console.log('[ACCOUNTS] loadAccountSelects complete');
     } catch (err) {
         console.error('[ACCOUNTS] Error loading accounts:', err);
     }
 }
 
 async function loadReconcileAccountSelects() {
-    console.log('[RECONCILE] Loading account dropdowns for add pair modal');
+    console.log('[RECONCILE] loadReconcileAccountSelects called');
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/accounts`, {
             credentials: 'include',
@@ -437,6 +452,7 @@ async function loadReconcileAccountSelects() {
                 });
             }
         }
+        console.log('[RECONCILE] loadReconcileAccountSelects complete');
     } catch (err) {
         console.error('[RECONCILE] Error loading accounts:', err);
     }
@@ -447,12 +463,21 @@ async function loadReconcileAccountSelects() {
 // ============================================================
 
 function populateBulkAccountSelect() {
+    console.log('[BULK] populateBulkAccountSelect called');
     const accountSelect = document.getElementById('bulk-account-select');
-    const selectedCheckboxes = document.querySelectorAll('#bank-body .tx-select:checked');
+    
+    // Check if the element exists (it might not in simplified view)
+    if (!accountSelect) {
+        console.log('[BULK] bulk-account-select not found, skipping');
+        return;
+    }
+    
+    const selectedCheckboxes = document.querySelectorAll('#bank-body .transaction-select:checked');
 
     if (selectedCheckboxes.length === 0) {
         accountSelect.style.display = 'none';
         accountSelect.innerHTML = '<option value="">Select Account</option>';
+        console.log('[BULK] No checkboxes selected, hiding select');
         return;
     }
 
@@ -463,8 +488,8 @@ function populateBulkAccountSelect() {
     let hasMixed = false;
 
     selectedCheckboxes.forEach(cb => {
-        const txId = cb.dataset.txId;
-        const select = document.querySelector(`.post-select[data-tx-id="${txId}"]`);
+        const txId = cb.dataset.transactionId;
+        const select = document.querySelector(`.post-to-select[data-transaction-id="${txId}"]`);
         if (select) {
             const amount = parseFloat(select.dataset.amount || 0);
             if (amount > 0) hasPositive = true;
@@ -491,18 +516,20 @@ function populateBulkAccountSelect() {
     });
 
     accountSelect.innerHTML = optionsHtml;
+    console.log('[BULK] populateBulkAccountSelect complete');
 }
 
 function bulkAssignAccount() {
+    console.log('[BULK] bulkAssignAccount called');
     const accountSelect = document.getElementById('bulk-account-select');
-    const selectedAccount = accountSelect.value;
+    const selectedAccount = accountSelect ? accountSelect.value : null;
 
     if (!selectedAccount) {
         showToast('Please select an account to assign.', 'warning');
         return;
     }
 
-    const selectedCheckboxes = document.querySelectorAll('#bank-body .tx-select:checked');
+    const selectedCheckboxes = document.querySelectorAll('#bank-body .transaction-select:checked');
 
     if (selectedCheckboxes.length === 0) {
         showToast('Please select at least one transaction.', 'warning');
@@ -515,9 +542,9 @@ function bulkAssignAccount() {
 
     let assignedCount = 0;
     selectedCheckboxes.forEach(cb => {
-        const txId = cb.dataset.txId;
+        const txId = cb.dataset.transactionId;
         const row = cb.closest('tr');
-        const select = row ? row.querySelector('.post-select') : null;
+        const select = row ? row.querySelector('.post-to-select') : null;
         if (select) {
             select.value = selectedAccount;
             select.dispatchEvent(new Event('change', { bubbles: true }));
@@ -528,21 +555,29 @@ function bulkAssignAccount() {
 
     showToast(`Account assigned to ${assignedCount} transaction(s)`, 'success');
 
-    accountSelect.value = '';
-    document.getElementById('select-all-tx').checked = false;
-    document.querySelectorAll('#bank-body .tx-select:checked').forEach(cb => cb.checked = false);
+    if (accountSelect) {
+        accountSelect.value = '';
+    }
+    const selectAll = document.getElementById('select-all-transactions');
+    if (selectAll) selectAll.checked = false;
+    document.querySelectorAll('#bank-body .transaction-select:checked').forEach(cb => cb.checked = false);
     populateBulkAccountSelect();
+    console.log('[BULK] bulkAssignAccount complete');
 }
 
 // ============================================================
-// RECONCILIATION – PAIRS SUMMARY (NO SLIDER)
+// RECONCILIATION – PAIRS SUMMARY
 // ============================================================
 
 let selectedPairId = null;
 
 async function loadReconcilePairsSummary() {
+    console.log('[RECONCILE] loadReconcilePairsSummary called');
     const tbody = document.getElementById('reconcile-pairs-body');
-    if (!tbody) return;
+    if (!tbody) {
+        console.log('[RECONCILE] reconcile-pairs-body not found');
+        return;
+    }
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#000;">Loading pairs...</td></tr>';
 
     try {
@@ -562,7 +597,6 @@ async function loadReconcilePairsSummary() {
             return;
         }
 
-        // Fetch all timeline data for each pair (no date filters)
         const pairPromises = pairs.map(async (p) => {
             const params = new URLSearchParams();
             params.append('account1', p.account_a_id);
@@ -602,6 +636,7 @@ async function loadReconcilePairsSummary() {
             const accountB = parseInt(firstRow.dataset.accountB);
             loadReconciliationTimeline(accountA, accountB);
         }
+        console.log('[RECONCILE] loadReconcilePairsSummary complete');
 
     } catch (err) {
         console.error('[RECONCILE] Error loading pairs summary:', err);
@@ -610,6 +645,7 @@ async function loadReconcilePairsSummary() {
 }
 
 function renderPairsSummary(pairSummaries) {
+    console.log('[RECONCILE] renderPairsSummary called with', pairSummaries.length, 'pairs');
     const tbody = document.getElementById('reconcile-pairs-body');
     if (!tbody) return;
     if (!pairSummaries || pairSummaries.length === 0) {
@@ -649,13 +685,15 @@ function renderPairsSummary(pairSummaries) {
             loadReconciliationTimeline(accountA, accountB);
         });
     });
+    console.log('[RECONCILE] renderPairsSummary complete');
 }
 
 // ============================================================
-// RECONCILIATION – TIMELINE (NO SLIDER)
+// RECONCILIATION – TIMELINE
 // ============================================================
 
 async function loadReconciliationTimeline(account1, account2) {
+    console.log('[RECONCILE] loadReconciliationTimeline called with', account1, account2);
     if (!account1 || !account2) {
         const selectedRow = document.querySelector('#reconcile-pairs-body tr.selected-row');
         if (selectedRow) {
@@ -694,6 +732,7 @@ async function loadReconciliationTimeline(account1, account2) {
         } else {
             resultDiv.innerHTML = `<p style="color: #dc3545;">Error: ${data.error || 'Unknown error'}</p>`;
         }
+        console.log('[RECONCILE] loadReconciliationTimeline complete');
     } catch (err) {
         console.error('[RECONCILE] Error:', err);
         resultDiv.innerHTML = `<p style="color: #dc3545;">Error: ${err.message}</p>`;
@@ -701,6 +740,7 @@ async function loadReconciliationTimeline(account1, account2) {
 }
 
 function renderReconciliationTimeline(data) {
+    console.log('[RECONCILE] renderReconciliationTimeline called');
     const resultDiv = document.getElementById('reconcile-result');
     const entries = data.entries || [];
     const account1Name = data.account1_name || 'Account A';
@@ -737,6 +777,7 @@ function renderReconciliationTimeline(data) {
 
     html += '</tbody></table>';
     resultDiv.innerHTML = html;
+    console.log('[RECONCILE] renderReconciliationTimeline complete');
 }
 
 // ============================================================
@@ -744,13 +785,16 @@ function renderReconciliationTimeline(data) {
 // ============================================================
 
 function showAddPairModal() {
+    console.log('[RECONCILE] showAddPairModal called');
     loadReconcileAccountSelects();
     document.getElementById('reconcile-pair-name').value = '';
     document.getElementById('reconcile-pair-description').value = '';
     document.getElementById('reconcile-pair-modal').classList.add('active');
+    console.log('[RECONCILE] showAddPairModal complete');
 }
 
 async function editPair(pairId) {
+    console.log('[RECONCILE] editPair called with pairId:', pairId);
     try {
         const res = await fetch(`${AppConfig.baseUrl}/api/accounting/reconcile/pairs`, {
             credentials: 'include',
@@ -769,6 +813,7 @@ async function editPair(pairId) {
             document.getElementById('reconcile-edit-description').value = pair.description || '';
             document.getElementById('reconcile-edit-modal').classList.add('active');
         }
+        console.log('[RECONCILE] editPair complete');
     } catch (err) {
         console.error(err);
         alert('Error loading pair details.');
@@ -776,6 +821,7 @@ async function editPair(pairId) {
 }
 
 async function deleteSelectedPair() {
+    console.log('[RECONCILE] deleteSelectedPair called');
     const selectedRow = document.querySelector('#reconcile-pairs-body tr.selected-row');
     if (!selectedRow) {
         alert('Please select a pair to delete.');
@@ -795,16 +841,24 @@ async function deleteSelectedPair() {
         } else {
             alert('Failed to delete pair.');
         }
+        console.log('[RECONCILE] deleteSelectedPair complete');
     } catch (err) {
         console.error(err);
         alert('Error deleting pair.');
     }
 }
 
+// ============================================================
+// JOURNAL TAB
+// ============================================================
 
 async function loadJournalEntries() {
-    console.log('[JOURNAL] Loading journal entries');
+    console.log('[JOURNAL] loadJournalEntries called');
     const body = document.getElementById('journal-body');
+    if (!body) {
+        console.log('[JOURNAL] journal-body not found');
+        return;
+    }
     body.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px;">Loading...</td></tr>';
 
     const params = new URLSearchParams();
@@ -817,7 +871,6 @@ async function loadJournalEntries() {
     const search = document.getElementById('journal-search').value.trim();
     if (search) params.append('search', search);
     
-    // Add unbalanced filter
     const unbalancedOnly = document.getElementById('journal-unbalanced-only').checked;
     if (unbalancedOnly) {
         params.append('unbalanced_only', 'true');
@@ -839,6 +892,7 @@ async function loadJournalEntries() {
             console.error('[JOURNAL] Error:', data.error);
             body.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px; color:#dc3545;">' + (data.error || 'Error loading journal') + '</td></tr>';
         }
+        console.log('[JOURNAL] loadJournalEntries complete');
     } catch (err) {
         console.error('[JOURNAL] Error:', err);
         body.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px; color:#dc3545;">Error: ' + err.message + '</td></tr>';
@@ -881,7 +935,6 @@ function updateJournalPagination() {
     document.getElementById('journal-next').disabled = journalCurrentPage >= totalPages || totalPages === 0;
     document.getElementById('journal-page-info').textContent = `Page ${journalCurrentPage}`;
 }
-
 
 function resetJournalFilters() {
     console.log('[JOURNAL] Resetting filters');
@@ -932,276 +985,126 @@ function viewJournalEntry(entryId) {
 }
 
 // ============================================================
-// BANK TRANSACTION BULK POSTING
-// ============================================================
-
-async function bulkPostTransactions() {
-    const selects = document.querySelectorAll('#bank-body .post-select');
-    const updates = [];
-    let changedCount = 0;
-
-    selects.forEach(select => {
-        const initialValue = select.dataset.initialAccount || '';
-        const currentValue = select.value;
-
-        if (currentValue && currentValue !== initialValue && select.classList.contains('changed')) {
-            changedCount++;
-            const txId = select.dataset.txId;
-            const sourceType = select.dataset.sourceType;
-            const processed = select.dataset.processed === 'true';
-
-            const amount = parseFloat(select.dataset.amount || 0);
-            const date = select.dataset.date || '';
-
-            updates.push({
-                transaction_id: txId,
-                source_type: sourceType,
-                target_account_id: parseInt(currentValue),
-                is_update: processed,
-                amount: amount,
-                date: date
-            });
-        }
-    });
-
-    if (updates.length === 0) {
-        showToast('No account changes detected. Select different accounts to post.', 'warning');
-        return;
-    }
-
-    const statusEl = document.getElementById('post-status');
-    const postBtn = document.getElementById('post-updates-btn');
-    postBtn.disabled = true;
-    postBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Posting...';
-    statusEl.textContent = `Posting ${updates.length} changed transaction(s)...`;
-
-    try {
-        const res = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-multiple`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ updates })
-        });
-
-        const data = await res.json();
-
-        if (data.status === 'success') {
-            const msg = `✅ ${data.processed} posted, ${data.created || 0} created, ${data.updated || 0} updated`;
-            showToast(msg, 'success');
-            statusEl.textContent = msg;
-
-            if (data.errors && data.errors.length > 0) {
-                console.error('[BANK] Errors:', data.errors);
-                statusEl.textContent += ` ⚠️ ${data.errors.length} error(s)`;
-                showToast(`⚠️ ${data.errors.length} transaction(s) failed. Check console.`, 'warning');
-            }
-
-            setTimeout(() => {
-                loadBankTransactions();
-                refreshAllBalances();
-            }, 1000);
-        } else {
-            const errorMsg = data.error || data.message || 'Unknown error';
-            showToast('❌ Error: ' + errorMsg, 'error');
-            statusEl.textContent = '❌ ' + errorMsg;
-            console.error('[BANK] Server error:', data);
-        }
-    } catch (err) {
-        console.error('[BANK] Bulk post error:', err);
-        showToast('❌ Error: ' + err.message, 'error');
-        statusEl.textContent = '❌ ' + err.message;
-    } finally {
-        postBtn.disabled = false;
-        postBtn.innerHTML = '<i class="fas fa-check-double"></i> Post Updates';
-    }
-}
-
-function clearAllSelections() {
-    document.querySelectorAll('#bank-body .post-select').forEach(select => {
-        select.value = select.dataset.initialAccount || '';
-        select.classList.remove('changed');
-    });
-    document.querySelectorAll('#bank-body .tx-select').forEach(cb => {
-        cb.checked = false;
-    });
-    document.getElementById('select-all-tx').checked = false;
-    document.getElementById('post-status').textContent = '';
-    populateBulkAccountSelect();
-    showToast('All selections cleared', 'info');
-}
-
-// ============================================================
-// IMPORT (BANK) TRANSACTIONS
+// TRANSACTIONS TAB - SIMPLIFIED
 // ============================================================
 
 async function loadBankTransactions() {
     console.log('[BANK] Loading transactions');
     const body = document.getElementById('bank-body');
-    body.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px;">Loading...</td></tr>';
-
-    const source = document.getElementById('bank-source').value;
-    const search = document.getElementById('bank-filter').value.trim();
-    const viewFilter = document.getElementById('bank-view-filter')?.value || 'unposted';
-
-    const sourceMap = {
-        'fnbo': 'fnbo',
-        'bluevine': 'bluevine',
-        'square': 'square',
-        'paypal': 'paypal'
-    };
-
-    const endpoint = sourceMap[source] || source;
-
-    let url = `${AppConfig.baseUrl}/api/accounting/bank/${endpoint}`;
-    const params = new URLSearchParams();
-    if (search) params.append('search', search);
-
-    if (viewFilter === 'unposted') {
-        params.append('unprocessed_only', 'true');
-    } else if (viewFilter === 'posted') {
-        params.append('unprocessed_only', 'false');
+    if (!body) {
+        console.error('[BANK] bank-body not found');
+        return;
     }
-
-    if (params.toString()) url += '?' + params.toString();
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px;">Loading transactions...</td></tr>';
 
     try {
-        const res = await fetch(url, {
+        const response = await fetch(`${AppConfig.baseUrl}/api/accounting/bank-transactions-full`, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
         });
 
-        if (res.status === 400) {
-            const data = await res.json();
-            if (data.needs_connection) {
-                if (confirm('PayPal not connected. Would you like to connect your PayPal account via Plaid?')) {
-                    connectPayPalPlaid();
-                }
-                body.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px;">PayPal not connected. Please connect your account.</td></tr>';
-                return;
-            }
-            body.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
-            return;
-        }
-
-        if (!res.ok) throw new Error('Failed to load transactions');
-        const data = await res.json();
+        if (!response.ok) throw new Error('Failed to load transactions');
+        const data = await response.json();
 
         if (data.status === 'success') {
             console.log('[BANK] Loaded', data.transactions.length, 'transactions');
 
-            if (cachedAccounts.length === 0) {
+            if (bankAccounts.length === 0) {
                 await loadAccountSelects();
             }
 
             renderBankTransactions(data.transactions);
             updateBankCounts(data.unprocessed_count, data.total_count);
-            document.getElementById('bank-pagination-info').textContent = `Showing ${data.transactions.length} entries (${data.total_count} total)`;
+            const paginationInfo = document.getElementById('bank-pagination-info');
+            if (paginationInfo) {
+                paginationInfo.textContent = `Showing ${data.transactions.length} entries (${data.total_count} total)`;
+            }
         } else {
-            body.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error'}</td></tr>`;
+            body.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error loading transactions'}</td></tr>`;
         }
-    } catch (err) {
-        console.error('[BANK] Error:', err);
-        body.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:40px; color:#dc3545;">Error: ${err.message}</td></tr>`;
+    } catch (error) {
+        console.error('[BANK] Error:', error);
+        body.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:40px; color:#dc3545;">Error: ${error.message}</td></tr>`;
     }
 }
 
 function renderBankTransactions(transactions) {
+    console.log('[BANK] Rendering transactions, bankAccounts length:', bankAccounts.length);
     const body = document.getElementById('bank-body');
+    if (!body) {
+        console.error('[BANK] bank-body not found');
+        return;
+    }
+    
     if (!transactions || transactions.length === 0) {
         body.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px;">No transactions found.</td></tr>';
         return;
     }
 
+    // If bankAccounts is empty, try to reload it
+    if (bankAccounts.length === 0) {
+        console.warn('[BANK] bankAccounts is empty, attempting to reload...');
+        loadAccountSelects().then(() => {
+            renderBankTransactions(transactions);
+        });
+        return;
+    }
+
     let html = '';
-    let selectIndex = 0;
 
-    html += `<thead>
-        <tr>
-            <th><input type="checkbox" id="select-all-tx"></th>
-            <th>ID</th>
-            <th>Date</th>
-            <th>Description</th>
-            <th>Amount</th>
-            <th>Category</th>
-            <th>Status</th>
-            <th>Post To</th>
-        </tr>
-    </thead><tbody>`;
-
-    transactions.forEach(t => {
-        const amount = parseFloat(t.amount) || 0;
+    transactions.forEach(transaction => {
+        const amount = parseFloat(transaction.amount) || 0;
         const isDebit = amount < 0;
         const formattedAmount = (isDebit ? '-' : '') + '$' + Math.abs(amount).toFixed(2);
-        const statusText = t.processed ? '✅ Posted' : '⏳ Unposted';
-        const rowClass = t.processed ? 'bank-row-posted' : 'bank-row-unposted';
-        const sourceType = t.source_type || 'unknown';
-        const txId = t.id;
-        const isProcessed = t.processed || false;
+        const statusText = transaction.processed ? '✅ Posted' : '⏳ Unposted';
+        const rowClass = transaction.processed ? 'bank-row-posted' : 'bank-row-unposted';
+        const transactionId = transaction.id;
+        const isProcessed = transaction.processed || false;
 
-        // ===== UPDATED FILTER LOGIC =====
-        // For positive amounts: show Revenue accounts
-        // For negative amounts: show Expense, Liability, AND certain Asset accounts
-        const filteredAccounts = cachedAccounts.filter(acc => {
-            if (amount > 0) {
-                // Positive = revenue/inflow
-                return acc.type === 'revenue';
-            }
-            if (amount < 0) {
-                // Negative = expense/outflow
-                // Allow Expense, Liability
-                if (acc.type === 'expense' || acc.type === 'liability') return true;
-                // Allow Asset accounts that are prepaids (1055), inventory (1050, 1051), or other asset purchases
-                // This covers: Prepaid Rent, Inventory, and any other asset that might be purchased
-                if (acc.type === 'asset') {
-                    // Allow specific asset codes for purchases
-                    const allowedAssetCodes = ['1050', '1051', '1055', '1056', '1057', '1058', '1059'];
-                    if (allowedAssetCodes.includes(acc.code)) return true;
-                    // Also allow by name pattern
-                    if (acc.name && (acc.name.includes('Prepaid') || acc.name.includes('Inventory') || acc.name.includes('Equipment') || acc.name.includes('Leasehold'))) {
-                        return true;
-                    }
-                }
-                return false;
-            }
-            return false;
+        // Build dropdown options for Post From
+        let postFromOptionsHtml = '<option value="">Select Account</option>';
+        bankAccounts.forEach(account => {
+            const selected = (account.id == transaction.post_from) ? 'selected' : '';
+            postFromOptionsHtml += `<option value="${account.id}" ${selected}>${account.code} - ${account.name}</option>`;
         });
 
-        let optionsHtml = '<option value="">Select Account</option>';
-        filteredAccounts.forEach(acc => {
-            optionsHtml += `<option value="${acc.id}">${acc.code} - ${acc.name}</option>`;
+        // Build dropdown options for Post To
+        let postToOptionsHtml = '<option value="">Select Account</option>';
+        bankAccounts.forEach(account => {
+            const selected = (account.id == transaction.post_to) ? 'selected' : '';
+            postToOptionsHtml += `<option value="${account.id}" ${selected}>${account.code} - ${account.name}</option>`;
         });
-
-        let initialAccount = '';
-        if (isProcessed && t.account_id) {
-            initialAccount = t.account_id;
-        }
-
-        const dataAttrs = `data-tx-id="${txId}" data-source-type="${sourceType}" data-processed="${isProcessed}" data-initial-account="${initialAccount}" data-amount="${amount}" data-date="${t.date || ''}"`;
 
         const checkboxDisabled = isProcessed ? 'disabled' : '';
 
-        html += `<tr class="${rowClass}">
-            <td><input type="checkbox" class="tx-select" data-tx-id="${txId}" ${checkboxDisabled}></td>
-            <td style="font-size:11px; color:#666; font-family:monospace;">${txId}</td>
-            <td>${t.date || ''}</td>
-            <td>${t.description || ''}</td>
-            <td style="color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
-            <td>${t.category || ''}</td>
-            <td>${statusText}</td>
+        html += `<tr class="${rowClass}" data-transaction-id="${transactionId}" data-processed="${isProcessed}">
+            <td style="text-align:center;">
+                <input type="checkbox" class="transaction-select" data-transaction-id="${transactionId}" ${checkboxDisabled}>
+            </td>
+            <td style="font-size:11px; color:#666; font-family:monospace;">${transactionId}</td>
+            <td>${transaction.transaction_date || ''}</td>
+            <td>${transaction.description || ''}</td>
+            <td style="text-align:right; color: ${isDebit ? '#dc3545' : '#28a745'}; font-weight: 600;">${formattedAmount}</td>
             <td>
-                <select class="post-select" ${dataAttrs} style="min-width:120px; padding:4px 8px; border:1px solid #ddd; border-radius:4px; font-size:12px; color:#000; background:#fff;">
-                    ${optionsHtml}
+                <select class="post-from-select" data-transaction-id="${transactionId}" data-initial-account="${transaction.post_from || ''}" style="min-width:150px; padding:4px 8px; border:1px solid #ddd; border-radius:4px; font-size:12px; color:#000; background:#fff;">
+                    ${postFromOptionsHtml}
                 </select>
                 ${isProcessed ? '<span style="font-size:11px; color:#28a745; margin-left:5px;">(update)</span>' : ''}
             </td>
+            <td>
+                <select class="post-to-select" data-transaction-id="${transactionId}" data-initial-account="${transaction.post_to || ''}" style="min-width:150px; padding:4px 8px; border:1px solid #ddd; border-radius:4px; font-size:12px; color:#000; background:#fff;">
+                    ${postToOptionsHtml}
+                </select>
+                ${isProcessed ? '<span style="font-size:11px; color:#28a745; margin-left:5px;">(update)</span>' : ''}
+            </td>
+            <td style="text-align:center;">${statusText}</td>
         </tr>`;
-        selectIndex++;
     });
 
-    html += '</tbody>';
     body.innerHTML = html;
 
-    document.querySelectorAll('#bank-body .post-select').forEach(select => {
+    // Add change event listeners to dropdowns
+    document.querySelectorAll('#bank-body .post-from-select, #bank-body .post-to-select').forEach(select => {
         const initialAccount = select.dataset.initialAccount || '';
         if (initialAccount) {
             select.value = initialAccount;
@@ -1214,31 +1117,145 @@ function renderBankTransactions(transactions) {
             } else {
                 this.classList.remove('changed');
             }
-            document.getElementById('select-all-tx').checked = false;
+            const selectAll = document.getElementById('select-all-transactions');
+            if (selectAll) selectAll.checked = false;
         });
     });
 
-    populateBulkAccountSelect();
+    // Select all checkbox
+    const selectAll = document.getElementById('select-all-transactions');
+    if (selectAll) {
+        selectAll.addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('#bank-body .transaction-select:not(:disabled)');
+            checkboxes.forEach(checkbox => checkbox.checked = this.checked);
+        });
+    }
 }
 
-
 function updateBankCounts(unprocessed, total) {
+    console.log('[BANK] updateBankCounts called with', unprocessed, total);
     const countEl = document.getElementById('bank-unprocessed-count');
     const labelEl = document.getElementById('bank-count-label');
     const totalEl = document.getElementById('bank-total-count');
-    const viewFilter = document.getElementById('bank-view-filter')?.value || 'unposted';
-    if (viewFilter === 'posted') {
-        countEl.textContent = total - unprocessed;
-        labelEl.textContent = ' posted transactions';
-        totalEl.textContent = `(${total} total)`;
-    } else if (viewFilter === 'all') {
-        countEl.textContent = total;
-        labelEl.textContent = ' transactions';
-        totalEl.textContent = `(${total} total)`;
-    } else {
-        countEl.textContent = unprocessed;
-        labelEl.textContent = ' unprocessed transactions';
-        totalEl.textContent = `(${total} total)`;
+    
+    if (countEl) countEl.textContent = unprocessed;
+    if (labelEl) labelEl.textContent = ' unprocessed transactions';
+    if (totalEl) totalEl.textContent = `(${total} total)`;
+}
+
+function clearAllSelections() {
+    console.log('[BANK] clearAllSelections called');
+    document.querySelectorAll('#bank-body .post-from-select, #bank-body .post-to-select').forEach(select => {
+        const initialAccount = select.dataset.initialAccount || '';
+        select.value = initialAccount;
+        select.classList.remove('changed');
+    });
+    
+    document.querySelectorAll('#bank-body .transaction-select').forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    const selectAll = document.getElementById('select-all-transactions');
+    if (selectAll) selectAll.checked = false;
+    const statusEl = document.getElementById('post-status');
+    if (statusEl) statusEl.textContent = '';
+    
+    showToast('All selections cleared', 'info');
+}
+
+async function postAllUnprocessedTransactions() {
+    console.log('[BANK] Posting all unprocessed transactions');
+    
+    const statusElement = document.getElementById('post-status');
+    const postButton = document.getElementById('post-updates-btn');
+    
+    if (!postButton) {
+        console.error('[BANK] post-updates-btn not found');
+        return;
+    }
+    
+    postButton.disabled = true;
+    postButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Posting...';
+    if (statusElement) statusElement.textContent = 'Processing all unprocessed transactions...';
+
+    try {
+        const unprocessedRows = document.querySelectorAll('#bank-body tr[data-processed="false"]');
+        
+        if (unprocessedRows.length === 0) {
+            if (statusElement) statusElement.textContent = '✅ No unprocessed transactions to post';
+            showToast('No unprocessed transactions found.', 'info');
+            postButton.disabled = false;
+            postButton.innerHTML = '<i class="fas fa-check-double"></i> Post Updates';
+            return;
+        }
+
+        const updates = [];
+        
+        unprocessedRows.forEach(row => {
+            const transactionId = row.dataset.transactionId;
+            const postFromSelect = row.querySelector('.post-from-select');
+            const postToSelect = row.querySelector('.post-to-select');
+            
+            const postFrom = postFromSelect ? postFromSelect.value : null;
+            const postTo = postToSelect ? postToSelect.value : null;
+            
+            if (postFrom && postTo) {
+                updates.push({
+                    transaction_id: transactionId,
+                    post_from: parseInt(postFrom),
+                    post_to: parseInt(postTo)
+                });
+            } else {
+                console.warn('[BANK] Skipping transaction', transactionId, 'missing post_from or post_to');
+            }
+        });
+
+        if (updates.length === 0) {
+            if (statusElement) statusElement.textContent = '⚠️ No transactions have both Post From and Post To selected';
+            showToast('Please select both Post From and Post To accounts for each transaction.', 'warning');
+            postButton.disabled = false;
+            postButton.innerHTML = '<i class="fas fa-check-double"></i> Post Updates';
+            return;
+        }
+
+        console.log('[BANK] Sending', updates.length, 'updates to server');
+
+        const response = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-all-unprocessed`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ updates: updates })
+        });
+
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            const message = `✅ ${data.processed} transactions posted successfully`;
+            showToast(message, 'success');
+            if (statusElement) statusElement.textContent = message;
+            
+            if (data.errors && data.errors.length > 0) {
+                console.error('[BANK] Errors:', data.errors);
+                if (statusElement) statusElement.textContent += ` ⚠️ ${data.errors.length} error(s)`;
+                showToast(`⚠️ ${data.errors.length} transaction(s) failed. Check console.`, 'warning');
+            }
+
+            setTimeout(() => {
+                loadBankTransactions();
+                refreshAllBalances();
+            }, 1000);
+        } else {
+            const errorMessage = data.error || data.message || 'Unknown error';
+            showToast('❌ Error: ' + errorMessage, 'error');
+            if (statusElement) statusElement.textContent = '❌ ' + errorMessage;
+            console.error('[BANK] Server error:', data);
+        }
+    } catch (error) {
+        console.error('[BANK] Post error:', error);
+        showToast('❌ Error: ' + error.message, 'error');
+        if (statusElement) statusElement.textContent = '❌ ' + error.message;
+    } finally {
+        postButton.disabled = false;
+        postButton.innerHTML = '<i class="fas fa-check-double"></i> Post Updates';
     }
 }
 
@@ -1249,14 +1266,12 @@ function updateBankCounts(unprocessed, total) {
 function initCustomPL() {
     console.log('[CUSTOM-PL] Initializing Custom P&L tab');
     
-    // Set default date range: Jan 2025 to current month
     const now = new Date();
     const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
     
     const startInput = document.getElementById('custom-pl-start');
     const endInput = document.getElementById('custom-pl-end');
     
-    // Default start: January 2025
     if (!startInput.value) {
         startInput.value = '2025-01';
     }
@@ -1264,12 +1279,10 @@ function initCustomPL() {
         endInput.value = currentMonth;
     }
     
-    // Add event listeners for auto-load
     startInput.addEventListener('change', loadCustomPL);
     endInput.addEventListener('change', loadCustomPL);
     document.getElementById('custom-pl-show-bar-chart').addEventListener('change', loadCustomPL);
     
-    // Load initial data
     loadCustomPL();
 }
 
@@ -1287,7 +1300,6 @@ async function loadCustomPL() {
         return;
     }
     
-    // Convert month to date range
     const startDate = new Date(start + '-01');
     const endDate = new Date(end + '-01');
     const lastDay = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0);
@@ -1330,7 +1342,6 @@ function renderCustomPLTable(data) {
         return;
     }
     
-    // Separate revenue and expenses
     const revenueItems = [];
     const expenseItems = [];
     let totalRevenue = 0;
@@ -1351,7 +1362,6 @@ function renderCustomPLTable(data) {
             expenseItems.push({...item, Balance: Math.abs(balance)});
             totalExpenses += Math.abs(balance);
         } else {
-            // Other accounts - put in appropriate section
             if (balance > 0) {
                 revenueItems.push(item);
                 totalRevenue += balance;
@@ -1428,23 +1438,21 @@ function renderCustomPLBarChart(data) {
         return;
     }
     
-    // Extract accounts and balances
     const accountNames = data.report.map(item => item.Account);
     const accountValues = data.report.map(item => item.Balance || 0);
     
-    // Determine colors
     const revenueKeywords = ['revenue', 'sales', 'income'];
     const expenseKeywords = ['cogs', 'expense', 'cost', 'shipping', 'fees', 'rent', 'utilities', 'insurance', 'advertising', 'software', 'supplies', 'equipment', 'leasehold', 'improvements'];
     
     const colors = accountNames.map(name => {
         const lower = name.toLowerCase();
         if (revenueKeywords.some(k => lower.includes(k))) {
-            return 'rgba(40, 167, 69, 0.85)'; // Green - Revenue
+            return 'rgba(40, 167, 69, 0.85)';
         }
         if (expenseKeywords.some(k => lower.includes(k))) {
-            return 'rgba(220, 53, 69, 0.75)'; // Red - Expenses
+            return 'rgba(220, 53, 69, 0.75)';
         }
-        return 'rgba(108, 117, 125, 0.7)'; // Gray - Other
+        return 'rgba(108, 117, 125, 0.7)';
     });
     
     const dateRange = `${document.getElementById('custom-pl-start').value} to ${document.getElementById('custom-pl-end').value}`;
@@ -1466,7 +1474,6 @@ function renderCustomPLBarChart(data) {
         </div>
     `;
     
-    // Render the chart
     setTimeout(() => {
         const canvas = document.getElementById('custom-pl-chart');
         if (!canvas) return;
@@ -1528,7 +1535,6 @@ function renderCustomPLBarChart(data) {
                     const index = element.index;
                     const label = accountNames[index];
                     
-                    // Try to find the account ID
                     const trimmed = label.trim();
                     const norm = trimmed.toLowerCase();
                     let accountId = accountNameToId[norm] || accountNameToId[trimmed];
@@ -1582,7 +1588,6 @@ function exportCustomPLCSV() {
 function initBalanceSheet() {
     console.log('[BALANCE] Initializing Balance Sheet tab');
     
-    // Set default date range: Jan 2025 to current month
     const now = new Date();
     const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
     
@@ -1596,14 +1601,11 @@ function initBalanceSheet() {
         endInput.value = currentMonth;
     }
     
-    // Add event listeners for auto-load
     startInput.addEventListener('change', loadBalanceSheet);
     endInput.addEventListener('change', loadBalanceSheet);
     
-    // Load initial data
     loadBalanceSheet();
 }
-
 
 async function loadBalanceSheet() {
     console.log('[BALANCE] Loading Balance Sheet data...');
@@ -1668,7 +1670,6 @@ function renderBalanceSheet(data) {
     container.innerHTML = html;
 }
 
-
 function exportBalanceCSV() {
     console.log('[BALANCE] Exporting CSV');
     if (!currentBalanceData || !currentBalanceData.report) {
@@ -1697,7 +1698,7 @@ function exportBalanceCSV() {
 }
 
 // ============================================================
-// MONTHLY P&L BAR CHARTS - Last 6 Complete Months
+// MONTHLY P&L BAR CHARTS
 // ============================================================
 
 async function loadMonthlyPLBarChart() {
@@ -1711,11 +1712,9 @@ async function loadMonthlyPLBarChart() {
     container.innerHTML = '<div style="text-align: center; font-size: 14px; color: #666; padding: 40px;">Loading charts...</div>';
 
     try {
-        // Get last 6 complete months
         const months = getLastSixCompleteMonths();
         console.log('[MONTHLY-PL] Months to fetch:', months);
         
-        // Fetch data for each month
         const allData = [];
         for (const month of months) {
             const dateFrom = `${month.year}-${String(month.month).padStart(2, '0')}-01`;
@@ -1795,11 +1794,9 @@ function renderMonthlyPLBarCharts(allData) {
     const container = document.getElementById('monthly-pl-bar-chart-container');
     if (!container) return;
 
-    // Define expense account codes
     const expenseCodePrefixes = ['5000', '5010', '5020', '5040', '6010', '6011', '6013', '6014', '6020', '6030', '6080', '6090', '6100', '1850'];
     const revenueCodePrefixes = ['4000', '4001', '4003', '4090'];
 
-    // Build the HTML - 6 charts in a grid
     let gridHtml = `
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; margin-bottom: 20px;">
     `;
@@ -1807,7 +1804,6 @@ function renderMonthlyPLBarCharts(allData) {
     allData.forEach((monthData, index) => {
         const { month, report, summary } = monthData;
         
-        // Process data for this month
         const accountNames = [];
         const adjustedValues = [];
         
@@ -1821,25 +1817,20 @@ function renderMonthlyPLBarCharts(allData) {
             const isRevenue = revenueCodePrefixes.includes(code);
             
             if (isExpense) {
-                // Expenses should be negative
                 adjustedValues.push(value > 0 ? -value : value);
             } else if (isRevenue) {
-                // Revenue stays as is
                 adjustedValues.push(value);
             } else {
                 adjustedValues.push(value);
             }
         });
         
-        // Calculate Net Income
         let netIncome = 0;
         adjustedValues.forEach(val => netIncome += val);
         
-        // Add Net Income as the last bar
         const allLabels = [...accountNames, 'Net Income'];
         const allValues = [...adjustedValues, netIncome];
 
-        // Colors
         const revenueKeywords = ['revenue', 'sales', 'income'];
         const expenseKeywords = ['cogs', 'expense', 'cost', 'shipping', 'fees', 'rent', 'utilities', 'insurance', 'advertising', 'software', 'supplies', 'equipment', 'leasehold', 'improvements'];
         
@@ -1876,7 +1867,6 @@ function renderMonthlyPLBarCharts(allData) {
     gridHtml += '</div>';
     container.innerHTML = gridHtml;
 
-    // Render each chart
     setTimeout(() => {
         allData.forEach((monthData, index) => {
             const { month, report } = monthData;
@@ -3428,25 +3418,16 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // ---- Import (Bank) Tab: Search button and Enter key ----
-    document.getElementById('bank-search-btn')?.addEventListener('click', function() {
-        console.log('[BANK] Search button clicked');
-        loadBankTransactions();
+    // ---- Transactions Tab - Simplified ----
+    document.getElementById('post-updates-btn')?.addEventListener('click', function() {
+        postAllUnprocessedTransactions();
     });
 
-    document.getElementById('bank-filter')?.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            console.log('[BANK] Enter key pressed in search');
-            loadBankTransactions();
-        }
+    document.getElementById('clear-selections-btn')?.addEventListener('click', function() {
+        clearAllSelections();
     });
 
-    // Auto-load when source or view filter changes
-    document.getElementById('bank-source')?.addEventListener('change', function() {
-        loadBankTransactions();
-    });
-    document.getElementById('bank-view-filter')?.addEventListener('change', function() {
+    document.getElementById('refresh-btn')?.addEventListener('click', function() {
         loadBankTransactions();
     });
 
@@ -3536,35 +3517,6 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (err) {
             console.error(err);
             alert('Error updating pair.');
-        }
-    });
-
-    // Bulk Post button
-    document.getElementById('post-updates-btn')?.addEventListener('click', function() {
-        bulkPostTransactions();
-    });
-
-    // Clear selections button
-    document.getElementById('clear-selections-btn')?.addEventListener('click', function() {
-        clearAllSelections();
-    });
-
-    // Select all checkbox
-    document.getElementById('select-all-tx')?.addEventListener('change', function() {
-        const checkboxes = document.querySelectorAll('#bank-body .tx-select:not(:disabled)');
-        checkboxes.forEach(cb => cb.checked = this.checked);
-        populateBulkAccountSelect();
-    });
-
-    // Bulk Assign Account button
-    document.getElementById('bulk-assign-btn')?.addEventListener('click', function() {
-        bulkAssignAccount();
-    });
-
-    // Bulk account select - show/hide based on selection
-    document.addEventListener('change', function(e) {
-        if (e.target.classList.contains('tx-select')) {
-            populateBulkAccountSelect();
         }
     });
 
