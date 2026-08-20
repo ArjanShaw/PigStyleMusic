@@ -1789,6 +1789,7 @@ function getLastSixCompleteMonths() {
     return months;
 }
 
+
 function renderMonthlyPLBarCharts(allData) {
     console.log('[MONTHLY-PL] Rendering bar charts...');
     const container = document.getElementById('monthly-pl-bar-chart-container');
@@ -1806,13 +1807,25 @@ function renderMonthlyPLBarCharts(allData) {
         
         const accountNames = [];
         const adjustedValues = [];
+        const accountIds = [];  // <-- ADD THIS: store account IDs
         
         report.forEach(item => {
             const name = item.Account;
             const value = item.Balance || 0;
-            accountNames.push(name);
             
+            // Extract account code and find account ID
             const code = name.split(' ')[0];
+            let accountId = null;
+            
+            // Try to find account by code
+            const foundAccount = bankAccounts.find(a => a.code === code);
+            if (foundAccount) {
+                accountId = foundAccount.id;
+            }
+            
+            accountNames.push(name);
+            accountIds.push(accountId);  // <-- STORE account ID
+            
             const isExpense = expenseCodePrefixes.includes(code);
             const isRevenue = revenueCodePrefixes.includes(code);
             
@@ -1830,6 +1843,7 @@ function renderMonthlyPLBarCharts(allData) {
         
         const allLabels = [...accountNames, 'Net Income'];
         const allValues = [...adjustedValues, netIncome];
+        const allAccountIds = [...accountIds, null];  // <-- Net Income has no account ID
 
         const revenueKeywords = ['revenue', 'sales', 'income'];
         const expenseKeywords = ['cogs', 'expense', 'cost', 'shipping', 'fees', 'rent', 'utilities', 'insurance', 'advertising', 'software', 'supplies', 'equipment', 'leasehold', 'improvements'];
@@ -1873,13 +1887,22 @@ function renderMonthlyPLBarCharts(allData) {
             
             const accountNames = [];
             const adjustedValues = [];
+            const accountIds = [];  // <-- ADD THIS
             
             report.forEach(item => {
                 const name = item.Account;
                 const value = item.Balance || 0;
-                accountNames.push(name);
                 
                 const code = name.split(' ')[0];
+                let accountId = null;
+                const foundAccount = bankAccounts.find(a => a.code === code);
+                if (foundAccount) {
+                    accountId = foundAccount.id;
+                }
+                
+                accountNames.push(name);
+                accountIds.push(accountId);
+                
                 const isExpense = expenseCodePrefixes.includes(code);
                 const isRevenue = revenueCodePrefixes.includes(code);
                 
@@ -1897,6 +1920,7 @@ function renderMonthlyPLBarCharts(allData) {
             
             const allLabels = [...accountNames, 'Net Income'];
             const allValues = [...adjustedValues, netIncome];
+            const allAccountIds = [...accountIds, null];
 
             const revenueKeywords = ['revenue', 'sales', 'income'];
             const expenseKeywords = ['cogs', 'expense', 'cost', 'shipping', 'fees', 'rent', 'utilities', 'insurance', 'advertising', 'software', 'supplies', 'equipment', 'leasehold', 'improvements'];
@@ -1935,7 +1959,9 @@ function renderMonthlyPLBarCharts(allData) {
                         data: allValues,
                         backgroundColor: colors,
                         borderColor: colors.map(c => c.replace('0.85', '1').replace('0.75', '1').replace('0.95', '1').replace('0.7', '1')),
-                        borderWidth: 1
+                        borderWidth: 1,
+                        // <-- STORE account IDs in the dataset
+                        accountIds: allAccountIds
                     }]
                 },
                 options: {
@@ -1945,8 +1971,8 @@ function renderMonthlyPLBarCharts(allData) {
                         legend: { display: false },
                         tooltip: {
                             callbacks: {
-                                label: function(ctx) {
-                                    const val = ctx.raw;
+                                label: function(context) {
+                                    const val = context.raw;
                                     return (val >= 0 ? '+' : '') + '$' + val.toFixed(2);
                                 }
                             }
@@ -1974,9 +2000,15 @@ function renderMonthlyPLBarCharts(allData) {
                         if (elements.length === 0) return;
                         const element = elements[0];
                         const idx = element.index;
-                        const label = allLabels[idx];
+                        
+                        // <-- GET ACCOUNT ID DIRECTLY from the stored data
+                        const accountId = this.data.datasets[0].accountIds[idx];
+                        const label = this.data.labels[idx];
                         const monthKey = `${month.year}-${String(month.month).padStart(2, '0')}`;
                         
+                        console.log('[MONTHLY-PL] Bar clicked:', label, 'Account ID:', accountId);
+                        
+                        // Close any open modal
                         document.getElementById('monthly-tx-modal')?.classList.remove('active');
                         
                         if (label === 'Net Income') {
@@ -1989,18 +2021,18 @@ function renderMonthlyPLBarCharts(allData) {
                             return;
                         }
                         
-                        const trimmed = label.trim();
-                        const norm = trimmed.toLowerCase();
-                        let accountId = accountNameToId[norm] || accountNameToId[trimmed];
-                        if (!accountId) {
-                            const found = bankAccounts.find(a => a.name === trimmed);
-                            if (found) accountId = found.id;
-                        }
-                        
+                        // <-- USE THE DIRECT accountId from the chart data
                         if (accountId) {
                             showMonthlyTransactions(monthKey, accountId, label, true);
                         } else {
-                            showMonthlyTransactions(monthKey, null, label, true);
+                            // Fallback: try to find by name
+                            const trimmed = label.trim();
+                            const found = bankAccounts.find(a => a.name === trimmed);
+                            if (found) {
+                                showMonthlyTransactions(monthKey, found.id, label, true);
+                            } else {
+                                showMonthlyTransactions(monthKey, null, label, true);
+                            }
                         }
                     }
                 }
@@ -2331,101 +2363,129 @@ function closeMonthlyModal() {
     document.getElementById('monthly-tx-modal').classList.remove('active');
 }
 
+
 function showMonthlyTransactions(month, accountId, accountName, excludeOrders = false, accountCode = null) {
-    console.log('[MODAL] ==================================================');
-    console.log('[MODAL] SHOW MONTHLY TRANSACTIONS CALLED');
-    console.log('[MODAL] Parameters:', { month, accountId, accountName, excludeOrders, accountCode });
-    console.log('[MODAL] ==================================================');
+    console.log('==================================================');
+    console.log('SHOW MONTHLY TRANSACTIONS CALLED');
+    console.log('Parameters received:');
+    console.log('  month:', month);
+    console.log('  accountId:', accountId, 'type:', typeof accountId);
+    console.log('  accountName:', accountName);
+    console.log('  excludeOrders:', excludeOrders);
+    console.log('  accountCode:', accountCode);
+    console.log('==================================================');
 
     try {
         const modal = document.getElementById('monthly-tx-modal');
-        console.log('[MODAL] 1. Modal element:', modal ? 'FOUND' : 'MISSING', modal);
+        console.log('Modal element found:', modal ? 'YES' : 'NO');
 
         if (!modal) {
-            console.error('[MODAL] ❌ Modal element not found!');
+            console.error('Modal element not found!');
             showToast('Error: Modal element not found', 'error');
             return;
         }
 
         const body = document.getElementById('modal-body');
-        console.log('[MODAL] 2. Body element:', body ? 'FOUND' : 'MISSING', body);
+        console.log('Body element found:', body ? 'YES' : 'NO');
 
         if (!body) {
-            console.error('[MODAL] ❌ Body element not found!');
+            console.error('Body element not found!');
             showToast('Error: Modal body not found', 'error');
             return;
         }
 
         const title = document.getElementById('modal-title');
-        console.log('[MODAL] 3. Title element:', title ? 'FOUND' : 'MISSING', title);
+        console.log('Title element found:', title ? 'YES' : 'NO');
 
         if (!title) {
-            console.error('[MODAL] ❌ Title element not found!');
+            console.error('Title element not found!');
             showToast('Error: Modal title not found', 'error');
             return;
         }
 
-        const [year, monthNum] = month.split('-');
-        const firstDay = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
-        const lastDay = new Date(parseInt(year), parseInt(monthNum), 0);
-        const formatDate = (d) => {
-            const y = String(d.getFullYear()).slice(2);
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${m}/${day}/${y}`;
+        const [year, monthNumber] = month.split('-');
+        const firstDay = new Date(parseInt(year), parseInt(monthNumber) - 1, 1);
+        const lastDay = new Date(parseInt(year), parseInt(monthNumber), 0);
+        
+        const formatDate = function(dateValue) {
+            const yearValue = String(dateValue.getFullYear()).slice(2);
+            const monthValue = String(dateValue.getMonth() + 1).padStart(2, '0');
+            const dayValue = String(dateValue.getDate()).padStart(2, '0');
+            return monthValue + '/' + dayValue + '/' + yearValue;
         };
-        const dateRange = `${formatDate(firstDay)} - ${formatDate(lastDay)}`;
+        
+        const dateRange = formatDate(firstDay) + ' - ' + formatDate(lastDay);
 
-        const idDisplay = accountId ? ` (ID: ${accountId})` : (accountCode ? ` (Code: ${accountCode})` : '');
-        const displayName = `${accountName}${idDisplay} - ${dateRange}`;
+        const idDisplay = accountId ? ' (ID: ' + accountId + ')' : (accountCode ? ' (Code: ' + accountCode + ')' : '');
+        const displayName = accountName + idDisplay + ' - ' + dateRange;
         title.textContent = displayName;
-        console.log('[MODAL] 4. Title set to:', title.textContent);
+        console.log('Title set to:', title.textContent);
 
         body.innerHTML = '<div class="modal-loading">Loading transactions...</div>';
-        console.log('[MODAL] 5. Body set to loading state');
+        console.log('Body set to loading state');
 
         modal.classList.add('active');
-        console.log('[MODAL] 6. Active class added, modal should be visible');
+        console.log('Modal active class added');
 
-        let url = `${AppConfig.baseUrl}/api/accounting/monthly-account-transactions?month=${month}`;
+        let url = AppConfig.baseUrl + '/api/accounting/monthly-account-transactions?month=' + month;
+        console.log('Base URL:', url);
+        
         if (accountId) {
-            url += `&account_id=${accountId}`;
+            url = url + '&account_id=' + accountId;
+            console.log('Added account_id filter:', accountId);
+        } else {
+            console.log('NO account_id filter - will return ALL transactions for the month');
         }
+        
         if (excludeOrders) {
-            url += '&exclude_orders=true';
+            url = url + '&exclude_orders=true';
+            console.log('Added exclude_orders filter');
         }
-        console.log('[MODAL] 9. Fetching URL:', url);
+        
+        console.log('==================================================');
+        console.log('FINAL URL:', url);
+        console.log('==================================================');
 
+        console.log('Making fetch request...');
         fetch(url, {
             credentials: 'include',
-            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : {}
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
         })
-        .then(res => {
-            console.log('[MODAL] 10. Fetch response status:', res.status);
-            return res.json();
+        .then(function(response) {
+            console.log('Fetch response status:', response.status);
+            console.log('Fetch response status text:', response.statusText);
+            return response.json();
         })
-        .then(data => {
-            console.log('[MODAL] 11. Data received from API:');
-            console.log('[MODAL] 11a. Data status:', data.status);
-            console.log('[MODAL] 11b. Data transactions count:', data.transactions ? data.transactions.length : 0);
+        .then(function(data) {
+            console.log('==================================================');
+            console.log('API RESPONSE RECEIVED:');
+            console.log('  status:', data.status);
+            console.log('  transactions count:', data.transactions ? data.transactions.length : 0);
+            console.log('==================================================');
 
             if (data.status === 'success' && data.transactions) {
-                console.log('[MODAL] 12. Success! Loading', data.transactions.length, 'transactions');
+                console.log('Success! Rendering', data.transactions.length, 'transactions');
                 renderModalTransactions(data.transactions, accountName, dateRange, accountId);
             } else {
-                console.error('[MODAL] ❌ Error in response:', data.error || 'Unknown error');
-                body.innerHTML = `<p class="monthly-error">${data.error || 'Failed to load transactions'}</p>`;
+                console.error('Error in response:', data.error || 'Unknown error');
+                body.innerHTML = '<p class="monthly-error">' + (data.error || 'Failed to load transactions') + '</p>';
             }
         })
-        .catch(err => {
-            console.error('[MODAL] ❌ Fetch error:', err);
-            body.innerHTML = `<p class="monthly-error">Error: ${err.message}</p>`;
+        .catch(function(error) {
+            console.error('==================================================');
+            console.error('FETCH ERROR:');
+            console.error('  message:', error.message);
+            console.error('==================================================');
+            body.innerHTML = '<p class="monthly-error">Error: ' + error.message + '</p>';
+            showToast('Error: ' + error.message, 'error');
         });
 
-        console.log('[MODAL] ===== SHOW MONTHLY TRANSACTIONS END =====');
-    } catch (err) {
-        console.error('[MODAL] ❌ CRITICAL ERROR in showMonthlyTransactions:', err);
-        showToast('Error: ' + err.message, 'error');
+    } catch (error) {
+        console.error('==================================================');
+        console.error('CRITICAL ERROR in showMonthlyTransactions:');
+        console.error('  message:', error.message);
+        console.error('==================================================');
+        showToast('Error: ' + error.message, 'error');
     }
 }
 
@@ -2436,7 +2496,7 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
 
     const body = document.getElementById('modal-body');
     if (!body) {
-        console.error('[MODAL] ❌ Body not found for rendering!');
+        console.error('[MODAL] Body not found for rendering!');
         return;
     }
 
@@ -2446,8 +2506,24 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
         return;
     }
 
+    // Filter to only the selected account if accountId is provided
+    let filteredTransactions = transactions;
+    if (accountId) {
+        // Find the account name from the accountId
+        const account = bankAccounts.find(a => a.id == accountId);
+        if (account) {
+            filteredTransactions = transactions.filter(tx => tx.account_name === account.name);
+            console.log('[MODAL] Filtered to account:', account.name, 'count:', filteredTransactions.length);
+        }
+    }
+
+    if (!filteredTransactions || filteredTransactions.length === 0) {
+        body.innerHTML = '<p>No transactions found for this account.</p>';
+        return;
+    }
+
     const grouped = {};
-    transactions.forEach(tx => {
+    filteredTransactions.forEach(tx => {
         const key = tx.journal_entry_id || tx.source_id || tx.id;
         if (!grouped[key]) {
             grouped[key] = {
@@ -2523,7 +2599,9 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     </tr>`;
     html += '</tbody></table>';
     body.innerHTML = html;
+    console.log('[MODAL] Render complete');
 }
+
 
 async function unpostTransaction(entryId) {
     console.log('[MODAL] Unposting transaction:', entryId);
