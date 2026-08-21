@@ -237,9 +237,7 @@ const TabManager = (function() {
             }
         };
 
-        // ============================================================
-        // DOMAIN MANAGEMENT TAB (Location Management)
-        // ============================================================
+        // Domain Management Tab
         initializers['domain-management'] = () => {
             console.log('🔵 TabManager: Initializing Domain Management tab');
             if (typeof window.loadDomainGenres === 'function') {
@@ -250,7 +248,6 @@ const TabManager = (function() {
                 window.loadDomainSublocations();
             } else {
                 console.warn('⚠️ Domain Management functions not loaded yet');
-                // Try again after a delay
                 setTimeout(() => {
                     if (typeof window.loadDomainGenres === 'function') {
                         console.log('✅ Loading domain data (delayed)...');
@@ -265,9 +262,7 @@ const TabManager = (function() {
             }
         };
 
-        // ============================================================
-        // EMAIL SUBSCRIPTIONS TAB
-        // ============================================================
+        // Email Subscriptions Tab
         initializers['email-subscriptions'] = () => {
             console.log('🔵 TabManager: Initializing Email Subscriptions tab');
             if (typeof window.initEmailSubscriptionsTab === 'function') {
@@ -275,8 +270,6 @@ const TabManager = (function() {
                 window.initEmailSubscriptionsTab();
             } else {
                 console.error('❌ initEmailSubscriptionsTab function not found!');
-                console.log('Available window functions:', Object.keys(window).filter(k => k.toLowerCase().includes('subscription')));
-                // Try to load the script dynamically if not available
                 console.log('🔄 Attempting to load email-subscriptions.js dynamically...');
                 const script = document.createElement('script');
                 script.src = '/static/js/email-subscriptions.js';
@@ -295,9 +288,7 @@ const TabManager = (function() {
             }
         };
 
-        // ============================================================
-        // RECORD ORDERS TAB (NEW)
-        // ============================================================
+        // Record Orders Tab
         initializers['record-orders'] = () => {
             console.log('🔵 TabManager: Initializing Record Orders tab');
             if (typeof window.initRecordOrdersTab === 'function') {
@@ -308,7 +299,6 @@ const TabManager = (function() {
                 window.loadOrders();
             } else {
                 console.warn('⚠️ initRecordOrdersTab not found - order-management.js may not be loaded');
-                // Try to load the script dynamically
                 console.log('🔄 Attempting to load order-management.js dynamically...');
                 const script = document.createElement('script');
                 script.src = '/static/js/order-management.js';
@@ -329,9 +319,7 @@ const TabManager = (function() {
             }
         };
 
-        // ============================================================
-        // FEEDBACK TAB (NEW)
-        // ============================================================
+        // Feedback Tab
         initializers['feedback'] = () => {
             console.log('🔵 TabManager: Initializing Feedback tab');
             if (typeof window.loadFeedback === 'function') {
@@ -339,7 +327,6 @@ const TabManager = (function() {
                 window.loadFeedback();
             } else {
                 console.warn('⚠️ loadFeedback function not found - admin-feedback.js may not be loaded');
-                // Try to load the script dynamically
                 console.log('🔄 Attempting to load admin-feedback.js dynamically...');
                 const script = document.createElement('script');
                 script.src = '/static/js/admin-feedback.js';
@@ -358,12 +345,9 @@ const TabManager = (function() {
             }
         };
 
-        // ============================================================
-        // EVENTS TAB – NEW INITIALIZER
-        // ============================================================
+        // Events Tab
         initializers['events'] = () => {
             console.log('🔵 TabManager: Initializing Events tab');
-            // Check if already loaded (look for the table container)
             if (document.querySelector('#events-tab .records-table-container')) {
                 console.log('✅ Events tab already loaded, skipping.');
                 return;
@@ -386,14 +370,12 @@ const TabManager = (function() {
                     console.log('✅ Events HTML fetched, injecting into container.');
                     container.innerHTML = html;
 
-                    // Load CSS
                     const link = document.createElement('link');
                     link.rel = 'stylesheet';
                     link.href = '/admin-components/events/events.css';
                     document.head.appendChild(link);
                     console.log('📄 events.css added to head.');
 
-                    // Load JS
                     const script = document.createElement('script');
                     script.src = '/admin-components/events/events.js';
                     script.onload = function() {
@@ -425,6 +407,75 @@ const TabManager = (function() {
                     </div>`;
                 });
         };
+
+        // ============================================================
+        // ITEM MANAGEMENT TAB
+        // ============================================================
+        initializers['item-management'] = () => {
+            console.log('🔵 TabManager: Initializing Item Management tab');
+            
+            const container = document.getElementById('item-management-tab');
+            if (!container) {
+                console.warn('⚠️ Item Management container (#item-management-tab) not found.');
+                return;
+            }
+
+            // Check if already loaded
+            if (container.querySelector('.item-management-container')) {
+                console.log('✅ Item Management tab already loaded, skipping.');
+                return;
+            }
+
+            console.log('📦 Loading Item Management content from /admin-components/item-management/item-management.html');
+            fetch('/admin-components/item-management/item-management.html')
+                .then(res => {
+                    console.log(`📡 Fetch response: ${res.status} ${res.statusText}`);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    return res.text();
+                })
+                .then(html => {
+                    console.log('✅ Item Management HTML fetched, injecting into container.');
+                    container.innerHTML = html;
+
+                    // Load CSS
+                    const link = document.createElement('link');
+                    link.rel = 'stylesheet';
+                    link.href = '/admin-components/item-management/item-management.css';
+                    document.head.appendChild(link);
+                    console.log('📄 item-management.css added to head.');
+
+                    // Load JS
+                    const script = document.createElement('script');
+                    script.src = '/admin-components/item-management/item-management.js';
+                    script.onload = function() {
+                        console.log('✅ item-management.js loaded successfully.');
+                        if (typeof window.itemManagement !== 'undefined' && typeof window.itemManagement.init === 'function') {
+                            console.log('📞 Calling itemManagement.init()...');
+                            window.itemManagement.init();
+                            console.log('📞 itemManagement.init() returned.');
+                        } else {
+                            console.warn('⚠️ window.itemManagement.init is not defined after loading item-management.js.');
+                        }
+                    };
+                    script.onerror = function() {
+                        console.error('❌ Failed to load item-management.js (network error or 404).');
+                        container.innerHTML = `<div style="text-align:center; padding:40px; color:#dc3545;">
+                            <i class="fas fa-exclamation-triangle fa-2x"></i>
+                            <p style="margin-top:10px;">Failed to load item-management.js. Check the console for details.</p>
+                        </div>`;
+                    };
+                    document.body.appendChild(script);
+                    console.log('📦 item-management.js script element appended to body.');
+                })
+                .catch(err => {
+                    console.error('❌ Item Management load error:', err);
+                    container.innerHTML = `<div style="text-align:center; padding:40px; color:#dc3545;">
+                        <i class="fas fa-exclamation-triangle fa-2x"></i>
+                        <p style="margin-top:10px;">Failed to load Item Management: ${err.message}</p>
+                        <button class="btn btn-primary" onclick="window.TabManager.switchToTab('item-management')" style="margin-top:10px;">Retry</button>
+                    </div>`;
+                });
+        };
     }
 
     // Register cleanup functions
@@ -451,7 +502,6 @@ const TabManager = (function() {
                 if (typeof window.stopNotificationPolling === 'function') {
                     window.stopNotificationPolling();
                 }
-                // Close any open modals
                 const modal = document.getElementById('subscription-modal');
                 if (modal) {
                     modal.style.display = 'none';
@@ -460,11 +510,12 @@ const TabManager = (function() {
                 if (notificationPanel) {
                     notificationPanel.style.display = 'none';
                 }
-                SubscriptionState.isNotificationPanelOpen = false;
+                if (window.SubscriptionState) {
+                    window.SubscriptionState.isNotificationPanelOpen = false;
+                }
             },
             'record-orders': () => {
                 console.log('🧹 TabManager: Cleaning up Record Orders tab');
-                // Close any open modals
                 const modal = document.getElementById('order-detail-modal');
                 if (modal) {
                     modal.classList.remove('active');
@@ -477,12 +528,24 @@ const TabManager = (function() {
             },
             'feedback': () => {
                 console.log('🧹 TabManager: Cleaning up Feedback tab');
-                // Close any open modals
                 const modal = document.getElementById('feedback-detail-modal');
                 if (modal) {
                     modal.classList.remove('active');
                 }
                 document.body.classList.remove('modal-open');
+            },
+            'item-management': () => {
+                console.log('🧹 TabManager: Cleaning up Item Management tab');
+                // Close any open modals
+                const modals = document.querySelectorAll('#item-management-tab .modal-overlay, #item-management-tab .tender-modal');
+                modals.forEach(modal => {
+                    modal.style.display = 'none';
+                });
+                // Clear any intervals
+                if (window.itemManagement && window.itemManagement._squarePollInterval) {
+                    clearInterval(window.itemManagement._squarePollInterval);
+                    window.itemManagement._squarePollInterval = null;
+                }
             }
         };
     }
@@ -521,11 +584,9 @@ const TabManager = (function() {
 
         console.log(`🟡 TabManager: Switching to tab: ${tabName}`);
 
-        // Find all tab elements and contents
         const tabElements = document.querySelectorAll('.tab');
         const tabContents = document.querySelectorAll('.tab-content');
 
-        // Update tab elements active state
         let tabFound = false;
         tabElements.forEach(tab => {
             const tabId = tab.getAttribute('data-tab');
@@ -542,7 +603,6 @@ const TabManager = (function() {
             console.warn(`⚠️ TabManager: Tab element not found for ${tabName}`);
         }
 
-        // Update tab contents active state
         let contentFound = false;
         tabContents.forEach(content => {
             const contentId = content.id;
@@ -560,17 +620,14 @@ const TabManager = (function() {
             console.warn(`⚠️ TabManager: Content element not found for ${tabName}-tab`);
         }
 
-        // Clean up previous tab
         cleanupCurrentTab();
 
-        // Initialize new tab
         const initSuccess = initializeTab(tabName);
 
         if (initSuccess) {
             currentTab = tabName;
             saveStoredTab(tabName);
 
-            // Dispatch custom event for tab change
             const event = new CustomEvent('tabChanged', {
                 detail: { tab: tabName, timestamp: Date.now() }
             });
@@ -599,12 +656,11 @@ const TabManager = (function() {
         console.log(`✅ TabManager: Set up ${tabElements.length} tab click handlers`);
     }
 
-    // Handle hash changes (for deep linking)
+    // Handle hash changes
     function handleHashChange() {
         const hash = window.location.hash.substring(1);
         console.log(`🔗 Hash changed: ${hash}`);
         if (hash) {
-            // Check if tab exists using getAvailableTabs()
             const availableTabs = getAvailableTabs();
             if (availableTabs.includes(hash)) {
                 console.log(`✅ Hash matches available tab: ${hash}`);

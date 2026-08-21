@@ -50,6 +50,7 @@
             <div class="tab" data-tab="stats"><i class="fas fa-chart-line"></i> Stats</div>
             <div class="tab" data-tab="creditors"><i class="fas fa-hand-holding-usd"></i> Creditors</div>
             <div class="tab" data-tab="events"><i class="fas fa-calendar-alt"></i> Events</div>
+            <div class="tab" data-tab="item-management"><i class="fas fa-boxes"></i> Item Management</div>
         </div>
 
         <!-- ===== LOADER PLACEHOLDERS ===== -->
@@ -76,6 +77,16 @@
                 <div style="text-align:center; padding:60px; color:#999;">
                     <i class="fas fa-spinner fa-pulse fa-3x"></i>
                     <p style="margin-top:15px;">Loading Events Manager...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== ITEM MANAGEMENT TAB LOADER ===== -->
+        <div id="item-management-tab" class="tab-content">
+            <div id="item-management-loader">
+                <div style="text-align:center; padding:60px; color:#999;">
+                    <i class="fas fa-spinner fa-pulse fa-3x"></i>
+                    <p style="margin-top:15px;">Loading Item Management...</p>
                 </div>
             </div>
         </div>
@@ -1348,91 +1359,147 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
     </script>
 
     <!-- EVENTS -->
-    <!-- EVENTS -->
-<script>
-    console.log('🔧 Events loader: script executed');
-    (function() {
-        let loaded = false;
+    <script>
+        console.log('🔧 Events loader: script executed');
+        (function() {
+            let loaded = false;
 
-        function loadEvents() {
-            if (loaded) {
-                console.log('🔁 Events loader: already loaded, skipping.');
-                return;
-            }
-            const container = document.getElementById('events-component-loader');
-            if (!container) {
-                console.warn('❌ Events loader: container (#events-component-loader) not found.');
-                return;
-            }
-            console.log('📦 Events loader: starting fetch for /admin-components/events/events.html');
-            fetch('/admin-components/events/events.html')
-                .then(res => {
-                    console.log(`📡 Events fetch response: status ${res.status} ${res.statusText}`);
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    return res.text();
-                })
-                .then(html => {
-                    console.log('✅ Events HTML fetched successfully (length: ' + html.length + '). Injecting into container.');
-                    container.innerHTML = html;
+            function loadEvents() {
+                if (loaded) {
+                    console.log('🔁 Events loader: already loaded, skipping.');
+                    return;
+                }
+                const container = document.getElementById('events-component-loader');
+                if (!container) {
+                    console.warn('❌ Events loader: container (#events-component-loader) not found.');
+                    return;
+                }
+                console.log('📦 Events loader: starting fetch for /admin-components/events/events.html');
+                fetch('/admin-components/events/events.html')
+                    .then(res => {
+                        console.log(`📡 Events fetch response: status ${res.status} ${res.statusText}`);
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        return res.text();
+                    })
+                    .then(html => {
+                        console.log('✅ Events HTML fetched successfully (length: ' + html.length + '). Injecting into container.');
+                        container.innerHTML = html;
 
-                    console.log('📄 Loading events.css...');
-                    const link = document.createElement('link');
-                    link.rel = 'stylesheet';
-                    link.href = '/admin-components/events/events.css';
-                    document.head.appendChild(link);
-                    console.log('📄 events.css added to head.');
+                        console.log('📄 Loading events.css...');
+                        const link = document.createElement('link');
+                        link.rel = 'stylesheet';
+                        link.href = '/admin-components/events/events.css';
+                        document.head.appendChild(link);
+                        console.log('📄 events.css added to head.');
 
-                    console.log('📦 Loading events.js...');
-                    const script = document.createElement('script');
-                    script.src = '/admin-components/events/events.js';
-                    script.onload = function() {
-                        console.log('✅ events.js loaded successfully.');
-                        if (typeof loadEventsAdmin === 'function') {
-                            console.log('📞 Calling loadEventsAdmin()...');
-                            loadEventsAdmin();
-                            console.log('📞 loadEventsAdmin() returned.');
-                        } else {
-                            console.warn('⚠️ loadEventsAdmin is not defined after loading events.js.');
-                        }
-                    };
-                    script.onerror = function() {
-                        console.error('❌ Failed to load events.js (network error or 404).');
+                        console.log('📦 Loading events.js...');
+                        const script = document.createElement('script');
+                        script.src = '/admin-components/events/events.js';
+                        script.onload = function() {
+                            console.log('✅ events.js loaded successfully.');
+                            if (typeof loadEventsAdmin === 'function') {
+                                console.log('📞 Calling loadEventsAdmin()...');
+                                loadEventsAdmin();
+                                console.log('📞 loadEventsAdmin() returned.');
+                            } else {
+                                console.warn('⚠️ loadEventsAdmin is not defined after loading events.js.');
+                            }
+                        };
+                        script.onerror = function() {
+                            console.error('❌ Failed to load events.js (network error or 404).');
+                            container.innerHTML = `<div style="text-align:center; padding:40px; color:#dc3545;">
+                                <i class="fas fa-exclamation-triangle fa-2x"></i>
+                                <p style="margin-top:10px;">Failed to load events.js. Check the console for details.</p>
+                            </div>`;
+                        };
+                        document.body.appendChild(script);
+                        console.log('📦 events.js script element appended to body.');
+                        loaded = true;
+                    })
+                    .catch(err => {
+                        console.error('❌ Events loader error:', err);
                         container.innerHTML = `<div style="text-align:center; padding:40px; color:#dc3545;">
                             <i class="fas fa-exclamation-triangle fa-2x"></i>
-                            <p style="margin-top:10px;">Failed to load events.js. Check the console for details.</p>
+                            <p style="margin-top:10px;">Failed to load Events Manager: ${err.message}</p>
+                            <button class="btn btn-primary" onclick="window.TabManager.switchToTab('events')" style="margin-top:10px;">Retry</button>
                         </div>`;
-                    };
-                    document.body.appendChild(script);
-                    console.log('📦 events.js script element appended to body.');
-                    loaded = true;
-                })
-                .catch(err => {
-                    console.error('❌ Events loader error:', err);
-                    container.innerHTML = `<div style="text-align:center; padding:40px; color:#dc3545;">
-                        <i class="fas fa-exclamation-triangle fa-2x"></i>
-                        <p style="margin-top:10px;">Failed to load Events Manager: ${err.message}</p>
-                        <button class="btn btn-primary" onclick="loadEvents()" style="margin-top:10px;">Retry</button>
-                    </div>`;
-                });
-        }
-
-        // Check if the Events tab is already active
-        if (document.querySelector('.tab[data-tab="events"].active')) {
-            console.log('🟢 Events tab is active on page load – calling loadEvents().');
-            loadEvents();
-        } else {
-            console.log('🟡 Events tab is not active on page load – will load when clicked.');
-        }
-
-        // Listen for tab changes
-        document.addEventListener('tabChanged', function(e) {
-            if (e.detail.tab === 'events') {
-                console.log('🔄 tabChanged event: switching to events tab – calling loadEvents().');
-                loadEvents();
+                    });
             }
-        });
-    })();
-</script>
+
+            // Check if the Events tab is already active
+            if (document.querySelector('.tab[data-tab="events"].active')) {
+                console.log('🟢 Events tab is active on page load – calling loadEvents().');
+                loadEvents();
+            } else {
+                console.log('🟡 Events tab is not active on page load – will load when clicked.');
+            }
+
+            // Listen for tab changes
+            document.addEventListener('tabChanged', function(e) {
+                if (e.detail.tab === 'events') {
+                    console.log('🔄 tabChanged event: switching to events tab – calling loadEvents().');
+                    loadEvents();
+                }
+            });
+        })();
+    </script>
+
+    <!-- ITEM MANAGEMENT -->
+    <script>
+        console.log('🔧 Item Management loader: script executed');
+        (function() {
+            let loaded = false;
+            function loadItemManagement() {
+                if (loaded) return;
+                const container = document.getElementById('item-management-loader');
+                if (!container) {
+                    console.warn('item-management-loader not found');
+                    return;
+                }
+                console.log('📦 Loading Item Management...');
+                const basePath = '/admin-components/item-management';
+                fetch(`${basePath}/item-management.html`)
+                    .then(res => { if (!res.ok) throw new Error('HTTP ' + res.status); return res.text(); })
+                    .then(html => {
+                        container.innerHTML = html;
+                        const link = document.createElement('link');
+                        link.rel = 'stylesheet';
+                        link.href = `${basePath}/item-management.css`;
+                        document.head.appendChild(link);
+                        const script = document.createElement('script');
+                        script.src = `${basePath}/item-management.js`;
+                        script.onload = () => {
+                            console.log('✅ Item Management loaded');
+                            if (typeof window.itemManagement !== 'undefined' && window.itemManagement.init) {
+                                window.itemManagement.init();
+                            }
+                        };
+                        document.body.appendChild(script);
+                        loaded = true;
+                    })
+                    .catch(err => {
+                        console.error('Item Management load error:', err);
+                        container.innerHTML = '<div style="text-align:center; padding:40px; color:#dc3545;"><i class="fas fa-exclamation-triangle"></i> Failed to load Item Management.</div>';
+                    });
+            }
+
+            // Check if the Item Management tab is already active
+            if (document.querySelector('.tab[data-tab="item-management"].active')) {
+                console.log('🟢 Item Management tab is active on page load – calling loadItemManagement().');
+                loadItemManagement();
+            } else {
+                console.log('🟡 Item Management tab is not active on page load – will load when clicked.');
+            }
+
+            // Listen for tab changes
+            document.addEventListener('tabChanged', function(e) {
+                if (e.detail.tab === 'item-management') {
+                    console.log('🔄 tabChanged event: switching to item-management tab – calling loadItemManagement().');
+                    loadItemManagement();
+                }
+            });
+        })();
+    </script>
 
     <!-- ===== INITIALIZATION ===== -->
     <script>
