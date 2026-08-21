@@ -39,6 +39,9 @@ let cachedAccounts = [];
 // Monthly P&L charts
 let monthlyPLCharts = [];
 let monthlyPLData = [];
+let monthlyPLCurrentPage = 0;
+let monthlyPLMonths = [];
+let monthlyPLAllData = {};
 
 // Custom P&L chart instance
 let customPLChartInstance = null;
@@ -466,7 +469,6 @@ function populateBulkAccountSelect() {
     console.log('[BULK] populateBulkAccountSelect called');
     const accountSelect = document.getElementById('bulk-account-select');
     
-    // Check if the element exists (it might not in simplified view)
     if (!accountSelect) {
         console.log('[BULK] bulk-account-select not found, skipping');
         return;
@@ -998,14 +1000,11 @@ async function loadBankTransactions() {
     body.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px;">Loading transactions...</td></tr>';
 
     try {
-        // Get the filter value
         const filterValue = document.getElementById('unposted-filter')?.value || 'unposted';
         console.log('[BANK] Filter:', filterValue);
         
-        // Build URL with filter
         let url = `${AppConfig.baseUrl}/api/accounting/bank-transactions-full`;
         
-        // Add filter parameter
         if (filterValue === 'unposted') {
             url += '?filter=unposted';
         } else if (filterValue === 'posted') {
@@ -1059,7 +1058,6 @@ function renderBankTransactions(transactions) {
         return;
     }
 
-    // If bankAccounts is empty, try to reload it
     if (bankAccounts.length === 0) {
         console.warn('[BANK] bankAccounts is empty, attempting to reload...');
         loadAccountSelects().then(() => {
@@ -1079,14 +1077,12 @@ function renderBankTransactions(transactions) {
         const transactionId = transaction.id;
         const isProcessed = transaction.processed || false;
 
-        // Build dropdown options for Post From
         let postFromOptionsHtml = '<option value="">Select Account</option>';
         bankAccounts.forEach(account => {
             const selected = (account.id == transaction.post_from) ? 'selected' : '';
             postFromOptionsHtml += `<option value="${account.id}" ${selected}>${account.code} - ${account.name}</option>`;
         });
 
-        // Build dropdown options for Post To
         let postToOptionsHtml = '<option value="">Select Account</option>';
         bankAccounts.forEach(account => {
             const selected = (account.id == transaction.post_to) ? 'selected' : '';
@@ -1121,7 +1117,6 @@ function renderBankTransactions(transactions) {
 
     body.innerHTML = html;
 
-    // Add change event listeners to dropdowns
     document.querySelectorAll('#bank-body .post-from-select, #bank-body .post-to-select').forEach(select => {
         const initialAccount = select.dataset.initialAccount || '';
         if (initialAccount) {
@@ -1140,7 +1135,6 @@ function renderBankTransactions(transactions) {
         });
     });
 
-    // Select all checkbox
     const selectAll = document.getElementById('select-all-transactions');
     if (selectAll) {
         selectAll.addEventListener('change', function() {
@@ -1642,64 +1636,146 @@ async function loadBalances() {
         container.innerHTML = `<p class="text-muted" style="color:#dc3545;">Error: ${error.message}</p>`;
     }
 }
+
 function renderBalances(balances) {
     console.log('[BALANCE] Rendering balances:', balances);
     const container = document.getElementById('balance-result');
-    
-    if (!container) {
-        console.error('[BALANCE] Container not found');
-        return;
-    }
     
     if (!balances || balances.length === 0) {
         container.innerHTML = '<p class="text-muted" style="color:#666;">No balances found.</p>';
         return;
     }
 
-    let html = `
-        <div style="overflow-x:auto;">
-            <table style="width:100%; border-collapse:collapse; font-size:14px; color:#000; background:#fff; border:1px solid #ddd;">
-                <thead>
-                    <tr style="background:#f8f9fa; border-bottom:2px solid #ddd;">
-                        <th style="padding:10px 12px; text-align:left; color:#000; font-weight:bold;">ID</th>
-                        <th style="padding:10px 12px; text-align:left; color:#000; font-weight:bold;">Account Name</th>
-                        <th style="padding:10px 12px; text-align:right; color:#000; font-weight:bold;">Balance</th>
-                    </tr>
-                </thead>
-                <tbody>
-    `;
+    const assets = balances.filter(b => b.type === 'asset');
+    const liabilities = balances.filter(b => b.type === 'liability');
+    const equity = balances.filter(b => b.type === 'equity');
+    const revenue = balances.filter(b => b.type === 'revenue');
+    const expenses = balances.filter(b => b.type === 'expense');
 
-    balances.forEach(function(item) {
-        var balance = item.balance || 0;
-        var isPositive = balance >= 0;
-        var color = isPositive ? '#28a745' : '#dc3545';
-        var displayBalance = balance.toFixed(2);
-        
-        html += `
-            <tr style="border-bottom:1px solid #eee;">
-                <td style="padding:8px 12px; color:#000;">${item.id}</td>
-                <td style="padding:8px 12px; color:#000;">${item.name}</td>
-                <td style="padding:8px 12px; text-align:right; color:${color}; font-weight:600;">$${displayBalance}</td>
-            </tr>
-        `;
-    });
-
-    html += `
-                </tbody>
-            </table>
-        </div>
-    `;
+    let html = '<table style="width:100%; border-collapse:collapse; font-size:14px; color:#000;">';
     
+    html += `<thead>
+        <tr style="background:#f8f9fa;">
+            <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd; color:#000;">Account</th>
+            <th style="padding:8px 12px; text-align:right; border-bottom:2px solid #ddd; color:#000;">Balance</th>
+        </tr>
+    </thead>
+    <tbody>`;
+
+    if (assets.length > 0) {
+        html += `<tr style="background:#e8f5e9; font-weight:bold;">
+            <td style="padding:8px 12px; color:#000;">ASSETS</td>
+            <td style="padding:8px 12px; text-align:right; color:#000;"></td>
+        </tr>`;
+        assets.forEach(item => {
+            const balance = item.balance || 0;
+            html += `<tr>
+                <td style="padding:8px 12px; border-bottom:1px solid #eee; color:#000; padding-left:20px;">${item.code} - ${item.name}</td>
+                <td style="padding:8px 12px; text-align:right; border-bottom:1px solid #eee; color:#28a745;">$${balance.toFixed(2)}</td>
+            </tr>`;
+        });
+        const totalAssets = assets.reduce((sum, item) => sum + (item.balance || 0), 0);
+        html += `<tr style="font-weight:bold; background:#e8f5e9;">
+            <td style="padding:8px 12px; color:#000; border-top:2px solid #000; padding-left:20px;">Total Assets</td>
+            <td style="padding:8px 12px; text-align:right; border-top:2px solid #000; color:#28a745;">$${totalAssets.toFixed(2)}</td>
+        </tr>`;
+    }
+
+    if (liabilities.length > 0) {
+        html += `<tr style="background:#fff3cd; font-weight:bold;">
+            <td style="padding:8px 12px; color:#000; padding-top:15px;">LIABILITIES</td>
+            <td style="padding:8px 12px; text-align:right; color:#000; padding-top:15px;"></td>
+        </tr>`;
+        liabilities.forEach(item => {
+            const balance = item.balance || 0;
+            html += `<tr>
+                <td style="padding:8px 12px; border-bottom:1px solid #eee; color:#000; padding-left:20px;">${item.code} - ${item.name}</td>
+                <td style="padding:8px 12px; text-align:right; border-bottom:1px solid #eee; color:#dc3545;">$${balance.toFixed(2)}</td>
+            </tr>`;
+        });
+        const totalLiabilities = liabilities.reduce((sum, item) => sum + (item.balance || 0), 0);
+        html += `<tr style="font-weight:bold; background:#fff3cd;">
+            <td style="padding:8px 12px; color:#000; border-top:2px solid #000; padding-left:20px;">Total Liabilities</td>
+            <td style="padding:8px 12px; text-align:right; border-top:2px solid #000; color:#dc3545;">$${totalLiabilities.toFixed(2)}</td>
+        </tr>`;
+    }
+
+    if (equity.length > 0) {
+        html += `<tr style="background:#d4edda; font-weight:bold;">
+            <td style="padding:8px 12px; color:#000; padding-top:15px;">EQUITY</td>
+            <td style="padding:8px 12px; text-align:right; color:#000; padding-top:15px;"></td>
+        </tr>`;
+        equity.forEach(item => {
+            const balance = item.balance || 0;
+            html += `<tr>
+                <td style="padding:8px 12px; border-bottom:1px solid #eee; color:#000; padding-left:20px;">${item.code} - ${item.name}</td>
+                <td style="padding:8px 12px; text-align:right; border-bottom:1px solid #eee; color:#6f42c1;">$${balance.toFixed(2)}</td>
+            </tr>`;
+        });
+        const totalEquity = equity.reduce((sum, item) => sum + (item.balance || 0), 0);
+        html += `<tr style="font-weight:bold; background:#d4edda;">
+            <td style="padding:8px 12px; color:#000; border-top:2px solid #000; padding-left:20px;">Total Equity</td>
+            <td style="padding:8px 12px; text-align:right; border-top:2px solid #000; color:#6f42c1;">$${totalEquity.toFixed(2)}</td>
+        </tr>`;
+    }
+
+    if (revenue.length > 0 || expenses.length > 0) {
+        html += `<tr style="background:#e3f2fd; font-weight:bold;">
+            <td style="padding:8px 12px; color:#000; padding-top:15px;">PROFIT & LOSS</td>
+            <td style="padding:8px 12px; text-align:right; color:#000; padding-top:15px;"></td>
+        </tr>`;
+        
+        let totalRevenue = 0;
+        revenue.forEach(item => {
+            const balance = item.balance || 0;
+            totalRevenue += balance;
+            html += `<tr>
+                <td style="padding:8px 12px; border-bottom:1px solid #eee; color:#000; padding-left:20px;">${item.code} - ${item.name}</td>
+                <td style="padding:8px 12px; text-align:right; border-bottom:1px solid #eee; color:#28a745;">$${balance.toFixed(2)}</td>
+            </tr>`;
+        });
+        if (totalRevenue !== 0) {
+            html += `<tr style="font-weight:bold;">
+                <td style="padding:8px 12px; color:#000; padding-left:20px;">Total Revenue</td>
+                <td style="padding:8px 12px; text-align:right; color:#28a745;">$${totalRevenue.toFixed(2)}</td>
+            </tr>`;
+        }
+
+        let totalExpenses = 0;
+        expenses.forEach(item => {
+            const balance = item.balance || 0;
+            totalExpenses += balance;
+            html += `<tr>
+                <td style="padding:8px 12px; border-bottom:1px solid #eee; color:#000; padding-left:20px;">${item.code} - ${item.name}</td>
+                <td style="padding:8px 12px; text-align:right; border-bottom:1px solid #eee; color:#dc3545;">$${balance.toFixed(2)}</td>
+            </tr>`;
+        });
+        if (totalExpenses !== 0) {
+            html += `<tr style="font-weight:bold;">
+                <td style="padding:8px 12px; color:#000; padding-left:20px;">Total Expenses</td>
+                <td style="padding:8px 12px; text-align:right; color:#dc3545;">$${totalExpenses.toFixed(2)}</td>
+            </tr>`;
+        }
+
+        const netIncome = totalRevenue + totalExpenses;
+        if (netIncome !== 0) {
+            html += `<tr style="font-weight:bold; background:#e3f2fd;">
+                <td style="padding:8px 12px; color:#000; border-top:2px solid #000; padding-left:20px;">Net Income</td>
+                <td style="padding:8px 12px; text-align:right; border-top:2px solid #000; color:${netIncome >= 0 ? '#28a745' : '#dc3545'};">$${netIncome.toFixed(2)}</td>
+            </tr>`;
+        }
+    }
+
+    html += '</tbody></table>';
     container.innerHTML = html;
-    console.log('[BALANCE] Render complete');
 }
- 
+
 // ============================================================
 // MONTHLY P&L BAR CHARTS
 // ============================================================
 
 async function loadMonthlyPLBarChart() {
-    console.log('[MONTHLY-PL] Loading bar charts for last 6 months...');
+    console.log('[MONTHLY-PL] Loading bar charts...');
     const container = document.getElementById('monthly-pl-bar-chart-container');
     if (!container) {
         console.error('[MONTHLY-PL] Container not found');
@@ -1709,45 +1785,36 @@ async function loadMonthlyPLBarChart() {
     container.innerHTML = '<div style="text-align: center; font-size: 14px; color: #666; padding: 40px;">Loading charts...</div>';
 
     try {
-        const months = getLastSixCompleteMonths();
-        console.log('[MONTHLY-PL] Months to fetch:', months);
+        const url = `${AppConfig.baseUrl}/api/accounting/monthly-pl`;
+        console.log('[MONTHLY-PL] Fetching:', url);
         
-        const allData = [];
-        for (const month of months) {
-            const dateFrom = `${month.year}-${String(month.month).padStart(2, '0')}-01`;
-            const lastDay = new Date(month.year, month.month, 0).getDate();
-            const dateTo = `${month.year}-${String(month.month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-            
-            console.log(`[MONTHLY-PL] Fetching ${month.label} (${dateFrom} to ${dateTo})...`);
-            
-            const res = await fetch(
-                `${AppConfig.baseUrl}/api/accounting/reports?type=pll&date_from=${dateFrom}&date_to=${dateTo}`,
-                {
-                    credentials: 'include',
-                    headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        const response = await fetch(url, {
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) throw new Error('Failed to load monthly P&L');
+        
+        const data = await response.json();
+        console.log('[MONTHLY-PL] Data received:', data);
+
+        if (data.status === 'success') {
+            const groupedByMonth = {};
+            data.data.forEach(item => {
+                if (!groupedByMonth[item.month]) {
+                    groupedByMonth[item.month] = [];
                 }
-            );
+                groupedByMonth[item.month].push(item);
+            });
+
+            monthlyPLMonths = Object.keys(groupedByMonth).sort().reverse();
+            monthlyPLAllData = groupedByMonth;
+            monthlyPLCurrentPage = 0;
             
-            if (!res.ok) throw new Error(`Failed to fetch data for ${month.label}`);
-            const data = await res.json();
-            
-            if (data.status === 'success' && data.report) {
-                allData.push({
-                    month: month,
-                    report: data.report,
-                    summary: data.summary
-                });
-            } else {
-                allData.push({
-                    month: month,
-                    report: [],
-                    summary: 'No data'
-                });
-            }
+            renderMonthlyPLChartsPage();
+        } else {
+            container.innerHTML = `<p style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error loading data'}</p>`;
         }
-        
-        monthlyPLData = allData;
-        renderMonthlyPLBarCharts(allData);
         
     } catch (err) {
         console.error('[MONTHLY-PL] Error:', err);
@@ -1755,205 +1822,155 @@ async function loadMonthlyPLBarChart() {
     }
 }
 
-function getLastSixCompleteMonths() {
-    const now = new Date();
-    const months = [];
-    
-    let year = now.getFullYear();
-    let month = now.getMonth();
-    
-    for (let i = 0; i < 6; i++) {
-        let targetYear = year;
-        let targetMonth = month - 1 - i;
-        
-        while (targetMonth < 0) {
-            targetMonth += 12;
-            targetYear -= 1;
-        }
-        
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const label = `${monthNames[targetMonth]} ${targetYear}`;
-        
-        months.push({
-            year: targetYear,
-            month: targetMonth + 1,
-            label: label,
-            index: i
-        });
-    }
-    
-    console.log('[MONTHLY-PL] Last 6 complete months:', months);
-    return months;
-}
-
-function renderMonthlyPLBarCharts(allData) {
-    console.log('[MONTHLY-PL] Rendering bar charts...');
+function renderMonthlyPLChartsPage() {
+    console.log('[MONTHLY-PL] Rendering page', monthlyPLCurrentPage);
     const container = document.getElementById('monthly-pl-bar-chart-container');
-    if (!container) return;
+    
+    if (!monthlyPLMonths || monthlyPLMonths.length === 0) {
+        container.innerHTML = '<p style="text-align:center; padding:40px; color:#666;">No data available.</p>';
+        return;
+    }
 
-    const expenseCodePrefixes = ['5000', '5010', '5020', '5040', '6010', '6011', '6013', '6014', '6020', '6030', '6080', '6090', '6100', '1850'];
-    const revenueCodePrefixes = ['4000', '4001', '4003', '4090'];
+    const startIndex = monthlyPLCurrentPage * 6;
+    const endIndex = Math.min(startIndex + 6, monthlyPLMonths.length);
+    const visibleMonths = monthlyPLMonths.slice(startIndex, endIndex);
 
-    let gridHtml = `
+    if (visibleMonths.length === 0) {
+        if (monthlyPLCurrentPage > 0) {
+            monthlyPLCurrentPage--;
+            renderMonthlyPLChartsPage();
+        }
+        return;
+    }
+
+    const totalPages = Math.ceil(monthlyPLMonths.length / 6);
+    const isFirstPage = monthlyPLCurrentPage === 0;
+    const isLastPage = monthlyPLCurrentPage >= totalPages - 1;
+
+    let html = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 10px 15px; background: #f8f9fa; border-radius: 8px;">
+            <div>
+                <span style="font-weight: 600; color: #000;">Monthly P&L</span>
+                <span style="color: #666; margin-left: 10px; font-size: 13px;">Showing ${startIndex + 1}-${Math.min(endIndex, monthlyPLMonths.length)} of ${monthlyPLMonths.length} months</span>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button id="monthly-pl-prev" ${isFirstPage ? 'disabled' : ''} style="padding: 6px 16px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: ${isFirstPage ? 'not-allowed' : 'pointer'}; color: ${isFirstPage ? '#999' : '#000'};">
+                    <i class="fas fa-chevron-left"></i> Newer
+                </button>
+                <button id="monthly-pl-next" ${isLastPage ? 'disabled' : ''} style="padding: 6px 16px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: ${isLastPage ? 'not-allowed' : 'pointer'}; color: ${isLastPage ? '#999' : '#000'};">
+                    Older <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; margin-bottom: 20px;">
     `;
 
-    allData.forEach((monthData, index) => {
-        const { month, report, summary } = monthData;
+    visibleMonths.forEach((month, index) => {
+        const items = monthlyPLAllData[month] || [];
         
-        const accountNames = [];
-        const adjustedValues = [];
-        const accountIds = [];
+        const revenueItems = items.filter(i => i.type === 'revenue');
+        const expenseItems = items.filter(i => i.type === 'expense');
         
-        report.forEach(item => {
-            const name = item.Account;
-            const value = item.Balance || 0;
-            
-            const code = name.split(' ')[0];
-            let accountId = null;
-            const foundAccount = bankAccounts.find(a => a.code === code);
-            if (foundAccount) {
-                accountId = foundAccount.id;
-            }
-            
-            accountNames.push(name);
-            accountIds.push(accountId);
-            
-            const isExpense = expenseCodePrefixes.includes(code);
-            const isRevenue = revenueCodePrefixes.includes(code);
-            
-            if (isExpense) {
-                adjustedValues.push(value > 0 ? -value : value);
-            } else if (isRevenue) {
-                adjustedValues.push(value);
-            } else {
-                adjustedValues.push(value);
-            }
-        });
-        
-        let netIncome = 0;
-        adjustedValues.forEach(val => netIncome += val);
-        
-        const allLabels = [...accountNames, 'Net Income'];
-        const allValues = [...adjustedValues, netIncome];
-        const allAccountIds = [...accountIds, null];
+        const totalRevenue = revenueItems.reduce((sum, i) => sum + i.balance, 0);
+        const totalExpenses = expenseItems.reduce((sum, i) => sum + i.balance, 0);
+        const netIncome = totalRevenue + totalExpenses;
 
-        const revenueKeywords = ['revenue', 'sales', 'income'];
-        const expenseKeywords = ['cogs', 'expense', 'cost', 'shipping', 'fees', 'rent', 'utilities', 'insurance', 'advertising', 'software', 'supplies', 'equipment', 'leasehold', 'improvements'];
-        
-        const colors = allLabels.map(name => {
-            const lower = name.toLowerCase();
-            if (name === 'Net Income') {
-                return netIncome >= 0 ? 'rgba(40, 167, 69, 0.95)' : 'rgba(220, 53, 69, 0.95)';
-            }
-            if (revenueKeywords.some(k => lower.includes(k))) {
-                return 'rgba(40, 167, 69, 0.85)';
-            }
-            if (expenseKeywords.some(k => lower.includes(k))) {
-                return 'rgba(220, 53, 69, 0.75)';
-            }
-            return 'rgba(108, 117, 125, 0.7)';
+        const labels = [];
+        const values = [];
+        const colors = [];
+
+        revenueItems.forEach(item => {
+            labels.push(item.name);
+            values.push(item.balance);
+            colors.push('rgba(40, 167, 69, 0.85)');
         });
 
-        gridHtml += `
+        expenseItems.forEach(item => {
+            labels.push(item.name);
+            values.push(item.balance);
+            colors.push('rgba(220, 53, 69, 0.75)');
+        });
+
+        labels.push('Net Income');
+        values.push(netIncome);
+        colors.push(netIncome >= 0 ? 'rgba(40, 167, 69, 0.95)' : 'rgba(220, 53, 69, 0.95)');
+
+        const chartIndex = startIndex + index;
+
+        html += `
             <div style="background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; position: relative; min-height: 400px;">
-                <div style="text-align: center; font-weight: 600; font-size: 16px; color: #000; margin-bottom: 10px;">${month.label}</div>
+                <div style="text-align: center; font-weight: 600; font-size: 16px; color: #000; margin-bottom: 10px;">${month}</div>
                 <div style="text-align: center; font-size: 12px; color: #666; margin-bottom: 10px;">
+                    Revenue: <span style="color:#28a745;font-weight:bold;">$${totalRevenue.toFixed(2)}</span> | 
+                    Expenses: <span style="color:#dc3545;font-weight:bold;">$${Math.abs(totalExpenses).toFixed(2)}</span> | 
                     Net: <span style="font-weight: bold; color: ${netIncome >= 0 ? '#28a745' : '#dc3545'};">${netIncome >= 0 ? '+' : ''}$${netIncome.toFixed(2)}</span>
                 </div>
                 <div style="position: relative; height: 280px;">
-                    <canvas id="monthly-pl-chart-${index}"></canvas>
+                    <canvas id="monthly-pl-chart-${chartIndex}"></canvas>
                 </div>
-                <div style="text-align: center; font-size: 11px; color: #999; margin-top: 5px; cursor: pointer;" onclick="showMonthlyTransactions('${month.year}-${String(month.month).padStart(2, '0')}', null, 'All Transactions', true)">
+                <div style="text-align: center; font-size: 11px; color: #999; margin-top: 5px;">
                     Click bar for details
                 </div>
             </div>
         `;
     });
 
-    gridHtml += '</div>';
-    container.innerHTML = gridHtml;
+    html += '</div>';
+    container.innerHTML = html;
 
     setTimeout(() => {
-        allData.forEach((monthData, index) => {
-            const { month, report } = monthData;
+        visibleMonths.forEach((month, index) => {
+            const items = monthlyPLAllData[month] || [];
             
-            const accountNames = [];
-            const adjustedValues = [];
-            const accountIds = [];
+            const revenueItems = items.filter(i => i.type === 'revenue');
+            const expenseItems = items.filter(i => i.type === 'expense');
             
-            report.forEach(item => {
-                const name = item.Account;
-                const value = item.Balance || 0;
-                
-                const code = name.split(' ')[0];
-                let accountId = null;
-                const foundAccount = bankAccounts.find(a => a.code === code);
-                if (foundAccount) {
-                    accountId = foundAccount.id;
-                }
-                
-                accountNames.push(name);
-                accountIds.push(accountId);
-                
-                const isExpense = expenseCodePrefixes.includes(code);
-                const isRevenue = revenueCodePrefixes.includes(code);
-                
-                if (isExpense) {
-                    adjustedValues.push(value > 0 ? -value : value);
-                } else if (isRevenue) {
-                    adjustedValues.push(value);
-                } else {
-                    adjustedValues.push(value);
-                }
-            });
-            
-            let netIncome = 0;
-            adjustedValues.forEach(val => netIncome += val);
-            
-            const allLabels = [...accountNames, 'Net Income'];
-            const allValues = [...adjustedValues, netIncome];
-            const allAccountIds = [...accountIds, null];
+            const totalRevenue = revenueItems.reduce((sum, i) => sum + i.balance, 0);
+            const totalExpenses = expenseItems.reduce((sum, i) => sum + i.balance, 0);
+            const netIncome = totalRevenue + totalExpenses;
 
-            const revenueKeywords = ['revenue', 'sales', 'income'];
-            const expenseKeywords = ['cogs', 'expense', 'cost', 'shipping', 'fees', 'rent', 'utilities', 'insurance', 'advertising', 'software', 'supplies', 'equipment', 'leasehold', 'improvements'];
-            
-            const colors = allLabels.map(name => {
-                const lower = name.toLowerCase();
-                if (name === 'Net Income') {
-                    return netIncome >= 0 ? 'rgba(40, 167, 69, 0.95)' : 'rgba(220, 53, 69, 0.95)';
-                }
-                if (revenueKeywords.some(k => lower.includes(k))) {
-                    return 'rgba(40, 167, 69, 0.85)';
-                }
-                if (expenseKeywords.some(k => lower.includes(k))) {
-                    return 'rgba(220, 53, 69, 0.75)';
-                }
-                return 'rgba(108, 117, 125, 0.7)';
+            const labels = [];
+            const values = [];
+            const colors = [];
+
+            revenueItems.forEach(item => {
+                labels.push(item.name);
+                values.push(item.balance);
+                colors.push('rgba(40, 167, 69, 0.85)');
             });
 
-            const canvasId = `monthly-pl-chart-${index}`;
+            expenseItems.forEach(item => {
+                labels.push(item.name);
+                values.push(item.balance);
+                colors.push('rgba(220, 53, 69, 0.75)');
+            });
+
+            labels.push('Net Income');
+            values.push(netIncome);
+            colors.push(netIncome >= 0 ? 'rgba(40, 167, 69, 0.95)' : 'rgba(220, 53, 69, 0.95)');
+
+            const chartIndex = startIndex + index;
+            const canvasId = `monthly-pl-chart-${chartIndex}`;
             const canvas = document.getElementById(canvasId);
             if (!canvas) return;
 
             const ctx = canvas.getContext('2d');
             
-            if (window[`_monthlyPLChart_${index}`]) {
-                window[`_monthlyPLChart_${index}`].destroy();
-                window[`_monthlyPLChart_${index}`] = null;
+            if (window[`_monthlyPLChart_${chartIndex}`]) {
+                window[`_monthlyPLChart_${chartIndex}`].destroy();
+                window[`_monthlyPLChart_${chartIndex}`] = null;
             }
 
             const chart = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: allLabels,
+                    labels: labels,
                     datasets: [{
                         label: 'Amount',
-                        data: allValues,
+                        data: values,
                         backgroundColor: colors,
-                        borderColor: colors.map(c => c.replace('0.85', '1').replace('0.75', '1').replace('0.95', '1').replace('0.7', '1')),
-                        borderWidth: 1,
-                        accountIds: allAccountIds
+                        borderColor: colors.map(c => c.replace('0.85', '1').replace('0.75', '1').replace('0.95', '1')),
+                        borderWidth: 1
                     }]
                 },
                 options: {
@@ -1965,7 +1982,7 @@ function renderMonthlyPLBarCharts(allData) {
                             callbacks: {
                                 label: function(context) {
                                     const val = context.raw;
-                                    return (val >= 0 ? '+' : '') + '$' + val.toFixed(2);
+                                    return (val >= 0 ? '+' : '') + '$' + Math.abs(val).toFixed(2);
                                 }
                             }
                         }
@@ -1992,42 +2009,43 @@ function renderMonthlyPLBarCharts(allData) {
                         if (elements.length === 0) return;
                         const element = elements[0];
                         const idx = element.index;
-                        
-                        const accountId = this.data.datasets[0].accountIds[idx];
                         const label = this.data.labels[idx];
-                        const monthKey = `${month.year}-${String(month.month).padStart(2, '0')}`;
                         
-                        console.log('[MONTHLY-PL] Bar clicked:', label, 'Account ID:', accountId);
-                        
-                        document.getElementById('monthly-tx-modal')?.classList.remove('active');
+                        console.log('[MONTHLY-PL] Bar clicked:', label, 'Month:', month);
                         
                         if (label === 'Net Income') {
-                            showMonthlyTransactions(monthKey, null, 'All Transactions', true);
+                            showMonthlyTransactions(month, null, 'All Transactions', true);
                             return;
                         }
                         
-                        if (label.includes('COGS') || label.includes('Cost of Goods Sold')) {
-                            showMonthlyTransactions(monthKey, 4, 'COGS', true);
-                            return;
-                        }
-                        
-                        if (accountId) {
-                            showMonthlyTransactions(monthKey, accountId, label, true);
+                        const foundAccount = bankAccounts.find(a => a.name === label);
+                        if (foundAccount) {
+                            showMonthlyTransactions(month, foundAccount.id, label, true);
                         } else {
-                            const trimmed = label.trim();
-                            const found = bankAccounts.find(a => a.name === trimmed);
-                            if (found) {
-                                showMonthlyTransactions(monthKey, found.id, label, true);
-                            } else {
-                                showMonthlyTransactions(monthKey, null, label, true);
-                            }
+                            showMonthlyTransactions(month, null, label, true);
                         }
                     }
                 }
             });
 
-            window[`_monthlyPLChart_${index}`] = chart;
+            window[`_monthlyPLChart_${chartIndex}`] = chart;
         });
+
+        document.getElementById('monthly-pl-prev')?.addEventListener('click', function() {
+            if (monthlyPLCurrentPage > 0) {
+                monthlyPLCurrentPage--;
+                renderMonthlyPLChartsPage();
+            }
+        });
+
+        document.getElementById('monthly-pl-next')?.addEventListener('click', function() {
+            const totalPages = Math.ceil(monthlyPLMonths.length / 6);
+            if (monthlyPLCurrentPage < totalPages - 1) {
+                monthlyPLCurrentPage++;
+                renderMonthlyPLChartsPage();
+            }
+        });
+
     }, 100);
 }
 
@@ -2498,10 +2516,8 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
         return;
     }
 
-    // Filter to only the selected account if accountId is provided
     let filteredTransactions = transactions;
     if (accountId) {
-        // Find the account name from the accountId
         const account = bankAccounts.find(a => a.id == accountId);
         if (account) {
             filteredTransactions = transactions.filter(tx => tx.account_name === account.name);
@@ -3312,7 +3328,6 @@ function renderLineChart(canvasId, data, options = {}) {
         bsChartInstance = chart;
     }
 
-    // Add x-axis click handler for Balance Sheet
     if (canvasId === 'bs-chart') {
         canvas.addEventListener('click', function(e) {
             try {
@@ -3400,7 +3415,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     console.log('[INIT] Accounting container found');
 
-    // Sub-tab switching
     document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const sub = this.dataset.subtab;
@@ -3433,7 +3447,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('[INIT] Custom P&L tab selected');
                 initCustomPL();
             }
-             
             else if (sub === 'balance') {
                 console.log('[INIT] Balance tab selected');
                 loadBalances();
@@ -3445,7 +3458,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Pagination for journal
     document.getElementById('journal-prev')?.addEventListener('click', () => {
         if (journalCurrentPage > 1) { journalCurrentPage--; loadJournalEntries(); }
     });
@@ -3454,14 +3466,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if (journalCurrentPage < totalPages) { journalCurrentPage++; loadJournalEntries(); }
     });
 
-    // Load accounts into dropdowns
     loadAccountSelects();
-
-    // Load import (bank) by default
     loadBankTransactions();
     loadAccountBalances();
 
-    // ---- Handle OAuth redirect from Plaid ----
     const urlParams = new URLSearchParams(window.location.search);
     const publicToken = urlParams.get('public_token');
     if (publicToken) {
@@ -3488,7 +3496,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // ---- Unposted filter ----
     const unpostedFilter = document.getElementById('unposted-filter');
     if (unpostedFilter) {
         unpostedFilter.addEventListener('change', function() {
@@ -3496,7 +3503,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // ---- Transactions Tab - Simplified ----
     document.getElementById('post-updates-btn')?.addEventListener('click', function() {
         postAllUnprocessedTransactions();
     });
@@ -3509,7 +3515,6 @@ document.addEventListener('DOMContentLoaded', function() {
         loadBankTransactions();
     });
 
-    // Accounts tab - add account form
     document.getElementById('add-account-btn')?.addEventListener('click', function() {
         console.log('[INIT] Add account button clicked');
         document.getElementById('add-account-modal').classList.add('active');
@@ -3525,7 +3530,6 @@ document.addEventListener('DOMContentLoaded', function() {
         saveAccount();
     });
 
-    // Close modal on overlay
     document.querySelectorAll('.modal-overlay').forEach(modal => {
         modal.addEventListener('click', function(e) {
             if (e.target === this) {
@@ -3535,7 +3539,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Save reconcile pair button
     document.getElementById('save-reconcile-pair-btn')?.addEventListener('click', async function() {
         const name = document.getElementById('reconcile-pair-name').value.trim();
         const description = document.getElementById('reconcile-pair-description').value.trim();
@@ -3569,7 +3572,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Save edit reconcile pair button
     document.getElementById('save-reconcile-edit-btn')?.addEventListener('click', async function() {
         const id = document.getElementById('reconcile-edit-id').value;
         const name = document.getElementById('reconcile-edit-name').value.trim();

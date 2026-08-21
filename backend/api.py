@@ -6391,6 +6391,39 @@ def get_balances():
         app.logger.error(f"Error in get_balances: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/accounting/monthly-pl', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def monthly_pl():
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                strftime('%Y-%m', bt.transaction_date) AS month,
+                a.type,
+                a.code,
+                a.name,
+                SUM(bt.amount) AS balance
+            FROM bank_transactions bt
+            JOIN accounts a ON bt.post_to = a.id
+            WHERE a.type IN ('revenue', 'expense')
+            GROUP BY strftime('%Y-%m', bt.transaction_date), a.id, a.code, a.name, a.type
+            ORDER BY month, a.type DESC, a.code
+        ''')
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'data': [dict(row) for row in rows]
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error in monthly_pl: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 def get_plaid_client():
     """Initialize Plaid client using environment credentials."""
