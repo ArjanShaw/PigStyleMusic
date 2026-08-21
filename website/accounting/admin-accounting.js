@@ -2499,6 +2499,7 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
     }
 }
 
+
 function renderModalTransactions(transactions, accountName, dateRange, accountId = null) {
     console.log('[MODAL] ==================================================');
     console.log('[MODAL] RENDER MODAL TRANSACTIONS CALLED');
@@ -2516,6 +2517,7 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
         return;
     }
 
+    // Filter to only the selected account if accountId is provided
     let filteredTransactions = transactions;
     if (accountId) {
         const account = bankAccounts.find(a => a.id == accountId);
@@ -2530,34 +2532,14 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
         return;
     }
 
-    const grouped = {};
-    filteredTransactions.forEach(tx => {
-        const key = tx.journal_entry_id || tx.source_id || tx.id;
-        if (!grouped[key]) {
-            grouped[key] = {
-                transaction_date: tx.transaction_date,
-                description: tx.description || '',
-                account_name: tx.account_name || '',
-                net: 0,
-                entries: [],
-                journal_entry_id: tx.journal_entry_id || null,
-                source_id: tx.source_id || null
-            };
-        }
-        grouped[key].net += (tx.debit_amount || 0) - (tx.credit_amount || 0);
-        grouped[key].entries.push(tx);
-    });
-
-    const groupedList = Object.values(grouped);
-
     const isRevenueAccount = accountName &&
         (accountName.toLowerCase().includes('revenue') ||
          accountName.toLowerCase().includes('sales') ||
          accountName.toLowerCase().includes('income'));
 
     let total = 0;
-    groupedList.forEach(g => {
-        total += g.net;
+    filteredTransactions.forEach(tx => {
+        total += tx.amount || 0;
     });
 
     let displayTotal = isRevenueAccount ? -total : total;
@@ -2565,7 +2547,7 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     let html = `<div class="modal-summary">
         <div class="summary-item"><strong>Account:</strong> ${accountName || 'All Accounts'}${accountId ? ` (ID: ${accountId})` : ''}</div>
         <div class="summary-item"><strong>Period:</strong> ${dateRange}</div>
-        <div class="summary-item"><strong>Transactions:</strong> ${groupedList.length}</div>
+        <div class="summary-item"><strong>Transactions:</strong> ${filteredTransactions.length}</div>
         <div class="summary-item"><strong>Total:</strong> <span style="font-weight:bold;color:${displayTotal >= 0 ? '#28a745' : '#dc3545'};">${displayTotal >= 0 ? '+' : ''}$${displayTotal.toFixed(2)}</span></div>
     </div>`;
 
@@ -2579,24 +2561,28 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
         </tr></thead>
         <tbody>`;
 
-    groupedList.forEach(g => {
-        let displayAmount = g.net;
+    filteredTransactions.forEach(tx => {
+        let displayAmount = tx.amount || 0;
         if (isRevenueAccount) {
-            displayAmount = -g.net;
+            displayAmount = -tx.amount || 0;
         }
         const isPositive = displayAmount > 0;
         const amountClass = isPositive ? 'debit' : (displayAmount < 0 ? 'credit' : '');
         const displayAmountStr = displayAmount !== 0 ? '$' + Math.abs(displayAmount).toFixed(2) : '';
         const sign = displayAmount > 0 ? '+' : (displayAmount < 0 ? '-' : '');
 
-        const entryId = g.journal_entry_id || g.source_id;
+        const transactionId = tx.id;
 
         html += `<tr>
-            <td style="white-space:nowrap;">${g.transaction_date}</td>
-            <td>${g.description || ''}</td>
-            <td>${g.account_name || ''}</td>
+            <td style="white-space:nowrap;">${tx.transaction_date}</td>
+            <td>${tx.description || ''}</td>
+            <td>${tx.account_name || ''}</td>
             <td style="text-align:right; font-weight:600;" class="${amountClass}">${sign}${displayAmountStr}</td>
-            <td style="text-align:center;">${entryId ? `<button class="btn btn-sm btn-warning" onclick="unpostTransaction(${typeof entryId === 'string' ? `'${entryId}'` : entryId})"><i class="fas fa-undo"></i></button>` : ''}</td>
+            <td style="text-align:center;">
+                ${transactionId ? `<button class="btn btn-sm btn-danger" onclick="unpostBankTransaction(${transactionId})" style="padding:4px 10px; font-size:12px; background:#dc3545; color:white; border:none; border-radius:4px; cursor:pointer;">
+                    <i class="fas fa-undo"></i> Unpost
+                </button>` : ''}
+            </td>
         </tr>`;
     });
 
@@ -2609,7 +2595,60 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     body.innerHTML = html;
     console.log('[MODAL] Render complete');
 }
+async function unpostBankTransaction(transactionId) {
+    console.log('[MODAL] Unposting bank transaction:', transactionId);
 
+    if (!confirm(`Are you sure you want to unpost bank transaction #${transactionId}?\n\nThis will set post_to = NULL and mark it as unprocessed.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${AppConfig.baseUrl}/api/accounting/bank-transactions/${transactionId}/unpost`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
+        });
+
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            console.log('[MODAL] Unposted successfully');
+            showToast(`✅ Transaction #${transactionId} unposted successfully.`, 'success');
+            
+            // Refresh the modal
+            const title = document.getElementById('modal-title');
+            if (title) {
+                const titleText = title.textContent;
+                const match = titleText.match(/^(.+?)\s*\(ID:\s*(\d+)\)?\s*-\s*(.+)$/);
+                if (match) {
+                    const accountName = match[1].trim();
+                    const accountId = match[2] ? parseInt(match[2]) : null;
+                    const dateRange = match[3].trim();
+                    const dateMatch = dateRange.match(/(\d{2})\/(\d{2})\/(\d{2})/);
+                    if (dateMatch) {
+                        const month = `20${dateMatch[3]}-${dateMatch[1]}`;
+                        // Refresh the modal data
+                        if (accountId) {
+                            showMonthlyTransactions(month, accountId, accountName, true);
+                        } else {
+                            showMonthlyTransactions(month, null, accountName, true);
+                        }
+                    }
+                }
+            }
+            
+            // Also refresh the transactions tab
+            loadBankTransactions();
+            
+        } else {
+            console.error('[MODAL] Error unposting:', data.error);
+            showToast('❌ Error: ' + (data.error || 'Failed to unpost'), 'error');
+        }
+    } catch (error) {
+        console.error('[MODAL] Error:', error);
+        showToast('❌ Error: ' + error.message, 'error');
+    }
+}
 async function unpostTransaction(entryId) {
     console.log('[MODAL] Unposting transaction:', entryId);
 
