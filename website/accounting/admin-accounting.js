@@ -1605,116 +1605,95 @@ function exportCustomPLCSV() {
 
 function initBalanceSheet() {
     console.log('[BALANCE] Initializing Balance Sheet tab');
-    
-    const now = new Date();
-    const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-    
-    const startInput = document.getElementById('balance-start');
-    const endInput = document.getElementById('balance-end');
-    
-    if (!startInput.value) {
-        startInput.value = '2025-01';
-    }
-    if (!endInput.value) {
-        endInput.value = currentMonth;
-    }
-    
-    startInput.addEventListener('change', loadBalanceSheet);
-    endInput.addEventListener('change', loadBalanceSheet);
-    
-    loadBalanceSheet();
+    loadBalances();
 }
 
-async function loadBalanceSheet() {
-    console.log('[BALANCE] Loading Balance Sheet data...');
+async function loadBalances() {
+    console.log('[BALANCE] Loading balances...');
     const container = document.getElementById('balance-result');
-    container.innerHTML = '<p class="text-muted" style="color:#666;">Loading...</p>';
+    if (!container) {
+        console.error('[BALANCE] balance-result container not found');
+        return;
+    }
     
-    const url = `${AppConfig.baseUrl}/api/accounting/balance-sheet-v2`;
-    console.log('[BALANCE] REQUEST URL:', url);
-    
+    container.innerHTML = '<p class="text-muted" style="color:#666;">Loading balances...</p>';
+
     try {
-        const res = await fetch(url, {
+        const url = `${AppConfig.baseUrl}/api/accounting/balances`;
+        console.log('[BALANCE] Fetching:', url);
+        
+        const response = await fetch(url, {
             credentials: 'include',
             headers: AppConfig.getHeaders ? AppConfig.getHeaders() : { 'Content-Type': 'application/json' }
         });
+
+        if (!response.ok) throw new Error('Failed to load balances');
         
-        console.log('[BALANCE] RESPONSE STATUS:', res.status);
-        
-        if (!res.ok) throw new Error('Failed to generate Balance Sheet');
-        const data = await res.json();
-        
-        console.log('[BALANCE] RESPONSE PAYLOAD:', JSON.stringify(data, null, 2));
-        
+        const data = await response.json();
+        console.log('[BALANCE] Data received:', data);
+
         if (data.status === 'success') {
-            currentBalanceData = data;
-            renderBalanceSheet(data);
+            renderBalances(data.balances);
         } else {
-            container.innerHTML = `<p class="text-muted" style="color:#dc3545;">${data.error || 'Error loading Balance Sheet'}</p>`;
+            container.innerHTML = `<p class="text-muted" style="color:#dc3545;">${data.error || 'Error loading balances'}</p>`;
         }
-    } catch (err) {
-        console.error('[BALANCE] Error:', err);
-        container.innerHTML = `<p class="text-muted" style="color:#dc3545;">Error: ${err.message}</p>`;
+    } catch (error) {
+        console.error('[BALANCE] Error:', error);
+        container.innerHTML = `<p class="text-muted" style="color:#dc3545;">Error: ${error.message}</p>`;
     }
 }
-
-function renderBalanceSheet(data) {
+function renderBalances(balances) {
+    console.log('[BALANCE] Rendering balances:', balances);
     const container = document.getElementById('balance-result');
-    if (!data.report || data.report.length === 0) {
-        container.innerHTML = '<p class="text-muted" style="color:#666;">No data for this period.</p>';
+    
+    if (!container) {
+        console.error('[BALANCE] Container not found');
         return;
     }
     
-    let html = `<table style="width:100%; border-collapse:collapse; font-size:14px; color:#000;">
-        <thead>
-            <tr style="background:#f8f9fa;">
-                <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd; color:#000;">Account</th>
-                <th style="padding:8px 12px; text-align:right; border-bottom:2px solid #ddd; color:#000;">Balance</th>
-            </tr>
-        </thead>
-        <tbody>`;
-    
-    data.report.forEach(item => {
-        const balance = item.balance || 0;
-        const name = item.name || '';
+    if (!balances || balances.length === 0) {
+        container.innerHTML = '<p class="text-muted" style="color:#666;">No balances found.</p>';
+        return;
+    }
+
+    let html = `
+        <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:14px; color:#000; background:#fff; border:1px solid #ddd;">
+                <thead>
+                    <tr style="background:#f8f9fa; border-bottom:2px solid #ddd;">
+                        <th style="padding:10px 12px; text-align:left; color:#000; font-weight:bold;">ID</th>
+                        <th style="padding:10px 12px; text-align:left; color:#000; font-weight:bold;">Account Name</th>
+                        <th style="padding:10px 12px; text-align:right; color:#000; font-weight:bold;">Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    balances.forEach(function(item) {
+        var balance = item.balance || 0;
+        var isPositive = balance >= 0;
+        var color = isPositive ? '#28a745' : '#dc3545';
+        var displayBalance = balance.toFixed(2);
         
-        html += `<tr>
-            <td style="padding:8px 12px; border-bottom:1px solid #eee; color:#000;">${name}</td>
-            <td style="padding:8px 12px; text-align:right; border-bottom:1px solid #eee; color:#000;">$${balance.toFixed(2)}</td>
-        </tr>`;
+        html += `
+            <tr style="border-bottom:1px solid #eee;">
+                <td style="padding:8px 12px; color:#000;">${item.id}</td>
+                <td style="padding:8px 12px; color:#000;">${item.name}</td>
+                <td style="padding:8px 12px; text-align:right; color:${color}; font-weight:600;">$${displayBalance}</td>
+            </tr>
+        `;
     });
+
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
     
-    html += '</tbody></table>';
     container.innerHTML = html;
+    console.log('[BALANCE] Render complete');
 }
-
-function exportBalanceCSV() {
-    console.log('[BALANCE] Exporting CSV');
-    if (!currentBalanceData || !currentBalanceData.report) {
-        alert('Please load Balance Sheet data first.');
-        return;
-    }
-    
-    const headers = Object.keys(currentBalanceData.report[0]);
-    let csv = headers.join(',') + '\n';
-    currentBalanceData.report.forEach(row => {
-        const vals = headers.map(h => {
-            let v = row[h];
-            if (typeof v === 'string' && v.includes(',')) v = '"' + v + '"';
-            return v;
-        });
-        csv += vals.join(',') + '\n';
-    });
-    
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `balance_${document.getElementById('balance-start').value}_to_${document.getElementById('balance-end').value}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-}
-
+ 
 // ============================================================
 // MONTHLY P&L BAR CHARTS
 // ============================================================
@@ -3454,9 +3433,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('[INIT] Custom P&L tab selected');
                 initCustomPL();
             }
+             
             else if (sub === 'balance') {
                 console.log('[INIT] Balance tab selected');
-                initBalanceSheet();
+                loadBalances();
             }
             else if (sub === 'monthly-pl') {
                 console.log('[INIT] Monthly P&L tab selected');

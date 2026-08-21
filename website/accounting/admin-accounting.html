@@ -264,26 +264,15 @@
             <div id="custom-pl-result" class="report-result"><p class="text-muted" style="color:#666;">Select a date range to view P&L data.</p></div>
         </div>
 
-        <!-- BALANCE TAB -->
-        <div id="sub-balance" class="sub-tab-content">
-            <h4 style="color:#000;"><i class="fas fa-balance-sheet"></i> Balance Sheet</h4>
-            <p class="text-muted" style="color:#666;">Select a date range to view balance sheet data. Data loads automatically when you change the dates.</p>
 
-            <div class="report-selector" style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:20px; align-items:flex-end; background:#f8f9fa; padding:15px; border-radius:8px;">
-                <div class="form-group">
-                    <label style="color:#000; font-weight:600;">Start Date</label>
-                    <input type="month" id="balance-start" style="padding:8px 12px; border:1px solid #ddd; border-radius:4px; font-size:14px; color:#000; background:#fff;">
-                </div>
-                <div class="form-group">
-                    <label style="color:#000; font-weight:600;">End Date</label>
-                    <input type="month" id="balance-end" style="padding:8px 12px; border:1px solid #ddd; border-radius:4px; font-size:14px; color:#000; background:#fff;">
-                </div>
-                <button class="btn btn-success" onclick="exportBalanceCSV()" style="padding:8px 20px;">
-                    <i class="fas fa-download"></i> Export CSV
-                </button>
-            </div>
-            <div id="balance-result" class="report-result"><p class="text-muted" style="color:#666;">Select a date range to view balance sheet data.</p></div>
-        </div>
+        <!-- BALANCE TAB -->
+<div id="sub-balance" class="sub-tab-content">
+    <h4 style="color:#000;"><i class="fas fa-balance-sheet"></i> Balance Sheet</h4>
+    <p class="text-muted" style="color:#666;">All account balances from bank transactions.</p>
+    <div id="balance-result" class="report-result">
+        <p class="text-muted" style="color:#666;">Loading balances...</p>
+    </div>
+</div>
 
         <!-- MONTHLY P&L TAB -->
         <div id="sub-monthly-pl" class="sub-tab-content">
