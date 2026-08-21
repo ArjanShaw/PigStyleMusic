@@ -388,10 +388,6 @@ async function connectPayPalPlaid() {
     }
 }
 
-// ============================================================
-// ACCOUNT DROPDOWNS
-// ============================================================
-
 async function loadAccountSelects() {
     console.log('[ACCOUNTS] loadAccountSelects called');
     try {
@@ -407,7 +403,8 @@ async function loadAccountSelects() {
             cachedAccounts = data.accounts;
             console.log('[ACCOUNTS] bankAccounts length:', bankAccounts.length);
 
-            const selects = document.querySelectorAll('.manual-account, #journal-account-filter');
+            // Populate all account dropdowns
+            const selects = document.querySelectorAll('.manual-account, #journal-account-filter, #bulk-account-select');
             selects.forEach(sel => {
                 const currentVal = sel.value;
                 sel.innerHTML = '<option value="">Select Account</option>';
@@ -460,11 +457,6 @@ async function loadReconcileAccountSelects() {
         console.error('[RECONCILE] Error loading accounts:', err);
     }
 }
-
-// ============================================================
-// BULK ACCOUNT ASSIGNMENT
-// ============================================================
-
 function populateBulkAccountSelect() {
     console.log('[BULK] populateBulkAccountSelect called');
     const accountSelect = document.getElementById('bulk-account-select');
@@ -474,16 +466,11 @@ function populateBulkAccountSelect() {
         return;
     }
     
-    const selectedCheckboxes = document.querySelectorAll('#bank-body .transaction-select:checked');
-
-    if (selectedCheckboxes.length === 0) {
-        accountSelect.style.display = 'none';
-        accountSelect.innerHTML = '<option value="">Select Account</option>';
-        console.log('[BULK] No checkboxes selected, hiding select');
-        return;
-    }
-
+    // Always show the dropdown - it should be visible
     accountSelect.style.display = 'inline-block';
+    document.getElementById('bulk-assign-btn').style.display = 'inline-block';
+    
+    const selectedCheckboxes = document.querySelectorAll('#bank-body .transaction-select:checked');
 
     let hasPositive = false;
     let hasNegative = false;
@@ -509,7 +496,7 @@ function populateBulkAccountSelect() {
         if (hasMixed) return true;
         if (hasPositive) return acc.type === 'revenue';
         if (hasNegative) return (acc.type === 'expense' || acc.type === 'revenue' || acc.type === 'liability');
-        return false;
+        return true; // Show all if no selection
     });
 
     accountsToShow.forEach(acc => {
@@ -990,6 +977,8 @@ function viewJournalEntry(entryId) {
 // TRANSACTIONS TAB - SIMPLIFIED
 // ============================================================
 
+let currentSearchTerm = '';
+
 async function loadBankTransactions() {
     console.log('[BANK] Loading transactions');
     const body = document.getElementById('bank-body');
@@ -1001,16 +990,30 @@ async function loadBankTransactions() {
 
     try {
         const filterValue = document.getElementById('unposted-filter')?.value || 'unposted';
+        const searchTerm = document.getElementById('transaction-search')?.value || '';
+        currentSearchTerm = searchTerm;
+        
         console.log('[BANK] Filter:', filterValue);
+        console.log('[BANK] Search:', searchTerm);
         
         let url = `${AppConfig.baseUrl}/api/accounting/bank-transactions-full`;
+        const params = new URLSearchParams();
         
         if (filterValue === 'unposted') {
-            url += '?filter=unposted';
+            params.append('filter', 'unposted');
         } else if (filterValue === 'posted') {
-            url += '?filter=posted';
+            params.append('filter', 'posted');
         } else {
-            url += '?filter=all';
+            params.append('filter', 'all');
+        }
+        
+        if (searchTerm) {
+            params.append('search', searchTerm);
+        }
+        
+        const queryString = params.toString();
+        if (queryString) {
+            url += '?' + queryString;
         }
         
         console.log('[BANK] Fetching URL:', url);
@@ -1036,6 +1039,13 @@ async function loadBankTransactions() {
             if (paginationInfo) {
                 paginationInfo.textContent = `Showing ${data.transactions.length} entries (${data.total_count} total)`;
             }
+            
+            // Show bulk assign if there are search results
+            const bulkSelect = document.getElementById('bulk-account-select');
+            if (bulkSelect && searchTerm && data.transactions.length > 0) {
+                bulkSelect.style.display = 'inline-block';
+                document.getElementById('bulk-assign-btn').style.display = 'inline-block';
+            }
         } else {
             body.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error loading transactions'}</td></tr>`;
         }
@@ -1044,7 +1054,6 @@ async function loadBankTransactions() {
         body.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:40px; color:#dc3545;">Error: ${error.message}</td></tr>`;
     }
 }
-
 function renderBankTransactions(transactions) {
     console.log('[BANK] Rendering transactions, bankAccounts length:', bankAccounts.length);
     const body = document.getElementById('bank-body');
@@ -1066,16 +1075,19 @@ function renderBankTransactions(transactions) {
         return;
     }
 
+    // Populate bulk dropdown
+    populateBulkAccountSelect();
+
     let html = '';
 
     transactions.forEach(transaction => {
         const amount = parseFloat(transaction.amount) || 0;
         const isDebit = amount < 0;
         const formattedAmount = (isDebit ? '-' : '') + '$' + Math.abs(amount).toFixed(2);
-        const statusText = transaction.processed ? '✅ Posted' : '⏳ Unposted';
-        const rowClass = transaction.processed ? 'bank-row-posted' : 'bank-row-unposted';
+        const isProcessed = transaction.post_to !== null && transaction.post_to !== undefined;
+        const statusText = isProcessed ? '✅ Posted' : '⏳ Unposted';
+        const rowClass = isProcessed ? 'bank-row-posted' : 'bank-row-unposted';
         const transactionId = transaction.id;
-        const isProcessed = transaction.processed || false;
 
         let postFromOptionsHtml = '<option value="">Select Account</option>';
         bankAccounts.forEach(account => {
@@ -1106,7 +1118,7 @@ function renderBankTransactions(transactions) {
                 ${isProcessed ? '<span style="font-size:11px; color:#28a745; margin-left:5px;">(update)</span>' : ''}
             </td>
             <td>
-                <select class="post-to-select" data-transaction-id="${transactionId}" data-initial-account="${transaction.post_to || ''}" style="min-width:150px; padding:4px 8px; border:1px solid #ddd; border-radius:4px; font-size:12px; color:#000; background:#fff;">
+                <select class="post-to-select" data-transaction-id="${transactionId}" data-initial-account="${transaction.post_to || ''}" data-amount="${amount}" style="min-width:150px; padding:4px 8px; border:1px solid #ddd; border-radius:4px; font-size:12px; color:#000; background:#fff;">
                     ${postToOptionsHtml}
                 </select>
                 ${isProcessed ? '<span style="font-size:11px; color:#28a745; margin-left:5px;">(update)</span>' : ''}
@@ -1132,6 +1144,7 @@ function renderBankTransactions(transactions) {
             }
             const selectAll = document.getElementById('select-all-transactions');
             if (selectAll) selectAll.checked = false;
+            populateBulkAccountSelect();
         });
     });
 
@@ -1140,8 +1153,15 @@ function renderBankTransactions(transactions) {
         selectAll.addEventListener('change', function() {
             const checkboxes = document.querySelectorAll('#bank-body .transaction-select:not(:disabled)');
             checkboxes.forEach(checkbox => checkbox.checked = this.checked);
+            populateBulkAccountSelect();
         });
     }
+    
+    document.querySelectorAll('#bank-body .transaction-select').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            populateBulkAccountSelect();
+        });
+    });
 }
 
 function updateBankCounts(unprocessed, total) {
@@ -1154,24 +1174,14 @@ function updateBankCounts(unprocessed, total) {
     if (labelEl) labelEl.textContent = ' unprocessed transactions';
     if (totalEl) totalEl.textContent = `(${total} total)`;
 }
-
-function clearAllSelections() {
-    console.log('[BANK] clearAllSelections called');
-    document.querySelectorAll('#bank-body .post-from-select, #bank-body .post-to-select').forEach(select => {
-        const initialAccount = select.dataset.initialAccount || '';
-        select.value = initialAccount;
-        select.classList.remove('changed');
-    });
-    
-    document.querySelectorAll('#bank-body .transaction-select').forEach(checkbox => {
-        checkbox.checked = false;
-    });
-    const selectAll = document.getElementById('select-all-transactions');
-    if (selectAll) selectAll.checked = false;
-    const statusEl = document.getElementById('post-status');
-    if (statusEl) statusEl.textContent = '';
-    
-    showToast('All selections cleared', 'info');
+ 
+function clearSearch() {
+    console.log('[BANK] Clearing search');
+    document.getElementById('transaction-search').value = '';
+    currentSearchTerm = '';
+    document.getElementById('bulk-account-select').style.display = 'none';
+    document.getElementById('bulk-assign-btn').style.display = 'none';
+    loadBankTransactions();
 }
 
 async function postAllUnprocessedTransactions() {
@@ -1185,50 +1195,48 @@ async function postAllUnprocessedTransactions() {
         return;
     }
     
+    // Get rows where post_to IS NULL (unprocessed)
+    const unprocessedRows = document.querySelectorAll('#bank-body tr[data-processed="false"]');
+    
+    if (unprocessedRows.length === 0) {
+        if (statusElement) statusElement.textContent = '✅ No unprocessed transactions to post';
+        showToast('No unprocessed transactions found.', 'info');
+        return;
+    }
+
+    const updates = [];
+    
+    unprocessedRows.forEach(row => {
+        const transactionId = row.dataset.transactionId;
+        const postFromSelect = row.querySelector('.post-from-select');
+        const postToSelect = row.querySelector('.post-to-select');
+        
+        const postFrom = postFromSelect ? postFromSelect.value : null;
+        const postTo = postToSelect ? postToSelect.value : null;
+        
+        if (postFrom && postTo) {
+            updates.push({
+                transaction_id: transactionId,
+                post_from: parseInt(postFrom),
+                post_to: parseInt(postTo)
+            });
+        } else {
+            console.warn('[BANK] Skipping transaction', transactionId, 'missing post_from or post_to');
+        }
+    });
+
+    if (updates.length === 0) {
+        if (statusElement) statusElement.textContent = '⚠️ No transactions have both Post From and Post To selected';
+        showToast('Please select both Post From and Post To accounts for each transaction.', 'warning');
+        return;
+    }
+
+    // Disable button while processing
     postButton.disabled = true;
     postButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Posting...';
-    if (statusElement) statusElement.textContent = 'Processing all unprocessed transactions...';
+    if (statusElement) statusElement.textContent = 'Processing...';
 
     try {
-        const unprocessedRows = document.querySelectorAll('#bank-body tr[data-processed="false"]');
-        
-        if (unprocessedRows.length === 0) {
-            if (statusElement) statusElement.textContent = '✅ No unprocessed transactions to post';
-            showToast('No unprocessed transactions found.', 'info');
-            postButton.disabled = false;
-            postButton.innerHTML = '<i class="fas fa-check-double"></i> Post Updates';
-            return;
-        }
-
-        const updates = [];
-        
-        unprocessedRows.forEach(row => {
-            const transactionId = row.dataset.transactionId;
-            const postFromSelect = row.querySelector('.post-from-select');
-            const postToSelect = row.querySelector('.post-to-select');
-            
-            const postFrom = postFromSelect ? postFromSelect.value : null;
-            const postTo = postToSelect ? postToSelect.value : null;
-            
-            if (postFrom && postTo) {
-                updates.push({
-                    transaction_id: transactionId,
-                    post_from: parseInt(postFrom),
-                    post_to: parseInt(postTo)
-                });
-            } else {
-                console.warn('[BANK] Skipping transaction', transactionId, 'missing post_from or post_to');
-            }
-        });
-
-        if (updates.length === 0) {
-            if (statusElement) statusElement.textContent = '⚠️ No transactions have both Post From and Post To selected';
-            showToast('Please select both Post From and Post To accounts for each transaction.', 'warning');
-            postButton.disabled = false;
-            postButton.innerHTML = '<i class="fas fa-check-double"></i> Post Updates';
-            return;
-        }
-
         console.log('[BANK] Sending', updates.length, 'updates to server');
 
         const response = await fetch(`${AppConfig.baseUrl}/api/accounting/bank/apply-all-unprocessed`, {
@@ -1251,21 +1259,28 @@ async function postAllUnprocessedTransactions() {
                 showToast(`⚠️ ${data.errors.length} transaction(s) failed. Check console.`, 'warning');
             }
 
+            // IMPORTANT: Force a fresh load of transactions AFTER posting
+            // This ensures the table shows updated data
             setTimeout(() => {
                 loadBankTransactions();
                 refreshAllBalances();
-            }, 1000);
+                // Reset button state after reload
+                postButton.disabled = false;
+                postButton.innerHTML = '<i class="fas fa-check-double"></i> Post Updates';
+            }, 500);
+            
         } else {
             const errorMessage = data.error || data.message || 'Unknown error';
             showToast('❌ Error: ' + errorMessage, 'error');
             if (statusElement) statusElement.textContent = '❌ ' + errorMessage;
             console.error('[BANK] Server error:', data);
+            postButton.disabled = false;
+            postButton.innerHTML = '<i class="fas fa-check-double"></i> Post Updates';
         }
     } catch (error) {
         console.error('[BANK] Post error:', error);
         showToast('❌ Error: ' + error.message, 'error');
         if (statusElement) statusElement.textContent = '❌ ' + error.message;
-    } finally {
         postButton.disabled = false;
         postButton.innerHTML = '<i class="fas fa-check-double"></i> Post Updates';
     }
@@ -2499,7 +2514,6 @@ function showMonthlyTransactions(month, accountId, accountName, excludeOrders = 
     }
 }
 
-
 function renderModalTransactions(transactions, accountName, dateRange, accountId = null) {
     console.log('[MODAL] ==================================================');
     console.log('[MODAL] RENDER MODAL TRANSACTIONS CALLED');
@@ -2517,7 +2531,6 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
         return;
     }
 
-    // Filter to only the selected account if accountId is provided
     let filteredTransactions = transactions;
     if (accountId) {
         const account = bankAccounts.find(a => a.id == accountId);
@@ -2595,6 +2608,7 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     body.innerHTML = html;
     console.log('[MODAL] Render complete');
 }
+
 async function unpostBankTransaction(transactionId) {
     console.log('[MODAL] Unposting bank transaction:', transactionId);
 
@@ -2627,7 +2641,6 @@ async function unpostBankTransaction(transactionId) {
                     const dateMatch = dateRange.match(/(\d{2})\/(\d{2})\/(\d{2})/);
                     if (dateMatch) {
                         const month = `20${dateMatch[3]}-${dateMatch[1]}`;
-                        // Refresh the modal data
                         if (accountId) {
                             showMonthlyTransactions(month, accountId, accountName, true);
                         } else {
@@ -2649,6 +2662,7 @@ async function unpostBankTransaction(transactionId) {
         showToast('❌ Error: ' + error.message, 'error');
     }
 }
+
 async function unpostTransaction(entryId) {
     console.log('[MODAL] Unposting transaction:', entryId);
 
@@ -3505,6 +3519,80 @@ document.addEventListener('DOMContentLoaded', function() {
         if (journalCurrentPage < totalPages) { journalCurrentPage++; loadJournalEntries(); }
     });
 
+    // Search and filter event listeners
+    document.getElementById('search-btn')?.addEventListener('click', function() {
+        loadBankTransactions();
+    });
+    
+    document.getElementById('transaction-search')?.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            loadBankTransactions();
+        }
+    });
+    
+    document.getElementById('clear-search-btn')?.addEventListener('click', function() {
+        document.getElementById('transaction-search').value = '';
+        document.getElementById('bulk-account-select').style.display = 'none';
+        document.getElementById('bulk-assign-btn').style.display = 'none';
+        loadBankTransactions();
+    });
+
+    document.getElementById('unposted-filter')?.addEventListener('change', function() {
+        loadBankTransactions();
+    });
+
+    document.getElementById('post-updates-btn')?.addEventListener('click', function() {
+        postAllUnprocessedTransactions();
+    });
+
+    
+
+    document.getElementById('refresh-btn')?.addEventListener('click', function() {
+        loadBankTransactions();
+    });
+
+    // Bulk assign
+    document.getElementById('bulk-assign-btn')?.addEventListener('click', function() {
+        const accountSelect = document.getElementById('bulk-account-select');
+        const selectedAccount = accountSelect ? accountSelect.value : null;
+        
+        if (!selectedAccount) {
+            showToast('Please select an account to assign.', 'warning');
+            return;
+        }
+        
+        const searchTerm = document.getElementById('transaction-search')?.value || '';
+        if (!searchTerm) {
+            showToast('Please enter a search term first.', 'warning');
+            return;
+        }
+        
+        // Find all visible rows that match the search term
+        const rows = document.querySelectorAll('#bank-body tr');
+        let assignedCount = 0;
+        
+        rows.forEach(row => {
+            const descCell = row.querySelector('td:nth-child(4)');
+            if (!descCell) return;
+            
+            const desc = descCell.textContent || '';
+            if (desc.toLowerCase().includes(searchTerm.toLowerCase())) {
+                const select = row.querySelector('.post-to-select');
+                if (select && !select.disabled) {
+                    select.value = selectedAccount;
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                    select.classList.add('changed');
+                    assignedCount++;
+                }
+            }
+        });
+        
+        showToast(`Account assigned to ${assignedCount} transaction(s)`, 'success');
+        accountSelect.value = '';
+        accountSelect.style.display = 'none';
+        document.getElementById('bulk-assign-btn').style.display = 'none';
+    });
+
     loadAccountSelects();
     loadBankTransactions();
     loadAccountBalances();
@@ -3534,25 +3622,6 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('Error: ' + err.message);
         });
     }
-
-    const unpostedFilter = document.getElementById('unposted-filter');
-    if (unpostedFilter) {
-        unpostedFilter.addEventListener('change', function() {
-            loadBankTransactions();
-        });
-    }
-
-    document.getElementById('post-updates-btn')?.addEventListener('click', function() {
-        postAllUnprocessedTransactions();
-    });
-
-    document.getElementById('clear-selections-btn')?.addEventListener('click', function() {
-        clearAllSelections();
-    });
-
-    document.getElementById('refresh-btn')?.addEventListener('click', function() {
-        loadBankTransactions();
-    });
 
     document.getElementById('add-account-btn')?.addEventListener('click', function() {
         console.log('[INIT] Add account button clicked');
