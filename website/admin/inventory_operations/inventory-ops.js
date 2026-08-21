@@ -103,6 +103,7 @@
     let genres = [];
     let formats = [];
     let locations = [];
+    let locationMap = {};
     let _initialized = false;
 
     let allRecords = [];
@@ -167,7 +168,61 @@
         'discogs_orders': discogsOrdersModeContainer
     };
 
-    // ========== Helper Functions ==========
+     function getRecordDisplay(record) {
+    if (!record) {
+        throw new Error('getRecordDisplay: record is null or undefined');
+    }
+    
+    var artist = record.artist && record.artist.trim() ? record.artist.trim() : null;
+    var title = record.title && record.title.trim() ? record.title.trim() : null;
+    
+    if (!artist) {
+        throw new Error('getRecordDisplay: artist is missing or empty for record ID ' + record.id);
+    }
+    
+    if (!title) {
+        throw new Error('getRecordDisplay: title is missing or empty for record ID ' + record.id + ' (artist: ' + artist + ')');
+    }
+    
+    return artist + ' - ' + title;
+}
+
+    function getShortRecordDisplay(record, maxLength) {
+        maxLength = maxLength || 40;
+        var display = getRecordDisplay(record);
+        if (display.length > maxLength) {
+            return display.substring(0, maxLength - 3) + '…';
+        }
+        return display;
+    }
+
+    function getLocationDisplay(locationId) {
+        if (!locationId) return '—';
+        var loc = locationMap[locationId];
+        if (!loc) return '—';
+        if (loc.genre_name) {
+            return loc.genre_name + ' - ' + loc.name;
+        }
+        return loc.name;
+    }
+
+    function getShortLocationDisplay(locationId, maxLength) {
+        maxLength = maxLength || 30;
+        var display = getLocationDisplay(locationId);
+        if (display.length > maxLength) {
+            return display.substring(0, maxLength - 3) + '…';
+        }
+        return display;
+    }
+
+    function getLocationById(id) {
+        return locationMap[id] || null;
+    }
+
+    // ================================================================
+    // ========== LEGACY HELPER FUNCTIONS ==========
+    // ================================================================
+
     function escapeHtml(text) {
         if (!text) return '';
         const div = document.createElement('div');
@@ -379,9 +434,14 @@
             var data = await apiRequest('GET', '/api/genres');
             genres = data.genres || [];
             console.log('✅ Loaded ' + genres.length + ' genres from server:', genres);
+            window._genreMap = {};
+            genres.forEach(function(g) {
+                window._genreMap[g.id] = g.name;
+            });
         } catch (e) {
             console.warn('Could not load genres:', e);
             genres = [];
+            window._genreMap = {};
         }
     }
 
@@ -401,12 +461,26 @@
         console.log('📥 loadLocations: Fetching locations from server...');
         try {
             var data = await apiRequest('GET', '/api/locations');
-            locations = data.locations || [];
-            console.log('✅ Loaded ' + locations.length + ' locations from server:', locations);
+            var rawLocations = data.locations || [];
+            
+            locationMap = {};
+            rawLocations.forEach(function(loc) {
+                var genreName = window._genreMap && window._genreMap[loc.genre_id] ? window._genreMap[loc.genre_id] : null;
+                locationMap[loc.id] = {
+                    id: loc.id,
+                    name: loc.name,
+                    genre_id: loc.genre_id,
+                    genre_name: genreName
+                };
+            });
+            
+            locations = rawLocations;
+            console.log('✅ Loaded ' + locations.length + ' locations from server with genre mapping');
             populateLocationDropdown(locations);
         } catch (e) {
             console.warn('Could not load locations:', e);
             locations = [];
+            locationMap = {};
         }
     }
 
@@ -428,7 +502,12 @@
         locationsList.forEach(function(loc) {
             var opt = document.createElement('option');
             opt.value = loc.id;
-            opt.textContent = loc.name;
+            var displayName = loc.name;
+            var locData = locationMap[loc.id];
+            if (locData && locData.genre_name) {
+                displayName = locData.genre_name + ' - ' + loc.name;
+            }
+            opt.textContent = displayName;
             scanLocationSelect.appendChild(opt);
         });
         
@@ -445,14 +524,9 @@
         var lastRecordData = await apiRequest('GET', '/records?limit=1&order_by=created_at&order=desc');
         var lastRecord = lastRecordData.records && lastRecordData.records.length > 0 ? lastRecordData.records[0] : null;
         if (lastRecord) {
-            var artist = lastRecord.artist || 'Unknown';
-            var title = lastRecord.title || 'Unknown';
-            var price = lastRecord.store_price ? '$' + lastRecord.store_price.toFixed(2) : '';
-            var shortArtist = artist.length > 20 ? artist.substring(0, 20) + '…' : artist;
-            var shortTitle = title.length > 20 ? title.substring(0, 20) + '…' : title;
-            var display = shortArtist + ' - ' + shortTitle;
-            if (price) display += ' - ' + price;
-            document.getElementById('last-added-record').textContent = display;
+            var display = getShortRecordDisplay(lastRecord, 45);
+            var price = lastRecord.store_price ? ' - $' + lastRecord.store_price.toFixed(2) : '';
+            document.getElementById('last-added-record').textContent = display + price;
         } else {
             document.getElementById('last-added-record').textContent = 'None';
         }
@@ -1256,7 +1330,6 @@
 
             if (data.status === 'success') {
                 if (currentPurchaseRecords.length > 0) {
-                    // Use the new LabelPrinter to generate price tags
                     if (window.LabelPrinter) {
                         await window.LabelPrinter.generatePriceTags(currentPurchaseRecords, {
                             title: 'Price Tags - Purchase #' + purchaseId
@@ -1353,9 +1426,9 @@
         for (var i = 0; i < records.length; i++) {
             var record = records[i];
             var price = record.store_price || 0;
-            var itemLine = record.artist + ' - ' + record.title;
-            var padding = Math.max(1, 30 - itemLine.length);
-            bill += itemLine;
+            var display = getRecordDisplay(record);
+            var padding = Math.max(1, 30 - display.length);
+            bill += display;
             bill += ' '.repeat(padding);
             bill += '$' + price.toFixed(2) + '\n';
             totalValue += price;
@@ -1884,7 +1957,8 @@
             
             if (data.status === 'success') {
                 var price = data.record ? data.record.store_price : 'unknown';
-                showStatus('✅ Record #' + recordId + ' marked as sold on Discogs for $' + price, 'success');
+                var display = getShortRecordDisplay(data.record || { id: recordId }, 30);
+                showStatus('✅ Record #' + recordId + ' (' + display + ') marked as sold on Discogs for $' + price, 'success');
                 playSound('success');
                 
                 if (currentSearchMode === 'discogs_orders' && selectedOrderId) {
@@ -2110,8 +2184,7 @@
                     rowHtml += '<td><button class="btn-add-record-from-search" data-index="' + globalIndex + '" style="background:#28a745; color:white; border:none; border-radius:4px; padding:4px 8px; cursor:pointer;"><i class="fas fa-plus"></i> Add</button></td>';
                 } else if (currentSearchMode === 'add' && currentMode !== 'search') {
                     var id = record.id;
-                    var artist = record.artist || 'Unknown';
-                    var title = record.title || 'Unknown';
+                    var display = getRecordDisplay(record);
                     var price = record.store_price ? '$' + record.store_price.toFixed(2) : 'N/A';
                     var catalog = record.catalog_number || '—';
                     var sleeveCondition = record.sleeve_condition_name || '—';
@@ -2121,8 +2194,7 @@
                     
                     rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
                     rowHtml += '<td>' + id + '</td>';
-                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
-                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(display) + '</td>';
                     rowHtml += '<td>' + price + '</td>';
                     rowHtml += '<td>' + escapeHtml(catalog) + '</td>';
                     rowHtml += '<td>' + escapeHtml(sleeveCondition) + '</td>';
@@ -2137,29 +2209,26 @@
                     }
                 } else if (currentSearchMode === 'scan') {
                     var id = record.id;
-                    var artist = record.artist || 'Unknown';
-                    var title = record.title || 'Unknown';
+                    var display = getRecordDisplay(record);
                     var price = record.store_price ? '$' + record.store_price.toFixed(2) : 'N/A';
                     var barcode = record.barcode || record.id;
                     var lastSeen = record.last_seen ? new Date(record.last_seen).toLocaleDateString() : 'Never';
-                    var locationName = record.location_name || '—';
+                    var locationDisplay = getLocationDisplay(record.location_id);
                     rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
                     rowHtml += '<td>' + id + '</td>';
-                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
-                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(display) + '</td>';
                     rowHtml += '<td>' + price + '</td>';
                     rowHtml += '<td><span class="barcode-value">' + barcode + '</span></td>';
                     rowHtml += '<td>' + lastSeen + '</td>';
                 } else if (currentSearchMode === 'discogs') {
                     var id = record.id;
-                    var artist = record.artist || 'Unknown';
-                    var title = record.title || 'Unknown';
+                    var display = getRecordDisplay(record);
                     var catalog = record.catalog_number || '—';
                     var mediaCond = record.disc_condition_name || '—';
                     var sleeveCond = record.sleeve_condition_name || '—';
                     var storePrice = record.store_price ? '$' + parseFloat(record.store_price).toFixed(2) : '—';
                     var imageUrl = record.image_url && record.image_url !== '' && record.image_url !== 'None' ? record.image_url : null;
-                    var location = record.location || '—';
+                    var locationDisplay = getLocationDisplay(record.location_id);
                     var discogsPrice = record._discogsPrice !== undefined ? record._discogsPrice : null;
                     var markupPercent = record._markupPercent !== undefined ? record._markupPercent : null;
                     var displayDiscogsPrice = discogsPrice ? '$' + discogsPrice.toFixed(2) : '—';
@@ -2167,27 +2236,25 @@
                     var displayMarkup = (markupPercent !== null) ? (markupPercent > 0 ? '+' : '') + markupPercent + '%' : '—';
 
                     var imgHtml = imageUrl ? 
-                        '<img src="' + escapeHtml(imageUrl) + '" style="width:80px; height:80px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="expandImage(\'' + escapeHtml(imageUrl) + '\', \'' + escapeHtml(artist) + ' - ' + escapeHtml(title) + '\')" title="Click to expand">' : 
+                        '<img src="' + escapeHtml(imageUrl) + '" style="width:80px; height:80px; object-fit:cover; border-radius:4px; cursor:pointer;" onclick="expandImage(\'' + escapeHtml(imageUrl) + '\', \'' + escapeHtml(display) + '\')" title="Click to expand">' : 
                         '<div style="width:80px; height:80px; background:#e0e0e0; border-radius:4px;"></div>';
 
                     rowHtml += '<td style="text-align:center; white-space:nowrap;">' + rangeButtons + '</td>';
                     rowHtml += '<td style="text-align:center;">' + imgHtml + '</td>';
                     rowHtml += '<td>' + id + '</td>';
-                    rowHtml += '<td><strong>' + escapeHtml(artist) + '</strong></td>';
-                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td><strong>' + escapeHtml(display) + '</strong></td>';
                     rowHtml += '<td>' + escapeHtml(catalog) + '</td>';
                     rowHtml += '<td>' + escapeHtml(mediaCond) + '</td>';
                     rowHtml += '<td>' + escapeHtml(sleeveCond) + '</td>';
                     rowHtml += '<td>' + storePrice + '</td>';
                     rowHtml += '<td class="discogs-price-cell" style="' + (discogsPrice ? 'color: #28a745; font-weight: bold;' : 'color: #999;') + '">' + displayDiscogsPrice + '</td>';
                     rowHtml += '<td class="markup-cell ' + markupClass + '">' + displayMarkup + '</td>';
-                    rowHtml += '<td title="' + escapeHtml(location) + '" style="font-size: 12px;">' + escapeHtml(location.length > 30 ? location.substring(0,27)+'...' : location) + '</td>';
-                    rowHtml += '<td style="text-align: center;">' + (discogsPrice ? '<button class="post-single-btn" data-record-id="' + record.id + '" data-artist="' + escapeHtml(artist) + '" data-title="' + escapeHtml(title) + '" data-price="' + record.store_price + '" data-discogs-price="' + discogsPrice + '" data-markup-percent="' + markupPercent + '" data-media-condition="' + mediaCond + '" data-sleeve-condition="' + sleeveCond + '" data-catalog="' + escapeHtml(catalog) + '" data-location="' + escapeHtml(location) + '" data-notes="' + escapeHtml(record.notes || '') + '"><i class="fab fa-discogs"></i> Post</button>' : '<span style="color: #999;">—</span>') + '</td>';
+                    rowHtml += '<td title="' + escapeHtml(locationDisplay) + '" style="font-size: 12px;">' + escapeHtml(locationDisplay.length > 30 ? locationDisplay.substring(0,27)+'...' : locationDisplay) + '</td>';
+                    rowHtml += '<td style="text-align: center;">' + (discogsPrice ? '<button class="post-single-btn" data-record-id="' + record.id + '" data-artist="' + escapeHtml(record.artist || '') + '" data-title="' + escapeHtml(record.title || '') + '" data-display="' + escapeHtml(display) + '" data-price="' + record.store_price + '" data-discogs-price="' + discogsPrice + '" data-markup-percent="' + markupPercent + '" data-media-condition="' + mediaCond + '" data-sleeve-condition="' + sleeveCond + '" data-catalog="' + escapeHtml(catalog) + '" data-location="' + escapeHtml(locationDisplay) + '" data-notes="' + escapeHtml(record.notes || '') + '"><i class="fab fa-discogs"></i> Post</button>' : '<span style="color: #999;">—</span>') + '</td>';
                 } else if (currentSearchMode === 'discogs_orders') {
                     var orderItem = record;
                     var idxNum = globalIndex + 1;
-                    var artist = orderItem.artist || 'Unknown';
-                    var title = orderItem.title || 'Unknown';
+                    var display = getRecordDisplay(orderItem);
                     var catalog = orderItem.catalog_number || '—';
                     var barcode = orderItem.barcode || '—';
                     var price = orderItem.price || 0;
@@ -2207,8 +2274,7 @@
                     }
 
                     rowHtml += '<td>' + idxNum + '</td>';
-                    rowHtml += '<td>' + escapeHtml(artist) + '</td>';
-                    rowHtml += '<td>' + escapeHtml(title) + '</td>';
+                    rowHtml += '<td>' + escapeHtml(display) + '</td>';
                     rowHtml += '<td>' + escapeHtml(catalog) + '</td>';
                     rowHtml += '<td>' + escapeHtml(barcode) + '</td>';
                     rowHtml += '<td>$' + price.toFixed(2) + '</td>';
@@ -2274,6 +2340,7 @@
                     var recordId = parseInt(this.dataset.recordId);
                     var artist = this.dataset.artist;
                     var title = this.dataset.title;
+                    var display = this.dataset.display || artist + ' - ' + title;
                     var price = parseFloat(this.dataset.price);
                     var discogsPrice = parseFloat(this.dataset.discogsPrice);
                     var markupPercent = parseFloat(this.dataset.markupPercent);
@@ -2282,7 +2349,7 @@
                     var catalog = this.dataset.catalog;
                     var location = this.dataset.location;
                     var notes = this.dataset.notes;
-                    postSingleRecordToDiscogs(recordId, artist, title, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalog, location, notes);
+                    postSingleRecordToDiscogs(recordId, display, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalog, location, notes);
                 });
             });
         }
@@ -2380,7 +2447,8 @@
                     renderTablePage();
                 }
                 playSound('success');
-                showStatus('✅ Record #' + record.id + ' assigned to this order item.', 'success');
+                var display = getShortRecordDisplay(record, 30);
+                showStatus('✅ Record #' + record.id + ' (' + display + ') assigned to this order item.', 'success');
             } else if (data.records && data.records.length > 1) {
                 showStatus('⚠️ Multiple records (' + data.records.length + ') found for barcode. Please be more specific.', 'warning');
             } else {
@@ -2428,10 +2496,11 @@
     // ========== Scan Location Functions ==========
     function updateScanLocationPreview() {
         var locationId = scanLocationSelect ? parseInt(scanLocationSelect.value) : null;
-        var locationName = locationId ? locations.find(function(l) { return l.id === locationId; })?.name : '';
+        var locData = locationId ? getLocationById(locationId) : null;
+        var displayName = locData ? (locData.genre_name ? locData.genre_name + ' - ' + locData.name : locData.name) : '-- Please select a location --';
 
         if (scanLocationDisplay) {
-            scanLocationDisplay.textContent = locationName || '-- Please select a location --';
+            scanLocationDisplay.textContent = displayName;
         }
 
         if (scanIndexDisplay) {
@@ -2558,9 +2627,11 @@
             return;
         }
 
+        var display = getRecordDisplay(discogsRecord);
+
         var recordData = {
-            artist: discogsRecord.artist,
-            title: discogsRecord.title,
+            artist: discogsRecord.artist || 'Unknown',
+            title: discogsRecord.title || 'Unknown',
             discogs_genre_raw: discogsRecord.genre_raw || '',
             image_url: discogsRecord.image_url || '',
             catalog_number: discogsRecord.catalog_number || '',
@@ -2575,7 +2646,8 @@
         };
 
         var result = await apiRequest('POST', '/records', recordData);
-        showStatus('✅ Record #' + result.record.id + ' added successfully to purchase #' + selectedPurchaseId + '!', 'success');
+        var recordDisplay = result.record ? getShortRecordDisplay(result.record, 30) : 'Record';
+        showStatus('✅ ' + recordDisplay + ' added successfully to purchase #' + selectedPurchaseId + '!', 'success');
         
         await loadRecordsForPurchase(selectedPurchaseId);
         await loadPurchasesTable();
@@ -2668,25 +2740,54 @@
         if (recentScans.length > 0 && recentScans[0].record.id === record.id) {
             return;
         }
+
+        // THROW ERROR if title or artist is missing
+        if (!record.artist || !record.artist.trim()) {
+            throw new Error('addToRecentScans: artist is missing for record ID ' + record.id);
+        }
+        if (!record.title || !record.title.trim()) {
+            throw new Error('addToRecentScans: title is missing for record ID ' + record.id + ' (artist: ' + record.artist + ')');
+        }
+
+        // Create a clean copy with ALL fields explicitly preserved
+        var recordCopy = {
+            id: record.id,
+            artist: record.artist,
+            title: record.title,
+            barcode: record.barcode || '',
+            catalog_number: record.catalog_number || '',
+            store_price: record.store_price || 0,
+            status_id: record.status_id || null,
+            location_id: record.location_id || null,
+            location_index: record.location_index || null,
+            last_seen: record.last_seen || null,
+            image_url: record.image_url || ''
+        };
+
         recentScans.unshift({
-            record: record,
+            record: recordCopy,
             location: locationString,
             timestamp: Date.now()
         });
+
         if (recentScans.length > MAX_RECENT_SCANS) {
             recentScans.pop();
         }
+
         try {
             var serialized = recentScans.map(function(s) {
                 return {
                     recordId: s.record.id,
                     artist: s.record.artist,
+                    title: s.record.title,
                     location: s.location,
                     timestamp: s.timestamp
                 };
             });
             localStorage.setItem('recentScans', JSON.stringify(serialized));
-        } catch (e) {}
+        } catch (e) {
+            console.warn('Could not save recent scans:', e);
+        }
     }
 
     function loadRecentScansFromStorage() {
@@ -2696,8 +2797,12 @@
                 var parsed = JSON.parse(stored);
                 recentScans = parsed.map(function(item) {
                     return {
-                        record: { id: item.recordId, artist: item.artist || 'Unknown' },
-                        location: item.location,
+                        record: {
+                            id: item.recordId,
+                            artist: item.artist || 'Unknown Artist',
+                            title: item.title || 'Unknown Title2 - '
+                        },
+                        location: item.location || '',
                         timestamp: item.timestamp
                     };
                 });
@@ -2721,15 +2826,13 @@
         recentScans.forEach(function(scan, index) {
             var isLast = index === 0;
             var record = scan.record;
-            var artist = record.artist || 'Unknown';
-            var title = record.title || 'Unknown';
+            var display = getRecordDisplay(record);
             var location = scan.location || '—';
             var time = scan.timestamp ? new Date(scan.timestamp).toLocaleTimeString() : '';
             
             html += '<div class="recent-scan-item ' + (isLast ? 'recent-scan-last' : '') + '">';
             html += '<span class="scan-index-badge">#' + (index + 1) + '</span>';
-            html += '<span class="scan-artist">' + escapeHtml(artist) + '</span>';
-            html += '<span class="scan-title">' + escapeHtml(title) + '</span>';
+            html += '<span class="scan-artist-title">' + escapeHtml(display) + '</span>';
             html += '<span class="scan-location">' + escapeHtml(location) + '</span>';
             if (time) {
                 html += '<span class="scan-time">' + time + '</span>';
@@ -2740,17 +2843,17 @@
         
         if (lastScanDisplay && recentScans.length > 0) {
             var last = recentScans[0];
-            var artist = last.record.artist || 'Unknown';
-            var title = last.record.title || 'Unknown';
-            lastScanDisplay.textContent = 'Last: ' + escapeHtml(artist) + ' - ' + escapeHtml(title);
+            var display = getRecordDisplay(last.record);
+            lastScanDisplay.textContent = 'Last: ' + escapeHtml(display);
         }
     }
 
     async function performScanSearch(term) {
         var locationId = scanLocationSelect ? parseInt(scanLocationSelect.value) : null;
-        var locationName = locationId ? locations.find(function(l) { return l.id === locationId; })?.name : '';
+        var locData = locationId ? getLocationById(locationId) : null;
+        var locationDisplay = locData ? (locData.genre_name ? locData.genre_name + ' - ' + locData.name : locData.name) : null;
 
-        if (!locationId || !locationName) {
+        if (!locationId || !locationDisplay) {
             showStatus('Please select a location before scanning.', 'warning');
             playSound('error');
             return;
@@ -2805,16 +2908,19 @@
             if (bestScore > HIGH_CONFIDENCE_SCORE && (bestScore - secondScore) > GAP_THRESHOLD) {
                 selectedRecord = best.record;
                 confidence = 'high';
-                console.log('🎯 High confidence auto-select: ' + selectedRecord.artist + ' - ' + selectedRecord.title + ' (score ' + bestScore + ')');
+                var display = getShortRecordDisplay(selectedRecord, 30);
+                console.log('🎯 High confidence auto-select: ' + display + ' (score ' + bestScore + ')');
             } else if (bestScore > AUTO_SELECT_SCORE && (bestScore - secondScore) > AUTO_SELECT_GAP) {
                 selectedRecord = best.record;
                 confidence = 'medium';
-                console.log('🎯 Medium confidence auto-select: ' + selectedRecord.artist + ' - ' + selectedRecord.title + ' (score ' + bestScore + ')');
+                var display = getShortRecordDisplay(selectedRecord, 30);
+                console.log('🎯 Medium confidence auto-select: ' + display + ' (score ' + bestScore + ')');
             }
 
             if (selectedRecord) {
                 playSound('success');
-                showStatus('🎯 Auto-selected: ' + selectedRecord.artist + ' - ' + selectedRecord.title + ' (' + confidence + ' confidence)', 'success');
+                var display = getShortRecordDisplay(selectedRecord, 30);
+                showStatus('🎯 Auto-selected: ' + display + ' (' + confidence + ' confidence)', 'success');
                 await processScannedRecord(selectedRecord);
                 return;
             }
@@ -2833,7 +2939,8 @@
 
     async function processScannedRecord(record) {
         var locationId = scanLocationSelect ? parseInt(scanLocationSelect.value) : null;
-        var locationName = locationId ? locations.find(function(l) { return l.id === locationId; })?.name : '';
+        var locData = locationId ? getLocationById(locationId) : null;
+        var locationDisplay = locData ? (locData.genre_name ? locData.genre_name + ' - ' + locData.name : locData.name) : '';
 
         // Check if record already exists in the scanned list
         var existing = filteredRecords.find(function(r) { return r.id === record.id; });
@@ -2850,14 +2957,16 @@
                     last_seen: today
                 });
                 existing.last_seen = today;
-                existing.location_name = locationName;
+                existing.location_name = locationDisplay;
+                existing.location_id = locationId;
                 
                 renderPagination();
                 renderTablePage();
                 playSound('success');
-                showStatus('✅ Updated #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
+                var display = getShortRecordDisplay(record, 30);
+                showStatus('✅ Updated #' + record.id + ': ' + display, 'success');
                 if (scanInput) scanInput.value = '';
-                addToRecentScans(record, locationName || record.location_name || '');
+                addToRecentScans(record, locationDisplay || record.location_name || '');
                 updateRecentScansUI();
                 return;
             } catch (error) {
@@ -2879,7 +2988,7 @@
             record.location_id = locationId;
             record.location_index = index;
             record.last_seen = today;
-            record.location_name = locationName;
+            record.location_name = locationDisplay;
             
             filteredRecords.unshift(record);
             totalRecords = filteredRecords.length;
@@ -2889,10 +2998,11 @@
             renderPagination();
             renderTablePage();
             playSound('success');
-            showStatus('✅ Added #' + record.id + ': ' + record.artist + ' - ' + record.title, 'success');
+            var display = getShortRecordDisplay(record, 30);
+            showStatus('✅ Added #' + record.id + ': ' + display, 'success');
             updateSelectionCount();
             if (scanInput) scanInput.value = '';
-            addToRecentScans(record, locationName || '');
+            addToRecentScans(record, locationDisplay || '');
             updateScanCounter();
             updateRecentScansUI();
             updateScanLocationPreview();
@@ -3445,20 +3555,20 @@
     }
 
     // ========== Post Single Record to Discogs ==========
-    async function postSingleRecordToDiscogs(recordId, artist, title, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalogNumber, location, notes) {
+    async function postSingleRecordToDiscogs(recordId, display, price, discogsPrice, markupPercent, mediaCondition, sleeveCondition, catalogNumber, location, notes) {
         if (!recordId || !mediaCondition || !sleeveCondition || !price || !discogsPrice) {
             showDiscogsStatus('Missing required information', 'error');
             return;
         }
-        if (!confirm('📋 Post "' + artist + ' - ' + title + '" to Discogs?\n\nStore Price: $' + price + '\nDiscogs Price: $' + discogsPrice + ' (' + (markupPercent > 0 ? '+' : '') + markupPercent + '%)\nMedia: ' + mediaCondition + '\nSleeve: ' + sleeveCondition)) {
+        if (!confirm('📋 Post "' + display + '" to Discogs?\n\nStore Price: $' + price + '\nDiscogs Price: $' + discogsPrice + ' (' + (markupPercent > 0 ? '+' : '') + markupPercent + '%)\nMedia: ' + mediaCondition + '\nSleeve: ' + sleeveCondition)) {
             return;
         }
 
         var listingData = {
             record: {
                 id: recordId,
-                artist: artist,
-                title: title,
+                artist: display.split(' - ')[0] || 'Unknown',
+                title: display.split(' - ').slice(1).join(' - ') || 'Unknown',
                 catalog_number: catalogNumber || '',
                 media_condition: mediaCondition,
                 sleeve_condition: sleeveCondition,
@@ -3475,7 +3585,7 @@
                 if (!discogsUrl && result.listing_id) {
                     discogsUrl = 'https://www.discogs.com/sell/item/' + result.listing_id;
                 }
-                showDiscogsStatus('✅ Successfully posted "' + artist + ' - ' + title + '" to Discogs! ' + (discogsUrl ? '<a href="' + discogsUrl + '" target="_blank">View</a>' : ''), 'success');
+                showDiscogsStatus('✅ Successfully posted "' + display + '" to Discogs! ' + (discogsUrl ? '<a href="' + discogsUrl + '" target="_blank">View</a>' : ''), 'success');
                 refreshDiscogsRecords();
             } else {
                 showDiscogsStatus('Error: ' + result.error, 'error');
@@ -3623,7 +3733,8 @@
             updateDiscogsPostProgress(current, records.length);
 
             try {
-                updateDiscogsPostLog('info', '📝 Updating location for #' + record.id + ': ' + record.artist + ' - ' + record.title);
+                var display = getShortRecordDisplay(record, 30);
+                updateDiscogsPostLog('info', '📝 Updating location for #' + record.id + ': ' + display);
                 await apiRequest('PUT', '/records/' + record.id, { location: location });
 
                 updateDiscogsPostLog('info', '💰 Calculating price for #' + record.id + '...');
@@ -3645,13 +3756,13 @@
                     throw new Error('Could not calculate Discogs price');
                 }
 
-                updateDiscogsPostLog('info', '📤 Posting #' + record.id + ': ' + record.artist + ' - ' + record.title + ' at $' + discogsPrice + '...');
+                updateDiscogsPostLog('info', '📤 Posting #' + record.id + ': ' + display + ' at $' + discogsPrice + '...');
                 
                 var listingData = {
                     record: {
                         id: record.id,
-                        artist: record.artist,
-                        title: record.title,
+                        artist: record.artist || 'Unknown',
+                        title: record.title || 'Unknown',
                         catalog_number: record.catalog_number || '',
                         media_condition: record.disc_condition_name || record.sleeve_condition_name || 'Very Good Plus (VG+)',
                         sleeve_condition: record.sleeve_condition_name || record.disc_condition_name || 'Very Good Plus (VG+)',
@@ -3665,14 +3776,15 @@
 
                 if (result.success) {
                     successCount++;
-                    updateDiscogsPostLog('success', '✅ #' + record.id + ': ' + record.artist + ' - ' + record.title + ' posted successfully!');
+                    updateDiscogsPostLog('success', '✅ #' + record.id + ': ' + display + ' posted successfully!');
                 } else {
                     throw new Error(result.error || 'Discogs API returned error');
                 }
 
             } catch (error) {
                 failCount++;
-                updateDiscogsPostLog('error', '❌ #' + record.id + ': ' + record.artist + ' - ' + record.title + ' failed - ' + error.message);
+                var display = getShortRecordDisplay(record, 30);
+                updateDiscogsPostLog('error', '❌ #' + record.id + ': ' + display + ' failed - ' + error.message);
                 console.error('Error posting record #' + record.id, error);
             }
 
@@ -3726,7 +3838,6 @@
             return;
         }
 
-        // Use the new LabelPrinter module
         if (window.LabelPrinter) {
             await window.LabelPrinter.generatePriceTags(records);
         } else {

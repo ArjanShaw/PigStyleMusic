@@ -1037,6 +1037,7 @@
             }, 50);
         }
 
+        // ============ FIXED: openRecordPopup - Location without genre duplication ============
         function openRecordPopup(record) {
             var popup = document.getElementById('merchPopup');
             var content = document.getElementById('popupDynamicContent');
@@ -1048,9 +1049,16 @@
             var genre = record.discogs_genre_raw ? record.discogs_genre_raw.split(',')[0].trim() : '';
             var formatName = record.format_name || '';
             
+            // FIXED: Remove genre prefix from location name (if present)
             var locationText = '';
             if (record.location_name) {
-                locationText = record.location_name;
+                var parts = record.location_name.split(' - ');
+                if (parts.length > 1) {
+                    // Format: "Genre - LocationName" -> extract "LocationName"
+                    locationText = parts.slice(1).join(' - ');
+                } else {
+                    locationText = record.location_name;
+                }
                 if (record.location_index !== null && record.location_index !== undefined) {
                     locationText += ' - ' + record.location_index;
                 }
