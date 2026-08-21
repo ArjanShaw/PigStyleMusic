@@ -49,7 +49,6 @@
             <button class="sub-tab" data-subtab="monthly-pl"><i class="fas fa-chart-bar"></i> Monthly P&L</button>
         </div>
 
-
         <!-- TRANSACTIONS TAB -->
 <div id="sub-transactions" class="sub-tab-content active">
     <h4 style="color: #000;"><i class="fas fa-exchange-alt"></i> Bank & Account Transactions</h4>
@@ -89,10 +88,10 @@
         <!-- Bulk Assign -->
         <div style="display:flex; align-items:center; gap:10px;">
             <label for="bulk-account-select" style="font-weight:500; font-size:13px; color:#000; margin:0;">Bulk Assign To:</label>
-            <select id="bulk-account-select" style="padding:6px 12px; border:1px solid #ddd; border-radius:4px; font-size:13px; color:#000; background:#fff; min-width:150px; display:none;">
+            <select id="bulk-account-select" style="padding:6px 12px; border:1px solid #ddd; border-radius:4px; font-size:13px; color:#000; background:#fff; min-width:150px;">
                 <option value="">Select Account</option>
             </select>
-            <button class="btn btn-sm btn-success" id="bulk-assign-btn" style="padding:4px 12px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer; display:none;">
+            <button class="btn btn-sm btn-success" id="bulk-assign-btn" style="padding:4px 12px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer;">
                 <i class="fas fa-check"></i> Apply
             </button>
         </div>
@@ -100,12 +99,6 @@
         <div style="margin-left:auto; display:flex; gap:10px;">
             <button class="btn btn-success" id="post-updates-btn" style="padding:8px 20px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer;">
                 <i class="fas fa-check-double"></i> Post Updates
-            </button>
-            <button class="btn btn-secondary" id="clear-selections-btn" style="padding:8px 20px; background:#6c757d; color:white; border:none; border-radius:4px; cursor:pointer;">
-                <i class="fas fa-undo"></i> Clear All
-            </button>
-            <button class="btn btn-secondary" id="refresh-btn" style="padding:8px 20px; background:#6c757d; color:white; border:none; border-radius:4px; cursor:pointer;">
-                <i class="fas fa-sync-alt"></i> Refresh
             </button>
         </div>
         <span id="post-status" style="color:#000; font-size:13px; margin-left:10px;"></span>

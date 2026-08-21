@@ -6155,7 +6155,6 @@ def balance_sheet_v2():
         app.logger.error(f"Balance Sheet V2 error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
 @app.route('/api/accounting/reports', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -6165,8 +6164,8 @@ def accounting_reports():
     
     Query params:
         type: pll, balance-sheet
-        date_from: YYYY-MM-DD (optional, filters transactions after this date)
-        date_to: YYYY-MM-DD (optional, filters transactions before this date)
+        date_from: YYYY-MM-DD (optional)
+        date_to: YYYY-MM-DD (optional)
         group_by_month: true/false (optional, defaults to false)
     """
     try:
@@ -6180,62 +6179,11 @@ def accounting_reports():
         
         if report_type == 'pll':
             # ============================================================
-            # If group_by_month is true, return monthly breakdown
+            # P&L from bank_transactions
             # ============================================================
-            if group_by_month:
-                if not date_from or not date_to:
-                    return jsonify({'status': 'error', 'error': 'date_from and date_to required for monthly breakdown'}), 400
-                
-                # Monthly P&L from bank_transactions
-                cursor.execute('''
-                    SELECT 
-                        strftime('%Y-%m', bt.transaction_date) AS month,
-                        a.code,
-                        a.name,
-                        SUM(bt.amount) AS balance
-                    FROM bank_transactions bt
-                    JOIN accounts a ON bt.post_to = a.id
-                    WHERE bt.processed = 1
-                      AND a.type IN ('revenue', 'expense')
-                      AND (? IS NULL OR bt.transaction_date >= ?)
-                      AND (? IS NULL OR bt.transaction_date <= ?)
-                    GROUP BY strftime('%Y-%m', bt.transaction_date), a.id, a.code, a.name
-                    ORDER BY month, a.type DESC, a.code
-                ''', (date_from, date_from, date_to, date_to))
-                
-                rows = cursor.fetchall()
-                conn.close()
-                
-                # Build month list
-                months = []
-                account_breakdown = {}
-                for row in rows:
-                    month = row['month']
-                    if month not in months:
-                        months.append(month)
-                        account_breakdown[month] = {}
-                    account_name = f"{row['code']} - {row['name']}"
-                    account_breakdown[month][account_name] = row['balance']
-                
-                # Add Net Income for each month
-                for month in months:
-                    if month in account_breakdown:
-                        total = sum(account_breakdown[month].values())
-                        if abs(total) > 0.01:
-                            account_breakdown[month]['Net Income'] = total
-                
-                return jsonify({
-                    'status': 'success',
-                    'months': months,
-                    'account_breakdown': account_breakdown,
-                    'type': 'pll_monthly',
-                    'source': 'bank_transactions'
-                })
             
-            # ============================================================
             # Aggregated P&L
-            # ============================================================
-            cursor.execute('''
+            query = '''
                 SELECT 
                     a.type,
                     a.code,
@@ -6243,14 +6191,20 @@ def accounting_reports():
                     SUM(bt.amount) AS balance
                 FROM bank_transactions bt
                 JOIN accounts a ON bt.post_to = a.id
-                WHERE bt.processed = 1
-                  AND a.type IN ('revenue', 'expense')
-                  AND (? IS NULL OR bt.transaction_date >= ?)
-                  AND (? IS NULL OR bt.transaction_date <= ?)
-                GROUP BY a.id, a.code, a.name, a.type
-                ORDER BY a.type DESC, a.code
-            ''', (date_from, date_from, date_to, date_to))
+                WHERE a.type IN ('revenue', 'expense')
+            '''
+            params = []
             
+            if date_from:
+                query += ' AND bt.transaction_date >= ?'
+                params.append(date_from)
+            if date_to:
+                query += ' AND bt.transaction_date <= ?'
+                params.append(date_to)
+            
+            query += ' GROUP BY a.id, a.code, a.name, a.type ORDER BY a.type DESC, a.code'
+            
+            cursor.execute(query, params)
             rows = cursor.fetchall()
             conn.close()
             
@@ -6266,7 +6220,6 @@ def accounting_reports():
                     total_expenses += balance
                 
                 report_data.append({
-                    'Type': row['type'],
                     'Account': f"{row['code']} - {row['name']}",
                     'Balance': balance
                 })
@@ -6286,7 +6239,7 @@ def accounting_reports():
             # ============================================================
             # Balance Sheet from bank_transactions
             # ============================================================
-            cursor.execute('''
+            query = '''
                 SELECT 
                     a.type,
                     a.code,
@@ -6301,8 +6254,6 @@ def accounting_reports():
                 FROM accounts a
                 LEFT JOIN bank_transactions bt ON bt.post_to = a.id OR bt.post_from = a.id
                 WHERE a.type IN ('asset', 'liability', 'equity')
-                  AND bt.processed = 1
-                  AND (? IS NULL OR bt.transaction_date <= ?)
                 GROUP BY a.id, a.code, a.name, a.type
                 HAVING ABS(COALESCE(SUM(
                     CASE 
@@ -6312,15 +6263,16 @@ def accounting_reports():
                     END
                 ), 0)) > 0.01
                 ORDER BY a.type, a.code
-            ''', (date_to, date_to))
+            '''
             
+            cursor.execute(query)
             rows = cursor.fetchall()
             conn.close()
             
+            report_data = []
             total_assets = 0
             total_liabilities = 0
             total_equity = 0
-            report_data = []
             
             for row in rows:
                 balance = row['balance'] or 0
@@ -6332,12 +6284,12 @@ def accounting_reports():
                     total_equity += balance
                 
                 report_data.append({
-                    'Type': row['type'],
                     'Account': f"{row['code']} - {row['name']}",
-                    'Balance': balance
+                    'Balance': balance,
+                    'Type': row['type']
                 })
             
-            summary = f"Total Assets: ${total_assets:.2f} | Total Liabilities: ${total_liabilities:.2f} | Total Equity: ${total_equity:.2f} | (Assets = Liabilities + Equity: {abs(total_assets - (total_liabilities + total_equity)) < 0.01})"
+            summary = f"Total Assets: ${total_assets:.2f} | Total Liabilities: ${total_liabilities:.2f} | Total Equity: ${total_equity:.2f}"
             
             return jsonify({
                 'status': 'success',
@@ -6356,7 +6308,6 @@ def accounting_reports():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
 @app.route('/api/accounting/balances', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -6366,17 +6317,29 @@ def get_balances():
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT accounts.id, accounts.name, SUM(amount) AS balance
-            FROM bank_transactions 
-            JOIN accounts ON accounts.id = bank_transactions.post_from
-            GROUP BY accounts.id, accounts.name
-            
-            UNION
-            
-            SELECT accounts.id, accounts.name, SUM(amount) AS balance
-            FROM bank_transactions 
-            JOIN accounts ON accounts.id = bank_transactions.post_to
-            GROUP BY accounts.id, accounts.name
+            SELECT 
+                a.id,
+                a.code,
+                a.name,
+                a.type,
+                COALESCE(SUM(
+                    CASE 
+                        WHEN bt.post_to = a.id THEN bt.amount
+                        WHEN bt.post_from = a.id THEN -bt.amount
+                        ELSE 0
+                    END
+                ), 0) AS balance
+            FROM accounts a
+            LEFT JOIN bank_transactions bt ON bt.post_to = a.id OR bt.post_from = a.id
+            GROUP BY a.id, a.code, a.name, a.type
+            HAVING ABS(COALESCE(SUM(
+                CASE 
+                    WHEN bt.post_to = a.id THEN bt.amount
+                    WHEN bt.post_from = a.id THEN -bt.amount
+                    ELSE 0
+                END
+            ), 0)) > 0.01
+            ORDER BY a.type, a.code
         ''')
         
         rows = cursor.fetchall()
@@ -6943,8 +6906,7 @@ def monthly_account_transactions():
             bt.amount,
             bt.post_to,
             a.name AS account_name,
-            bt.additional_info,
-            bt.processed
+            bt.additional_info
         FROM bank_transactions bt
         LEFT JOIN accounts a ON a.id = bt.post_to
         WHERE strftime('%Y-%m', bt.transaction_date) = ?
@@ -6955,10 +6917,8 @@ def monthly_account_transactions():
         query += ' AND bt.post_to = ?'
         params.append(account_id)
 
-    # Remove this line - there is no source_type column
-    # if exclude_orders:
-    #     query += ' AND bt.source_type != ?'
-    #     params.append('order')
+    # Note: exclude_orders is removed since source_type doesn't exist
+    # If you need this, add source_type column to bank_transactions
 
     query += ' ORDER BY bt.transaction_date DESC, bt.id DESC'
 
@@ -6975,7 +6935,7 @@ def monthly_account_transactions():
             'amount': row['amount'] or 0,
             'account_name': row['account_name'] or '',
             'additional_info': row['additional_info'] or '',
-            'processed': bool(row['processed']) if row['processed'] is not None else False
+            'processed': row['post_to'] is not None
         })
 
     return jsonify({
@@ -6987,13 +6947,13 @@ def monthly_account_transactions():
 @login_required
 @role_required(['admin'])
 def unpost_bank_transaction(transaction_id):
-    """Unpost a bank transaction by setting post_to = NULL and processed = 0"""
+    """Unpost a bank transaction by setting post_to = NULL"""
     try:
         conn = get_db()
         cursor = conn.cursor()
         
         # Check if transaction exists
-        cursor.execute('SELECT id, processed FROM bank_transactions WHERE id = ?', (transaction_id,))
+        cursor.execute('SELECT id, post_to FROM bank_transactions WHERE id = ?', (transaction_id,))
         transaction = cursor.fetchone()
         
         if not transaction:
@@ -7013,10 +6973,10 @@ def unpost_bank_transaction(transaction_id):
             cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (journal_entry['id'],))
             cursor.execute('DELETE FROM journal_entries WHERE id = ?', (journal_entry['id'],))
         
-        # Unpost the bank transaction
+        # Unpost the bank transaction (set post_to = NULL)
         cursor.execute('''
             UPDATE bank_transactions 
-            SET post_to = NULL, processed = 0 
+            SET post_to = NULL 
             WHERE id = ?
         ''', (transaction_id,))
         
@@ -14031,15 +13991,17 @@ def accounting_delete_journal_entry(entry_id):
         app.logger.error(f"Error deleting journal entry: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
 @app.route('/api/accounting/bank-transactions-full', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def bank_transactions_full():
     """Get all bank transactions with post_from and post_to account names.
-       Optional filter parameter: ?filter=unposted|posted|all
+       Optional filters: ?filter=unposted|posted|all&search=term
     """
     try:
-        filter_param = request.args.get('filter', 'unposted')  # default to unposted
+        filter_param = request.args.get('filter', 'unposted')
+        search_term = request.args.get('search', '').strip()
         
         conn = get_db()
         cursor = conn.cursor()
@@ -14051,7 +14013,6 @@ def bank_transactions_full():
                 bt.description,
                 bt.amount,
                 bt.additional_info,
-                bt.processed,
                 bt.post_from,
                 bt.post_to,
                 a1.name AS post_from_account_name,
@@ -14061,18 +14022,25 @@ def bank_transactions_full():
             FROM bank_transactions bt
             LEFT JOIN accounts a1 ON a1.id = bt.post_from
             LEFT JOIN accounts a2 ON a2.id = bt.post_to
+            WHERE 1=1
         '''
+        params = []
         
-        # Apply filter
+        # Apply filter based on whether post_to is NULL
         if filter_param == 'unposted':
-            query += ' WHERE bt.processed = 0 OR bt.processed IS NULL'
+            query += ' AND bt.post_to IS NULL'
         elif filter_param == 'posted':
-            query += ' WHERE bt.processed = 1'
+            query += ' AND bt.post_to IS NOT NULL'
         # else: 'all' - no filter
+        
+        # Apply search filter
+        if search_term:
+            query += ' AND bt.description LIKE ?'
+            params.append(f'%{search_term}%')
         
         query += ' ORDER BY bt.transaction_date DESC, bt.id DESC'
         
-        cursor.execute(query)
+        cursor.execute(query, params)
         rows = cursor.fetchall()
         conn.close()
         
@@ -14081,7 +14049,8 @@ def bank_transactions_full():
         total_count = 0
         
         for row in rows:
-            processed = bool(row['processed']) if row['processed'] is not None else False
+            # A transaction is "processed" if it has a post_to value
+            processed = row['post_to'] is not None
             if not processed:
                 unprocessed_count += 1
             total_count += 1
@@ -14117,18 +14086,6 @@ def bank_transactions_full():
 @login_required
 @role_required(['admin'])
 def apply_all_unprocessed():
-    """
-    Apply journal entries for ALL unprocessed transactions.
-    Expects JSON: {
-        "updates": [
-            {
-                "transaction_id": 1,
-                "post_from": 1,
-                "post_to": 17
-            }
-        ]
-    }
-    """
     try:
         data = request.get_json()
         if not data or 'updates' not in data:
@@ -14139,9 +14096,6 @@ def apply_all_unprocessed():
 
         conn = get_db()
         cursor = conn.cursor()
-
-        # Get cash account for historic transactions (Bluevine = 1)
-        cash_account_id = 1  # Bluevine Bank
 
         for update in updates:
             transaction_id = update.get('transaction_id')
@@ -14154,7 +14108,7 @@ def apply_all_unprocessed():
 
             # Get the transaction details
             cursor.execute('''
-                SELECT transaction_date, amount, description
+                SELECT transaction_date, amount, description, post_to
                 FROM bank_transactions
                 WHERE id = ?
             ''', (transaction_id,))
@@ -14164,19 +14118,14 @@ def apply_all_unprocessed():
                 results['errors'].append(f"Transaction {transaction_id} not found")
                 continue
 
+            # Skip if already posted (has post_to)
+            if row['post_to'] is not None:
+                results['processed'] += 1
+                continue
+
             amount_cents = int(round(row['amount'] * 100))
             transaction_date = row['transaction_date']
             description = row['description'] or ''
-
-            # Check if already posted (shouldn't happen, but just in case)
-            cursor.execute('''
-                SELECT id FROM journal_entries
-                WHERE source_type = 'historic' AND source_id = ?
-            ''', (str(transaction_id),))
-            if cursor.fetchone():
-                # Skip if already posted
-                results['processed'] += 1
-                continue
 
             # Create journal entry
             journal_description = f"Bank transaction: {description}"
@@ -14184,7 +14133,7 @@ def apply_all_unprocessed():
             cursor.execute('''
                 INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
                 VALUES (?, ?, ?, ?)
-            ''', (transaction_date, journal_description, 'historic', str(transaction_id)))
+            ''', (transaction_date, journal_description, 'bank_transaction', str(transaction_id)))
             entry_id = cursor.lastrowid
 
             if amount_cents > 0:
@@ -14209,8 +14158,13 @@ def apply_all_unprocessed():
                     VALUES (?, ?, ?, ?)
                 ''', (entry_id, post_from, 0, abs_amount))
 
-            # Mark as processed
-            cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (transaction_id,))
+            # IMPORTANT: Update post_to to mark as posted
+            cursor.execute('''
+                UPDATE bank_transactions 
+                SET post_to = ? 
+                WHERE id = ?
+            ''', (post_to, transaction_id))
+
             results['processed'] += 1
 
         conn.commit()
