@@ -328,9 +328,13 @@ function createBrowseComponent(containerId, options) {
         if (formatName) {
             innerHtml += '<div class="browse-record-card-format"><i class="fas fa-record-vinyl"></i> ' + escapeHtml(formatName) + '</div>';
         }
+        
+        // ============ FIXED: Display location WITHOUT duplicating genre ============
         if (record.location_name) {
             var locationText = record.location_name;
-            if (record.location_index !== null && record.location_index !== undefined) locationText += ' - ' + record.location_index;
+            if (record.location_index !== null && record.location_index !== undefined) {
+                locationText += ' - ' + record.location_index;
+            }
             innerHtml += '<div class="browse-record-card-location"><i class="fas fa-map-pin"></i> ' + escapeHtml(locationText) + '</div>';
         }
 
