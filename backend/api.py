@@ -6916,18 +6916,17 @@ def cash_flow():
         'net': net_arr
     })
 
-# ==================== ACCOUNTING: MONTHLY ACCOUNT TRANSACTIONS (FIXED) ====================
 
 @app.route('/api/accounting/monthly-account-transactions', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def monthly_account_transactions():
-    """Return journal entries for a given month.
-       If account_id is provided, filter by that account.
-       If exclude_orders=true, skip entries with source_type = 'order'.
+    """
+    Return transactions for a given month directly from bank_transactions.
+    If account_id is provided, filter by that account (post_to).
     """
     month = request.args.get('month')
-    account_id = request.args.get('account_id', type=int)  # can be None
+    account_id = request.args.get('account_id', type=int)
     exclude_orders = request.args.get('exclude_orders', 'false').lower() == 'true'
 
     if not month:
@@ -6936,54 +6935,47 @@ def monthly_account_transactions():
     conn = get_db()
     cursor = conn.cursor()
 
-    # If account_id is provided, only return transactions for THAT account
     query = '''
         SELECT 
-            je.id as journal_entry_id,
-            je.transaction_date,
-            je.description,
-            jl.debit_amount / 100.0 as debit_amount,
-            jl.credit_amount / 100.0 as credit_amount,
-            a.name as account_name,
-            je.source_type,
-            je.source_id
-        FROM journal_lines jl
-        JOIN journal_entries je ON je.id = jl.journal_entry_id
-        JOIN accounts a ON a.id = jl.account_id
-        WHERE strftime('%Y-%m', je.transaction_date) = ?
+            bt.id,
+            bt.transaction_date,
+            bt.description,
+            bt.amount,
+            bt.post_to,
+            a.name AS account_name,
+            bt.additional_info,
+            bt.processed
+        FROM bank_transactions bt
+        LEFT JOIN accounts a ON a.id = bt.post_to
+        WHERE strftime('%Y-%m', bt.transaction_date) = ?
     '''
     params = [month]
 
-    # THIS IS THE KEY FIX - filter by account_id
     if account_id is not None:
-        query += ' AND jl.account_id = ?'
+        query += ' AND bt.post_to = ?'
         params.append(account_id)
 
-    if exclude_orders:
-        query += ' AND je.source_type != ?'
-        params.append('order')
+    # Remove this line - there is no source_type column
+    # if exclude_orders:
+    #     query += ' AND bt.source_type != ?'
+    #     params.append('order')
 
-    query += ' ORDER BY je.transaction_date DESC, je.id DESC'
+    query += ' ORDER BY bt.transaction_date DESC, bt.id DESC'
+
     cursor.execute(query, params)
     rows = cursor.fetchall()
     conn.close()
 
     transactions = []
     for row in rows:
-        debit = row['debit_amount'] or 0
-        credit = row['credit_amount'] or 0
-        net = debit - credit
-        
         transactions.append({
-            'journal_entry_id': row['journal_entry_id'],
+            'id': row['id'],
             'transaction_date': row['transaction_date'],
-            'description': row['description'],
-            'debit_amount': debit,
-            'credit_amount': credit,
-            'account_name': row['account_name'],
-            'source_type': row['source_type'],
-            'source_id': row['source_id'],
-            'net_amount': net
+            'description': row['description'] or '',
+            'amount': row['amount'] or 0,
+            'account_name': row['account_name'] or '',
+            'additional_info': row['additional_info'] or '',
+            'processed': bool(row['processed']) if row['processed'] is not None else False
         })
 
     return jsonify({
@@ -6991,6 +6983,91 @@ def monthly_account_transactions():
         'transactions': transactions
     })
 
+@app.route('/api/accounting/bank-transactions/<int:transaction_id>/unpost', methods=['PUT'])
+@login_required
+@role_required(['admin'])
+def unpost_bank_transaction(transaction_id):
+    """Unpost a bank transaction by setting post_to = NULL and processed = 0"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if transaction exists
+        cursor.execute('SELECT id, processed FROM bank_transactions WHERE id = ?', (transaction_id,))
+        transaction = cursor.fetchone()
+        
+        if not transaction:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Transaction not found'}), 404
+        
+        # Check if there's a journal entry for this transaction
+        cursor.execute('''
+            SELECT id FROM journal_entries 
+            WHERE source_type = 'bank_transaction' AND source_id = ?
+        ''', (str(transaction_id),))
+        
+        journal_entry = cursor.fetchone()
+        
+        if journal_entry:
+            # Delete journal lines and entry
+            cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (journal_entry['id'],))
+            cursor.execute('DELETE FROM journal_entries WHERE id = ?', (journal_entry['id'],))
+        
+        # Unpost the bank transaction
+        cursor.execute('''
+            UPDATE bank_transactions 
+            SET post_to = NULL, processed = 0 
+            WHERE id = ?
+        ''', (transaction_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Transaction #{transaction_id} unposted successfully'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error unposting bank transaction: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/accounting/journal/<int:entry_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def delete_journal_entry(entry_id):
+    """Delete a journal entry"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT id, source_type, source_id FROM journal_entries WHERE id = ?', (entry_id,))
+        entry = cursor.fetchone()
+        
+        if not entry:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Journal entry not found'}), 404
+        
+        # If it's a bank transaction, unpost it
+        if entry['source_type'] == 'bank_transaction':
+            transaction_id = int(entry['source_id'])
+            cursor.execute('UPDATE bank_transactions SET post_to = NULL, processed = 0 WHERE id = ?', (transaction_id,))
+        
+        # Delete journal lines and entry
+        cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (entry_id,))
+        cursor.execute('DELETE FROM journal_entries WHERE id = ?', (entry_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Journal entry #{entry_id} deleted successfully'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error deleting journal entry: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/accounting/cash-flow-detail', methods=['GET'])
 @login_required
