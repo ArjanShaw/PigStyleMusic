@@ -6356,6 +6356,42 @@ def accounting_reports():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
+@app.route('/api/accounting/balances', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def get_balances():
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT accounts.id, accounts.name, SUM(amount) AS balance
+            FROM bank_transactions 
+            JOIN accounts ON accounts.id = bank_transactions.post_from
+            GROUP BY accounts.id, accounts.name
+            
+            UNION
+            
+            SELECT accounts.id, accounts.name, SUM(amount) AS balance
+            FROM bank_transactions 
+            JOIN accounts ON accounts.id = bank_transactions.post_to
+            GROUP BY accounts.id, accounts.name
+        ''')
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'balances': [dict(row) for row in rows]
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error in get_balances: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 def get_plaid_client():
     """Initialize Plaid client using environment credentials."""
     client_id = os.environ.get('PLAID_CLIENT_ID')
