@@ -144,44 +144,83 @@
             console.error('Error loading stats:', error);
         }
     }
-
-    // ========== Load Records ==========
     async function loadRecords(searchTerm) {
-        try {
-            let url = '/records?status_ids=2,1';
-            if (searchTerm && searchTerm.trim()) {
-                url += '&search=' + encodeURIComponent(searchTerm.trim());
-            }
-            url += '&limit=1000';
-
-            const data = await apiRequest('GET', url);
-            if (data.status === 'success') {
-                records = data.records || [];
-                filteredRecords = records.slice();
-                totalRecords = filteredRecords.length;
-                currentPage = 1;
-                renderTable();
-                updatePagination();
-                updateSelectionStats();
-                showStatus('Loaded ' + totalRecords + ' records', 'info');
+    console.log('🔍 loadRecords called with searchTerm:', searchTerm);
+    console.log('📊 selectedIds BEFORE load:', Array.from(selectedIds));
+    
+    try {
+        // Save current selection before loading
+        const currentSelection = new Set(selectedIds);
+        console.log('💾 Saved selection:', Array.from(currentSelection));
+        
+        // --- FIX: Always load ALL records first ---
+        let url = '/records?status_ids=2,1&limit=1000';
+        console.log('🌐 Fetching ALL records:', url);
+        
+        const data = await apiRequest('GET', url);
+        console.log('📦 Received', data.records ? data.records.length : 0, 'records');
+        
+        if (data.status === 'success') {
+            // Store ALL records in the master array
+            records = data.records || [];
+            console.log('📦 Total records loaded:', records.length);
+            
+            // --- KEEP ALL selections ---
+            selectedIds = new Set(currentSelection);
+            console.log('📊 selectedIds after load (preserved):', Array.from(selectedIds));
+            
+            // --- Apply search filter client-side for display ---
+            const searchTermLower = searchTerm ? searchTerm.trim().toLowerCase() : '';
+            if (searchTermLower) {
+                filteredRecords = records.filter(function(r) {
+                    // Make sure we're checking all possible fields
+                    const artist = (r.artist || '').toLowerCase();
+                    const title = (r.title || '').toLowerCase();
+                    const barcode = (r.barcode || '').toLowerCase();
+                    const catalog = (r.catalog_number || '').toLowerCase();
+                    const id = String(r.id || '');
+                    
+                    return artist.includes(searchTermLower) ||
+                           title.includes(searchTermLower) ||
+                           barcode.includes(searchTermLower) ||
+                           catalog.includes(searchTermLower) ||
+                           id.includes(searchTermLower);
+                });
+                console.log('🔍 Search filter applied: found', filteredRecords.length, 'matching records out of', records.length);
             } else {
-                throw new Error(data.error || 'Failed to load records');
+                filteredRecords = records.slice();
+                console.log('📋 No search filter: showing all', filteredRecords.length, 'records');
             }
-        } catch (error) {
-            console.error('Error loading records:', error);
-            showStatus('Error loading records: ' + error.message, 'error');
-            records = [];
-            filteredRecords = [];
-            totalRecords = 0;
+            
+            totalRecords = filteredRecords.length;
+            currentPage = 1;
             renderTable();
             updatePagination();
+            updateSelectionStats();
+            showStatus('Loaded ' + records.length + ' total records, showing ' + filteredRecords.length + ' (' + selectedIds.size + ' selected)', 'info');
+        } else {
+            throw new Error(data.error || 'Failed to load records');
         }
+    } catch (error) {
+        console.error('❌ Error loading records:', error);
+        showStatus('Error loading records: ' + error.message, 'error');
+        records = [];
+        filteredRecords = [];
+        totalRecords = 0;
+        renderTable();
+        updatePagination();
     }
+}
 
     // ========== Render Table ==========
     function renderTable() {
         if (isRendering) return;
         isRendering = true;
+
+        console.log('🔄 renderTable() called');
+        console.log('📊 selectedIds in renderTable:', Array.from(selectedIds));
+        console.log('📊 records count:', records.length);
+        console.log('📊 filteredRecords count:', filteredRecords.length);
 
         try {
             const start = (currentPage - 1) * pageSize;
@@ -189,17 +228,40 @@
             const pageRecords = filteredRecords.slice(start, end);
 
             const selectedCount = selectedIds.size;
-            let displayRecords = pageRecords;
+            let displayRecords = [];
 
+            console.log('📊 selectedCount:', selectedCount);
+            console.log('📊 pageRecords count:', pageRecords.length);
+
+            // --- FIX: Show ALL selected items from the FULL records array ---
             if (selectedCount > 0) {
-                displayRecords = pageRecords.filter(function(r) {
+                console.log('🎯 Getting ALL selected records from FULL records array');
+                
+                // Get ALL selected records from the full records array
+                const allSelected = records.filter(function(r) {
                     return selectedIds.has(r.id);
                 });
+                console.log('🎯 allSelected count:', allSelected.length);
+                console.log('🎯 allSelected IDs:', allSelected.map(r => r.id));
+                
+                // Get current page records that aren't selected
+                const currentPageUnselected = pageRecords.filter(function(r) {
+                    return !selectedIds.has(r.id);
+                });
+                console.log('🎯 currentPageUnselected count:', currentPageUnselected.length);
+                
+                // Combine: selected first (ALL of them), then unselected from current page
+                displayRecords = allSelected.concat(currentPageUnselected);
+                console.log('🎯 displayRecords count:', displayRecords.length);
+                
                 const viewText = document.getElementById('item-view-status-text');
                 if (viewText) {
-                    viewText.textContent = 'Showing ' + selectedCount + ' selected item(s)';
+                    viewText.textContent = selectedCount + ' selected item(s) - ' + currentPageUnselected.length + ' more on this page';
                 }
             } else {
+                console.log('📊 No selections - showing normal page');
+                displayRecords = pageRecords;
+                
                 const viewText = document.getElementById('item-view-status-text');
                 if (viewText) {
                     const searchTerm = searchInput ? searchInput.value.trim() : '';
@@ -214,7 +276,7 @@
             if (displayRecords.length === 0) {
                 let message = 'No records found.';
                 if (selectedCount > 0) {
-                    message = 'No items selected on this page. Search for records and check the boxes to select them.';
+                    message = 'No items selected. Search for records and check the boxes to select them.';
                 } else if (searchInput && searchInput.value.trim()) {
                     message = 'No records found matching "' + escapeHtml(searchInput.value.trim()) + '"';
                 } else {
@@ -232,14 +294,14 @@
             }
 
             let html = '';
-            displayRecords.forEach(function(record, index) {
-                const globalIndex = start + index;
+            displayRecords.forEach(function(record) {
                 const isSelected = selectedIds.has(record.id);
                 const statusName = getStatusName(record.status_id);
                 const statusClass = getStatusClass(record.status_id);
                 const price = record.store_price || 0;
 
-                html += `<tr class="${isSelected ? 'selected-row' : ''}" data-id="${record.id}">`;
+                const rowClass = isSelected ? 'selected-row' : '';
+                html += `<tr class="${rowClass}" data-id="${record.id}">`;
                 html += `<td><input type="checkbox" class="item-select-checkbox" data-id="${record.id}" ${isSelected ? 'checked' : ''}></td>`;
                 html += `<td>${record.id}</td>`;
                 html += `<td>${escapeHtml(record.artist || 'Unknown')}</td>`;
@@ -269,10 +331,15 @@
             document.querySelectorAll('.item-select-checkbox').forEach(function(checkbox) {
                 checkbox.addEventListener('change', function() {
                     const id = parseInt(this.dataset.id);
+                    console.log('🔄 Checkbox changed for ID:', id, 'checked:', this.checked);
                     if (this.checked) {
                         selectedIds.add(id);
+                        console.log('➕ Added ID to selectedIds:', id);
+                        console.log('📊 selectedIds now:', Array.from(selectedIds));
                     } else {
                         selectedIds.delete(id);
+                        console.log('➖ Removed ID from selectedIds:', id);
+                        console.log('📊 selectedIds now:', Array.from(selectedIds));
                     }
                     updateSelectionStats();
                     renderTable();
@@ -282,7 +349,9 @@
             document.querySelectorAll('.remove-item-btn').forEach(function(btn) {
                 btn.addEventListener('click', function() {
                     const id = parseInt(this.dataset.id);
+                    console.log('🗑️ Remove button clicked for ID:', id);
                     selectedIds.delete(id);
+                    console.log('📊 selectedIds now:', Array.from(selectedIds));
                     updateSelectionStats();
                     renderTable();
                 });
@@ -291,15 +360,17 @@
             document.querySelectorAll('.add-item-btn').forEach(function(btn) {
                 btn.addEventListener('click', function() {
                     const id = parseInt(this.dataset.id);
+                    console.log('➕ Add button clicked for ID:', id);
                     selectedIds.add(id);
+                    console.log('📊 selectedIds now:', Array.from(selectedIds));
                     updateSelectionStats();
                     renderTable();
                 });
             });
 
-            const allChecked = displayRecords.every(function(r) { return selectedIds.has(r.id); });
-            if (selectAllCheckbox) {
-                selectAllCheckbox.checked = allChecked && displayRecords.length > 0;
+            if (selectAllCheckbox && displayRecords.length > 0) {
+                const allChecked = displayRecords.every(function(r) { return selectedIds.has(r.id); });
+                selectAllCheckbox.checked = allChecked;
                 selectAllCheckbox.indeterminate = !allChecked && displayRecords.some(function(r) { return selectedIds.has(r.id); });
             }
 
@@ -333,6 +404,9 @@
     // ========== Selection Stats ==========
     function updateSelectionStats() {
         const count = selectedIds.size;
+        console.log('📊 updateSelectionStats - count:', count);
+        console.log('📊 selectedIds:', Array.from(selectedIds));
+        
         selectedCountSpan.textContent = count;
         selectedCountBadge.textContent = count;
         selectedCountText.textContent = count;
@@ -354,11 +428,17 @@
             if (count > 0) {
                 selectAllBtn.innerHTML = '<i class="fas fa-times"></i> Clear All';
                 selectAllBtn.className = 'btn btn-danger';
-                selectAllBtn.onclick = function() { clearSelection(); };
+                selectAllBtn.onclick = function() { 
+                    console.log('🧹 Clear All clicked');
+                    clearSelection(); 
+                };
             } else {
                 selectAllBtn.innerHTML = '<i class="fas fa-check-double"></i> Select All';
                 selectAllBtn.className = 'btn btn-info';
-                selectAllBtn.onclick = function() { selectAll(); };
+                selectAllBtn.onclick = function() { 
+                    console.log('📋 Select All clicked');
+                    selectAll(); 
+                };
             }
         }
 
@@ -368,17 +448,25 @@
 
     // ========== Select All ==========
     function selectAll() {
+        console.log('📋 selectAll called');
         const start = (currentPage - 1) * pageSize;
         const end = Math.min(start + pageSize, filteredRecords.length);
         const pageRecords = filteredRecords.slice(start, end);
-        pageRecords.forEach(function(r) { selectedIds.add(r.id); });
+        console.log('📋 Adding', pageRecords.length, 'records to selection');
+        pageRecords.forEach(function(r) { 
+            selectedIds.add(r.id); 
+        });
+        console.log('📊 selectedIds now:', Array.from(selectedIds));
         updateSelectionStats();
         renderTable();
     }
 
     // ========== Clear Selection ==========
     function clearSelection() {
+        console.log('🧹 clearSelection called');
+        console.log('📊 selectedIds BEFORE clear:', Array.from(selectedIds));
         selectedIds.clear();
+        console.log('📊 selectedIds AFTER clear:', Array.from(selectedIds));
         updateSelectionStats();
         renderTable();
     }
@@ -386,24 +474,28 @@
     // ========== Search ==========
     function performSearch() {
         const term = searchInput ? searchInput.value.trim() : '';
-        selectedIds.clear();
+        console.log('🔍 performSearch called with term:', term);
+        console.log('📊 selectedIds BEFORE search:', Array.from(selectedIds));
         loadRecords(term);
     }
 
     function clearSearch() {
         if (searchInput) searchInput.value = '';
-        selectedIds.clear();
+        console.log('🧹 clearSearch called');
+        console.log('📊 selectedIds BEFORE clearSearch:', Array.from(selectedIds));
         loadRecords('');
     }
 
     // ========== Toggle Select All ==========
     function toggleSelectAll() {
         if (!selectAllCheckbox) return;
+        console.log('🔄 toggleSelectAll called');
         const start = (currentPage - 1) * pageSize;
         const end = Math.min(start + pageSize, filteredRecords.length);
         const pageRecords = filteredRecords.slice(start, end);
 
         const allChecked = pageRecords.every(function(r) { return selectedIds.has(r.id); });
+        console.log('📋 All checked?', allChecked);
 
         pageRecords.forEach(function(r) {
             if (allChecked) {
@@ -412,6 +504,7 @@
                 selectedIds.add(r.id);
             }
         });
+        console.log('📊 selectedIds now:', Array.from(selectedIds));
 
         updateSelectionStats();
         renderTable();
@@ -427,6 +520,7 @@
     function executeAction() {
         const mode = getActionMode();
         const selectedRecords = records.filter(function(r) { return selectedIds.has(r.id); });
+        console.log('🎯 executeAction - mode:', mode, 'selectedRecords:', selectedRecords.length);
 
         if (selectedRecords.length === 0) {
             showStatus('No items selected.', 'warning');
@@ -449,11 +543,11 @@
     }
 
     // ============================================================
-    // CHECKOUT FUNCTIONS – ORIGINAL IMPLEMENTATION
+    // CHECKOUT FUNCTIONS
     // ============================================================
     
     function executeCheckout(selectedRecords) {
-        console.log('🛒 executeCheckout called');
+        console.log('🛒 executeCheckout called with', selectedRecords.length, 'records');
         
         if (selectedRecords.length === 0) {
             showStatus('No records selected for checkout.', 'warning');
@@ -1410,21 +1504,21 @@
         checkoutSelectedItems = [];
         checkoutPaymentEntries = [];
         checkoutRemaining = 0;
+        
+        console.log('🧹 Clearing selectedIds in completeCheckout');
+        console.log('📊 selectedIds BEFORE clear:', Array.from(selectedIds));
         selectedIds.clear();
-        selectedRecords = [];
+        console.log('📊 selectedIds AFTER clear:', Array.from(selectedIds));
 
         var modal = document.getElementById('checkout-payment-modal');
         if (modal) {
             modal.style.display = 'none';
         }
 
-        records = [];
-        totalRecords = 0;
-        viewMode = 'search';
-        renderTable();
-        updatePagination();
-        updateSelectionStats();
-        updateViewButtons();
+        // Reload records with fresh data
+        const searchTerm = searchInput ? searchInput.value.trim() : '';
+        await loadRecords(searchTerm);
+        await loadStats();
 
         console.log('🛒 completeCheckout finished successfully');
     }
@@ -1494,8 +1588,6 @@
         const change = received - tenderTotal;
         closeTenderModal();
 
-        // This is now handled by completeCheckout via the checkout modal flow
-        // But keep for direct calls
         completeSale(tenderItems, 'cash', { amount: received, change: change });
     }
 
@@ -1634,7 +1726,6 @@
 
     // ========== Square Payment Modal ==========
     function showSquarePaymentModal(total, items) {
-        // This is now handled by the checkout modal flow
         showCheckoutModal();
     }
 
@@ -1647,7 +1738,6 @@
     }
 
     function forceCompleteSquarePayment() {
-        // Force complete handled in the checkout modal flow
         var modal = document.getElementById('item-square-payment-modal');
         if (modal) modal.style.display = 'none';
         completeCheckout();
@@ -1890,6 +1980,8 @@
 
         records.unshift(tempRecord);
         selectedIds.add(tempId);
+        console.log('➕ Added custom item ID:', tempId);
+        console.log('📊 selectedIds now:', Array.from(selectedIds));
         updateSelectionStats();
         renderTable();
 
@@ -1910,6 +2002,8 @@
 
         records.unshift(bernieItem);
         selectedIds.add(bernieItem.id);
+        console.log('💸 Added Bernie item ID:', bernieItem.id);
+        console.log('📊 selectedIds now:', Array.from(selectedIds));
         updateSelectionStats();
         renderTable();
 
@@ -1938,6 +2032,8 @@
 
         records.unshift(giftCardItem);
         selectedIds.add(giftCardItem.id);
+        console.log('🎁 Added gift card ID:', giftCardItem.id);
+        console.log('📊 selectedIds now:', Array.from(selectedIds));
         updateSelectionStats();
         renderTable();
 
@@ -2147,6 +2243,10 @@
         // Helper functions
         addBernieItem: addBernieItem,
         showGiftCardAddModal: showGiftCardAddModal,
+
+        // Core functions - expose for scanner
+        loadRecords: loadRecords,
+        selectedIds: selectedIds,
 
         // State
         tenderTotal: 0,
