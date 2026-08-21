@@ -1,5 +1,6 @@
 // events-component.js - Events Tile (Public)
 // 3‑column layout: Image | Title+Desc+RSVP link | Date+Buttons.
+// Supports recurring events with parent_event_id overrides
 
 var eventsInitialized = false;
 
@@ -46,6 +47,8 @@ function downloadICS(event, occurrenceDate) {
     URL.revokeObjectURL(link.href);
 }
 
+// ===== MAIN LOAD EVENTS FUNCTION =====
+
 function loadEvents() {
     const listEl = document.getElementById('eventsList');
     if (!listEl) return;
@@ -69,11 +72,16 @@ function loadEvents() {
                     const repeatType = ev.repeat_type || 'none';
                     const baseDate = new Date(ev.event_date);
                     
-                    if (repeatType === 'none') {
+                    // Check if this is an override
+                    const isOverride = ev.parent_event_id !== null && ev.parent_event_id !== undefined && ev.parent_event_id !== 0;
+                    
+                    // If it's a single event or override, just add it
+                    if (repeatType === 'none' || isOverride) {
                         expandedEvents.push({ ...ev });
                         return;
                     }
 
+                    // It's a recurring event - generate future dates
                     let current = new Date(Math.max(baseDate, now));
                     let count = 0;
 
@@ -93,15 +101,33 @@ function loadEvents() {
                     }
                 });
 
-                expandedEvents.sort((a, b) => new Date(a.event_date) - new Date(b.event_date));
+                // Sort by date and remove duplicates (events with same ID and date)
+                const uniqueEvents = [];
+                const seen = new Set();
+                expandedEvents.forEach(ev => {
+                    const key = ev.id + '_' + ev.event_date;
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        uniqueEvents.push(ev);
+                    }
+                });
+                uniqueEvents.sort((a, b) => new Date(a.event_date) - new Date(b.event_date));
 
                 // --- Build HTML via array ---
                 const htmlParts = [];
-                expandedEvents.forEach(ev => {
+                uniqueEvents.forEach(ev => {
                     const date = new Date(ev.event_date);
                     const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                     const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
                     const rsvpCount = ev.rsvp_count || 0;
+                    
+                    // Check if this is an override
+                    const isOverride = ev.parent_event_id !== null && ev.parent_event_id !== undefined && ev.parent_event_id !== 0;
+
+                    // Override badge for public view
+                    const overrideBadge = isOverride 
+                        ? `<span style="font-size:0.55rem; background:#ffc107; color:#333; padding:1px 6px; border-radius:8px; margin-left:4px; display:inline-block; vertical-align:middle;">⭐ Special</span>` 
+                        : '';
 
                     // Column 1: Image
                     const imageHtml = ev.image_url
@@ -118,7 +144,9 @@ function loadEvents() {
                     const contentHtml = `
                         <div style="flex:1; padding:8px 12px; display:flex; flex-direction:column; justify-content:space-between; overflow:hidden; min-width:0;">
                             <div>
-                                <strong style="font-size:1rem; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;">${escapeHtml(ev.title)}</strong>
+                                <strong style="font-size:1rem; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;">
+                                    ${escapeHtml(ev.title)}${overrideBadge}
+                                </strong>
                                 ${ev.description ? `<p style="margin:4px 0 0; color:#555; font-size:0.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(ev.description)}</p>` : ''}
                             </div>
                             <span class="rsvp-count-display" data-event-id="${ev.id}" style="cursor:pointer; color:#007bff; text-decoration:underline; font-weight:500; font-size:0.8rem; align-self:flex-start; margin-top:4px;">
@@ -127,7 +155,7 @@ function loadEvents() {
                         </div>
                     `;
 
-                    // Column 3: Date/Time badge (same size as buttons), Calendar, RSVP
+                    // Column 3: Date/Time badge, Calendar, RSVP
                     const dateBadge = `<div style="
                         width:100%;
                         background:#ff6b6b;
@@ -179,15 +207,18 @@ function loadEvents() {
                         </div>
                     `;
 
+                    // Different border color for overrides
+                    const borderColor = isOverride ? '#ffc107' : '#ff6b6b';
+
                     htmlParts.push(`
-                        <div class="event-card" data-event-id="${ev.id}" style="
+                        <div class="event-card" data-event-id="${ev.id}" data-parent-id="${ev.parent_event_id || ''}" style="
                             display:flex;
                             align-items:stretch;
                             background:#f5f5f5;
                             border-radius:12px;
                             margin-bottom:12px;
                             box-shadow:0 2px 8px rgba(0,0,0,0.08);
-                            border-left:6px solid #ff6b6b;
+                            border-left:6px solid ${borderColor};
                             overflow:hidden;
                             height:140px;
                         ">
@@ -207,7 +238,7 @@ function loadEvents() {
                         const eventId = this.dataset.eventId;
                         const card = this.closest('.event-card');
                         const titleEl = card.querySelector('strong');
-                        const eventTitle = titleEl ? titleEl.textContent : 'Event';
+                        const eventTitle = titleEl ? titleEl.textContent.replace('⭐ Special', '').trim() : 'Event';
                         if (typeof openRsvpModal === 'function') {
                             openRsvpModal(eventId, eventTitle);
                         } else {
@@ -256,6 +287,8 @@ function loadEvents() {
         });
 }
 
+// ===== INITIALIZATION =====
+
 function initEventsComponent() {
     if (eventsInitialized) return;
     eventsInitialized = true;
@@ -269,6 +302,32 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// ===== RSVP FUNCTIONS (from main HTML) =====
+
+// These functions are already defined in your index.html's inline script
+// but we keep them here as fallbacks
+
+function openRsvpModal(eventId, eventTitle) {
+    // This should be defined in the main HTML
+    if (typeof window.openRsvpModal === 'function') {
+        window.openRsvpModal(eventId, eventTitle);
+    } else {
+        console.log('RSVP for:', eventTitle, '(ID: ' + eventId + ')');
+        alert('RSVP functionality: ' + eventTitle);
+    }
+}
+
+function showRsvpList(eventId) {
+    // This should be defined in the main HTML
+    if (typeof window.showRsvpList === 'function') {
+        window.showRsvpList(eventId);
+    } else {
+        console.log('Show RSVPs for event:', eventId);
+        alert('RSVP list for event #' + eventId);
+    }
+}
+
+// Auto-initialize
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initEventsComponent);
 } else {
@@ -281,3 +340,7 @@ setInterval(() => {
         loadEvents();
     }
 }, 5 * 60 * 1000);
+
+// Export functions to window for debugging
+window.loadEvents = loadEvents;
+window.downloadICS = downloadICS;

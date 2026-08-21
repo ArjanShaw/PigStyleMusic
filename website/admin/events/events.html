@@ -1,12 +1,13 @@
 <!-- ==================== EVENTS TAB (ADMIN) ==================== -->
 <div id="events-tab" class="tab-content">
     <h2><i class="fas fa-calendar-alt"></i> Manage Events</h2>
-    <p class="text-muted">Create, edit, and delete events displayed on the public page.</p>
+    <p class="text-muted">Create, edit, and delete events displayed on the public page. Recurring events can be overridden on specific dates.</p>
 
-    <!-- Event Form (simplified) -->
+    <!-- Event Form -->
     <div class="user-form-section" style="background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%);">
         <h3 style="margin-bottom: 20px;"><i class="fas fa-plus-circle"></i> <span id="event-form-title">Add New Event</span></h3>
         <input type="hidden" id="event-id" value="">
+        <input type="hidden" id="event-parent-id" value="">
         <div class="user-form-grid">
             <div class="user-form-group">
                 <label for="event-title">Title *</label>
@@ -33,7 +34,7 @@
                 <p style="font-size: 12px; color: rgba(255,255,255,0.8); margin-top: 5px;">Upload an image (JPG, PNG, GIF, WebP). Max 5MB.</p>
             </div>
 
-            <!-- Recurrence (simplified) -->
+            <!-- Recurrence -->
             <div class="user-form-group">
                 <label for="event-repeat-type">Repeat</label>
                 <select id="event-repeat-type">
@@ -42,6 +43,29 @@
                     <option value="weekly">Weekly</option>
                     <option value="monthly">Monthly</option>
                 </select>
+            </div>
+
+            <!-- Parent Event Group (for overrides) - shows when Repeat = None -->
+            <div class="user-form-group" id="parent-event-group" style="display: none; grid-column: 1 / -1; background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107;">
+                <label style="color: #ffc107;">🔁 Override a Recurring Event</label>
+                <p style="font-size: 13px; color: rgba(255,255,255,0.8); margin: 5px 0 10px 0;">
+                    Select a recurring event to override on a specific date. The override will appear instead of the regular event on that date.
+                </p>
+                <select id="event-parent-select" style="width:100%; padding:10px; border:1px solid rgba(255,255,255,0.2); border-radius:4px; background:rgba(255,255,255,0.95);">
+                    <option value="">-- Select a recurring event --</option>
+                </select>
+                <p style="font-size: 12px; color: rgba(255,255,255,0.6); margin-top: 5px;">
+                    <i class="fas fa-info-circle"></i> The repeat type will automatically be set to "None" for overrides.
+                </p>
+            </div>
+
+            <!-- Override Info (read-only, shown when editing an override) -->
+            <div class="user-form-group" id="override-info-group" style="display: none; grid-column: 1 / -1; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 6px; border-left: 4px solid #ffc107;">
+                <label style="color: #ffc107;">🔁 This is an override of a recurring event</label>
+                <p style="font-size: 13px; opacity: 0.8; margin: 5px 0 0 0;">Parent Event ID: <span id="override-parent-id-display"></span></p>
+                <button type="button" class="btn btn-danger btn-small" onclick="removeOverride()" style="margin-top: 5px;">
+                    <i class="fas fa-undo"></i> Revert to Base Event
+                </button>
             </div>
         </div>
         <div class="action-buttons" style="justify-content: flex-start;">
@@ -55,27 +79,30 @@
     <div class="records-table-container">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
             <h3 style="margin:0;"><i class="fas fa-list"></i> Upcoming Events</h3>
-            <div style="display:flex; gap:10px;">
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
                 <button class="btn btn-primary" onclick="loadEventsAdmin()"><i class="fas fa-sync-alt"></i> Refresh</button>
                 <button class="btn btn-secondary" onclick="clearEventForm()"><i class="fas fa-plus"></i> New Event</button>
+                <button class="btn btn-warning" onclick="showRecurringEvents()"><i class="fas fa-calendar-week"></i> Show Recurring</button>
             </div>
         </div>
-        <table class="records-table" id="events-admin-table">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Image</th>
-                    <th>Title</th>
-                    <th>Date</th>
-                    <th>Description</th>
-                    <th>RSVP</th>
-                    <th>Recurring</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="events-admin-body">
-                <tr><td colspan="8" style="text-align:center; padding:40px;"><i class="fas fa-spinner fa-spin"></i> Loading events...</td></tr>
-            </tbody>
-        </table>
+        <div style="overflow-x: auto;">
+            <table class="records-table" id="events-admin-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Image</th>
+                        <th>Title</th>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>RSVP</th>
+                        <th>Type</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="events-admin-body">
+                    <tr><td colspan="8" style="text-align:center; padding:40px;"><i class="fas fa-spinner fa-spin"></i> Loading events...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>

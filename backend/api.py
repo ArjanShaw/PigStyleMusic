@@ -12905,22 +12905,168 @@ def get_records_location_counts():
         app.logger.error(f"Error getting location counts: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
 @app.route('/api/events', methods=['GET'])
 def get_events():
+    """Get all events - using only parent_event_id"""
+    from datetime import datetime, timedelta
+    
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT id, title, description, event_date, image_url, rsvp_count,
-               repeat_type
-        FROM events
-        WHERE event_date >= date('now')
-        ORDER BY event_date ASC
-    ''')
-    rows = cursor.fetchall()
+    
+    # Check if parent_event_id column exists
+    cursor.execute("PRAGMA table_info(events)")
+    columns = cursor.fetchall()
+    column_names = [col['name'] for col in columns]
+    has_parent = 'parent_event_id' in column_names
+    
+    # Get all events that are NOT overrides (parent_event_id IS NULL or no parent column)
+    if has_parent:
+        cursor.execute('''
+            SELECT id, title, description, event_date, image_url, rsvp_count,
+                   repeat_type, parent_event_id
+            FROM events
+            WHERE (parent_event_id IS NULL OR parent_event_id = 0)
+              AND event_date >= date('now')
+            ORDER BY event_date ASC
+        ''')
+    else:
+        # Fallback if no parent_event_id column
+        cursor.execute('''
+            SELECT id, title, description, event_date, image_url, rsvp_count,
+                   repeat_type
+            FROM events
+            WHERE event_date >= date('now')
+            ORDER BY event_date ASC
+        ''')
+    
+    recurring_events = cursor.fetchall()
+    result_events = []
+    today = datetime.now().date()
+    
+    for base in recurring_events:
+        # If it's not recurring, just add it
+        if not base['repeat_type'] or base['repeat_type'] == 'none':
+            result_events.append(dict(base))
+            continue
+        
+        # Parse start date
+        start_date_str = base['event_date'].split('T')[0] if 'T' in base['event_date'] else base['event_date']
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        
+        # Generate future dates
+        generated_dates = []
+        if base['repeat_type'] == 'weekly':
+            current = start_date
+            while current <= today + timedelta(days=182):
+                if current >= today:
+                    generated_dates.append(current)
+                current += timedelta(days=7)
+        elif base['repeat_type'] == 'monthly':
+            current = start_date
+            while current <= today + timedelta(days=365):
+                if current >= today:
+                    generated_dates.append(current)
+                try:
+                    if current.month == 12:
+                        current = current.replace(year=current.year + 1, month=1)
+                    else:
+                        current = current.replace(month=current.month + 1)
+                except ValueError:
+                    current = current.replace(day=1)
+                    if current.month == 12:
+                        current = current.replace(year=current.year + 1, month=1)
+                    else:
+                        current = current.replace(month=current.month + 1)
+        elif base['repeat_type'] == 'daily':
+            current = start_date
+            while current <= today + timedelta(days=30):
+                if current >= today:
+                    generated_dates.append(current)
+                current += timedelta(days=1)
+        else:
+            result_events.append(dict(base))
+            continue
+        
+        # For each date, check if there's an override
+        if has_parent:
+            for date_obj in generated_dates:
+                date_str = date_obj.strftime('%Y-%m-%d')
+                
+                # Check if there's an override for this date
+                cursor.execute('''
+                    SELECT id, title, description, event_date, image_url, rsvp_count,
+                           repeat_type, parent_event_id
+                    FROM events
+                    WHERE parent_event_id = ? 
+                      AND date(event_date) = date(?)
+                      AND repeat_type = 'none'
+                ''', (base['id'], date_str))
+                
+                override = cursor.fetchone()
+                
+                if override:
+                    # Use override data
+                    result_events.append({
+                        'id': override['id'],
+                        'title': override['title'] or base['title'],
+                        'description': override['description'] if override['description'] else base['description'],
+                        'event_date': override['event_date'],
+                        'image_url': override['image_url'] or base['image_url'],
+                        'rsvp_count': override['rsvp_count'] or 0,
+                        'repeat_type': 'none',
+                        'parent_event_id': base['id']
+                    })
+                else:
+                    # Use base event
+                    result_events.append({
+                        'id': base['id'],
+                        'title': base['title'],
+                        'description': base['description'],
+                        'event_date': date_str,
+                        'image_url': base['image_url'],
+                        'rsvp_count': base['rsvp_count'] or 0,
+                        'repeat_type': base['repeat_type'],
+                        'parent_event_id': None
+                    })
+        else:
+            # No parent column - just add base events
+            result_events.append(dict(base))
+    
+    # Also get non-recurring events that aren't overrides
+    if has_parent:
+        cursor.execute('''
+            SELECT id, title, description, event_date, image_url, rsvp_count,
+                   repeat_type, parent_event_id
+            FROM events
+            WHERE (parent_event_id IS NULL OR parent_event_id = 0)
+              AND (repeat_type IS NULL OR repeat_type = 'none')
+              AND event_date >= date('now')
+            ORDER BY event_date ASC
+        ''')
+    else:
+        cursor.execute('''
+            SELECT id, title, description, event_date, image_url, rsvp_count,
+                   repeat_type
+            FROM events
+            WHERE (repeat_type IS NULL OR repeat_type = 'none')
+              AND event_date >= date('now')
+            ORDER BY event_date ASC
+        ''')
+    
+    non_recurring = cursor.fetchall()
+    for event in non_recurring:
+        result_events.append(dict(event))
+    
     conn.close()
-    events = [dict(row) for row in rows]
-    return jsonify({'status': 'success', 'events': events})
+    
+    # Sort by date and limit
+    result_events.sort(key=lambda x: x['event_date'])
+    
+    return jsonify({
+        'status': 'success', 
+        'events': result_events[:100]
+    })
+
 
 @app.route('/api/events/<int:event_id>/rsvp', methods=['POST'])
 def rsvp_event(event_id):  # <-- add event_id here
@@ -12990,77 +13136,181 @@ def get_event(event_id):
     return jsonify({'status': 'error', 'error': 'Event not found'}), 404
 
 @app.route('/api/events', methods=['POST'])
+@login_required
+@role_required(['admin'])
 def create_event():
-    data = request.json
-    required = ['title', 'event_date']
-    for field in required:
-        if field not in data:
-            return jsonify({'status': 'error', 'error': f'Missing field: {field}'}), 400
-
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO events (
-            title, description, event_date, image_url, repeat_type
-        ) VALUES (?, ?, ?, ?, ?)
-    ''', (
-        data['title'],
-        data.get('description', ''),
-        data['event_date'],
-        data.get('image_url', ''),
-        data.get('repeat_type', 'none')
-    ))
-    conn.commit()
-    event_id = cursor.lastrowid
-    conn.close()
-    return jsonify({'status': 'success', 'id': event_id}), 201
+    """Create a new event - works for both regular and override events"""
+    try:
+        data = request.json
+        required = ['title', 'event_date']
+        for field in required:
+            if field not in data:
+                return jsonify({'status': 'error', 'error': f'Missing field: {field}'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # If parent_event_id is provided, this is an override
+        parent_event_id = data.get('parent_event_id')
+        
+        # If it's an override, verify the parent exists and is recurring
+        if parent_event_id:
+            cursor.execute('''
+                SELECT id, repeat_type FROM events 
+                WHERE id = ? AND parent_event_id IS NULL
+            ''', (parent_event_id,))
+            parent = cursor.fetchone()
+            if not parent:
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'Parent event not found or not recurring'}), 400
+            
+            # Overrides should have repeat_type = 'none'
+            # If not specified, force it
+            data['repeat_type'] = 'none'
+        
+        cursor.execute('''
+            INSERT INTO events (
+                title,
+                description,
+                event_date,
+                image_url,
+                repeat_type,
+                parent_event_id,
+                is_cancelled,
+                rsvp_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+        ''', (
+            data['title'],
+            data.get('description', ''),
+            data['event_date'],
+            data.get('image_url', ''),
+            data.get('repeat_type', 'none'),
+            data.get('parent_event_id'),
+            1 if data.get('is_cancelled', False) else 0
+        ))
+        
+        event_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Event created successfully',
+            'id': event_id
+        }), 201
+        
+    except Exception as e:
+        app.logger.error(f"Error creating event: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/events/<int:event_id>', methods=['PUT'])
+@login_required
+@role_required(['admin'])
 def update_event(event_id):
-    data = request.json
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT id FROM events WHERE id = ?', (event_id,))
-    if not cursor.fetchone():
+    """Update an event - works for both regular and override events"""
+    try:
+        data = request.json
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if event exists
+        cursor.execute('SELECT id, parent_event_id FROM events WHERE id = ?', (event_id,))
+        existing = cursor.fetchone()
+        if not existing:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Event not found'}), 404
+        
+        # Build update query
+        updates = []
+        params = []
+        
+        if 'title' in data:
+            updates.append('title = ?')
+            params.append(data['title'])
+        
+        if 'description' in data:
+            updates.append('description = ?')
+            params.append(data['description'])
+        
+        if 'event_date' in data:
+            updates.append('event_date = ?')
+            params.append(data['event_date'])
+        
+        if 'image_url' in data:
+            updates.append('image_url = ?')
+            params.append(data['image_url'])
+        
+        if 'repeat_type' in data:
+            # If it's an override, force repeat_type to 'none'
+            if existing['parent_event_id']:
+                params.append('none')
+            else:
+                params.append(data['repeat_type'])
+            updates.append('repeat_type = ?')
+        
+        if 'is_cancelled' in data:
+            updates.append('is_cancelled = ?')
+            params.append(1 if data['is_cancelled'] else 0)
+        
+        if not updates:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'No fields to update'}), 400
+        
+        updates.append('updated_at = CURRENT_TIMESTAMP')
+        params.append(event_id)
+        
+        cursor.execute(f'''
+            UPDATE events 
+            SET {', '.join(updates)}
+            WHERE id = ?
+        ''', params)
+        
+        conn.commit()
         conn.close()
-        return jsonify({'status': 'error', 'error': 'Event not found'}), 404
-
-    cursor.execute('''
-        UPDATE events SET
-            title = ?,
-            description = ?,
-            event_date = ?,
-            image_url = ?,
-            repeat_type = ?
-        WHERE id = ?
-    ''', (
-        data['title'],
-        data.get('description', ''),
-        data['event_date'],
-        data.get('image_url', ''),
-        data.get('repeat_type', 'none'),
-        event_id
-    ))
-    conn.commit()
-    conn.close()
-    return jsonify({'status': 'success'})
-
-# DELETE event
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Event updated successfully'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error updating event: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+    
 @app.route('/api/events/<int:event_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
 def delete_event(event_id):
+    """Delete an event - if recurring, deletes all overrides too"""
     try:
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute('SELECT id FROM events WHERE id = ?', (event_id,))
-        if not cursor.fetchone():
+        
+        # Check if it's a recurring event
+        cursor.execute('SELECT id, parent_event_id FROM events WHERE id = ?', (event_id,))
+        event = cursor.fetchone()
+        
+        if not event:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Event not found'}), 404
-        cursor.execute('DELETE FROM events WHERE id = ?', (event_id,))
+        
+        if event['parent_event_id'] is None:
+            # It's a recurring event - delete it and all overrides
+            cursor.execute('DELETE FROM events WHERE id = ? OR parent_event_id = ?', (event_id, event_id))
+            message = 'Recurring event and all overrides deleted'
+        else:
+            # It's an override - just delete it
+            cursor.execute('DELETE FROM events WHERE id = ?', (event_id,))
+            message = 'Override deleted'
+        
         conn.commit()
         conn.close()
-        return jsonify({'status': 'success'})
+        
+        return jsonify({'status': 'success', 'message': message})
+        
     except Exception as e:
-        app.logger.error(f"Error deleting event {event_id}: {e}")
+        app.logger.error(f"Error deleting event: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/events/<int:event_id>/rsvps', methods=['GET'])
