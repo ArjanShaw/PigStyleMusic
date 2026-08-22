@@ -123,59 +123,17 @@
     border-color: #007bff;
 }
 
-/* ===== ACTION MODE SECTION ===== */
-.item-management-container .action-mode-section {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 20px;
-    margin-bottom: 20px;
-}
-
-.item-management-container .action-mode-selector {
-    display: flex;
-    gap: 30px;
-    align-items: center;
-    flex-wrap: wrap;
-}
-
-.item-management-container .action-mode-option {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: #333;
-    cursor: pointer;
-    font-size: 15px;
-    font-weight: 500;
-}
-
-.item-management-container .action-mode-option input[type="radio"] {
-    width: 18px;
-    height: 18px;
-    cursor: pointer;
-}
-
-.item-management-container .action-mode-option.checkout-mode {
-    color: #007bff;
-}
-
-.item-management-container .action-mode-option.delete-mode {
-    color: #dc3545;
-}
-
-.item-management-container .action-mode-option.refund-mode {
-    color: #ffc107;
-}
-
+/* ===== ACTION EXECUTE ROW ===== */
 .item-management-container .action-execute-row {
     display: flex;
     gap: 15px;
     align-items: center;
     flex-wrap: wrap;
-    margin-top: 15px;
-    padding-top: 15px;
-    border-top: 1px solid #ddd;
-    margin-bottom: 25px;
+    margin-bottom: 15px;
+    padding: 15px 20px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
 }
 
 .item-management-container .selected-count {
@@ -264,7 +222,7 @@
     cursor: not-allowed;
 }
 
-/* ===== ADD TO CHECKOUT ROW ===== */
+/* ===== ADD TO CART ROW ===== */
 .item-management-container .add-checkout-row {
     display: flex;
     gap: 10px;
@@ -333,17 +291,6 @@
     margin-right: 4px;
 }
 
-.item-management-container .selection-status .status-right {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-
-.item-management-container .selection-status .status-right .btn-small {
-    padding: 5px 12px;
-    font-size: 12px;
-}
-
 /* ===== RECORDS TABLE ===== */
 .item-management-container .records-table-container {
     overflow-x: auto;
@@ -382,13 +329,6 @@
     background: #e8f4fd !important;
 }
 
-.item-management-container .records-table th input[type="checkbox"],
-.item-management-container .records-table td input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
-}
-
 .item-management-container .barcode-value {
     font-family: monospace;
     font-size: 12px;
@@ -396,18 +336,6 @@
     padding: 3px 6px;
     border-radius: 3px;
     color: #333;
-}
-
-.item-management-container .no-records {
-    text-align: center;
-    padding: 40px;
-    color: #666;
-}
-
-.item-management-container .no-records i {
-    font-size: 48px;
-    margin-bottom: 15px;
-    color: #999;
 }
 
 /* ===== STATUS BADGES ===== */
@@ -612,191 +540,56 @@
     background: white;
 }
 
-/* ===== TENDER MODAL ===== */
-.item-management-container .tender-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0,0,0,0.6);
-    display: none;
-    justify-content: center;
-    align-items: center;
-    z-index: 10000;
+/* ===== CHECKOUT MODAL (dynamically created) ===== */
+#checkout-payment-modal .modal-content {
+    max-width: 550px;
 }
 
-.item-management-container .tender-content {
-    background: white;
-    padding: 30px;
-    border-radius: 12px;
-    max-width: 400px;
-    width: 90%;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-}
-
-.item-management-container .tender-amount {
-    font-size: 48px;
-    font-weight: bold;
-    text-align: center;
-    color: #28a745;
-    margin: 10px 0;
-}
-
-.item-management-container .tender-input {
-    width: 100%;
-    padding: 12px;
-    font-size: 24px;
-    text-align: center;
-    border: 2px solid #ddd;
-    border-radius: 8px;
-    margin: 15px 0;
-}
-
-.item-management-container .tender-input:focus {
-    border-color: #007bff;
-    outline: none;
-}
-
-.item-management-container .change-display {
-    font-size: 36px;
-    font-weight: bold;
-    text-align: center;
-    color: #dc3545;
-    margin: 10px 0;
-}
-
-/* ===== SQUARE PAYMENT MODAL ===== */
-#item-square-payment-modal .modal-content {
-    max-width: 450px;
-}
-
-#item-square-payment-modal .info-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 6px 0;
-    border-bottom: 1px solid #eee;
-}
-
-#item-square-payment-modal .info-row:last-child {
-    border-bottom: none;
-}
-
-#item-square-payment-modal .info-row .label {
-    color: #666;
-}
-
-#item-square-payment-modal .info-row .value {
-    font-weight: 500;
-    color: #333;
-}
-
-#item-square-payment-modal .btn-square-force {
-    background: #28a745;
-    color: white;
-    border: none;
-    padding: 8px 16px;
+#checkout-payment-modal .status-message {
+    padding: 10px;
     border-radius: 4px;
-    cursor: pointer;
-    font-weight: 500;
+    margin: 5px 0;
 }
 
-#item-square-payment-modal .btn-square-force:hover {
-    background: #218838;
+#checkout-payment-modal .status-message.status-success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
 }
 
-#item-square-payment-modal .btn-square-cancel {
-    background: #dc3545;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: 500;
+#checkout-payment-modal .status-message.status-error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
 }
 
-#item-square-payment-modal .btn-square-cancel:hover {
-    background: #bd2130;
-}
-
-#item-square-force-warning {
-    margin-top: 15px;
-    padding: 10px 15px;
+#checkout-payment-modal .status-message.status-warning {
     background: #fff3cd;
-    border: 1px solid #ffeeba;
-    border-radius: 4px;
     color: #856404;
-    font-size: 13px;
-    display: none;
+    border: 1px solid #ffeeba;
 }
 
-#item-square-force-warning i {
-    margin-right: 8px;
+#checkout-payment-modal .status-message.status-info {
+    background: #cce5ff;
+    color: #004085;
+    border: 1px solid #b8daff;
 }
 
-/* ===== PAYMENT METHOD MODAL ===== */
-#item-payment-method-modal .modal-content {
-    max-width: 400px;
+#checkout-payment-modal .form-control {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
 }
 
-#item-payment-method-modal .btn-cash {
-    background: #28a745;
-    color: white;
-    border: none;
-    padding: 15px;
-    font-size: 16px;
-    border-radius: 8px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    transition: all 0.2s ease;
+#checkout-payment-modal .form-control:focus {
+    outline: none;
+    border-color: #007bff;
 }
 
-#item-payment-method-modal .btn-cash:hover {
-    background: #218838;
-    transform: scale(1.02);
-}
-
-#item-payment-method-modal .btn-square {
-    background: #6f42c1;
-    color: white;
-    border: none;
-    padding: 15px;
-    font-size: 16px;
-    border-radius: 8px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    transition: all 0.2s ease;
-}
-
-#item-payment-method-modal .btn-square:hover {
-    background: #5e34a5;
-    transform: scale(1.02);
-}
-
-#item-payment-method-modal .btn-giftcard {
-    background: #fd7e14;
-    color: white;
-    border: none;
-    padding: 15px;
-    font-size: 16px;
-    border-radius: 8px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    transition: all 0.2s ease;
-}
-
-#item-payment-method-modal .btn-giftcard:hover {
-    background: #dc6c12;
-    transform: scale(1.02);
+#checkout-payment-modal .btn-sm {
+    padding: 5px 12px;
+    font-size: 12px;
 }
 
 /* ===== RESPONSIVE ===== */
@@ -822,12 +615,6 @@
     
     .item-management-container .search-form {
         min-width: auto;
-    }
-    
-    .item-management-container .action-mode-selector {
-        flex-direction: column;
-        gap: 10px;
-        align-items: flex-start;
     }
     
     .item-management-container .action-execute-row {
@@ -858,18 +645,6 @@
         padding: 8px;
         font-size: 12px;
     }
-
-    #item-payment-method-modal .modal-content {
-        max-width: 95%;
-        margin: 10px;
-    }
-    
-    #item-payment-method-modal .btn-cash,
-    #item-payment-method-modal .btn-square,
-    #item-payment-method-modal .btn-giftcard {
-        padding: 12px;
-        font-size: 14px;
-    }
 }
 
 @media (max-width: 480px) {
@@ -879,23 +654,5 @@
     
     .item-management-container .stat-value {
         font-size: 24px;
-    }
-
-    #item-payment-method-modal .modal-content {
-        max-width: 98%;
-        margin: 5px;
-    }
-    
-    #item-payment-method-modal .btn-cash,
-    #item-payment-method-modal .btn-square,
-    #item-payment-method-modal .btn-giftcard {
-        padding: 10px;
-        font-size: 13px;
-    }
-    
-    #item-payment-method-modal .btn-cash i,
-    #item-payment-method-modal .btn-square i,
-    #item-payment-method-modal .btn-giftcard i {
-        font-size: 18px;
     }
 }

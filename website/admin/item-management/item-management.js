@@ -1,5 +1,5 @@
 // ============================================================================
-// item-management.js - Unified Item Management Module
+// item-management.js - Unified Item Management Module (Stripped)
 // ============================================================================
 
 (function() {
@@ -14,7 +14,6 @@
     const clearSearchBtn = document.getElementById('item-clear-search');
 
     const recordsTableBody = document.getElementById('item-records-table-body');
-    const selectAllCheckbox = document.getElementById('item-select-all-checkbox');
 
     const pageSizeSelect = document.getElementById('item-record-page-size');
     const currentPageInput = document.getElementById('item-record-current-page');
@@ -31,10 +30,7 @@
     const selectedCountBadge = document.getElementById('item-selection-count-badge');
     const selectedCountText = document.getElementById('item-selected-count-text');
     const totalValueSpan = document.getElementById('item-total-value');
-    const executeActionBtn = document.getElementById('item-execute-action-btn');
-    const clearSelectionBtn = document.getElementById('item-clear-selection-btn');
-    const clearSelectionTop = document.getElementById('item-clear-selection-top');
-    const selectAllBtn = document.getElementById('item-select-all-btn');
+    const checkoutBtn = document.getElementById('item-checkout-btn');
     const statusMessage = document.getElementById('item-status-message');
 
     // ========== State ==========
@@ -44,7 +40,6 @@
     let pageSize = 50;
     let totalRecords = 0;
     let selectedIds = new Set();
-    let currentActionMode = 'checkout';
     let isInitialized = false;
     let isRendering = false;
 
@@ -144,147 +139,97 @@
             console.error('Error loading stats:', error);
         }
     }
+
     async function loadRecords(searchTerm) {
-    console.log('🔍 loadRecords called with searchTerm:', searchTerm);
-    console.log('📊 selectedIds BEFORE load:', Array.from(selectedIds));
-    
-    try {
-        // Save current selection before loading
-        const currentSelection = new Set(selectedIds);
-        console.log('💾 Saved selection:', Array.from(currentSelection));
+        console.log('🔍 loadRecords called with searchTerm:', searchTerm);
         
-        // --- FIX: Always load ALL records first ---
-        let url = '/records?status_ids=2,1&limit=1000';
-        console.log('🌐 Fetching ALL records:', url);
-        
-        const data = await apiRequest('GET', url);
-        console.log('📦 Received', data.records ? data.records.length : 0, 'records');
-        
-        if (data.status === 'success') {
-            // Store ALL records in the master array
-            records = data.records || [];
-            console.log('📦 Total records loaded:', records.length);
+        try {
+            let url = '/records?status_ids=2,1&limit=1000';
+            console.log('🌐 Fetching records:', url);
             
-            // --- KEEP ALL selections ---
-            selectedIds = new Set(currentSelection);
-            console.log('📊 selectedIds after load (preserved):', Array.from(selectedIds));
+            const data = await apiRequest('GET', url);
+            console.log('📦 Received', data.records ? data.records.length : 0, 'records');
             
-            // --- Apply search filter client-side for display ---
-            const searchTermLower = searchTerm ? searchTerm.trim().toLowerCase() : '';
-            if (searchTermLower) {
-                filteredRecords = records.filter(function(r) {
-                    // Make sure we're checking all possible fields
-                    const artist = (r.artist || '').toLowerCase();
-                    const title = (r.title || '').toLowerCase();
-                    const barcode = (r.barcode || '').toLowerCase();
-                    const catalog = (r.catalog_number || '').toLowerCase();
-                    const id = String(r.id || '');
-                    
-                    return artist.includes(searchTermLower) ||
-                           title.includes(searchTermLower) ||
-                           barcode.includes(searchTermLower) ||
-                           catalog.includes(searchTermLower) ||
-                           id.includes(searchTermLower);
-                });
-                console.log('🔍 Search filter applied: found', filteredRecords.length, 'matching records out of', records.length);
+            if (data.status === 'success') {
+                records = data.records || [];
+                console.log('📦 Total records loaded:', records.length);
+                
+                const searchTermLower = searchTerm ? searchTerm.trim().toLowerCase() : '';
+                if (searchTermLower) {
+                    filteredRecords = records.filter(function(r) {
+                        const artist = (r.artist || '').toLowerCase();
+                        const title = (r.title || '').toLowerCase();
+                        const barcode = (r.barcode || '').toLowerCase();
+                        const catalog = (r.catalog_number || '').toLowerCase();
+                        const id = String(r.id || '');
+                        
+                        return artist.includes(searchTermLower) ||
+                               title.includes(searchTermLower) ||
+                               barcode.includes(searchTermLower) ||
+                               catalog.includes(searchTermLower) ||
+                               id.includes(searchTermLower);
+                    });
+                    console.log('🔍 Search filter applied: found', filteredRecords.length, 'matching records out of', records.length);
+                } else {
+                    filteredRecords = records.slice();
+                    console.log('📋 No search filter: showing all', filteredRecords.length, 'records');
+                }
+                
+                totalRecords = filteredRecords.length;
+                currentPage = 1;
+                renderTable();
+                updatePagination();
+                updateSelectionStats();
+                showStatus('Loaded ' + records.length + ' total records, showing ' + filteredRecords.length + ' (' + selectedIds.size + ' selected)', 'info');
             } else {
-                filteredRecords = records.slice();
-                console.log('📋 No search filter: showing all', filteredRecords.length, 'records');
+                throw new Error(data.error || 'Failed to load records');
             }
-            
-            totalRecords = filteredRecords.length;
-            currentPage = 1;
+        } catch (error) {
+            console.error('❌ Error loading records:', error);
+            showStatus('Error loading records: ' + error.message, 'error');
+            records = [];
+            filteredRecords = [];
+            totalRecords = 0;
             renderTable();
             updatePagination();
-            updateSelectionStats();
-            showStatus('Loaded ' + records.length + ' total records, showing ' + filteredRecords.length + ' (' + selectedIds.size + ' selected)', 'info');
-        } else {
-            throw new Error(data.error || 'Failed to load records');
         }
-    } catch (error) {
-        console.error('❌ Error loading records:', error);
-        showStatus('Error loading records: ' + error.message, 'error');
-        records = [];
-        filteredRecords = [];
-        totalRecords = 0;
-        renderTable();
-        updatePagination();
     }
-}
 
     // ========== Render Table ==========
     function renderTable() {
         if (isRendering) return;
         isRendering = true;
 
-        console.log('🔄 renderTable() called');
-        console.log('📊 selectedIds in renderTable:', Array.from(selectedIds));
-        console.log('📊 records count:', records.length);
-        console.log('📊 filteredRecords count:', filteredRecords.length);
-
         try {
             const start = (currentPage - 1) * pageSize;
             const end = Math.min(start + pageSize, filteredRecords.length);
             const pageRecords = filteredRecords.slice(start, end);
 
-            const selectedCount = selectedIds.size;
-            let displayRecords = [];
-
-            console.log('📊 selectedCount:', selectedCount);
-            console.log('📊 pageRecords count:', pageRecords.length);
-
-            // --- FIX: Show ALL selected items from the FULL records array ---
-            if (selectedCount > 0) {
-                console.log('🎯 Getting ALL selected records from FULL records array');
-                
-                // Get ALL selected records from the full records array
-                const allSelected = records.filter(function(r) {
-                    return selectedIds.has(r.id);
-                });
-                console.log('🎯 allSelected count:', allSelected.length);
-                console.log('🎯 allSelected IDs:', allSelected.map(r => r.id));
-                
-                // Get current page records that aren't selected
-                const currentPageUnselected = pageRecords.filter(function(r) {
-                    return !selectedIds.has(r.id);
-                });
-                console.log('🎯 currentPageUnselected count:', currentPageUnselected.length);
-                
-                // Combine: selected first (ALL of them), then unselected from current page
-                displayRecords = allSelected.concat(currentPageUnselected);
-                console.log('🎯 displayRecords count:', displayRecords.length);
-                
-                const viewText = document.getElementById('item-view-status-text');
-                if (viewText) {
-                    viewText.textContent = selectedCount + ' selected item(s) - ' + currentPageUnselected.length + ' more on this page';
-                }
-            } else {
-                console.log('📊 No selections - showing normal page');
-                displayRecords = pageRecords;
-                
-                const viewText = document.getElementById('item-view-status-text');
-                if (viewText) {
-                    const searchTerm = searchInput ? searchInput.value.trim() : '';
-                    if (searchTerm) {
-                        viewText.textContent = 'Showing results for "' + escapeHtml(searchTerm) + '" (' + totalRecords + ' total)';
-                    } else {
-                        viewText.textContent = 'Showing all records (' + totalRecords + ' total)';
-                    }
-                }
-            }
+            // Get ALL selected records from the full records array
+            const allSelected = records.filter(function(r) {
+                return selectedIds.has(r.id);
+            });
+            
+            // Get current page records that aren't selected
+            const currentPageUnselected = pageRecords.filter(function(r) {
+                return !selectedIds.has(r.id);
+            });
+            
+            // Combine: selected first (ALL of them), then unselected from current page
+            const displayRecords = allSelected.concat(currentPageUnselected);
+            
+            console.log('📊 renderTable: selectedCount=' + selectedIds.size + ', displayRecords=' + displayRecords.length);
 
             if (displayRecords.length === 0) {
                 let message = 'No records found.';
-                if (selectedCount > 0) {
-                    message = 'No items selected. Search for records and check the boxes to select them.';
-                } else if (searchInput && searchInput.value.trim()) {
+                if (searchInput && searchInput.value.trim()) {
                     message = 'No records found matching "' + escapeHtml(searchInput.value.trim()) + '"';
                 } else {
                     message = 'Search for records to manage';
                 }
                 recordsTableBody.innerHTML = `
                     <tr>
-                        <td colspan="8" style="text-align: center; padding: 40px; color: #999;">
+                        <td colspan="7" style="text-align: center; padding: 40px; color: #999;">
                             <i class="fas fa-search" style="font-size: 36px; display: block; margin-bottom: 10px;"></i>
                             ${message}
                         </td>
@@ -302,7 +247,6 @@
 
                 const rowClass = isSelected ? 'selected-row' : '';
                 html += `<tr class="${rowClass}" data-id="${record.id}">`;
-                html += `<td><input type="checkbox" class="item-select-checkbox" data-id="${record.id}" ${isSelected ? 'checked' : ''}></td>`;
                 html += `<td>${record.id}</td>`;
                 html += `<td>${escapeHtml(record.artist || 'Unknown')}</td>`;
                 html += `<td>${escapeHtml(record.title || 'Unknown')}</td>`;
@@ -318,8 +262,8 @@
                     </td>`;
                 } else {
                     html += `<td>
-                        <button class="btn btn-small btn-primary add-item-btn" data-id="${record.id}" title="Add to selection">
-                            <i class="fas fa-plus"></i> Select
+                        <button class="btn btn-small btn-success add-item-btn" data-id="${record.id}" title="Add to selection">
+                            <i class="fas fa-plus"></i> Add
                         </button>
                     </td>`;
                 }
@@ -327,24 +271,6 @@
             });
 
             recordsTableBody.innerHTML = html;
-
-            document.querySelectorAll('.item-select-checkbox').forEach(function(checkbox) {
-                checkbox.addEventListener('change', function() {
-                    const id = parseInt(this.dataset.id);
-                    console.log('🔄 Checkbox changed for ID:', id, 'checked:', this.checked);
-                    if (this.checked) {
-                        selectedIds.add(id);
-                        console.log('➕ Added ID to selectedIds:', id);
-                        console.log('📊 selectedIds now:', Array.from(selectedIds));
-                    } else {
-                        selectedIds.delete(id);
-                        console.log('➖ Removed ID from selectedIds:', id);
-                        console.log('📊 selectedIds now:', Array.from(selectedIds));
-                    }
-                    updateSelectionStats();
-                    renderTable();
-                });
-            });
 
             document.querySelectorAll('.remove-item-btn').forEach(function(btn) {
                 btn.addEventListener('click', function() {
@@ -367,12 +293,6 @@
                     renderTable();
                 });
             });
-
-            if (selectAllCheckbox && displayRecords.length > 0) {
-                const allChecked = displayRecords.every(function(r) { return selectedIds.has(r.id); });
-                selectAllCheckbox.checked = allChecked;
-                selectAllCheckbox.indeterminate = !allChecked && displayRecords.some(function(r) { return selectedIds.has(r.id); });
-            }
 
             updateSelectionStats();
         } finally {
@@ -404,8 +324,6 @@
     // ========== Selection Stats ==========
     function updateSelectionStats() {
         const count = selectedIds.size;
-        console.log('📊 updateSelectionStats - count:', count);
-        console.log('📊 selectedIds:', Array.from(selectedIds));
         
         selectedCountSpan.textContent = count;
         selectedCountBadge.textContent = count;
@@ -419,142 +337,49 @@
         });
         totalValueSpan.textContent = formatCurrency(totalValue);
 
-        executeActionBtn.disabled = count === 0;
-        const showClear = count > 0;
-        clearSelectionBtn.style.display = showClear ? 'inline-flex' : 'none';
-        clearSelectionTop.style.display = showClear ? 'inline-flex' : 'none';
-
-        if (selectAllBtn) {
-            if (count > 0) {
-                selectAllBtn.innerHTML = '<i class="fas fa-times"></i> Clear All';
-                selectAllBtn.className = 'btn btn-danger';
-                selectAllBtn.onclick = function() { 
-                    console.log('🧹 Clear All clicked');
-                    clearSelection(); 
-                };
-            } else {
-                selectAllBtn.innerHTML = '<i class="fas fa-check-double"></i> Select All';
-                selectAllBtn.className = 'btn btn-info';
-                selectAllBtn.onclick = function() { 
-                    console.log('📋 Select All clicked');
-                    selectAll(); 
-                };
-            }
-        }
+        checkoutBtn.disabled = count === 0;
 
         const selectedCountStat = document.getElementById('item-selected-count');
         if (selectedCountStat) selectedCountStat.textContent = count;
-    }
 
-    // ========== Select All ==========
-    function selectAll() {
-        console.log('📋 selectAll called');
-        const start = (currentPage - 1) * pageSize;
-        const end = Math.min(start + pageSize, filteredRecords.length);
-        const pageRecords = filteredRecords.slice(start, end);
-        console.log('📋 Adding', pageRecords.length, 'records to selection');
-        pageRecords.forEach(function(r) { 
-            selectedIds.add(r.id); 
-        });
-        console.log('📊 selectedIds now:', Array.from(selectedIds));
-        updateSelectionStats();
-        renderTable();
-    }
-
-    // ========== Clear Selection ==========
-    function clearSelection() {
-        console.log('🧹 clearSelection called');
-        console.log('📊 selectedIds BEFORE clear:', Array.from(selectedIds));
-        selectedIds.clear();
-        console.log('📊 selectedIds AFTER clear:', Array.from(selectedIds));
-        updateSelectionStats();
-        renderTable();
+        const viewText = document.getElementById('item-view-status-text');
+        if (viewText) {
+            const searchTerm = searchInput ? searchInput.value.trim() : '';
+            if (count > 0) {
+                viewText.textContent = count + ' item(s) selected';
+            } else if (searchTerm) {
+                viewText.textContent = 'Showing results for "' + escapeHtml(searchTerm) + '" (' + totalRecords + ' total)';
+            } else {
+                viewText.textContent = 'Showing all records (' + totalRecords + ' total)';
+            }
+        }
     }
 
     // ========== Search ==========
     function performSearch() {
         const term = searchInput ? searchInput.value.trim() : '';
         console.log('🔍 performSearch called with term:', term);
-        console.log('📊 selectedIds BEFORE search:', Array.from(selectedIds));
         loadRecords(term);
     }
 
     function clearSearch() {
         if (searchInput) searchInput.value = '';
         console.log('🧹 clearSearch called');
-        console.log('📊 selectedIds BEFORE clearSearch:', Array.from(selectedIds));
         loadRecords('');
     }
 
-    // ========== Toggle Select All ==========
-    function toggleSelectAll() {
-        if (!selectAllCheckbox) return;
-        console.log('🔄 toggleSelectAll called');
-        const start = (currentPage - 1) * pageSize;
-        const end = Math.min(start + pageSize, filteredRecords.length);
-        const pageRecords = filteredRecords.slice(start, end);
-
-        const allChecked = pageRecords.every(function(r) { return selectedIds.has(r.id); });
-        console.log('📋 All checked?', allChecked);
-
-        pageRecords.forEach(function(r) {
-            if (allChecked) {
-                selectedIds.delete(r.id);
-            } else {
-                selectedIds.add(r.id);
-            }
-        });
-        console.log('📊 selectedIds now:', Array.from(selectedIds));
-
-        updateSelectionStats();
-        renderTable();
-    }
-
-    // ========== Action Mode ==========
-    function getActionMode() {
-        const checked = document.querySelector('input[name="item-action-mode"]:checked');
-        return checked ? checked.value : 'checkout';
-    }
-
-    // ========== Execute Action ==========
-    function executeAction() {
-        const mode = getActionMode();
+    // ========== Execute Checkout ==========
+    function executeCheckout() {
         const selectedRecords = records.filter(function(r) { return selectedIds.has(r.id); });
-        console.log('🎯 executeAction - mode:', mode, 'selectedRecords:', selectedRecords.length);
+        console.log('🛒 executeCheckout - selectedRecords:', selectedRecords.length);
 
         if (selectedRecords.length === 0) {
             showStatus('No items selected.', 'warning');
             return;
         }
-
-        switch (mode) {
-            case 'checkout':
-                executeCheckout(selectedRecords);
-                break;
-            case 'delete':
-                showConfirmDelete(selectedRecords);
-                break;
-            case 'refund':
-                showConfirmRefund(selectedRecords);
-                break;
-            default:
-                showStatus('Unknown action mode: ' + mode, 'error');
-        }
-    }
-
-    // ============================================================
-    // CHECKOUT FUNCTIONS
-    // ============================================================
-    
-    function executeCheckout(selectedRecords) {
-        console.log('🛒 executeCheckout called with', selectedRecords.length, 'records');
         
-        if (selectedRecords.length === 0) {
-            showStatus('No records selected for checkout.', 'warning');
-            return;
-        }
-        
-        var availableRecords = selectedRecords.filter(function(r) {
+        // Check for sold items
+        const availableRecords = selectedRecords.filter(function(r) {
             var status = r.status_id || r.status;
             return status !== 3 && status !== 'sold';
         });
@@ -568,6 +393,7 @@
             showStatus(selectedRecords.length - availableRecords.length + ' record(s) are already sold and will be skipped.', 'warning');
         }
         
+        // Add to checkout
         availableRecords.forEach(function(r) {
             if (!checkoutSelectedItems.some(function(item) { return item.id === r.id; })) {
                 checkoutSelectedItems.push(r);
@@ -739,9 +565,6 @@
     }
 
     function addPaymentEntry(method, amount) {
-        if (amount > checkoutRemaining && checkoutRemaining > 0) {
-            // allow overpayment
-        }
         checkoutPaymentEntries.push({ method: method, amount: amount });
         checkoutRemaining -= amount;
         document.getElementById('checkout-remaining').textContent = checkoutRemaining.toFixed(2);
@@ -830,7 +653,6 @@
         statusEl.style.color = '#666';
         
         try {
-            // ---- CHECK FOR GIFT CARD FIRST ----
             if (code.startsWith('GIFT-') || code.startsWith('GC-')) {
                 var giftCardResponse = await fetch(getBaseUrl() + '/api/gift-card/balance/' + encodeURIComponent(code), {
                     credentials: 'include',
@@ -872,7 +694,6 @@
                 }
             }
             
-            // ---- DEBTOR / STORE CREDIT LOOKUP ----
             var response = await fetch(getBaseUrl() + '/api/debtor/lookup', {
                 method: 'POST',
                 credentials: 'include',
@@ -1196,7 +1017,7 @@
             }
         }
 
-        // --- 🎁 Create gift cards (only after payment is confirmed) ---
+        // Create gift cards
         var giftCardErrors = [];
         for (var i = 0; i < giftCardItems.length; i++) {
             var item = giftCardItems[i];
@@ -1506,432 +1327,18 @@
         checkoutRemaining = 0;
         
         console.log('🧹 Clearing selectedIds in completeCheckout');
-        console.log('📊 selectedIds BEFORE clear:', Array.from(selectedIds));
         selectedIds.clear();
-        console.log('📊 selectedIds AFTER clear:', Array.from(selectedIds));
 
         var modal = document.getElementById('checkout-payment-modal');
         if (modal) {
             modal.style.display = 'none';
         }
 
-        // Reload records with fresh data
         const searchTerm = searchInput ? searchInput.value.trim() : '';
         await loadRecords(searchTerm);
         await loadStats();
 
         console.log('🛒 completeCheckout finished successfully');
-    }
-
-    // ========== Tender Modal (Cash) ==========
-    let tenderTotal = 0;
-    let tenderItems = [];
-
-    function showTenderModal(total, items) {
-        tenderTotal = total;
-        tenderItems = items;
-
-        const modal = document.getElementById('item-tender-modal');
-        const totalDue = document.getElementById('item-tender-total-due');
-        const amountInput = document.getElementById('item-tender-amount');
-        const changeContainer = document.getElementById('item-change-display-container');
-        const changeAmount = document.getElementById('item-change-amount');
-        const completeBtn = document.getElementById('item-complete-payment-btn');
-
-        if (!modal) return;
-
-        totalDue.textContent = formatCurrency(total);
-        amountInput.value = '';
-        changeContainer.style.display = 'none';
-        completeBtn.disabled = true;
-
-        modal.style.display = 'flex';
-        amountInput.focus();
-
-        const newAmountInput = amountInput.cloneNode(true);
-        amountInput.parentNode.replaceChild(newAmountInput, amountInput);
-
-        newAmountInput.addEventListener('input', function() {
-            const received = parseFloat(this.value) || 0;
-            if (received >= total) {
-                const change = received - total;
-                changeAmount.textContent = formatCurrency(change);
-                changeContainer.style.display = 'block';
-                completeBtn.disabled = false;
-            } else {
-                changeContainer.style.display = 'none';
-                completeBtn.disabled = true;
-            }
-        });
-
-        newAmountInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !completeBtn.disabled) {
-                processCashPayment();
-            }
-        });
-    }
-
-    function closeTenderModal() {
-        const modal = document.getElementById('item-tender-modal');
-        if (modal) modal.style.display = 'none';
-    }
-
-    function processCashPayment() {
-        const amountInput = document.getElementById('item-tender-amount');
-        const received = parseFloat(amountInput.value) || 0;
-
-        if (received < tenderTotal) {
-            showStatus('Amount received is less than total due.', 'error');
-            return;
-        }
-
-        const change = received - tenderTotal;
-        closeTenderModal();
-
-        completeSale(tenderItems, 'cash', { amount: received, change: change });
-    }
-
-    // ========== Gift Card Modal ==========
-    function showGiftCardModal(total, items) {
-        const modal = document.getElementById('item-giftcard-modal');
-        const totalDue = document.getElementById('item-giftcard-total-due');
-        const codeInput = document.getElementById('item-giftcard-code');
-        const infoDiv = document.getElementById('item-giftcard-info');
-        const applySection = document.getElementById('item-giftcard-apply-section');
-        const resultDiv = document.getElementById('item-giftcard-result');
-
-        if (!modal) return;
-
-        totalDue.textContent = formatCurrency(total);
-        codeInput.value = '';
-        infoDiv.style.display = 'none';
-        applySection.style.display = 'none';
-        resultDiv.style.display = 'none';
-
-        modal.style.display = 'flex';
-        codeInput.focus();
-    }
-
-    function closeGiftCardModal() {
-        const modal = document.getElementById('item-giftcard-modal');
-        if (modal) modal.style.display = 'none';
-    }
-
-    async function checkGiftCardForPayment() {
-        const codeInput = document.getElementById('item-giftcard-code');
-        const code = codeInput.value.trim().toUpperCase();
-
-        if (!code) {
-            showStatus('Please enter a gift card code.', 'warning');
-            return;
-        }
-
-        try {
-            const data = await apiRequest('GET', '/api/gift-card/balance/' + encodeURIComponent(code));
-
-            if (data.status === 'success') {
-                const balance = data.balance || 0;
-
-                const infoDiv = document.getElementById('item-giftcard-info');
-                const applySection = document.getElementById('item-giftcard-apply-section');
-                const idDisplay = document.getElementById('item-giftcard-id-display');
-                const balanceDisplay = document.getElementById('item-giftcard-balance-display');
-
-                if (idDisplay) idDisplay.textContent = code;
-                if (balanceDisplay) balanceDisplay.textContent = formatCurrency(balance);
-
-                infoDiv.style.display = 'block';
-
-                if (balance > 0) {
-                    applySection.style.display = 'block';
-                    const amountInput = document.getElementById('item-giftcard-amount');
-                    if (amountInput) {
-                        const total = checkoutTotal || 0;
-                        amountInput.value = Math.min(balance, total).toFixed(2);
-                        amountInput.max = Math.min(balance, total);
-                    }
-                } else {
-                    applySection.style.display = 'none';
-                    showStatus('Gift card has zero balance.', 'warning');
-                }
-            } else {
-                showStatus('Gift card not found.', 'error');
-            }
-        } catch (error) {
-            console.error('Error checking gift card:', error);
-            showStatus('Error checking gift card: ' + error.message, 'error');
-        }
-    }
-
-    async function applyGiftCardToCart() {
-        const codeInput = document.getElementById('item-giftcard-code');
-        const amountInput = document.getElementById('item-giftcard-amount');
-        const code = codeInput.value.trim().toUpperCase();
-        const amount = parseFloat(amountInput.value) || 0;
-
-        if (!code) {
-            showStatus('Please enter a gift card code.', 'warning');
-            return;
-        }
-
-        if (amount <= 0) {
-            showStatus('Please enter a valid amount to apply.', 'warning');
-            return;
-        }
-
-        try {
-            const data = await apiRequest('POST', '/api/gift-card/redeem', {
-                code: code,
-                purchase_amount: amount
-            });
-
-            if (data.status === 'success') {
-                const resultDiv = document.getElementById('item-giftcard-result');
-                resultDiv.style.display = 'block';
-                resultDiv.style.padding = '10px';
-                resultDiv.style.borderRadius = '4px';
-                resultDiv.style.background = '#d4edda';
-                resultDiv.style.color = '#155724';
-                resultDiv.innerHTML = '✅ Applied $' + amount.toFixed(2) + ' from gift card. New balance: ' + formatCurrency(data.new_balance || 0);
-
-                closeGiftCardModal();
-
-                const remaining = (checkoutTotal || 0) - amount;
-                if (remaining > 0) {
-                    const items = checkoutSelectedItems || [];
-                    completeSale(items, 'giftcard_cash', { giftCardAmount: amount, cashAmount: remaining });
-                } else {
-                    completeSale(checkoutSelectedItems || [], 'giftcard', { amount: amount });
-                }
-            } else {
-                showStatus('Error applying gift card: ' + (data.error || 'Unknown error'), 'error');
-            }
-        } catch (error) {
-            console.error('Error applying gift card:', error);
-            showStatus('Error applying gift card: ' + error.message, 'error');
-        }
-    }
-
-    function setGiftCardAmount(type) {
-        const amountInput = document.getElementById('item-giftcard-amount');
-        const total = checkoutTotal || 0;
-        if (!amountInput) return;
-
-        if (type === 'full') {
-            amountInput.value = total.toFixed(2);
-        } else if (type === 'half') {
-            amountInput.value = (total / 2).toFixed(2);
-        }
-    }
-
-    // ========== Square Payment Modal ==========
-    function showSquarePaymentModal(total, items) {
-        showCheckoutModal();
-    }
-
-    function closeSquarePaymentModal() {
-        const modal = document.getElementById('item-square-payment-modal');
-        if (modal) modal.style.display = 'none';
-        if (squarePollInterval) {
-            clearInterval(squarePollInterval);
-        }
-    }
-
-    function forceCompleteSquarePayment() {
-        var modal = document.getElementById('item-square-payment-modal');
-        if (modal) modal.style.display = 'none';
-        completeCheckout();
-    }
-
-    function cancelSquarePayment() {
-        const modal = document.getElementById('item-square-payment-modal');
-        if (modal) {
-            modal.style.display = 'none';
-            showStatus('Square payment cancelled.', 'info');
-        }
-        if (squarePollInterval) {
-            clearInterval(squarePollInterval);
-        }
-    }
-
-    // ========== Complete Sale ==========
-    async function completeSale(items, paymentMethod, paymentDetails) {
-        try {
-            const recordIds = items.map(function(item) { return item.id; });
-
-            const response = await apiRequest('POST', '/records/update-status', {
-                record_ids: recordIds,
-                status_id: 5
-            });
-
-            if (response.status === 'success') {
-                const total = items.reduce(function(sum, item) { return sum + (item.price || 0); }, 0);
-                const tax = total * 0.08;
-                const grandTotal = total + tax;
-
-                showStatus('✅ Sale completed! ' + items.length + ' items sold via ' + paymentMethod, 'success');
-
-                selectedIds.clear();
-                await loadRecords(searchInput ? searchInput.value.trim() : '');
-                await loadStats();
-
-                generateReceipt(items, paymentMethod, paymentDetails, grandTotal, tax);
-            } else {
-                throw new Error(response.error || 'Failed to mark records as sold');
-            }
-        } catch (error) {
-            console.error('Error completing sale:', error);
-            showStatus('Error completing sale: ' + error.message, 'error');
-        }
-    }
-
-    // ========== Receipt ==========
-    function generateReceipt(items, paymentMethod, paymentDetails, total, tax) {
-        let receipt = '=== PIGSTYLE MUSIC ===\n';
-        receipt += 'Date: ' + new Date().toLocaleString() + '\n';
-        receipt += 'Payment: ' + paymentMethod + '\n';
-        receipt += '------------------------\n';
-
-        items.forEach(function(item) {
-            const price = item.price || 0;
-            receipt += (item.artist || 'Unknown') + ' - ' + (item.title || 'Unknown') + '\n';
-            receipt += '  $' + price.toFixed(2) + '\n';
-        });
-
-        receipt += '------------------------\n';
-        receipt += 'Subtotal: $' + (total - tax).toFixed(2) + '\n';
-        receipt += 'Tax (8%): $' + tax.toFixed(2) + '\n';
-        receipt += 'Total: $' + total.toFixed(2) + '\n';
-
-        if (paymentMethod === 'cash' && paymentDetails) {
-            receipt += 'Amount Received: $' + (paymentDetails.amount || 0).toFixed(2) + '\n';
-            receipt += 'Change: $' + (paymentDetails.change || 0).toFixed(2) + '\n';
-        }
-
-        receipt += '------------------------\n';
-        receipt += 'Thank you for shopping at PigStyle Music!';
-
-        const blob = new Blob([receipt], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'receipt_' + new Date().toISOString().slice(0, 10) + '.txt';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-
-        showStatus('📄 Receipt downloaded.', 'success');
-    }
-
-    // ========== Delete ==========
-    function showConfirmDelete(selectedRecords) {
-        const modal = document.getElementById('item-confirm-delete-modal');
-        const countDisplay = document.getElementById('item-delete-count-display');
-        const preview = document.getElementById('item-delete-items-preview');
-
-        if (!modal) return;
-
-        countDisplay.textContent = selectedRecords.length;
-
-        let previewHtml = '';
-        selectedRecords.slice(0, 10).forEach(function(r) {
-            previewHtml += '<div>' + escapeHtml(r.artist || 'Unknown') + ' - ' + escapeHtml(r.title || 'Unknown') + ' ($' + (r.store_price || 0).toFixed(2) + ')</div>';
-        });
-        if (selectedRecords.length > 10) {
-            previewHtml += '<div style="color:#999;font-style:italic;">... and ' + (selectedRecords.length - 10) + ' more</div>';
-        }
-        preview.innerHTML = previewHtml;
-
-        modal.style.display = 'flex';
-    }
-
-    function closeConfirmDeleteModal() {
-        const modal = document.getElementById('item-confirm-delete-modal');
-        if (modal) modal.style.display = 'none';
-    }
-
-    async function confirmDeleteRecords() {
-        const records = window._deleteRecords || [];
-        if (records.length === 0) return;
-
-        try {
-            const recordIds = records.map(function(r) { return r.id; });
-
-            for (const id of recordIds) {
-                await apiRequest('DELETE', '/records/' + id);
-            }
-
-            showStatus('✅ ' + records.length + ' record(s) deleted successfully.', 'success');
-            closeConfirmDeleteModal();
-
-            selectedIds.clear();
-            await loadRecords(searchInput ? searchInput.value.trim() : '');
-            await loadStats();
-
-        } catch (error) {
-            console.error('Error deleting records:', error);
-            showStatus('Error deleting records: ' + error.message, 'error');
-        }
-    }
-
-    // ========== Refund ==========
-    function showConfirmRefund(selectedRecords) {
-        const modal = document.getElementById('item-confirm-refund-modal');
-        const countDisplay = document.getElementById('item-refund-count-display');
-        const preview = document.getElementById('item-refund-items-preview');
-
-        if (!modal) return;
-
-        countDisplay.textContent = selectedRecords.length;
-
-        let previewHtml = '';
-        selectedRecords.slice(0, 10).forEach(function(r) {
-            previewHtml += '<div>' + escapeHtml(r.artist || 'Unknown') + ' - ' + escapeHtml(r.title || 'Unknown') + ' ($' + (r.store_price || 0).toFixed(2) + ')</div>';
-        });
-        if (selectedRecords.length > 10) {
-            previewHtml += '<div style="color:#999;font-style:italic;">... and ' + (selectedRecords.length - 10) + ' more</div>';
-        }
-        preview.innerHTML = previewHtml;
-
-        modal.style.display = 'flex';
-    }
-
-    function closeConfirmRefundModal() {
-        const modal = document.getElementById('item-confirm-refund-modal');
-        if (modal) modal.style.display = 'none';
-    }
-
-    async function confirmRefundRecords() {
-        const records = window._refundRecords || [];
-        if (records.length === 0) return;
-
-        try {
-            const recordIds = records.map(function(r) { return r.id; });
-
-            await apiRequest('POST', '/records/update-status', {
-                record_ids: recordIds,
-                status_id: 2
-            });
-
-            for (const id of recordIds) {
-                await apiRequest('PUT', '/records/' + id, {
-                    date_sold: null,
-                    actual_sale_price: null
-                });
-            }
-
-            showStatus('✅ ' + records.length + ' record(s) refunded and restocked.', 'success');
-            closeConfirmRefundModal();
-
-            selectedIds.clear();
-            await loadRecords(searchInput ? searchInput.value.trim() : '');
-            await loadStats();
-
-        } catch (error) {
-            console.error('Error refunding records:', error);
-            showStatus('Error refunding records: ' + error.message, 'error');
-        }
     }
 
     // ========== Custom Item ==========
@@ -1981,7 +1388,6 @@
         records.unshift(tempRecord);
         selectedIds.add(tempId);
         console.log('➕ Added custom item ID:', tempId);
-        console.log('📊 selectedIds now:', Array.from(selectedIds));
         updateSelectionStats();
         renderTable();
 
@@ -2003,7 +1409,6 @@
         records.unshift(bernieItem);
         selectedIds.add(bernieItem.id);
         console.log('💸 Added Bernie item ID:', bernieItem.id);
-        console.log('📊 selectedIds now:', Array.from(selectedIds));
         updateSelectionStats();
         renderTable();
 
@@ -2033,28 +1438,13 @@
         records.unshift(giftCardItem);
         selectedIds.add(giftCardItem.id);
         console.log('🎁 Added gift card ID:', giftCardItem.id);
-        console.log('📊 selectedIds now:', Array.from(selectedIds));
         updateSelectionStats();
         renderTable();
 
         showStatus('🎁 Added gift card ($' + value.toFixed(2) + ') to cart.', 'success');
     }
 
-    // ========== View Functions ==========
-    function updateViewButtons() {
-        const count = selectedIds.size;
-        const badge = document.getElementById('item-selection-count-badge');
-        if (badge) badge.textContent = count;
-        
-        const clearBtn = document.getElementById('item-clear-selection-btn');
-        if (clearBtn) clearBtn.style.display = count > 0 ? 'inline-block' : 'none';
-        
-        const statusText = document.getElementById('item-view-status-text');
-        if (statusText) {
-            statusText.textContent = count > 0 ? 'Showing selection list (' + count + ' items)' : 'Showing search results';
-        }
-    }
-
+    // ========== Helper Functions ==========
     function getLocalMSTDate() {
         var now = new Date();
         var year = now.getFullYear();
@@ -2065,7 +1455,7 @@
 
     function downloadReceipt(text, filename) {
         filename = filename || 'receipt.txt';
-        console.log('📄 downloadReceipt: filename=' + filename + ', text length=' + text.length);
+        console.log('📄 downloadReceipt: filename=' + filename);
         var blob = new Blob([text], { type: 'text/plain' });
         var url = URL.createObjectURL(blob);
         var a = document.createElement('a');
@@ -2102,33 +1492,9 @@
             clearSearchBtn.addEventListener('click', clearSearch);
         }
 
-        if (selectAllCheckbox) {
-            selectAllCheckbox.addEventListener('change', toggleSelectAll);
+        if (checkoutBtn) {
+            checkoutBtn.addEventListener('click', executeCheckout);
         }
-
-        if (selectAllBtn) {
-            selectAllBtn.addEventListener('click', function() {
-                selectAll();
-            });
-        }
-
-        if (clearSelectionBtn) {
-            clearSelectionBtn.addEventListener('click', clearSelection);
-        }
-
-        if (clearSelectionTop) {
-            clearSelectionTop.addEventListener('click', clearSelection);
-        }
-
-        if (executeActionBtn) {
-            executeActionBtn.addEventListener('click', executeAction);
-        }
-
-        document.querySelectorAll('input[name="item-action-mode"]').forEach(function(radio) {
-            radio.addEventListener('change', function() {
-                currentActionMode = this.value;
-            });
-        });
 
         if (pageSizeSelect) {
             pageSizeSelect.addEventListener('change', function() {
@@ -2210,55 +1576,15 @@
 
     // ========== Expose Public API ==========
     window.itemManagement = {
-        // Modal functions
-        showTenderModal: showTenderModal,
-        closeTenderModal: closeTenderModal,
-        processCashPayment: processCashPayment,
-
-        showGiftCardModal: showGiftCardModal,
-        closeGiftCardModal: closeGiftCardModal,
-        checkGiftCardForPayment: checkGiftCardForPayment,
-        applyGiftCardToCart: applyGiftCardToCart,
-        setGiftCardAmount: setGiftCardAmount,
-
-        showCustomItemModal: showCustomItemModal,
-        closeCustomItemModal: closeCustomItemModal,
-        addCustomItem: addCustomItem,
-
-        closeSquarePaymentModal: closeSquarePaymentModal,
-        forceCompleteSquarePayment: forceCompleteSquarePayment,
-        cancelSquarePayment: cancelSquarePayment,
-
-        closeConfirmDeleteModal: closeConfirmDeleteModal,
-        confirmDeleteRecords: confirmDeleteRecords,
-
-        closeConfirmRefundModal: closeConfirmRefundModal,
-        confirmRefundRecords: confirmRefundRecords,
-
-        // Checkout functions
         showCheckoutModal: showCheckoutModal,
         lookupDebtorForCheckout: lookupDebtorForCheckout,
         applyDebtorToCheckout: applyDebtorToCheckout,
-
-        // Helper functions
+        closeCustomItemModal: closeCustomItemModal,
+        addCustomItem: addCustomItem,
         addBernieItem: addBernieItem,
         showGiftCardAddModal: showGiftCardAddModal,
-
-        // Core functions - expose for scanner
         loadRecords: loadRecords,
         selectedIds: selectedIds,
-
-        // State
-        tenderTotal: 0,
-        tenderItems: [],
-        giftCardTotal: 0,
-        giftCardItems: [],
-        squareTotal: 0,
-        squareItems: [],
-        deleteRecords: [],
-        refundRecords: [],
-
-        // Init
         init: init
     };
 
