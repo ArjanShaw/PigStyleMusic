@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 from flask import Flask, send_from_directory, send_file, session, redirect, request, abort
-import requests  # ← ADD THIS IMPORT
+import requests
 
 load_dotenv()
 
@@ -15,9 +15,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ADMIN_DIR       = os.path.join(BASE_DIR, 'admin')
 INDEX_DIR       = os.path.join(BASE_DIR, 'index')
 STATIC_DIR      = os.path.join(BASE_DIR, 'static')
-COMPONENTS_DIR  = os.path.join(BASE_DIR, 'index', 'components')  # components is inside index
+COMPONENTS_DIR  = os.path.join(BASE_DIR, 'index', 'components')
 ACCOUNTING_DIR  = os.path.join(BASE_DIR, 'accounting')
 CHECKOUT_DIR    = os.path.join(BASE_DIR, 'checkout')
+ITEM_MANAGEMENT_DIR = os.path.join(ADMIN_DIR, 'item-management')  # ← NEW
 
 # Track if routes have been registered to prevent duplicates
 _routes_registered = False
@@ -131,6 +132,44 @@ def register_routes(application):
     def serve_accounting(filename):
         return send_from_directory(ACCOUNTING_DIR, filename)
 
+    # ---------- ITEM MANAGEMENT PAGE ----------
+    @application.route('/item-management')
+    def item_management():
+        if not is_admin():
+            return redirect('/access-denied')
+        
+        # File is in admin/item-management/item-management.html
+        if os.path.exists(os.path.join(ITEM_MANAGEMENT_DIR, 'item-management.html')):
+            return send_from_directory(ITEM_MANAGEMENT_DIR, 'item-management.html')
+        
+        # Fallback: check if it's directly in admin
+        if os.path.exists(os.path.join(ADMIN_DIR, 'item-management.html')):
+            return send_from_directory(ADMIN_DIR, 'item-management.html')
+        
+        # If not found, show helpful error
+        return f"""
+        <h1>⚠️ item-management.html Not Found</h1>
+        <p>Searched in:</p>
+        <ul>
+            <li>{os.path.join(ITEM_MANAGEMENT_DIR, 'item-management.html')} → {"✅" if os.path.exists(os.path.join(ITEM_MANAGEMENT_DIR, 'item-management.html')) else "❌"}</li>
+            <li>{os.path.join(ADMIN_DIR, 'item-management.html')} → {"✅" if os.path.exists(os.path.join(ADMIN_DIR, 'item-management.html')) else "❌"}</li>
+        </ul>
+        <p><a href="/admin">← Back to Admin Panel</a></p>
+        """
+
+    # Serve static assets for item-management (CSS, JS, images)
+    @application.route('/item-management/<path:filename>')
+    def serve_item_management_asset(filename):
+        if not is_admin():
+            return redirect('/access-denied')
+        
+        # Prevent path traversal
+        if '..' in filename:
+            abort(404)
+        
+        # Serve from the item-management directory
+        return send_from_directory(ITEM_MANAGEMENT_DIR, filename)
+
     # ---------- CHECKOUT PAGE ----------
     @application.route('/checkout')
     @application.route('/checkout/')
@@ -156,12 +195,6 @@ def register_routes(application):
         return send_from_directory(COMPONENTS_DIR, filename)
 
     # ---------- OTHER PAGES ----------
-    @application.route('/item-management')
-    def item_management():
-        if not is_admin():
-            return redirect('/access-denied')
-        return send_from_directory(INDEX_DIR, 'item-management.html')
-
     @application.route('/access-denied')
     def access_denied():
         return send_from_directory(INDEX_DIR, 'access_denied.html')
@@ -216,6 +249,7 @@ def register_routes(application):
             <li>INDEX_DIR: {INDEX_DIR} → exists? {os.path.exists(INDEX_DIR)}</li>
             <li>STATIC_DIR: {STATIC_DIR} → exists? {os.path.exists(STATIC_DIR)}</li>
             <li>COMPONENTS_DIR: {COMPONENTS_DIR} → exists? {os.path.exists(COMPONENTS_DIR)}</li>
+            <li>ITEM_MANAGEMENT_DIR: {ITEM_MANAGEMENT_DIR} → exists? {os.path.exists(ITEM_MANAGEMENT_DIR)}</li>
         </ul>
         <h2>Session:</h2>
         <pre>{dict(session)}</pre>
@@ -225,21 +259,28 @@ def register_routes(application):
         <p>Total routes: {len(application.url_map._rules)}</p>
         <h2>is_admin() result:</h2>
         <p>Is admin? <strong>{is_admin()}</strong></p>
+        <h2>Item Management File:</h2>
+        <p>{os.path.join(ITEM_MANAGEMENT_DIR, 'item-management.html')} → {"✅ EXISTS" if os.path.exists(os.path.join(ITEM_MANAGEMENT_DIR, 'item-management.html')) else "❌ NOT FOUND"}</p>
         """
 
-    # ---------- DEBUG SESSION (NEW) ----------
+    # ---------- DEBUG SESSION ----------
     @application.route('/debug-session')
     def debug_session():
         """Debug endpoint to check session status."""
         # Try to refresh session from API
         is_admin_result = is_admin()
         
+        # Check if item-management file exists
+        item_mgmt_exists = os.path.exists(os.path.join(ITEM_MANAGEMENT_DIR, 'item-management.html'))
+        
         return {
             'status': 'success',
             'local_session': dict(session),
             'is_admin': is_admin_result,
             'cookies_received': dict(request.cookies),
-            'session_keys': list(session.keys())
+            'session_keys': list(session.keys()),
+            'item_management_file_exists': item_mgmt_exists,
+            'item_management_path': os.path.join(ITEM_MANAGEMENT_DIR, 'item-management.html')
         }
 
     # ---------- FALLBACK ----------
