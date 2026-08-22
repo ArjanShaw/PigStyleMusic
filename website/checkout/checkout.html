@@ -20,7 +20,6 @@
     <link rel="stylesheet" href="/static/css/shared.css" />
 
     <style>
-        /* ===== STANDALONE CHECKOUT PAGE STYLES ===== */
         * {
             box-sizing: border-box;
             margin: 0;
@@ -41,7 +40,6 @@
             padding: 20px;
         }
 
-        /* ===== HEADER ===== */
         .checkout-page-header {
             display: flex;
             justify-content: space-between;
@@ -140,7 +138,6 @@
             cursor: not-allowed;
         }
 
-        /* ===== STATUS MESSAGE ===== */
         #checkout-status-message {
             padding: 10px 15px;
             border-radius: 4px;
@@ -179,7 +176,6 @@
             border: 1px solid #b8daff;
         }
 
-        /* ===== SEARCH SECTION ===== */
         .search-section {
             background: white;
             border: 1px solid #ddd;
@@ -217,7 +213,6 @@
             border-color: #007bff;
         }
 
-        /* ===== CART SECTION ===== */
         .cart-section {
             background: white;
             border: 1px solid #ddd;
@@ -349,7 +344,6 @@
             color: #28a745;
         }
 
-        /* ===== ADD TO CART ROW ===== */
         .add-checkout-row {
             display: flex;
             gap: 10px;
@@ -379,7 +373,6 @@
             margin-left: 10px;
         }
 
-        /* ===== RECORDS TABLE ===== */
         .records-table-container {
             overflow-x: auto;
             background: white;
@@ -459,7 +452,6 @@
             border: 1px solid #ffeeba;
         }
 
-        /* ===== PAGINATION ===== */
         .pagination-container {
             display: flex;
             justify-content: space-between;
@@ -527,7 +519,6 @@
             font-size: 14px;
         }
 
-        /* ===== MODAL OVERLAYS ===== */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -606,7 +597,6 @@
             background: white;
         }
 
-        /* ===== RESPONSIVE ===== */
         @media (max-width: 768px) {
             .checkout-page-header {
                 flex-direction: column;
@@ -680,16 +670,92 @@
                 display: none;
             }
         }
+
+        .debug-console {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            width: 500px;
+            max-height: 350px;
+            background: #1e1e1e;
+            color: #0f0;
+            font-family: monospace;
+            font-size: 11px;
+            padding: 10px;
+            border-radius: 8px;
+            overflow-y: auto;
+            z-index: 99999;
+            display: none;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        .debug-console .log-entry {
+            padding: 2px 0;
+            border-bottom: 1px solid #333;
+        }
+        .debug-console .log-entry .timestamp {
+            color: #888;
+            margin-right: 8px;
+        }
+        .debug-console .log-entry .level-error {
+            color: #ff4444;
+        }
+        .debug-console .log-entry .level-warn {
+            color: #ffaa00;
+        }
+        .debug-console .log-entry .level-info {
+            color: #44aaff;
+        }
+        .debug-console .log-entry .level-success {
+            color: #44ff44;
+        }
+        .debug-console .log-entry .level-request {
+            color: #ff66ff;
+        }
+        .debug-console .log-entry .level-response {
+            color: #66ff66;
+        }
+        .debug-toggle {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            z-index: 99998;
+            background: #1e1e1e;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            cursor: pointer;
+            font-size: 18px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        .debug-toggle:hover {
+            background: #333;
+        }
+        .api-doc-section {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 10px 0;
+            font-size: 13px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .api-doc-section code {
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
 
-    <!-- ===== NAVBAR PLACEHOLDER ===== -->
     <div id="navbar-placeholder"></div>
 
     <div class="checkout-page-container">
 
-        <!-- ===== HEADER ===== -->
         <div class="checkout-page-header">
             <div class="logo-area">
                 <img src="/static/images/PigStyle.ico" alt="PigStyle Music">
@@ -702,10 +768,14 @@
             </div>
         </div>
 
-        <!-- ===== STATUS MESSAGE ===== -->
         <div id="checkout-status-message" class="status-message" style="display: none;"></div>
 
-        <!-- ===== SEARCH SECTION ===== -->
+        <div class="api-doc-section" id="apiDocSection">
+            <strong>📡 API Endpoints Used:</strong>
+            <br>
+            <code>GET /records?search={term}&limit=100</code> - Search records by ID, barcode, artist, or title
+        </div>
+
         <div class="search-section">
             <div class="search-options-row">
                 <form class="search-form" id="checkout-search-form" action="javascript:void(0);">
@@ -713,10 +783,12 @@
                     <button id="checkout-search-button" type="button" class="btn btn-primary"><i class="fas fa-search"></i> Search</button>
                     <button type="button" class="btn btn-secondary" id="checkout-clear-search"><i class="fas fa-times"></i> Clear</button>
                 </form>
+                <div style="font-size:12px; color:#888;">
+                    <span id="debug-record-count">0 records loaded</span>
+                </div>
             </div>
         </div>
 
-        <!-- ========== CART SECTION ========== -->
         <div class="cart-section">
             <div class="cart-header" onclick="toggleCart()">
                 <div class="cart-title">
@@ -745,7 +817,6 @@
             </div>
         </div>
 
-        <!-- ========== ADD TO CART ROW ========== -->
         <div class="add-checkout-row">
             <span class="label"><i class="fas fa-plus-circle"></i> Add to Cart:</span>
             <button class="btn btn-info btn-small" id="checkout-custom-item-btn"><i class="fas fa-plus-circle"></i> Custom Item</button>
@@ -754,7 +825,6 @@
             <span class="hint"><i class="fas fa-info-circle"></i> Add custom items, Bernie donations, or gift cards</span>
         </div>
 
-        <!-- ========== RECORDS TABLE ========== -->
         <div class="records-table-container">
             <table class="records-table" id="checkout-records-table">
                 <thead>
@@ -779,7 +849,6 @@
             </table>
         </div>
 
-        <!-- ========== PAGINATION ========== -->
         <div class="pagination-container">
             <div class="pagination-info">
                 Showing <span id="checkout-record-showing-start">0</span>-<span id="checkout-record-showing-end">0</span> of <span id="checkout-record-total-filtered">0</span> records
@@ -804,7 +873,6 @@
 
     </div>
 
-    <!-- ========== CUSTOM ITEM MODAL ========== -->
     <div id="checkout-custom-item-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content" style="max-width: 400px;">
             <div class="modal-header" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);">
@@ -833,24 +901,71 @@
         </div>
     </div>
 
-    <!-- ========== CHECKOUT PAYMENT MODAL ========== -->
-    <!-- This modal is dynamically created by JavaScript -->
+    <button class="debug-toggle" id="debugToggle" onclick="toggleDebug()">🐛</button>
+    <div class="debug-console" id="debugConsole">
+        <div style="color:#fff; font-weight:bold; border-bottom:1px solid #444; padding-bottom:5px; margin-bottom:5px;">
+            📋 Debug Console
+            <button onclick="clearDebug()" style="float:right; background:none; border:none; color:#888; cursor:pointer;">Clear</button>
+        </div>
+        <div id="debugLogEntries"></div>
+    </div>
 
-    <!-- ========== SCRIPTS ========== -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/static/js/app-config.js"></script>
     <script src="/static/js/notification-bell.js"></script>
     <script src="/static/js/shared.js"></script>
 
     <script>
-        // ============================================================================
-        // CHECKOUT - Complete JavaScript
+        // ========== DEBUG LOGGING ==========
+        const MAX_DEBUG_ENTRIES = 100;
+        let debugEntries = [];
+
+        function debugLog(message, level = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = { timestamp, message, level };
+            debugEntries.push(entry);
+            if (debugEntries.length > MAX_DEBUG_ENTRIES) {
+                debugEntries.shift();
+            }
+            updateDebugDisplay();
+            console.log(`[${timestamp}] [${level.toUpperCase()}]`, message);
+        }
+
+        function updateDebugDisplay() {
+            const container = document.getElementById('debugLogEntries');
+            if (!container) return;
+            let html = '';
+            for (let i = debugEntries.length - 1; i >= 0; i--) {
+                const entry = debugEntries[i];
+                const levelClass = 'level-' + entry.level;
+                html += `<div class="log-entry">
+                    <span class="timestamp">[${entry.timestamp}]</span>
+                    <span class="${levelClass}">${entry.message}</span>
+                </div>`;
+            }
+            container.innerHTML = html;
+        }
+
+        function toggleDebug() {
+            const console = document.getElementById('debugConsole');
+            if (console.style.display === 'block') {
+                console.style.display = 'none';
+            } else {
+                console.style.display = 'block';
+            }
+        }
+
+        function clearDebug() {
+            debugEntries = [];
+            updateDebugDisplay();
+        }
+
         // ============================================================================
 
         (function() {
             'use strict';
 
-            console.log('📦 Checkout page loading...');
+            debugLog('🚀 Checkout page initializing...', 'info');
 
             // ========== DOM Elements ==========
             const searchInput = document.getElementById('checkout-search-input');
@@ -871,8 +986,8 @@
             const lastPageBtn = document.getElementById('checkout-record-last-page');
 
             const statusMessage = document.getElementById('checkout-status-message');
+            const debugRecordCount = document.getElementById('debug-record-count');
 
-            // Cart elements
             const cartBody = document.getElementById('cart-body');
             const cartItemsContainer = document.getElementById('cart-items-container');
             const cartCountBadge = document.getElementById('cart-count-badge');
@@ -882,12 +997,10 @@
             const cartToggleIcon = document.getElementById('cart-toggle-icon');
 
             // ========== State ==========
-            let records = [];
-            let filteredRecords = [];
+            let allRecords = [];          // ALL records - this is the ONLY source of truth
             let currentPage = 1;
             let pageSize = 50;
             let totalRecords = 0;
-            let selectedIds = new Set();
             let isRendering = false;
             let cartExpanded = false;
 
@@ -921,6 +1034,7 @@
                 statusMessage._timeout = setTimeout(function() {
                     statusMessage.style.display = 'none';
                 }, 5000);
+                debugLog(`Status: ${message} (${type})`, type);
             }
 
             function getStatusName(statusId) {
@@ -955,6 +1069,7 @@
 
             async function apiRequest(method, endpoint, body) {
                 const baseUrl = getBaseUrl();
+                const url = baseUrl + endpoint;
                 const options = {
                     method: method,
                     credentials: 'include',
@@ -963,11 +1078,28 @@
                 if (body && (method === 'POST' || method === 'PUT')) {
                     options.body = JSON.stringify(body);
                 }
-                const response = await fetch(baseUrl + endpoint, options);
+
+                debugLog(`📤 REQUEST: ${method} ${endpoint}`, 'request');
+                if (body) {
+                    debugLog(`📤 REQUEST BODY: ${JSON.stringify(body).substring(0, 500)}`, 'request');
+                }
+
+                const response = await fetch(url, options);
+                const responseText = await response.text();
+
+                debugLog(`📥 RESPONSE: ${response.status} ${response.statusText}`, 'response');
+                debugLog(`📥 RESPONSE BODY (first 500 chars): ${responseText.substring(0, 500)}`, 'response');
+
                 if (!response.ok) {
                     throw new Error('HTTP ' + response.status + ' on ' + method + ' ' + endpoint);
                 }
-                return response.json();
+
+                try {
+                    return JSON.parse(responseText);
+                } catch (e) {
+                    debugLog(`❌ Failed to parse JSON response: ${e.message}`, 'error');
+                    throw new Error('Invalid JSON response');
+                }
             }
 
             function getLocalMSTDate() {
@@ -996,14 +1128,20 @@
                 cartExpanded = !cartExpanded;
                 cartBody.classList.toggle('expanded', cartExpanded);
                 cartToggleIcon.classList.toggle('expanded', cartExpanded);
+                debugLog(`Cart toggled: ${cartExpanded ? 'expanded' : 'collapsed'}`, 'info');
             }
 
             function renderCart() {
-                const selectedRecords = records.filter(function(r) {
-                    return selectedIds.has(r.id);
+                debugLog(`🔄 renderCart() called`, 'info');
+
+                // Get cart items directly from allRecords by checking the inCart flag
+                const cartItems = allRecords.filter(function(r) {
+                    return r.inCart === true;
                 });
 
-                if (selectedRecords.length === 0) {
+                debugLog(`📦 Items in cart: ${cartItems.length}`, 'info');
+
+                if (cartItems.length === 0) {
                     cartItemsContainer.innerHTML = `
                         <div class="cart-empty">
                             <i class="fas fa-shopping-cart"></i>
@@ -1030,10 +1168,19 @@
                         <tbody>
                 `;
 
-                selectedRecords.forEach(function(r) {
+                cartItems.forEach(function(r) {
                     const price = r.store_price || 0;
                     totalValue += price;
-                    const desc = r.isCustom ? r.title : (r.artist || 'Unknown') + ' - ' + (r.title || 'Unknown');
+                    let desc = '';
+                    if (r.isCustom) {
+                        desc = r.title || 'Custom Item';
+                    } else if (r.isBernie) {
+                        desc = '🌹 Bernie Donation - $0.99';
+                    } else if (r.isGiftCard) {
+                        desc = '🎁 Gift Card - ' + (r.title || '');
+                    } else {
+                        desc = (r.artist || 'Unknown') + ' - ' + (r.title || 'Unknown');
+                    }
                     html += `
                         <tr>
                             <td>${escapeHtml(desc)}</td>
@@ -1053,22 +1200,28 @@
                 `;
 
                 cartItemsContainer.innerHTML = html;
-                cartCountBadge.textContent = selectedRecords.length;
+                cartCountBadge.textContent = cartItems.length;
                 cartTotalDisplay.textContent = formatCurrency(totalValue);
                 cartGrandTotal.textContent = formatCurrency(totalValue);
                 checkoutBtn.disabled = false;
 
-                // Add remove event listeners
+                debugLog(`💰 Cart total: ${formatCurrency(totalValue)}`, 'success');
+
                 document.querySelectorAll('.remove-from-cart-btn').forEach(function(btn) {
                     btn.addEventListener('click', function() {
-                        const id = parseInt(this.dataset.id);
-                        selectedIds.delete(id);
-                        updateUI();
+                        const id = this.dataset.id;
+                        debugLog(`🗑️ Removing item ${id} from cart`, 'warn');
+                        // Find the record and remove it from cart
+                        const record = allRecords.find(r => r.id == id);
+                        if (record) {
+                            record.inCart = false;
+                            renderTable();
+                            renderCart();
+                        }
                     });
                 });
 
-                // Auto-expand cart if items are added
-                if (!cartExpanded && selectedRecords.length > 0) {
+                if (!cartExpanded && cartItems.length > 0) {
                     cartExpanded = true;
                     cartBody.classList.add('expanded');
                     cartToggleIcon.classList.add('expanded');
@@ -1077,56 +1230,72 @@
 
             // ========== Load Records ==========
             async function loadRecords(searchTerm) {
-                console.log('🔍 loadRecords called with searchTerm:', searchTerm);
+                debugLog(`🔍 loadRecords() called with searchTerm: "${searchTerm}"`, 'info');
 
                 try {
-                    let url = '/records?status_ids=2,1&limit=1000';
-                    console.log('🌐 Fetching records:', url);
+                    let url;
+                    const searchTermLower = searchTerm ? searchTerm.trim() : '';
+
+                    if (searchTermLower) {
+                        url = `/records?search=${encodeURIComponent(searchTermLower)}&limit=100`;
+                        debugLog(`🔍 Searching backend with: ${url}`, 'info');
+                    } else {
+                        url = '/records?status_ids=2,1&limit=100';
+                        debugLog(`📋 Showing New/Active records`, 'info');
+                    }
 
                     const data = await apiRequest('GET', url);
-                    console.log('📦 Received', data.records ? data.records.length : 0, 'records');
 
                     if (data.status === 'success') {
-                        records = data.records || [];
-                        console.log('📦 Total records loaded:', records.length);
+                        const records = data.records || [];
 
-                        const searchTermLower = searchTerm ? searchTerm.trim().toLowerCase() : '';
-                        if (searchTermLower) {
-                            filteredRecords = records.filter(function(r) {
-                                const artist = (r.artist || '').toLowerCase();
-                                const title = (r.title || '').toLowerCase();
-                                const barcode = (r.barcode || '').toLowerCase();
-                                const catalog = (r.catalog_number || '').toLowerCase();
-                                const id = String(r.id || '');
-                                return artist.includes(searchTermLower) ||
-                                       title.includes(searchTermLower) ||
-                                       barcode.includes(searchTermLower) ||
-                                       catalog.includes(searchTermLower) ||
-                                       id.includes(searchTermLower);
-                            });
-                            console.log('🔍 Search filter applied: found', filteredRecords.length, 'matching records');
-                        } else {
-                            filteredRecords = records.slice();
-                            console.log('📋 No search filter: showing all', filteredRecords.length, 'records');
-                        }
+                        // Get existing cart items before replacing allRecords
+                        const existingCartItems = allRecords.filter(r => r.inCart === true);
 
-                        totalRecords = filteredRecords.length;
+                        // Create a map with all records
+                        const recordMap = new Map();
+
+                        // Add existing cart items first (preserve them)
+                        existingCartItems.forEach(r => {
+                            r.inCart = true; // Make sure flag is set
+                            recordMap.set(r.id, r);
+                        });
+
+                        // Then add new search results
+                        records.forEach(r => {
+                            if (!recordMap.has(r.id)) {
+                                r.inCart = false; // New records are not in cart
+                                recordMap.set(r.id, r);
+                            } else {
+                                // If record already exists, preserve its inCart status
+                                const existing = recordMap.get(r.id);
+                                if (existing) {
+                                    r.inCart = existing.inCart || false;
+                                    recordMap.set(r.id, r);
+                                }
+                            }
+                        });
+
+                        allRecords = Array.from(recordMap.values());
+                        debugLog(`📦 allRecords now has ${allRecords.length} records (${existingCartItems.length} in cart)`, 'info');
+
+                        totalRecords = allRecords.length;
                         currentPage = 1;
                         renderTable();
                         updatePagination();
                         renderCart();
-                        showStatus('Loaded ' + records.length + ' total records, showing ' + filteredRecords.length, 'info');
+
+                        if (searchTermLower) {
+                            showStatus(`Found ${records.length} matching records`, 'info');
+                        } else {
+                            showStatus(`Loaded ${allRecords.length} active records`, 'info');
+                        }
                     } else {
                         throw new Error(data.error || 'Failed to load records');
                     }
                 } catch (error) {
-                    console.error('❌ Error loading records:', error);
+                    debugLog(`❌ Error loading records: ${error.message}`, 'error');
                     showStatus('Error loading records: ' + error.message, 'error');
-                    records = [];
-                    filteredRecords = [];
-                    totalRecords = 0;
-                    renderTable();
-                    updatePagination();
                 }
             }
 
@@ -1136,9 +1305,13 @@
                 isRendering = true;
 
                 try {
+                    debugLog(`🔄 renderTable() - page ${currentPage}, pageSize ${pageSize}, total ${allRecords.length}`, 'info');
+
                     const start = (currentPage - 1) * pageSize;
-                    const end = Math.min(start + pageSize, filteredRecords.length);
-                    const pageRecords = filteredRecords.slice(start, end);
+                    const end = Math.min(start + pageSize, allRecords.length);
+                    const pageRecords = allRecords.slice(start, end);
+
+                    debugLog(`📊 Rendering ${pageRecords.length} records (${start}-${end})`, 'info');
 
                     if (pageRecords.length === 0) {
                         let message = 'No records found.';
@@ -1160,7 +1333,7 @@
 
                     let html = '';
                     pageRecords.forEach(function(record) {
-                        const isSelected = selectedIds.has(record.id);
+                        const isSelected = record.inCart === true;
                         const statusName = getStatusName(record.status_id);
                         const statusClass = getStatusClass(record.status_id);
                         const price = record.store_price || 0;
@@ -1192,19 +1365,38 @@
 
                     recordsTableBody.innerHTML = html;
 
+                    // Remove from cart buttons
                     document.querySelectorAll('.remove-item-btn').forEach(function(btn) {
                         btn.addEventListener('click', function() {
-                            const id = parseInt(this.dataset.id);
-                            selectedIds.delete(id);
-                            updateUI();
+                            const id = this.dataset.id;
+                            debugLog(`🗑️ Removing item ${id} from table`, 'warn');
+                            const record = allRecords.find(r => r.id == id);
+                            if (record) {
+                                record.inCart = false;
+                                renderTable();
+                                renderCart();
+                            }
                         });
                     });
 
+                    // Add to Cart buttons
                     document.querySelectorAll('.add-item-btn').forEach(function(btn) {
                         btn.addEventListener('click', function() {
-                            const id = parseInt(this.dataset.id);
-                            selectedIds.add(id);
-                            updateUI();
+                            const id = this.dataset.id;
+                            debugLog(`➕ Adding item ${id} to cart`, 'success');
+
+                            const record = allRecords.find(r => r.id == id);
+
+                            if (record) {
+                                record.inCart = true;
+                                debugLog(`✅ Record ${id} added to cart`, 'success');
+                                renderTable();
+                                renderCart();
+                                showStatus(`✅ Added ${record.artist} - ${record.title} to cart`, 'success');
+                            } else {
+                                debugLog(`❌ Record ${id} not found in allRecords`, 'error');
+                                showStatus(`❌ Error: Record ${id} not found`, 'error');
+                            }
                         });
                     });
 
@@ -1215,22 +1407,23 @@
 
             // ========== Update UI ==========
             function updateUI() {
+                debugLog(`🔄 updateUI() called`, 'info');
                 renderTable();
                 renderCart();
             }
 
             // ========== Pagination ==========
             function updatePagination() {
-                const totalPages = Math.ceil(totalRecords / pageSize) || 1;
+                const totalPages = Math.ceil(allRecords.length / pageSize) || 1;
                 if (currentPage > totalPages) currentPage = totalPages;
                 if (currentPage < 1) currentPage = 1;
 
                 const start = (currentPage - 1) * pageSize + 1;
-                const end = Math.min(currentPage * pageSize, totalRecords);
+                const end = Math.min(currentPage * pageSize, allRecords.length);
 
-                showingStartSpan.textContent = start;
-                showingEndSpan.textContent = end;
-                totalFilteredSpan.textContent = totalRecords;
+                showingStartSpan.textContent = allRecords.length > 0 ? start : 0;
+                showingEndSpan.textContent = allRecords.length > 0 ? end : 0;
+                totalFilteredSpan.textContent = allRecords.length;
                 totalPagesSpan.textContent = totalPages;
                 currentPageInput.value = currentPage;
 
@@ -1238,16 +1431,26 @@
                 prevPageBtn.disabled = currentPage === 1;
                 nextPageBtn.disabled = currentPage === totalPages;
                 lastPageBtn.disabled = currentPage === totalPages;
+
+                if (debugRecordCount) {
+                    debugRecordCount.textContent = `${allRecords.length} records`;
+                }
+
+                debugLog(`📄 Pagination: page ${currentPage}/${totalPages}, showing ${start}-${end} of ${allRecords.length}`, 'info');
             }
 
             // ========== Search ==========
             function performSearch() {
                 const term = searchInput ? searchInput.value.trim() : '';
+                debugLog(`🔎 performSearch() called with term: "${term}"`, 'info');
                 loadRecords(term);
             }
 
             function clearSearch() {
-                if (searchInput) searchInput.value = '';
+                if (searchInput) {
+                    searchInput.value = '';
+                    debugLog(`🧹 Clear search`, 'info');
+                }
                 loadRecords('');
             }
 
@@ -1262,17 +1465,21 @@
 
                 modal.style.display = 'flex';
                 document.getElementById('checkout-custom-name').focus();
+                debugLog(`📝 Showing custom item modal`, 'info');
             }
 
             function closeCustomItemModal() {
                 const modal = document.getElementById('checkout-custom-item-modal');
                 if (modal) modal.style.display = 'none';
+                debugLog(`📝 Closing custom item modal`, 'info');
             }
 
             function addCustomItem() {
                 const name = document.getElementById('checkout-custom-name').value.trim();
                 const price = parseFloat(document.getElementById('checkout-custom-price').value);
                 const quantity = parseInt(document.getElementById('checkout-custom-quantity').value) || 1;
+
+                debugLog(`➕ addCustomItem() - name: "${name}", price: ${price}, qty: ${quantity}`, 'info');
 
                 if (!name) {
                     showStatus('Please enter an item name.', 'warning');
@@ -1284,20 +1491,22 @@
                     return;
                 }
 
-                const tempId = 'temp_' + Date.now();
+                const tempId = 'custom_' + Date.now();
                 const tempRecord = {
                     id: tempId,
                     artist: 'Custom Item',
                     title: name,
                     store_price: price,
                     status_id: 0,
-                    is_custom: true
+                    isCustom: true,
+                    inCart: true
                 };
 
-                records.unshift(tempRecord);
-                selectedIds.add(tempId);
-                updateUI();
+                allRecords.unshift(tempRecord);
+                renderTable();
+                renderCart();
 
+                debugLog(`✅ Added custom item "${name}" ($${price}) to cart`, 'success');
                 showStatus('✅ Added "' + name + '" to cart ($' + price.toFixed(2) + ' x ' + quantity + ')', 'success');
                 closeCustomItemModal();
             }
@@ -1310,13 +1519,15 @@
                     title: 'Campaign Donation',
                     store_price: 0.99,
                     status_id: 0,
-                    is_bernie: true
+                    isBernie: true,
+                    inCart: true
                 };
 
-                records.unshift(bernieItem);
-                selectedIds.add(bernieItem.id);
-                updateUI();
+                allRecords.unshift(bernieItem);
+                renderTable();
+                renderCart();
 
+                debugLog(`🌹 Added Bernie donation ($0.99)`, 'success');
                 showStatus('💸 Added Bernie donation ($0.99) to cart.', 'success');
             }
 
@@ -1337,19 +1548,27 @@
                     title: '$' + value.toFixed(2) + ' Gift Card',
                     store_price: value,
                     status_id: 0,
-                    is_giftcard: true
+                    isGiftCard: true,
+                    inCart: true
                 };
 
-                records.unshift(giftCardItem);
-                selectedIds.add(giftCardItem.id);
-                updateUI();
+                allRecords.unshift(giftCardItem);
+                renderTable();
+                renderCart();
 
+                debugLog(`🎁 Added gift card ($${value})`, 'success');
                 showStatus('🎁 Added gift card ($' + value.toFixed(2) + ') to cart.', 'success');
             }
 
             // ========== Execute Checkout ==========
             function executeCheckout() {
-                const selectedRecords = records.filter(function(r) { return selectedIds.has(r.id); });
+                debugLog(`🛒 executeCheckout() called`, 'info');
+
+                const selectedRecords = allRecords.filter(function(r) {
+                    return r.inCart === true;
+                });
+
+                debugLog(`📦 Selected records for checkout: ${selectedRecords.length}`, 'info');
 
                 if (selectedRecords.length === 0) {
                     showStatus('No items selected.', 'warning');
@@ -1358,6 +1577,7 @@
 
                 const availableRecords = selectedRecords.filter(function(r) {
                     var status = r.status_id || r.status;
+                    if (r.isCustom || r.isBernie || r.isGiftCard) return true;
                     return status !== 3 && status !== 'sold';
                 });
 
@@ -1370,11 +1590,8 @@
                     showStatus(selectedRecords.length - availableRecords.length + ' record(s) are already sold and will be skipped.', 'warning');
                 }
 
-                availableRecords.forEach(function(r) {
-                    if (!checkoutSelectedItems.some(function(item) { return item.id === r.id; })) {
-                        checkoutSelectedItems.push(r);
-                    }
-                });
+                checkoutSelectedItems = availableRecords.slice();
+                debugLog(`📦 Checkout items: ${checkoutSelectedItems.length}`, 'info');
 
                 showStatus('Added ' + availableRecords.length + ' items to checkout.', 'success');
                 showCheckoutModal();
@@ -1383,6 +1600,8 @@
             async function checkSquareAvailability() {
                 const baseUrl = getBaseUrl();
                 try {
+                    debugLog(`📟 Checking Square terminals: GET /api/square/terminals`, 'info');
+
                     var response = await fetch(baseUrl + '/api/square/terminals', {
                         credentials: 'include',
                         headers: { 'Content-Type': 'application/json' }
@@ -1391,9 +1610,9 @@
                     var data = await response.json();
                     squareAvailable = data.terminals && data.terminals.length > 0;
                     availableTerminals = data.terminals || [];
-                    console.log('📟 Square terminals available:', squareAvailable);
+                    debugLog(`📟 Square terminals available: ${squareAvailable}`, 'info');
                 } catch (error) {
-                    console.warn('Square not available:', error);
+                    debugLog(`⚠️ Square not available: ${error.message}`, 'warn');
                     squareAvailable = false;
                     availableTerminals = [];
                 }
@@ -1401,7 +1620,7 @@
             }
 
             function showCheckoutModal() {
-                console.log('🛒 showCheckoutModal called');
+                debugLog(`🛒 showCheckoutModal() called with ${checkoutSelectedItems.length} items`, 'info');
 
                 var oldModal = document.getElementById('checkout-payment-modal');
                 if (oldModal) {
@@ -1441,7 +1660,7 @@
                             <div style="background: #e3f2fd; padding: 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #b8daff;">
                                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                                     <input type="text" id="checkout-debtor-code" placeholder="GIFT-XXXXX or debtor name" style="flex: 2; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
-                                    <button class="btn btn-sm btn-primary" onclick="lookupDebtorForCheckout()" style="padding: 6px 12px;"><i class="fas fa-search"></i> Lookup</button>
+                                    <button class="btn btn-sm btn-primary" onclick="window.lookupDebtorForCheckout()" style="padding: 6px 12px;"><i class="fas fa-search"></i> Lookup</button>
                                 </div>
                                 <div id="checkout-debtor-info" style="display: none; margin-top: 8px; padding: 8px; background: white; border-radius: 4px;">
                                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
@@ -1449,7 +1668,7 @@
                                         <span style="font-weight: bold; color: #28a745;">Balance: $<span id="checkout-debtor-balance">0.00</span></span>
                                     </div>
                                     <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
-                                        <button class="btn btn-sm btn-success" onclick="applyDebtorToCheckout()" style="padding: 6px 12px;"><i class="fas fa-check"></i> Apply Credit</button>
+                                        <button class="btn btn-sm btn-success" onclick="window.applyDebtorToCheckout()" style="padding: 6px 12px;"><i class="fas fa-check"></i> Apply Credit</button>
                                         <button class="btn btn-sm btn-secondary" onclick="document.getElementById('checkout-debtor-info').style.display='none'"><i class="fas fa-times"></i> Cancel</button>
                                     </div>
                                     <div id="checkout-debtor-status" style="font-size: 13px; margin-top: 5px;"></div>
@@ -1538,9 +1757,11 @@
 
                 modal.style.display = 'flex';
                 updateCheckoutCompleteButton();
+                debugLog(`✅ Checkout modal displayed`, 'success');
             }
 
             function addPaymentEntry(method, amount) {
+                debugLog(`💳 Adding payment: ${method} $${amount.toFixed(2)}`, 'info');
                 checkoutPaymentEntries.push({ method: method, amount: amount });
                 checkoutRemaining -= amount;
                 document.getElementById('checkout-remaining').textContent = checkoutRemaining.toFixed(2);
@@ -1578,6 +1799,7 @@
             function removeCheckoutEntry(index) {
                 var entry = checkoutPaymentEntries[index];
                 if (entry) {
+                    debugLog(`🗑️ Removing payment entry: ${entry.method} $${entry.amount.toFixed(2)}`, 'warn');
                     checkoutRemaining += entry.amount;
                     checkoutPaymentEntries.splice(index, 1);
                     document.getElementById('checkout-remaining').textContent = checkoutRemaining.toFixed(2);
@@ -1591,6 +1813,7 @@
                 var btn = document.getElementById('checkout-complete-payment');
                 if (btn) {
                     btn.disabled = checkoutRemaining > 0.01;
+                    debugLog(`Checkout button ${btn.disabled ? 'disabled' : 'enabled'} (remaining: $${checkoutRemaining.toFixed(2)})`, 'info');
                 }
             }
 
@@ -1600,11 +1823,14 @@
                     el.textContent = message;
                     el.className = 'status-message status-' + type;
                     el.style.display = 'block';
+                    debugLog(`Checkout status: ${message} (${type})`, type);
                 }
             }
 
             // ===== LOOKUP DEBTOR =====
-            async function lookupDebtorForCheckout() {
+            window.lookupDebtorForCheckout = async function() {
+                debugLog(`🔍 lookupDebtorForCheckout() called`, 'info');
+
                 var input = document.getElementById('checkout-debtor-code');
                 var infoDiv = document.getElementById('checkout-debtor-info');
                 var statusEl = document.getElementById('checkout-debtor-status');
@@ -1615,6 +1841,8 @@
                 if (!input) return;
 
                 var code = input.value.trim().toUpperCase();
+                debugLog(`🔍 Looking up: "${code}"`, 'info');
+
                 if (!code) {
                     if (statusEl) {
                         statusEl.textContent = '⚠️ Please enter a code or name.';
@@ -1628,12 +1856,15 @@
 
                 try {
                     if (code.startsWith('GIFT-') || code.startsWith('GC-')) {
+                        debugLog(`🎁 Looking up gift card: ${code}`, 'info');
+
                         var giftCardResponse = await fetch(getBaseUrl() + '/api/gift-card/balance/' + encodeURIComponent(code), {
                             credentials: 'include',
                             headers: { 'Content-Type': 'application/json' }
                         });
 
                         var giftCardData = await giftCardResponse.json();
+                        debugLog(`🎁 Gift card response: ${JSON.stringify(giftCardData)}`, 'info');
 
                         if (giftCardData.status === 'success') {
                             var balance = giftCardData.balance || 0;
@@ -1658,15 +1889,19 @@
                                 statusEl.textContent = '✅ Gift card balance: $' + balance.toFixed(2) + '. Click Apply to use it.';
                                 statusEl.style.color = '#28a745';
                             }
+                            debugLog(`🎁 Gift card balance: $${balance}`, balance > 0 ? 'success' : 'warn');
                             return;
                         } else {
                             infoDiv.style.display = 'block';
                             statusEl.textContent = '❌ Gift card not found. Check the code.';
                             statusEl.style.color = '#dc3545';
                             checkoutDebtorData = null;
+                            debugLog(`❌ Gift card not found: ${code}`, 'error');
                             return;
                         }
                     }
+
+                    debugLog(`💰 Looking up debtor: ${code}`, 'info');
 
                     var response = await fetch(getBaseUrl() + '/api/debtor/lookup', {
                         method: 'POST',
@@ -1676,6 +1911,7 @@
                     });
 
                     var data = await response.json();
+                    debugLog(`💰 Debtor response: ${JSON.stringify(data)}`, 'info');
 
                     if (data.status === 'success' && data.balance !== undefined) {
                         checkoutDebtorData = data;
@@ -1707,21 +1943,26 @@
                             statusEl.textContent = '✅ Balance available: $' + balance.toFixed(2) + '. Click Apply to use it.';
                             statusEl.style.color = '#28a745';
                         }
+                        debugLog(`💰 Debtor ${data.debtor} balance: $${balance}`, balance > 0 ? 'success' : 'warn');
                     } else {
                         infoDiv.style.display = 'block';
                         statusEl.textContent = '❌ Not found. Check the code or name.';
                         statusEl.style.color = '#dc3545';
                         checkoutDebtorData = null;
+                        debugLog(`❌ Debtor not found: ${code}`, 'error');
                     }
                 } catch (error) {
                     console.error('Error looking up:', error);
                     statusEl.textContent = '❌ Error: ' + error.message;
                     statusEl.style.color = '#dc3545';
                     checkoutDebtorData = null;
+                    debugLog(`❌ Error looking up: ${error.message}`, 'error');
                 }
-            }
+            };
 
-            async function applyDebtorToCheckout() {
+            window.applyDebtorToCheckout = async function() {
+                debugLog(`💰 applyDebtorToCheckout() called`, 'info');
+
                 if (!checkoutDebtorData) {
                     showCheckoutStatus('Please lookup a debtor first.', 'error');
                     return;
@@ -1744,6 +1985,7 @@
                 }
 
                 var amount = Math.min(balance, checkoutRemaining);
+                debugLog(`💰 Applying $${amount} from ${data.debtor}`, 'info');
 
                 try {
                     var endpoint, payload;
@@ -1764,6 +2006,8 @@
                         };
                     }
 
+                    debugLog(`💰 Calling ${endpoint} with payload: ${JSON.stringify(payload)}`, 'info');
+
                     var response = await fetch(getBaseUrl() + endpoint, {
                         method: 'POST',
                         credentials: 'include',
@@ -1772,6 +2016,7 @@
                     });
 
                     var result = await response.json();
+                    debugLog(`💰 Response: ${JSON.stringify(result)}`, 'info');
 
                     if (result.status === 'success') {
                         var appliedAmount = result.applied_amount || amount;
@@ -1798,19 +2043,25 @@
                             updateCheckoutCompleteButton();
                         }
 
+                        debugLog(`✅ Applied $${appliedAmount} from ${data.debtor}`, 'success');
+
                     } else {
                         statusEl.textContent = '❌ ' + (result.error || 'Failed to redeem');
                         statusEl.style.color = '#dc3545';
+                        debugLog(`❌ Failed to redeem: ${result.error}`, 'error');
                     }
                 } catch (error) {
                     console.error('Error redeeming:', error);
                     statusEl.textContent = '❌ Error: ' + error.message;
                     statusEl.style.color = '#dc3545';
+                    debugLog(`❌ Error redeeming: ${error.message}`, 'error');
                 }
-            }
+            };
 
             // ===== SQUARE PAYMENT =====
             async function processSquarePayment() {
+                debugLog(`💳 processSquarePayment() called`, 'info');
+
                 var statusDiv = document.getElementById('checkout-square-status');
                 var completeBtn = document.getElementById('checkout-complete-payment');
                 if (!statusDiv) return;
@@ -1831,7 +2082,7 @@
                     }
 
                     var deviceId = availableTerminals[0].id;
-                    console.log('Using Square Terminal device ID:', deviceId);
+                    debugLog(`📟 Using Square Terminal device ID: ${deviceId}`, 'info');
 
                     var records = checkoutSelectedItems;
                     var totalCents = Math.round(checkoutTotal * 100);
@@ -1854,6 +2105,8 @@
                     });
 
                     var data = await response.json();
+                    debugLog(`💳 Square response: ${JSON.stringify(data)}`, 'info');
+
                     if (data.status !== 'success') {
                         if (checkoutPaymentEntries.length > 0) {
                             var lastEntry = checkoutPaymentEntries[checkoutPaymentEntries.length - 1];
@@ -1877,7 +2130,7 @@
                     startPollingSquareStatus(checkout.id);
 
                 } catch (error) {
-                    console.error('Square checkout error:', error);
+                    debugLog(`❌ Square checkout error: ${error.message}`, 'error');
                     statusDiv.textContent = '❌ Error: ' + error.message;
                     statusDiv.className = 'status-message status-error';
                     completeBtn.disabled = false;
@@ -1886,6 +2139,8 @@
             }
 
             function startPollingSquareStatus(checkoutId) {
+                debugLog(`⏳ Starting Square status polling for ${checkoutId}`, 'info');
+
                 if (squarePollInterval) {
                     clearInterval(squarePollInterval);
                 }
@@ -1908,6 +2163,7 @@
 
                         var checkout = data.checkout;
                         var status = checkout.status;
+                        debugLog(`⏳ Square status ${attempts}/${maxAttempts}: ${status}`, 'info');
 
                         if (status === 'COMPLETED') {
                             clearInterval(squarePollInterval);
@@ -1927,6 +2183,7 @@
                             var completeBtn = document.getElementById('checkout-complete-payment');
                             completeBtn.disabled = false;
                             completeBtn.textContent = 'Complete Payment';
+                            debugLog(`❌ Square payment ${status}`, 'error');
                         } else if (status === 'PENDING' || status === 'IN_PROGRESS') {
                             statusDiv.textContent = '⏳ Waiting for payment... (' + attempts + 's)';
                             statusDiv.className = 'status-message status-info';
@@ -1940,17 +2197,18 @@
                             var completeBtn = document.getElementById('checkout-complete-payment');
                             completeBtn.disabled = false;
                             completeBtn.textContent = 'Complete Payment';
+                            debugLog(`⏰ Square payment timed out after ${maxAttempts} attempts`, 'warn');
                         }
 
                     } catch (error) {
-                        console.warn('Polling error:', error);
+                        debugLog(`⚠️ Polling error: ${error.message}`, 'warn');
                     }
                 }, 2000);
             }
 
             // ===== COMPLETE CHECKOUT =====
             async function completeCheckout() {
-                console.log('🛒 completeCheckout called');
+                debugLog(`🛒 completeCheckout() called`, 'info');
 
                 if (checkoutRemaining > 0.01) {
                     showCheckoutStatus('Remaining balance not covered', 'error');
@@ -1959,8 +2217,11 @@
 
                 var selected = checkoutSelectedItems;
                 if (selected.length === 0) {
+                    debugLog(`❌ No items to checkout`, 'error');
                     return;
                 }
+
+                debugLog(`📦 Completing checkout for ${selected.length} items`, 'info');
 
                 var today = getLocalMSTDate();
                 var success = 0;
@@ -1974,12 +2235,12 @@
 
                 for (var i = 0; i < selected.length; i++) {
                     var record = selected[i];
-                    if (record.isBernie === true) {
+                    if (record.isBernie) {
                         bernieItems.push(record);
-                    } else if (record.isGiftCard === true) {
+                    } else if (record.isGiftCard) {
                         giftCardItems.push(record);
-                    } else if (record.isCustom === true) {
-                        // skip other custom items
+                    } else if (record.isCustom) {
+                        // skip custom items
                     } else if (record.consignor_id && record.consignor_id !== 1 && record.consignor_id !== null) {
                         consignorRecords.push(record);
                     } else {
@@ -1987,19 +2248,22 @@
                     }
                 }
 
+                debugLog(`📊 Breakdown: ${regularRecords.length} regular, ${consignorRecords.length} consignor, ${bernieItems.length} Bernie, ${giftCardItems.length} gift cards`, 'info');
+
                 // Create gift cards
                 var giftCardErrors = [];
                 for (var i = 0; i < giftCardItems.length; i++) {
                     var item = giftCardItems[i];
                     try {
                         var createPayload = {
-                            code: item.barcode,
+                            code: item.barcode || 'GIFT-' + Date.now() + i,
                             card_value: item.store_price,
-                            charge_amount: item.charge_amount || 0,
+                            charge_amount: 0,
                             recipient_name: item.recipient || 'Unknown',
                             notes: item.notes || 'Created at checkout',
                             payment_method: 'cash'
                         };
+                        debugLog(`🎁 Creating gift card: ${createPayload.code} $${createPayload.card_value}`, 'info');
 
                         var response = await fetch(getBaseUrl() + '/api/gift-card/create', {
                             method: 'POST',
@@ -2010,13 +2274,15 @@
 
                         var data = await response.json();
                         if (data.status === 'success') {
-                            console.log('✅ Gift card created:', item.barcode);
+                            debugLog(`✅ Gift card created: ${createPayload.code}`, 'success');
                             success++;
                         } else {
                             giftCardErrors.push(item.barcode + ': ' + (data.error || 'unknown error'));
+                            debugLog(`❌ Gift card creation failed: ${data.error}`, 'error');
                         }
                     } catch (error) {
                         giftCardErrors.push(item.barcode + ': ' + error.message);
+                        debugLog(`❌ Gift card creation error: ${error.message}`, 'error');
                     }
                 }
 
@@ -2054,7 +2320,9 @@
                     };
                 });
 
+                // Create sale journal entry
                 try {
+                    debugLog(`📝 Creating sale journal entry for $${totalAmount}`, 'info');
                     var saleResult = await apiRequest('POST', '/api/accounting/sale', {
                         order_id: orderId,
                         payment_method: salePaymentMethod,
@@ -2063,15 +2331,17 @@
                         transaction_date: today
                     });
                     if (saleResult.status === 'success') {
-                        console.log('✅ Sale journal entry created:', saleResult.entry_id);
+                        debugLog(`✅ Sale journal entry created: ${saleResult.entry_id}`, 'success');
                     }
                 } catch (err) {
-                    console.error('❌ Error creating sale journal entry:', err);
+                    debugLog(`❌ Error creating sale journal entry: ${err.message}`, 'error');
                 }
 
+                // Update regular records
                 for (var i = 0; i < regularRecords.length; i++) {
                     var record = regularRecords[i];
                     try {
+                        debugLog(`📝 Updating record ${record.id} to sold`, 'info');
                         await apiRequest('PUT', '/records/' + record.id, {
                             status_id: 3,
                             date_sold: today,
@@ -2079,10 +2349,11 @@
                         });
                         success++;
                     } catch (err) {
-                        console.error('Failed to update record', record.id, err);
+                        debugLog(`❌ Failed to update record ${record.id}: ${err.message}`, 'error');
                     }
                 }
 
+                // Process consignor records
                 for (var i = 0; i < consignorRecords.length; i++) {
                     var record = consignorRecords[i];
                     try {
@@ -2111,6 +2382,7 @@
                             store_commission: storeCommission
                         });
 
+                        debugLog(`📝 Updating consignor record ${record.id} to sold`, 'info');
                         await apiRequest('PUT', '/records/' + record.id, {
                             status_id: 3,
                             date_sold: today,
@@ -2119,13 +2391,15 @@
                         success++;
 
                     } catch (err) {
-                        console.error('Failed to process consignor record', record.id, err);
+                        debugLog(`❌ Failed to process consignor record ${record.id}: ${err.message}`, 'error');
                     }
                 }
 
+                // Process consignor transactions
                 for (var i = 0; i < consignorTransactions.length; i++) {
                     var tx = consignorTransactions[i];
                     try {
+                        debugLog(`💰 Processing consignor transaction for ${tx.consignor_name}`, 'info');
                         var accountsRes = await apiRequest('GET', '/api/accounting/accounts');
                         var accounts = accountsRes.accounts || [];
                         var cashAccount = accounts.find(function(a) { return a.code === '1015'; });
@@ -2133,7 +2407,7 @@
                         var payableAccount = accounts.find(function(a) { return a.code === '2015'; });
 
                         if (!cashAccount || !revenueAccount || !payableAccount) {
-                            console.error('Required accounts not found for consignor transaction');
+                            debugLog(`❌ Required accounts not found for consignor transaction`, 'error');
                             continue;
                         }
 
@@ -2148,15 +2422,17 @@
                         };
                         var result = await apiRequest('POST', '/api/accounting/manual', entryData);
                         if (result.status === 'success') {
-                            console.log('✅ Consignor ' + tx.consignor_name + ' credited $' + tx.consignor_share.toFixed(2));
+                            debugLog(`✅ Consignor ${tx.consignor_name} credited $${tx.consignor_share.toFixed(2)}`, 'success');
                         }
                     } catch (err) {
-                        console.error('Error processing consignor transaction:', err);
+                        debugLog(`❌ Error processing consignor transaction: ${err.message}`, 'error');
                     }
                 }
 
+                // Process Bernie donations
                 if (bernieTotal > 0) {
                     try {
+                        debugLog(`🌹 Processing Bernie donation: $${bernieTotal}`, 'info');
                         var accountsRes = await apiRequest('GET', '/api/accounting/accounts');
                         var accounts = accountsRes.accounts || [];
 
@@ -2183,14 +2459,15 @@
                             };
                             var result = await apiRequest('POST', '/api/accounting/manual', entryData);
                             if (result.status === 'success') {
-                                console.log('✅ Bernie donation journal entry created: $' + bernieTotal.toFixed(2));
+                                debugLog(`✅ Bernie donation journal entry created: $${bernieTotal}`, 'success');
                             }
                         }
                     } catch (err) {
-                        console.error('Error processing Bernie donation:', err);
+                        debugLog(`❌ Error processing Bernie donation: ${err.message}`, 'error');
                     }
                 }
 
+                // Generate receipt
                 var receiptError = null;
                 var receiptDownloaded = false;
 
@@ -2249,9 +2526,10 @@
                 try {
                     downloadReceipt(receipt, filename);
                     receiptDownloaded = true;
+                    debugLog(`📄 Receipt downloaded: ${filename}`, 'success');
                 } catch (error) {
                     receiptError = error.message || 'Download error';
-                    console.error('Receipt download error:', error);
+                    debugLog(`❌ Receipt download error: ${receiptError}`, 'error');
                 }
 
                 var consignorCount = consignorTransactions.length;
@@ -2272,12 +2550,16 @@
                 }
 
                 showCheckoutStatus('✅ ' + statusMsg, receiptError ? 'warning' : 'success');
+                debugLog(`✅ Checkout completed successfully`, 'success');
 
                 checkoutSelectedItems = [];
                 checkoutPaymentEntries = [];
                 checkoutRemaining = 0;
 
-                selectedIds.clear();
+                // Clear cart by setting all inCart to false
+                allRecords.forEach(function(r) {
+                    r.inCart = false;
+                });
 
                 var modal = document.getElementById('checkout-payment-modal');
                 if (modal) {
@@ -2287,38 +2569,49 @@
                 const searchTerm = searchInput ? searchInput.value.trim() : '';
                 await loadRecords(searchTerm);
 
-                console.log('🛒 completeCheckout finished successfully');
+                debugLog(`🛒 completeCheckout finished successfully`, 'success');
             }
 
             // ========== Init ==========
             function init() {
-                console.log('🔄 Initializing Checkout...');
+                debugLog(`🔄 Initializing Checkout...`, 'info');
 
                 if (searchButton) {
-                    searchButton.addEventListener('click', performSearch);
+                    searchButton.addEventListener('click', function() {
+                        debugLog(`🔎 Search button clicked`, 'info');
+                        performSearch();
+                    });
                 }
 
                 if (searchInput) {
                     searchInput.addEventListener('keydown', function(e) {
                         if (e.key === 'Enter') {
                             e.preventDefault();
+                            debugLog(`🔎 Enter key pressed in search`, 'info');
                             performSearch();
                         }
                     });
                 }
 
                 if (clearSearchBtn) {
-                    clearSearchBtn.addEventListener('click', clearSearch);
+                    clearSearchBtn.addEventListener('click', function() {
+                        debugLog(`🧹 Clear search button clicked`, 'info');
+                        clearSearch();
+                    });
                 }
 
                 if (checkoutBtn) {
-                    checkoutBtn.addEventListener('click', executeCheckout);
+                    checkoutBtn.addEventListener('click', function() {
+                        debugLog(`🛒 Checkout button clicked`, 'info');
+                        executeCheckout();
+                    });
                 }
 
                 if (pageSizeSelect) {
                     pageSizeSelect.addEventListener('change', function() {
                         pageSize = parseInt(this.value);
                         currentPage = 1;
+                        debugLog(`📄 Page size changed to ${pageSize}`, 'info');
                         renderTable();
                         updatePagination();
                         renderCart();
@@ -2328,7 +2621,7 @@
                 if (currentPageInput) {
                     currentPageInput.addEventListener('change', function() {
                         const page = parseInt(this.value);
-                        const totalPages = Math.ceil(totalRecords / pageSize) || 1;
+                        const totalPages = Math.ceil(allRecords.length / pageSize) || 1;
                         if (isNaN(page) || page < 1) {
                             currentPage = 1;
                         } else if (page > totalPages) {
@@ -2336,6 +2629,7 @@
                         } else {
                             currentPage = page;
                         }
+                        debugLog(`📄 Page changed to ${currentPage}`, 'info');
                         renderTable();
                         updatePagination();
                     });
@@ -2344,6 +2638,7 @@
                 if (firstPageBtn) {
                     firstPageBtn.addEventListener('click', function() {
                         currentPage = 1;
+                        debugLog(`📄 First page`, 'info');
                         renderTable();
                         updatePagination();
                     });
@@ -2353,6 +2648,7 @@
                     prevPageBtn.addEventListener('click', function() {
                         if (currentPage > 1) {
                             currentPage--;
+                            debugLog(`📄 Previous page ${currentPage}`, 'info');
                             renderTable();
                             updatePagination();
                         }
@@ -2361,9 +2657,10 @@
 
                 if (nextPageBtn) {
                     nextPageBtn.addEventListener('click', function() {
-                        const totalPages = Math.ceil(totalRecords / pageSize) || 1;
+                        const totalPages = Math.ceil(allRecords.length / pageSize) || 1;
                         if (currentPage < totalPages) {
                             currentPage++;
+                            debugLog(`📄 Next page ${currentPage}`, 'info');
                             renderTable();
                             updatePagination();
                         }
@@ -2372,46 +2669,44 @@
 
                 if (lastPageBtn) {
                     lastPageBtn.addEventListener('click', function() {
-                        const totalPages = Math.ceil(totalRecords / pageSize) || 1;
+                        const totalPages = Math.ceil(allRecords.length / pageSize) || 1;
                         currentPage = totalPages;
+                        debugLog(`📄 Last page ${currentPage}`, 'info');
                         renderTable();
                         updatePagination();
                     });
                 }
 
-                // Custom Item button
                 const customBtn = document.getElementById('checkout-custom-item-btn');
                 if (customBtn) customBtn.addEventListener('click', showCustomItemModal);
 
-                // Bernie button
                 const bernieBtn = document.getElementById('checkout-bernie-btn');
                 if (bernieBtn) bernieBtn.addEventListener('click', addBernieItem);
 
-                // Gift Card button
                 const giftCardBtn = document.getElementById('checkout-gift-card-btn');
                 if (giftCardBtn) giftCardBtn.addEventListener('click', showGiftCardAddModal);
 
-                // Load records
                 loadRecords('');
 
-                console.log('✅ Checkout initialized.');
+                debugLog(`✅ Checkout initialized.`, 'success');
             }
 
-            // Expose functions to global scope
             window.closeCustomItemModal = closeCustomItemModal;
             window.addCustomItem = addCustomItem;
             window.lookupDebtorForCheckout = lookupDebtorForCheckout;
             window.applyDebtorToCheckout = applyDebtorToCheckout;
             window.toggleCart = toggleCart;
+            window.debugLog = debugLog;
+            window.toggleDebug = toggleDebug;
+            window.clearDebug = clearDebug;
 
-            // Auto-init when DOM is ready
             if (document.readyState === 'complete' || document.readyState === 'interactive') {
                 setTimeout(init, 100);
             } else {
                 document.addEventListener('DOMContentLoaded', init);
             }
 
-            console.log('✅ Checkout page loaded');
+            debugLog(`✅ Checkout page loaded`, 'success');
 
         })();
     </script>
