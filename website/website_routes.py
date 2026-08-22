@@ -14,22 +14,31 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ADMIN_DIR       = os.path.join(BASE_DIR, 'admin')
 INDEX_DIR       = os.path.join(BASE_DIR, 'index')
 STATIC_DIR      = os.path.join(BASE_DIR, 'static')
-COMPONENTS_DIR  = os.path.join(BASE_DIR, 'components')
+COMPONENTS_DIR  = os.path.join(BASE_DIR, 'index', 'components')  # ← FIXED: components is inside index
 ACCOUNTING_DIR  = os.path.join(BASE_DIR, 'accounting')
 CHECKOUT_DIR    = os.path.join(BASE_DIR, 'checkout')
+
+# Track if routes have been registered to prevent duplicates
+_routes_registered = False
 
 def is_admin():
     return session.get('logged_in') and session.get('role') == 'admin'
 
 def register_routes(application):
     """Register all frontend routes with the given Flask application."""
+    global _routes_registered
+    
+    # Prevent duplicate registration
+    if _routes_registered:
+        print("⚠️ Routes already registered, skipping duplicate registration")
+        return
     
     # ---------- MAIN HTML PAGES ----------
     @application.route('/')
     def index():
         return send_from_directory(INDEX_DIR, 'index.html')
 
-    @application.route('/login')
+    @application.route('/login', methods=['GET'])
     def login():
         return send_from_directory(INDEX_DIR, 'login.html')
 
@@ -84,7 +93,11 @@ def register_routes(application):
     # ---------- COMPONENTS ----------
     @application.route('/components/<path:filename>')
     def serve_component(filename):
-        if not filename.endswith('.html'):
+        # Allow HTML and CSS files from components
+        if not filename.endswith(('.html', '.css', '.js')):
+            abort(404)
+        # Prevent path traversal
+        if '..' in filename:
             abort(404)
         return send_from_directory(COMPONENTS_DIR, filename)
 
@@ -145,6 +158,7 @@ def register_routes(application):
         CHECKOUT_DIR: {CHECKOUT_DIR} → exists? {os.path.exists(CHECKOUT_DIR)}<br>
         INDEX_DIR: {INDEX_DIR} → exists? {os.path.exists(INDEX_DIR)}<br>
         STATIC_DIR: {STATIC_DIR} → exists? {os.path.exists(STATIC_DIR)}<br>
+        COMPONENTS_DIR: {COMPONENTS_DIR} → exists? {os.path.exists(COMPONENTS_DIR)}<br>
         Total routes: {len(application.url_map._rules)}<br>
         """
 
@@ -159,6 +173,7 @@ def register_routes(application):
             return send_file(html_file)
         return "File not found", 404
 
+    _routes_registered = True
     print(f"✅ Frontend routes registered. Total routes: {len(application.url_map._rules)}")
 
 # For local development
