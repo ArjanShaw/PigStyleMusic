@@ -409,72 +409,41 @@ const TabManager = (function() {
         };
 
         // ============================================================
-        // ITEM MANAGEMENT TAB
+        // CHECKOUT TAB - Standalone checkout page
         // ============================================================
-        initializers['item-management'] = () => {
-            console.log('🔵 TabManager: Initializing Item Management tab');
+        initializers['checkout'] = () => {
+            console.log('🔵 TabManager: Initializing Checkout tab');
             
-            const container = document.getElementById('item-management-tab');
+            const container = document.getElementById('checkout-tab');
             if (!container) {
-                console.warn('⚠️ Item Management container (#item-management-tab) not found.');
+                console.warn('⚠️ Checkout container (#checkout-tab) not found.');
                 return;
             }
 
             // Check if already loaded
-            if (container.querySelector('.item-management-container')) {
-                console.log('✅ Item Management tab already loaded, skipping.');
+            if (container.querySelector('.checkout-container') || container.querySelector('iframe')) {
+                console.log('✅ Checkout tab already loaded, skipping.');
                 return;
             }
 
-            console.log('📦 Loading Item Management content from /admin-components/item-management/item-management.html');
-            fetch('/admin-components/item-management/item-management.html')
-                .then(res => {
-                    console.log(`📡 Fetch response: ${res.status} ${res.statusText}`);
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    return res.text();
-                })
-                .then(html => {
-                    console.log('✅ Item Management HTML fetched, injecting into container.');
-                    container.innerHTML = html;
-
-                    // Load CSS
-                    const link = document.createElement('link');
-                    link.rel = 'stylesheet';
-                    link.href = '/admin-components/item-management/item-management.css';
-                    document.head.appendChild(link);
-                    console.log('📄 item-management.css added to head.');
-
-                    // Load JS
-                    const script = document.createElement('script');
-                    script.src = '/admin-components/item-management/item-management.js';
-                    script.onload = function() {
-                        console.log('✅ item-management.js loaded successfully.');
-                        if (typeof window.itemManagement !== 'undefined' && typeof window.itemManagement.init === 'function') {
-                            console.log('📞 Calling itemManagement.init()...');
-                            window.itemManagement.init();
-                            console.log('📞 itemManagement.init() returned.');
-                        } else {
-                            console.warn('⚠️ window.itemManagement.init is not defined after loading item-management.js.');
-                        }
-                    };
-                    script.onerror = function() {
-                        console.error('❌ Failed to load item-management.js (network error or 404).');
-                        container.innerHTML = `<div style="text-align:center; padding:40px; color:#dc3545;">
-                            <i class="fas fa-exclamation-triangle fa-2x"></i>
-                            <p style="margin-top:10px;">Failed to load item-management.js. Check the console for details.</p>
-                        </div>`;
-                    };
-                    document.body.appendChild(script);
-                    console.log('📦 item-management.js script element appended to body.');
-                })
-                .catch(err => {
-                    console.error('❌ Item Management load error:', err);
-                    container.innerHTML = `<div style="text-align:center; padding:40px; color:#dc3545;">
-                        <i class="fas fa-exclamation-triangle fa-2x"></i>
-                        <p style="margin-top:10px;">Failed to load Item Management: ${err.message}</p>
-                        <button class="btn btn-primary" onclick="window.TabManager.switchToTab('item-management')" style="margin-top:10px;">Retry</button>
-                    </div>`;
-                });
+            console.log('📦 Loading Checkout page via iframe from /checkout/checkout.html');
+            
+            // Create iframe to load the standalone checkout page
+            const iframe = document.createElement('iframe');
+            iframe.src = '/checkout/checkout.html';
+            iframe.style.width = '100%';
+            iframe.style.height = '100vh';
+            iframe.style.minHeight = '600px';
+            iframe.style.border = 'none';
+            iframe.style.borderRadius = '8px';
+            iframe.style.background = '#f4f6f9';
+            iframe.style.overflow = 'auto';
+            
+            // Clear the container and add the iframe
+            container.innerHTML = '';
+            container.appendChild(iframe);
+            
+            console.log('✅ Checkout iframe loaded.');
         };
     }
 
@@ -534,17 +503,17 @@ const TabManager = (function() {
                 }
                 document.body.classList.remove('modal-open');
             },
-            'item-management': () => {
-                console.log('🧹 TabManager: Cleaning up Item Management tab');
+            'checkout': () => {
+                console.log('🧹 TabManager: Cleaning up Checkout tab');
                 // Close any open modals
-                const modals = document.querySelectorAll('#item-management-tab .modal-overlay, #item-management-tab .tender-modal');
+                const modals = document.querySelectorAll('#checkout-tab .modal-overlay, #checkout-tab .tender-modal');
                 modals.forEach(modal => {
                     modal.style.display = 'none';
                 });
                 // Clear any intervals
-                if (window.itemManagement && window.itemManagement._squarePollInterval) {
-                    clearInterval(window.itemManagement._squarePollInterval);
-                    window.itemManagement._squarePollInterval = null;
+                if (window.checkout && window.checkout._squarePollInterval) {
+                    clearInterval(window.checkout._squarePollInterval);
+                    window.checkout._squarePollInterval = null;
                 }
             }
         };
