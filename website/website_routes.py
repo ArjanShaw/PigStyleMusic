@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from flask import Flask, send_from_directory, send_file, session, redirect, request, abort
+import requests  # ← ADD THIS IMPORT
 
 load_dotenv()
 
@@ -14,15 +15,68 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ADMIN_DIR       = os.path.join(BASE_DIR, 'admin')
 INDEX_DIR       = os.path.join(BASE_DIR, 'index')
 STATIC_DIR      = os.path.join(BASE_DIR, 'static')
-COMPONENTS_DIR  = os.path.join(BASE_DIR, 'index', 'components')  # ← FIXED: components is inside index
+COMPONENTS_DIR  = os.path.join(BASE_DIR, 'index', 'components')  # components is inside index
 ACCOUNTING_DIR  = os.path.join(BASE_DIR, 'accounting')
 CHECKOUT_DIR    = os.path.join(BASE_DIR, 'checkout')
 
 # Track if routes have been registered to prevent duplicates
 _routes_registered = False
 
+# ============================================================
+# UPDATED is_admin() - Checks API for session status
+# ============================================================
 def is_admin():
-    return session.get('logged_in') and session.get('role') == 'admin'
+    """Check if user is admin by checking local session first, then API."""
+    
+    # First check local session (fast path)
+    if session.get('logged_in') and session.get('role') == 'admin':
+        return True
+    
+    # If not in local session, try to fetch from the API
+    try:
+        # Forward cookies to the API
+        cookie_header = request.headers.get('Cookie', '')
+        
+        response = requests.get(
+            'http://localhost:5000/session/check',
+            headers={
+                'Accept': 'application/json',
+                'Cookie': cookie_header  # Forward the cookies
+            },
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Check if logged in and is admin
+            if data.get('logged_in') and data.get('user', {}).get('role') == 'admin':
+                # Sync the local session with API session
+                user = data.get('user', {})
+                session['user_id'] = user.get('id')
+                session['username'] = user.get('username')
+                session['role'] = user.get('role')
+                session['logged_in'] = True
+                session['full_name'] = user.get('full_name')
+                
+                print(f"✅ Session synced from API: {user.get('username')} is admin")
+                return True
+            elif data.get('logged_in'):
+                # User is logged in but not admin
+                user = data.get('user', {})
+                print(f"ℹ️ User {user.get('username')} is logged in but NOT admin (role: {user.get('role')})")
+                return False
+        else:
+            print(f"⚠️ API session check returned status: {response.status_code}")
+            
+    except requests.exceptions.ConnectionError:
+        print("⚠️ Could not connect to API server at localhost:5000")
+    except requests.exceptions.Timeout:
+        print("⚠️ API session check timed out")
+    except Exception as e:
+        print(f"⚠️ Error checking API session: {e}")
+    
+    return False
 
 def register_routes(application):
     """Register all frontend routes with the given Flask application."""
@@ -153,14 +207,40 @@ def register_routes(application):
     @application.route('/debug')
     def debug():
         return f"""
-        BASE_DIR: {BASE_DIR}<br>
-        ADMIN_DIR: {ADMIN_DIR} → exists? {os.path.exists(ADMIN_DIR)}<br>
-        CHECKOUT_DIR: {CHECKOUT_DIR} → exists? {os.path.exists(CHECKOUT_DIR)}<br>
-        INDEX_DIR: {INDEX_DIR} → exists? {os.path.exists(INDEX_DIR)}<br>
-        STATIC_DIR: {STATIC_DIR} → exists? {os.path.exists(STATIC_DIR)}<br>
-        COMPONENTS_DIR: {COMPONENTS_DIR} → exists? {os.path.exists(COMPONENTS_DIR)}<br>
-        Total routes: {len(application.url_map._rules)}<br>
+        <h1>Debug Info</h1>
+        <h2>Paths:</h2>
+        <ul>
+            <li>BASE_DIR: {BASE_DIR} → exists? {os.path.exists(BASE_DIR)}</li>
+            <li>ADMIN_DIR: {ADMIN_DIR} → exists? {os.path.exists(ADMIN_DIR)}</li>
+            <li>CHECKOUT_DIR: {CHECKOUT_DIR} → exists? {os.path.exists(CHECKOUT_DIR)}</li>
+            <li>INDEX_DIR: {INDEX_DIR} → exists? {os.path.exists(INDEX_DIR)}</li>
+            <li>STATIC_DIR: {STATIC_DIR} → exists? {os.path.exists(STATIC_DIR)}</li>
+            <li>COMPONENTS_DIR: {COMPONENTS_DIR} → exists? {os.path.exists(COMPONENTS_DIR)}</li>
+        </ul>
+        <h2>Session:</h2>
+        <pre>{dict(session)}</pre>
+        <h2>Cookies:</h2>
+        <pre>{dict(request.cookies)}</pre>
+        <h2>Routes:</h2>
+        <p>Total routes: {len(application.url_map._rules)}</p>
+        <h2>is_admin() result:</h2>
+        <p>Is admin? <strong>{is_admin()}</strong></p>
         """
+
+    # ---------- DEBUG SESSION (NEW) ----------
+    @application.route('/debug-session')
+    def debug_session():
+        """Debug endpoint to check session status."""
+        # Try to refresh session from API
+        is_admin_result = is_admin()
+        
+        return {
+            'status': 'success',
+            'local_session': dict(session),
+            'is_admin': is_admin_result,
+            'cookies_received': dict(request.cookies),
+            'session_keys': list(session.keys())
+        }
 
     # ---------- FALLBACK ----------
     @application.route('/<path:filename>')
