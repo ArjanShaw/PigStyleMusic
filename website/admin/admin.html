@@ -51,7 +51,6 @@
             <div class="tab" data-tab="creditors"><i class="fas fa-hand-holding-usd"></i> Creditors</div>
             <div class="tab" data-tab="events"><i class="fas fa-calendar-alt"></i> Events</div>
             <div class="tab" data-tab="item-management"><i class="fas fa-boxes"></i> Item Management</div>
-            <div class="tab" data-tab="checkout"><i class="fas fa-shopping-cart"></i> Checkout</div>
         </div>
 
         <!-- ===== LOADER PLACEHOLDERS ===== -->
@@ -88,16 +87,6 @@
                 <div style="text-align:center; padding:60px; color:#999;">
                     <i class="fas fa-spinner fa-pulse fa-3x"></i>
                     <p style="margin-top:15px;">Loading Item Management...</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- ===== CHECKOUT TAB LOADER ===== -->
-        <div id="checkout-tab" class="tab-content">
-            <div id="checkout-loader">
-                <div style="text-align:center; padding:60px; color:#999;">
-                    <i class="fas fa-spinner fa-pulse fa-3x"></i>
-                    <p style="margin-top:15px;">Loading Checkout...</p>
                 </div>
             </div>
         </div>
@@ -1507,91 +1496,6 @@ Clearance|All Sales Final" style="background: white; color: #333;"></textarea>
                 if (e.detail.tab === 'item-management') {
                     console.log('🔄 tabChanged event: switching to item-management tab – calling loadItemManagement().');
                     loadItemManagement();
-                }
-            });
-        })();
-    </script>
-
-    <!-- CHECKOUT -->
-    <script>
-        console.log('🔧 Checkout loader: script executed');
-        (function() {
-            let loaded = false;
-            function loadCheckout() {
-                if (loaded) {
-                    console.log('🔁 Checkout loader: already loaded, skipping.');
-                    return;
-                }
-                const container = document.getElementById('checkout-loader');
-                if (!container) {
-                    console.warn('❌ Checkout loader: container (#checkout-loader) not found.');
-                    return;
-                }
-                console.log('📦 Checkout loader: starting fetch for /admin-components/check_out/checkout.html');
-                fetch('/admin-components/check_out/checkout.html')
-                    .then(res => {
-                        console.log(`📡 Checkout fetch response: status ${res.status} ${res.statusText}`);
-                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                        return res.text();
-                    })
-                    .then(html => {
-                        console.log('✅ Checkout HTML fetched successfully (length: ' + html.length + '). Injecting into container.');
-                        container.innerHTML = html;
-
-                        console.log('📄 Loading checkout.css...');
-                        const link = document.createElement('link');
-                        link.rel = 'stylesheet';
-                        link.href = '/admin-components/check_out/checkout.css';
-                        document.head.appendChild(link);
-                        console.log('📄 checkout.css added to head.');
-
-                        console.log('📦 Loading checkout.js...');
-                        const script = document.createElement('script');
-                        script.src = '/admin-components/check_out/checkout.js';
-                        script.onload = function() {
-                            console.log('✅ checkout.js loaded successfully.');
-                            if (typeof window.checkout !== 'undefined' && window.checkout.init) {
-                                console.log('📞 Calling checkout.init()...');
-                                window.checkout.init();
-                                console.log('📞 checkout.init() returned.');
-                            } else {
-                                console.warn('⚠️ window.checkout is not defined after loading checkout.js.');
-                            }
-                        };
-                        script.onerror = function() {
-                            console.error('❌ Failed to load checkout.js (network error or 404).');
-                            container.innerHTML = `<div style="text-align:center; padding:40px; color:#dc3545;">
-                                <i class="fas fa-exclamation-triangle fa-2x"></i>
-                                <p style="margin-top:10px;">Failed to load checkout.js. Check the console for details.</p>
-                            </div>`;
-                        };
-                        document.body.appendChild(script);
-                        console.log('📦 checkout.js script element appended to body.');
-                        loaded = true;
-                    })
-                    .catch(err => {
-                        console.error('❌ Checkout loader error:', err);
-                        container.innerHTML = `<div style="text-align:center; padding:40px; color:#dc3545;">
-                            <i class="fas fa-exclamation-triangle fa-2x"></i>
-                            <p style="margin-top:10px;">Failed to load Checkout: ${err.message}</p>
-                            <button class="btn btn-primary" onclick="window.TabManager.switchToTab('checkout')" style="margin-top:10px;">Retry</button>
-                        </div>`;
-                    });
-            }
-
-            // Check if the Checkout tab is already active
-            if (document.querySelector('.tab[data-tab="checkout"].active')) {
-                console.log('🟢 Checkout tab is active on page load – calling loadCheckout().');
-                loadCheckout();
-            } else {
-                console.log('🟡 Checkout tab is not active on page load – will load when clicked.');
-            }
-
-            // Listen for tab changes
-            document.addEventListener('tabChanged', function(e) {
-                if (e.detail.tab === 'checkout') {
-                    console.log('🔄 tabChanged event: switching to checkout tab – calling loadCheckout().');
-                    loadCheckout();
                 }
             });
         })();
