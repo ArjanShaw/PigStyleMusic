@@ -10,12 +10,12 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a7f8e9d3c5b1n2m4k6l7j8h9g0f
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # --- CORRECTED PATHS ---
-ADMIN_DIR       = os.path.join(BASE_DIR, 'admin')          # website/admin
-INDEX_DIR       = os.path.join(BASE_DIR, 'index')          # website/HTML
-STATIC_DIR      = os.path.join(BASE_DIR, 'static')         # website/static
-COMPONENTS_DIR  = os.path.join(BASE_DIR, 'components')     # website/components (for public tile)
-ACCOUNTING_DIR  = os.path.join(BASE_DIR, 'accounting')     # website/accounting
-CHECKOUT_DIR    = os.path.join(BASE_DIR, 'checkout')       # website/checkout
+ADMIN_DIR       = os.path.join(BASE_DIR, 'admin')
+INDEX_DIR       = os.path.join(BASE_DIR, 'index')
+STATIC_DIR      = os.path.join(BASE_DIR, 'static')
+COMPONENTS_DIR  = os.path.join(BASE_DIR, 'components')
+ACCOUNTING_DIR  = os.path.join(BASE_DIR, 'accounting')
+CHECKOUT_DIR    = os.path.join(BASE_DIR, 'checkout')
 
 def is_admin():
     return session.get('logged_in') and session.get('role') == 'admin'
@@ -33,7 +33,7 @@ def login():
 def dashboard():
     return send_from_directory(INDEX_DIR, 'dashboard.html')
 
-# --- Admin panel (in website/admin/) ---
+# --- Admin panel ---
 @app.route('/admin')
 def admin_panel():
     if not is_admin():
@@ -44,49 +44,41 @@ def admin_panel():
 def admin_css():
     return send_from_directory(ADMIN_DIR, 'admin.css')
 
-# --- Accounting page – now in website/accounting/ ---
+# --- Accounting page ---
 @app.route('/admin/accounting')
 def admin_accounting():
     if not is_admin():
         return redirect('/access-denied')
     return send_from_directory(ACCOUNTING_DIR, 'admin-accounting.html')
 
-# --- NEW: Serve static assets from accounting folder ---
 @app.route('/accounting/<path:filename>')
 def serve_accounting(filename):
     return send_from_directory(ACCOUNTING_DIR, filename)
 
-# --- NEW: Checkout standalone page ---
+# --- CHECKOUT PAGE ---
 @app.route('/checkout')
 @app.route('/checkout/')
 @app.route('/checkout/checkout.html')
 def checkout():
-    """Serve the standalone checkout page."""
-    # Optional: Check if user is logged in (uncomment if you want to restrict)
-    # if not session.get('logged_in'):
-    #     return redirect('/login')
     return send_from_directory(CHECKOUT_DIR, 'checkout.html')
 
-# --- NEW: Serve static assets from checkout folder ---
 @app.route('/checkout/<path:filename>')
 def serve_checkout_asset(filename):
-    """Serve CSS, JS, or other assets from the checkout folder."""
-    # Prevent path traversal attacks
     if '..' in filename:
         abort(404)
     return send_from_directory(CHECKOUT_DIR, filename)
 
-# --- Admin component route (for events tab) ---
+# --- Admin component route ---
 @app.route('/admin-components/<component>/<path:filename>')
 def serve_admin_component(component, filename):
     if '..' in filename or '..' in component:
         abort(404)
-    component_dir = os.path.join(ADMIN_DIR, component)  # admin/events/
+    component_dir = os.path.join(ADMIN_DIR, component)
     if not os.path.exists(component_dir):
         abort(404)
     return send_from_directory(component_dir, filename)
 
-# --- Public component route (for tile) ---
+# --- Public component route ---
 @app.route('/components/<component>/<path:filename>')
 def serve_public_component(component, filename):
     if '..' in filename or '..' in component:
@@ -157,14 +149,9 @@ def debug():
     ACCOUNTING_DIR: {ACCOUNTING_DIR} → exists? {os.path.exists(ACCOUNTING_DIR)}<br>
     CHECKOUT_DIR: {CHECKOUT_DIR} → exists? {os.path.exists(CHECKOUT_DIR)}<br>
     admin.html: {os.path.join(ADMIN_DIR, 'admin.html')} → exists? {os.path.exists(os.path.join(ADMIN_DIR, 'admin.html'))}<br>
-    admin.css: {os.path.join(ADMIN_DIR, 'admin.css')} → exists? {os.path.exists(os.path.join(ADMIN_DIR, 'admin.css'))}<br>
-    admin-accounting.html in ACCOUNTING_DIR: {os.path.join(ACCOUNTING_DIR, 'admin-accounting.html')} → exists? {os.path.exists(os.path.join(ACCOUNTING_DIR, 'admin-accounting.html'))}<br>
-    admin-accounting.css in ACCOUNTING_DIR: {os.path.join(ACCOUNTING_DIR, 'admin-accounting.css')} → exists? {os.path.exists(os.path.join(ACCOUNTING_DIR, 'admin-accounting.css'))}<br>
-    admin-accounting.js in ACCOUNTING_DIR: {os.path.join(ACCOUNTING_DIR, 'admin-accounting.js')} → exists? {os.path.exists(os.path.join(ACCOUNTING_DIR, 'admin-accounting.js'))}<br>
-    checkout.html in CHECKOUT_DIR: {os.path.join(CHECKOUT_DIR, 'checkout.html')} → exists? {os.path.exists(os.path.join(CHECKOUT_DIR, 'checkout.html'))}<br>
+    checkout.html: {os.path.join(CHECKOUT_DIR, 'checkout.html')} → exists? {os.path.exists(os.path.join(CHECKOUT_DIR, 'checkout.html'))}<br>
     INDEX_DIR: {INDEX_DIR} → exists? {os.path.exists(INDEX_DIR)}<br>
-    STATIC_DIR: {STATIC_DIR} → exists? {os.path.exists(STATIC_DIR)}<br>
-    COMPONENTS_DIR: {COMPONENTS_DIR} → exists? {os.path.exists(COMPONENTS_DIR)}
+    STATIC_DIR: {STATIC_DIR} → exists? {os.path.exists(STATIC_DIR)}
     """
 
 # ---------- FALLBACK ----------
