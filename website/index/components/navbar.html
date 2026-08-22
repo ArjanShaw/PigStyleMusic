@@ -3,6 +3,7 @@
     <!-- Logo -->
     <a href="/" style="color: white; text-decoration: none; font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 10px;">
         <img src="/static/images/PigStyle.ico" alt="PigStyle" style="height: 30px; width: 30px;">
+        <span>PigStyle Music</span>
     </a>
 
     <!-- Right side -->
@@ -10,23 +11,28 @@
 
         <!-- ===== LINKS CONTROLLED BY AUTH STATE ===== -->
 
-        <!-- Dashboard – visible when logged in (any role) -->
-        <a href="/dashboard" id="nav-dashboard-link" class="nav-link">
+        <!-- Dashboard – only visible when logged in -->
+        <a href="/dashboard" id="nav-dashboard-link" class="nav-link" style="display: none;">
             <i class="fas fa-tachometer-alt"></i> Dashboard
         </a>
 
-        <!-- Admin Panel – only for admins -->
-        <a href="/admin" class="nav-link admin-only" style="display: none; color: #ffb3b3; border-color: rgba(255,107,107,0.4);">
+        <!-- Admin Panel – only for admins (hidden by default) -->
+        <a href="/admin" id="nav-admin-link" class="nav-link admin-only" style="display: none; color: #ffb3b3; border-color: rgba(255,107,107,0.4);">
             <i class="fas fa-cog"></i> Admin Panel
         </a>
 
-        <!-- Accounting – only for admins -->
-        <a href="/admin/accounting" class="nav-link admin-only" style="display: none; color: #ffb3b3; border-color: rgba(255,107,107,0.4);">
+        <!-- Accounting – only for admins (hidden by default) -->
+        <a href="/admin/accounting" id="nav-accounting-link" class="nav-link admin-only" style="display: none; color: #ffb3b3; border-color: rgba(255,107,107,0.4);">
             <i class="fas fa-calculator"></i> Accounting
         </a>
 
-        <!-- ===== CHECKOUT BUTTON ===== -->
-        <a href="/checkout/checkout.html" class="nav-link checkout-nav-link" style="color: #28a745; font-weight: 600; background: rgba(40, 167, 69, 0.15); border: 1px solid #28a745; border-radius: 6px; padding: 5px 15px; text-decoration: none; transition: all 0.3s ease;">
+        <!-- Item Management – only for admins (hidden by default) -->
+        <a href="/item-management" id="nav-item-management-link" class="nav-link admin-only" style="display: none; color: #ffb3b3; border-color: rgba(255,107,107,0.4);">
+            <i class="fas fa-boxes"></i> Item Management
+        </a>
+
+        <!-- Checkout – only for admins (hidden by default) -->
+        <a href="/checkout/checkout.html" id="nav-checkout-link" class="nav-link admin-only" style="display: none; color: #28a745; font-weight: 600; background: rgba(40, 167, 69, 0.15); border: 1px solid #28a745; border-radius: 6px; padding: 5px 15px; text-decoration: none; transition: all 0.3s ease;">
             <i class="fas fa-shopping-cart"></i> Checkout
         </a>
 
@@ -36,10 +42,218 @@
         <a href="/login" id="nav-login-link" class="nav-link">
             <i class="fas fa-sign-in-alt"></i> Login
         </a>
-        <!-- Register link REMOVED -->
+
         <a href="#" id="nav-logout-link" class="nav-link" style="display: none;">
             <i class="fas fa-sign-out-alt"></i> Logout
         </a>
 
     </div>
 </nav>
+
+<script>
+// Navbar authentication handler
+document.addEventListener('DOMContentLoaded', function() {
+    checkAuthStatus();
+});
+
+function checkAuthStatus() {
+    // Try to get auth status from localStorage first (fast)
+    const cachedUser = localStorage.getItem('user');
+    const cachedLoggedIn = localStorage.getItem('loggedIn');
+    
+    if (cachedLoggedIn === 'true' && cachedUser) {
+        try {
+            const user = JSON.parse(cachedUser);
+            updateNavbar(user, true);
+            return;
+        } catch (e) {
+            // Cache invalid, fetch fresh
+        }
+    }
+    
+    // Fetch fresh auth status
+    fetch('/session/check', {
+        credentials: 'include',
+        headers: {
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return response.json();
+    })
+    .then(data => {
+        const isLoggedIn = data.logged_in === true;
+        const user = data.user || null;
+        
+        // Cache the result
+        if (isLoggedIn && user) {
+            localStorage.setItem('loggedIn', 'true');
+            localStorage.setItem('user', JSON.stringify(user));
+        } else {
+            localStorage.removeItem('loggedIn');
+            localStorage.removeItem('user');
+        }
+        
+        updateNavbar(user, isLoggedIn);
+    })
+    .catch(error => {
+        console.error('Error checking auth status:', error);
+        // Default to logged out
+        updateNavbar(null, false);
+    });
+}
+
+function updateNavbar(user, isLoggedIn) {
+    const isAdmin = user && user.role === 'admin';
+    
+    // Dashboard - show if logged in
+    const dashboardLink = document.getElementById('nav-dashboard-link');
+    if (dashboardLink) {
+        dashboardLink.style.display = isLoggedIn ? 'inline' : 'none';
+    }
+    
+    // Admin-only links
+    const adminLinks = document.querySelectorAll('.admin-only');
+    adminLinks.forEach(el => {
+        el.style.display = (isLoggedIn && isAdmin) ? 'inline' : 'none';
+    });
+    
+    // User greeting
+    const greeting = document.getElementById('nav-user-greeting');
+    if (greeting) {
+        if (isLoggedIn && user && user.full_name) {
+            greeting.textContent = '👋 ' + user.full_name;
+            greeting.style.display = 'inline';
+        } else if (isLoggedIn && user && user.username) {
+            greeting.textContent = '👋 ' + user.username;
+            greeting.style.display = 'inline';
+        } else {
+            greeting.style.display = 'none';
+        }
+    }
+    
+    // Login/Logout links
+    const loginLink = document.getElementById('nav-login-link');
+    const logoutLink = document.getElementById('nav-logout-link');
+    
+    if (loginLink) {
+        loginLink.style.display = isLoggedIn ? 'none' : 'inline';
+    }
+    if (logoutLink) {
+        logoutLink.style.display = isLoggedIn ? 'inline' : 'none';
+        if (isLoggedIn) {
+            logoutLink.onclick = function(e) {
+                e.preventDefault();
+                logoutUser();
+            };
+        }
+    }
+    
+    console.log('Navbar updated: loggedIn=' + isLoggedIn + ', isAdmin=' + isAdmin);
+}
+
+function logoutUser() {
+    fetch('/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Clear cached auth
+        localStorage.removeItem('loggedIn');
+        localStorage.removeItem('user');
+        
+        if (data.status === 'success') {
+            window.location.href = '/';
+        } else {
+            window.location.href = '/';
+        }
+    })
+    .catch(function(error) {
+        console.error('Logout error:', error);
+        localStorage.removeItem('loggedIn');
+        localStorage.removeItem('user');
+        window.location.href = '/';
+    });
+}
+
+// Make functions globally available
+window.logoutUser = logoutUser;
+window.checkAuthStatus = checkAuthStatus;
+</script>
+
+<style>
+/* Navbar styles */
+.nav-link {
+    color: rgba(255,255,255,0.8);
+    text-decoration: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    font-size: 14px;
+}
+
+.nav-link:hover {
+    color: white;
+    background: rgba(255,255,255,0.1);
+}
+
+.nav-link i {
+    margin-right: 6px;
+}
+
+.admin-only {
+    transition: all 0.3s ease;
+}
+
+.checkout-nav-link:hover {
+    background: rgba(40, 167, 69, 0.3) !important;
+    transform: scale(1.02);
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    nav {
+        flex-wrap: wrap;
+    }
+    
+    nav > div:last-child {
+        display: none;
+        flex-direction: column;
+        width: 100%;
+        gap: 10px;
+        padding: 10px 0;
+    }
+    
+    nav > div:last-child.show {
+        display: flex;
+    }
+    
+    .nav-link {
+        width: 100%;
+        text-align: center;
+    }
+}
+
+/* Add a hamburger menu toggle for mobile */
+.menu-toggle {
+    display: none;
+    background: none;
+    border: none;
+    color: white;
+    font-size: 24px;
+    cursor: pointer;
+}
+
+@media (max-width: 768px) {
+    .menu-toggle {
+        display: block;
+    }
+}
+</style>
