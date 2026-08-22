@@ -8356,4 +8356,4 @@
     console.log('✅ All functions exposed to window');
     console.log('✅ applyDefaultParams and clearDefaultParams are now globally available.');
 
-})();
+})();  
