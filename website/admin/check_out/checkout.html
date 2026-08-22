@@ -1,0 +1,243 @@
+<!-- ==================== CHECKOUT TAB ==================== -->
+<div class="checkout-container">
+    <h1><i class="fas fa-shopping-cart"></i> Checkout</h1>
+    <p class="subtitle">Search for records, add to cart, and process payments.</p>
+
+    <!-- ========== STATUS MESSAGE ========== -->
+    <div id="checkout-status-message" class="status-message" style="display: none;"></div>
+
+    <!-- ========== SEARCH SECTION ========== -->
+    <div class="checkout-search-section">
+        <div class="search-row">
+            <div class="search-input-wrapper">
+                <input type="text" id="checkout-search-input" class="search-input" placeholder="Search by Barcode (exact), Artist, or Title...">
+                <button id="checkout-search-btn" class="btn btn-primary"><i class="fas fa-search"></i></button>
+                <button id="checkout-clear-btn" class="btn btn-secondary"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="search-actions">
+                <button id="checkout-custom-btn" class="btn btn-info"><i class="fas fa-plus-circle"></i> Custom Item</button>
+                <button id="checkout-bernie-btn" class="btn btn-warning"><i class="fas fa-donate"></i> Bernie ($0.99)</button>
+            </div>
+        </div>
+        <div class="search-options">
+            <label class="search-option">
+                <input type="checkbox" id="search-barcode" checked>
+                <span>Barcode (exact)</span>
+            </label>
+            <label class="search-option">
+                <input type="checkbox" id="search-artist" checked>
+                <span>Artist</span>
+            </label>
+            <label class="search-option">
+                <input type="checkbox" id="search-title" checked>
+                <span>Title</span>
+            </label>
+            <span class="search-hint"><i class="fas fa-info-circle"></i> Barcode matches exactly; Artist/Title match partially</span>
+        </div>
+    </div>
+
+    <!-- ========== SEARCH RESULTS ========== -->
+    <div class="checkout-results-section">
+        <div class="results-header">
+            <h3><i class="fas fa-list"></i> Search Results</h3>
+            <span class="results-count" id="checkout-results-count">0 results</span>
+        </div>
+        <div class="results-table-container" id="checkout-results-container">
+            <div class="no-results">
+                <i class="fas fa-search" style="font-size: 36px; display: block; margin-bottom: 10px; color: #ccc;"></i>
+                <p>Search for records to add to cart</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== CART SECTION ========== -->
+    <div class="checkout-cart-section">
+        <div class="cart-header">
+            <h3><i class="fas fa-shopping-cart"></i> Cart <span class="cart-item-count" id="checkout-cart-count">(0 items)</span></h3>
+            <div class="cart-actions">
+                <button id="checkout-clear-cart-btn" class="btn btn-danger btn-small" style="display: none;">
+                    <i class="fas fa-trash"></i> Clear Cart
+                </button>
+            </div>
+        </div>
+
+        <div class="cart-body">
+            <div class="cart-items-container" id="checkout-cart-items">
+                <div class="empty-cart-message">
+                    <i class="fas fa-shopping-cart" style="font-size: 36px; display: block; margin-bottom: 10px; color: #ccc;"></i>
+                    <p>Cart is empty. Add items from search results.</p>
+                </div>
+            </div>
+
+            <div class="cart-summary" id="checkout-cart-summary" style="display: none;">
+                <div class="summary-row">
+                    <span>Subtotal:</span>
+                    <span id="checkout-subtotal">$0.00</span>
+                </div>
+                <div class="summary-row">
+                    <span>Tax (8%):</span>
+                    <span id="checkout-tax">$0.00</span>
+                </div>
+                <div class="summary-row total">
+                    <span>Total:</span>
+                    <span id="checkout-total">$0.00</span>
+                </div>
+                <button id="checkout-checkout-btn" class="btn btn-success checkout-btn">
+                    <i class="fas fa-credit-card"></i> Checkout
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== CUSTOM ITEM MODAL ========== -->
+<div id="checkout-custom-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-header" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); color: white;">
+            <h3 class="modal-title"><i class="fas fa-plus-circle"></i> Add Custom Item</h3>
+            <button class="modal-close" onclick="window.checkout.closeCustomModal()" style="color: white;">×</button>
+        </div>
+        <div class="modal-body">
+            <div style="margin-bottom: 15px;">
+                <label for="custom-item-name" style="display: block; margin-bottom: 5px; font-weight: 600;">Item Name *</label>
+                <input type="text" id="custom-item-name" class="search-input" placeholder="e.g., Vinyl Cleaning Kit" style="width: 100%;">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label for="custom-item-price" style="display: block; margin-bottom: 5px; font-weight: 600;">Price ($) *</label>
+                <input type="number" id="custom-item-price" class="search-input" placeholder="0.00" step="0.01" min="0.01" style="width: 100%;">
+            </div>
+            <div id="custom-item-status" style="display: none;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="window.checkout.closeCustomModal()">Cancel</button>
+            <button class="btn btn-info" onclick="window.checkout.addCustomItem()"><i class="fas fa-plus"></i> Add to Cart</button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== TENDER MODAL (CASH) ========== -->
+<div id="checkout-tender-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
+            <h3 class="modal-title"><i class="fas fa-money-bill-wave"></i> Cash Payment</h3>
+            <button class="modal-close" onclick="window.checkout.closeTenderModal()" style="color: white;">×</button>
+        </div>
+        <div class="modal-body">
+            <div style="text-align: center; margin-bottom: 10px; color: #666;">Total Due:</div>
+            <div class="tender-amount" id="checkout-tender-total">$0.00</div>
+            <input type="number" id="checkout-tender-amount" class="tender-input" placeholder="Enter amount received" min="0" step="0.01" autofocus>
+            <div id="checkout-change-container" style="display: none;">
+                <div style="text-align: center; margin-bottom: 5px; color: #666;">Change:</div>
+                <div class="change-display" id="checkout-change-amount">$0.00</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="window.checkout.closeTenderModal()">Cancel</button>
+            <button class="btn btn-success" id="checkout-tender-complete" disabled onclick="window.checkout.processCashPayment()">
+                <i class="fas fa-check"></i> Complete Payment
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== GIFT CARD MODAL ========== -->
+<div id="checkout-giftcard-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-header" style="background: linear-gradient(135deg, #fd7e14 0%, #dc6c12 100%); color: white;">
+            <h3 class="modal-title"><i class="fas fa-gift"></i> Gift Card Payment</h3>
+            <button class="modal-close" onclick="window.checkout.closeGiftCardModal()" style="color: white;">×</button>
+        </div>
+        <div class="modal-body">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <div style="font-size: 14px; color: #666;">Total Due:</div>
+                <div class="tender-amount" id="checkout-giftcard-total">$0.00</div>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label for="checkout-giftcard-code" style="display: block; margin-bottom: 8px; font-weight: 500;"><i class="fas fa-barcode"></i> Scan or Enter Gift Card Code:</label>
+                <input type="text" id="checkout-giftcard-code" class="search-input" placeholder="e.g., GIFT-ABC123" style="width: 100%; font-size: 16px; text-align: center;" autofocus>
+                <button class="btn btn-primary" onclick="window.checkout.checkGiftCard()" style="margin-top: 10px; width: 100%;"><i class="fas fa-search"></i> Check Card</button>
+            </div>
+            <div id="checkout-giftcard-info" style="display: none; background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                <div style="font-weight: bold; margin-bottom: 5px;">Card: <span id="checkout-giftcard-id"></span></div>
+                <div>Balance: <strong id="checkout-giftcard-balance" style="color: #28a745;"></strong></div>
+            </div>
+            <div id="checkout-giftcard-apply" style="display: none;">
+                <label for="checkout-giftcard-amount" style="display: block; margin-bottom: 8px; font-weight: 500;">Amount to apply:</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="number" id="checkout-giftcard-amount" class="search-input" step="0.01" min="0" style="flex: 2;">
+                    <button class="btn btn-success" onclick="window.checkout.applyGiftCard()"><i class="fas fa-check"></i> Apply</button>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">
+                    <button class="btn btn-small btn-secondary" onclick="window.checkout.setGiftCardAmount('full')">Full Amount</button>
+                    <button class="btn btn-small btn-secondary" onclick="window.checkout.setGiftCardAmount('half')">Half</button>
+                </div>
+            </div>
+            <div id="checkout-giftcard-result" style="margin-top: 15px; display: none;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="window.checkout.closeGiftCardModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== SQUARE PAYMENT MODAL ========== -->
+<div id="checkout-square-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 450px;">
+        <div class="modal-header" style="background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%); color: white;">
+            <h3 class="modal-title"><i class="fas fa-square"></i> Square Payment</h3>
+            <button class="modal-close" onclick="window.checkout.closeSquareModal()" style="color: white;">×</button>
+        </div>
+        <div class="modal-body">
+            <div id="square-payment-status" style="text-align: center; padding: 20px 0;">
+                <div id="square-status-icon" style="font-size: 48px; margin-bottom: 15px; color: #ffc107;"><i class="fas fa-spinner fa-pulse"></i></div>
+                <div id="square-status-message" style="font-size: 18px; font-weight: 600; color: #333;">Waiting for payment on terminal...</div>
+                <div id="square-status-detail" style="font-size: 14px; color: #666; margin-top: 8px;">Please complete payment on the Square Terminal</div>
+            </div>
+            <div id="square-payment-info" style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                <div class="info-row"><span class="label">Amount:</span><span class="value" id="square-modal-amount">$0.00</span></div>
+                <div class="info-row"><span class="label">Terminal:</span><span class="value" id="square-modal-terminal">--</span></div>
+                <div class="info-row"><span class="label">Status:</span><span class="value" id="square-modal-status-text" style="color: #ffc107;">Waiting...</span></div>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: center; margin-top: 15px; flex-wrap: wrap;">
+                <button class="btn btn-square-force" onclick="window.checkout.forceCompleteSquare()"><i class="fas fa-check-double"></i> Force Complete</button>
+                <button class="btn btn-square-cancel" onclick="window.checkout.cancelSquarePayment()"><i class="fas fa-times"></i> Cancel Payment</button>
+            </div>
+            <div id="square-force-warning" style="margin-top: 15px; padding: 10px 15px; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 4px; color: #856404; font-size: 13px; display: none;">
+                <i class="fas fa-exclamation-triangle"></i> <strong>Warning:</strong> Force complete will mark the sale as completed without waiting for terminal confirmation. Use this only if the customer has already paid on the terminal.
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="window.checkout.closeSquareModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== PAYMENT METHOD MODAL ========== -->
+<div id="checkout-payment-method-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
+            <h3 class="modal-title"><i class="fas fa-credit-card"></i> Payment Method</h3>
+            <button class="modal-close" onclick="window.checkout.closePaymentMethodModal()" style="color: white;">×</button>
+        </div>
+        <div class="modal-body">
+            <p style="text-align: center; color: #666; margin-bottom: 20px;">Total: <strong id="payment-method-total" style="font-size: 24px; color: #28a745;">$0.00</strong></p>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <button class="btn btn-cash" onclick="window.checkout.selectPaymentMethod('cash')">
+                    <i class="fas fa-money-bill-wave"></i> Cash
+                </button>
+                <button class="btn btn-square" onclick="window.checkout.selectPaymentMethod('square')" id="payment-method-square">
+                    <i class="fas fa-square"></i> Card (Square Terminal)
+                </button>
+                <button class="btn btn-giftcard" onclick="window.checkout.selectPaymentMethod('giftcard')">
+                    <i class="fas fa-gift"></i> Gift Card
+                </button>
+                <button class="btn btn-store-credit" onclick="window.checkout.selectPaymentMethod('store_credit')">
+                    <i class="fas fa-hand-holding-usd"></i> Store Credit
+                </button>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="window.checkout.closePaymentMethodModal()">Cancel</button>
+        </div>
+    </div>
+</div>

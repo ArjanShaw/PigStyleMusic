@@ -476,6 +476,81 @@ const TabManager = (function() {
                     </div>`;
                 });
         };
+
+        // ============================================================
+        // CHECKOUT TAB
+        // ============================================================
+        initializers['checkout'] = () => {
+            console.log('🔵 TabManager: Initializing Checkout tab');
+            
+            const container = document.getElementById('checkout-tab');
+            if (!container) {
+                console.warn('⚠️ Checkout container (#checkout-tab) not found.');
+                return;
+            }
+
+            // Check if already loaded
+            if (container.querySelector('.checkout-container')) {
+                console.log('✅ Checkout tab already loaded, skipping.');
+                return;
+            }
+
+            const loader = document.getElementById('checkout-loader');
+            if (!loader) {
+                console.warn('⚠️ Checkout loader (#checkout-loader) not found.');
+                return;
+            }
+
+            console.log('📦 Loading Checkout content from /admin-components/check_out/checkout.html');
+            fetch('/admin-components/check_out/checkout.html')
+                .then(res => {
+                    console.log(`📡 Fetch response: ${res.status} ${res.statusText}`);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    return res.text();
+                })
+                .then(html => {
+                    console.log('✅ Checkout HTML fetched, injecting into container.');
+                    loader.innerHTML = html;
+
+                    // Load CSS
+                    const link = document.createElement('link');
+                    link.rel = 'stylesheet';
+                    link.href = '/admin-components/check_out/checkout.css';
+                    document.head.appendChild(link);
+                    console.log('📄 checkout.css added to head.');
+
+                    // Load JS
+                    const script = document.createElement('script');
+                    script.src = '/admin-components/check_out/checkout.js';
+                    script.onload = function() {
+                        console.log('✅ checkout.js loaded successfully.');
+                        if (typeof window.checkout !== 'undefined' && typeof window.checkout.init === 'function') {
+                            console.log('📞 Calling checkout.init()...');
+                            window.checkout.init();
+                            console.log('📞 checkout.init() returned.');
+                        } else {
+                            console.warn('⚠️ window.checkout.init is not defined after loading checkout.js.');
+                        }
+                    };
+                    script.onerror = function() {
+                        console.error('❌ Failed to load checkout.js (network error or 404).');
+                        loader.innerHTML = `<div style="text-align:center; padding:40px; color:#dc3545;">
+                            <i class="fas fa-exclamation-triangle fa-2x"></i>
+                            <p style="margin-top:10px;">Failed to load checkout.js. Check the console for details.</p>
+                        </div>`;
+                    };
+                    document.body.appendChild(script);
+                    console.log('📦 checkout.js script element appended to body.');
+                })
+                .catch(err => {
+                    console.error('❌ Checkout load error:', err);
+                    loader.innerHTML = `<div style="text-align:center; padding:40px; color:#dc3545;">
+                        <i class="fas fa-exclamation-triangle fa-2x"></i>
+                        <p style="margin-top:10px;">Failed to load Checkout: ${err.message}</p>
+                        <button class="btn btn-primary" onclick="window.TabManager.switchToTab('checkout')" style="margin-top:10px;">Retry</button>
+                    </div>`;
+                });
+        };
     }
 
     // Register cleanup functions
@@ -545,6 +620,19 @@ const TabManager = (function() {
                 if (window.itemManagement && window.itemManagement._squarePollInterval) {
                     clearInterval(window.itemManagement._squarePollInterval);
                     window.itemManagement._squarePollInterval = null;
+                }
+            },
+            'checkout': () => {
+                console.log('🧹 TabManager: Cleaning up Checkout tab');
+                // Close any open modals
+                const modals = document.querySelectorAll('#checkout-tab .modal-overlay');
+                modals.forEach(modal => {
+                    modal.style.display = 'none';
+                });
+                // Clear any intervals
+                if (window.checkout && window.checkout._squarePollInterval) {
+                    clearInterval(window.checkout._squarePollInterval);
+                    window.checkout._squarePollInterval = null;
                 }
             }
         };
