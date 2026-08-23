@@ -19,6 +19,8 @@ COMPONENTS_DIR  = os.path.join(BASE_DIR, 'index', 'components')
 ACCOUNTING_DIR  = os.path.join(BASE_DIR, 'accounting')
 CHECKOUT_DIR    = os.path.join(BASE_DIR, 'checkout')
 CHECKOUT_DIR2   = os.path.join(BASE_DIR, 'inventory_purchases')
+ADD_RECORDS_DIR = os.path.join(BASE_DIR, 'add_records')
+
 
 ITEM_MANAGEMENT_DIR = os.path.join(ADMIN_DIR, 'item-management')  # ← NEW
 
@@ -177,6 +179,11 @@ def register_routes(application):
     @application.route('/checkout/checkout.html')
     def checkout():
         return send_from_directory(CHECKOUT_DIR, 'checkout.html')
+
+    @application.route('/add_records/')
+    @application.route('/add_records/add_records.html')
+    def add_records():
+        return send_from_directory(ADD_RECORDS_DIR, 'add_records.html')
 
     @application.route('/inventory_purchases/')
     @application.route('/inventory_purchases/inventory-purchases.html')
