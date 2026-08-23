@@ -1542,6 +1542,84 @@ def api_cancel_checkout(checkout_id):
 
 # ==================== AUTHENTICATION ENDPOINTS ====================
 
+@app.route('/api/login2', methods=['POST', 'OPTIONS'])
+def login2():
+    """Test login endpoint - simplified version"""
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 200
+    
+    try:
+        data = request.get_json(force=True, silent=True)
+        
+        if data is None:
+            return jsonify({'status': 'error', 'error': 'Invalid JSON data'}), 400
+
+        required_fields = ['username', 'password']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'status': 'error', 'error': f'{field} required'}), 400
+
+        username = data['username']
+        password = data['password']
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT id, username, email, password_hash, role, full_name, store_credit_balance FROM users WHERE username = ?', (username,))
+        user = cursor.fetchone()
+        
+        if not user:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Invalid username or password'}), 401
+
+        stored_hash = user['password_hash']
+        
+        if '$' in stored_hash:
+            salt, hash_value = stored_hash.split('$')
+            password_hash = hashlib.sha256((salt + password).encode()).hexdigest()
+            
+            if password_hash != hash_value:
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'Invalid username or password'}), 401
+        else:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Invalid password format'}), 401
+
+        cursor.execute('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?', (user['id'],))
+        conn.commit()
+        conn.close()
+
+        session['user_id'] = user['id']
+        session['username'] = user['username']
+        session['role'] = user['role']
+        session['logged_in'] = True
+        
+        user_data = {
+            'id': user['id'],
+            'username': user['username'],
+            'email': user['email'],
+            'role': user['role'],
+            'full_name': user['full_name'],
+            'store_credit_balance': float(user['store_credit_balance']) if user['store_credit_balance'] is not None else 0.0
+        }
+        
+        response = jsonify({'status': 'success', 'message': 'Login successful', 'user': user_data})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+
+    except Exception as e:
+        app.logger.error(f"Login2 error: {str(e)}")
+        response = jsonify({'status': 'error', 'error': f'Server error: {str(e)}'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 500
+
 @app.route('/api/login', methods=['POST', 'OPTIONS'])
 def login():
     """Authenticate user and return user data with session"""
