@@ -35,3 +35,4 @@ logs/
 .env
 backend/data/*.db
 backend/data/*.sqlite
+backend/data/*.db
