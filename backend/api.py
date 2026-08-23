@@ -54,6 +54,8 @@ from plaid.model.transactions_get_request_options import TransactionsGetRequestO
 from plaid.model.link_token_create_request import LinkTokenCreateRequest
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
+from flask import send_from_directory
+
 
 app = Flask(__name__)
 
@@ -2746,7 +2748,7 @@ def parse_purchase_from_journal(entry):
             purchase['seller_name'] = match.group(1).strip()
     
     return purchase
-
+ 
 @app.route('/api/inventory-purchases', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -2768,7 +2770,6 @@ def get_inventory_purchases():
                 p.seller_contact,
                 p.description,
                 p.bill_of_sale_path,
-                p.status,
                 p.created_at,
                 p.updated_at,
                 COUNT(r.id) as record_count,
@@ -2786,6 +2787,8 @@ def get_inventory_purchases():
             LEFT JOIN records r ON r.batch_id = p.id
             WHERE 1=1
         '''
+        # NO status column in query or WHERE clause
+
         params = []
 
         if start_date:
@@ -2812,14 +2815,16 @@ def get_inventory_purchases():
                 'seller_contact': row['seller_contact'] or '',
                 'description': row['description'] or '',
                 'bill_of_sale_path': row['bill_of_sale_path'],
-                'status': row['status'],
                 'created_at': row['created_at'],
                 'updated_at': row['updated_at'],
                 'record_count': row['record_count'] or 0,
                 'amount_spent': float(row['amount_spent'] or 0)
+                # NO status field
             })
 
         count_query = 'SELECT COUNT(*) as total FROM purchases WHERE 1=1'
+        # NO status filter
+
         count_params = []
         if start_date:
             count_query += ' AND created_at >= ?'
@@ -2891,92 +2896,58 @@ def create_inventory_purchase():
         if not seller_name or not str(seller_name).strip():
             return jsonify({'status': 'error', 'error': 'Seller name is required'}), 400
 
+        # Allow $0 for donations
         amount_spent = float(data.get('amount_spent', 0))
-        if amount_spent <= 0:
-            return jsonify({'status': 'error', 'error': 'amount_spent must be greater than 0'}), 400
-
-        payment_type = data.get('payment_type', 'cash')
-        consignor_id = data.get('consignor_id')
-        payment_account_code = data.get('payment_account_id')
-
-        # Validate consignor if store credit
-        if payment_type == 'store_credit':
-            if not consignor_id:
-                return jsonify({'status': 'error', 'error': 'Consignor required for store credit'}), 400
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute('SELECT id FROM users WHERE id = ? AND role = "consignor"', (consignor_id,))
-            if not cursor.fetchone():
-                conn.close()
-                return jsonify({'status': 'error', 'error': 'Invalid consignor'}), 400
-            conn.close()
+        if amount_spent < 0:
+            return jsonify({'status': 'error', 'error': 'amount_spent cannot be negative'}), 400
 
         purchase_date = data.get('purchase_date') or datetime.now().strftime('%Y-%m-%d')
         seller_contact = (data.get('seller_contact') or '').strip()
         description_text = (data.get('description') or '').strip()
-        bill_path = (data.get('bill_of_sale_path') or '').strip()
-
-        # Build description in pipe‑separated format
-        desc = f"Inventory purchase | seller: {seller_name} | contact: {seller_contact} | amount: {amount_spent:.2f} | date: {purchase_date} | desc: {description_text}"
-        if bill_path:
-            desc += f" | bill: {bill_path}"
 
         conn = get_db()
         cursor = conn.cursor()
 
-        # Insert journal entry
+        # 1. INSERT INTO purchases table (NO status column)
         cursor.execute('''
-            INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-            VALUES (?, ?, ?, ?)
-        ''', (purchase_date, desc, 'purchase', str(int(time.time()))))
-        entry_id = cursor.lastrowid
+            INSERT INTO purchases (seller_name, seller_contact, description, created_at, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ''', (seller_name, seller_contact, description_text))
+        
+        purchase_id = cursor.lastrowid
+        
+        # 2. INSERT INTO journal_entries (only if amount > 0)
+        if amount_spent > 0:
+            desc = f"Inventory purchase | seller: {seller_name} | contact: {seller_contact} | amount: {amount_spent:.2f} | date: {purchase_date} | desc: {description_text}"
+            
+            cursor.execute('''
+                INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
+                VALUES (?, ?, ?, ?)
+            ''', (purchase_date, desc, 'purchase', str(purchase_id)))
+            
+            entry_id = cursor.lastrowid
 
-        # Insert journal lines
-        amount_cents = int(round(amount_spent * 100))
-        inventory_id = get_account_id('1050')   # Inventory asset
-
-        if payment_type == 'cash':
-            if not payment_account_code:
-                conn.rollback()
-                conn.close()
-                return jsonify({'status': 'error', 'error': 'payment_account_id required for cash'}), 400
-            cursor.execute('SELECT id FROM accounts WHERE code = ?', (payment_account_code,))
+            # 3. INSERT journal_lines (debit inventory, credit cash)
+            amount_cents = int(round(amount_spent * 100))
+            inventory_id = get_account_id('1050')
+            
+            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
             account_row = cursor.fetchone()
             if not account_row:
                 conn.rollback()
                 conn.close()
-                return jsonify({'status': 'error', 'error': f'Invalid payment account: {payment_account_code}'}), 400
+                return jsonify({'status': 'error', 'error': 'Cash account (1015) not found'}), 500
             cash_id = account_row['id']
+            
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
             ''', (entry_id, inventory_id, amount_cents, 0))
+            
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
             ''', (entry_id, cash_id, 0, amount_cents))
-        else:  # store_credit
-            liability_id = get_account_id('2015')
-            if not liability_id:
-                conn.rollback()
-                conn.close()
-                return jsonify({'status': 'error', 'error': 'Store Credit Liability account not found'}), 500
-            cursor.execute('''
-                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (entry_id, inventory_id, amount_cents, 0))
-            cursor.execute('''
-                INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                VALUES (?, ?, ?, ?)
-            ''', (entry_id, liability_id, 0, amount_cents))
-
-            # Issue store credit to consignor
-            cursor.execute('SELECT config_value FROM app_config WHERE config_key = "STORE_CREDIT_MULTIPLIER"')
-            config_row = cursor.fetchone()
-            multiplier = float(config_row['config_value']) if config_row else 1.5
-            credit_amount = amount_spent * multiplier
-            cursor.execute('UPDATE users SET store_credit_balance = store_credit_balance + ? WHERE id = ?',
-                           (credit_amount, consignor_id))
 
         conn.commit()
         conn.close()
@@ -2984,14 +2955,14 @@ def create_inventory_purchase():
         return jsonify({
             'status': 'success',
             'message': 'Inventory purchase recorded',
-            'purchase_id': entry_id,   # journal entry ID acts as purchase ID
-            'payment_type': payment_type
+            'purchase_id': purchase_id,
+            'journal_entry_id': entry_id if amount_spent > 0 else None,
+            'payment_type': 'cash'
         })
     except Exception as e:
         app.logger.error(f"Error creating inventory purchase: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
+    
 @app.route('/api/inventory-purchases/<int:purchase_id>', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -9443,13 +9414,10 @@ def send_bill_of_sale_to_square():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
  
-# ============================================================
-# BILL OF SALE IMAGE SERVING
-# ============================================================
 
-@app.route('/static/uploads/bills/<filename>')
+@app.route('/static/uploads/bills/<path:filename>')
 def serve_bill_image(filename):
-    """Serve bill of sale images with proper content type"""
+    """Serve bill of sale images"""
     try:
         # Security: Prevent directory traversal
         if '..' in filename or '/' in filename or '\\' in filename:
@@ -9480,7 +9448,6 @@ def serve_bill_image(filename):
     except Exception as e:
         app.logger.error(f"Error serving bill image: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
  
 @app.route('/api/purchases/draft/<int:draft_id>', methods=['GET'])
 @login_required
@@ -10656,16 +10623,12 @@ def get_purchase_by_id(purchase_id):
         app.logger.error(f"Error getting purchase: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-# ============================================================
-# PURCHASE BILL UPLOAD (POST)
-# ============================================================
+
+
 @app.route('/api/purchases/<int:purchase_id>/bill', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def upload_purchase_bill(purchase_id):
-    """
-    Upload a bill of sale image/PDF for a purchase.
-    """
     try:
         if 'bill_image' not in request.files:
             return jsonify({'status': 'error', 'error': 'No file uploaded'}), 400
@@ -10674,7 +10637,6 @@ def upload_purchase_bill(purchase_id):
         if file.filename == '':
             return jsonify({'status': 'error', 'error': 'No file selected'}), 400
 
-        # Validate extension
         allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf'}
         ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
         if ext not in allowed_extensions:
@@ -10683,7 +10645,6 @@ def upload_purchase_bill(purchase_id):
                 'error': f'File type not allowed. Allowed: {", ".join(allowed_extensions)}'
             }), 400
 
-        # Check if purchase exists
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute('SELECT id FROM purchases WHERE id = ?', (purchase_id,))
@@ -10691,18 +10652,22 @@ def upload_purchase_bill(purchase_id):
             conn.close()
             return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
 
-        # Save file
         import uuid
         from werkzeug.utils import secure_filename
-        filename = secure_filename(f"bill_{purchase_id}_{uuid.uuid4().hex[:8]}.{ext}")
-        bills_folder = os.path.join(os.path.dirname(__file__), 'static', 'uploads', 'bills')
+        
+        # Use absolute path
+        bills_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads', 'bills')
         os.makedirs(bills_folder, exist_ok=True)
+        
+        filename = secure_filename(f"bill_{purchase_id}_{uuid.uuid4().hex[:8]}.{ext}")
         filepath = os.path.join(bills_folder, filename)
         file.save(filepath)
+        
+        app.logger.info(f"Bill saved to: {filepath}")
 
+        # Store the URL path (this is what the browser will request)
         bill_path = f"/static/uploads/bills/{filename}"
 
-        # Update purchase record
         cursor.execute('''
             UPDATE purchases 
             SET bill_of_sale_path = ?, updated_at = CURRENT_TIMESTAMP 
@@ -10720,7 +10685,32 @@ def upload_purchase_bill(purchase_id):
     except Exception as e:
         app.logger.error(f"Error uploading bill: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
- 
+
+@app.route('/static/uploads/bills/<path:filename>')
+def serve_bill_file(filename):
+    """Serve bill of sale files from the uploads folder"""
+    try:
+        # Security: Prevent directory traversal
+        if '..' in filename or '/' in filename or '\\' in filename:
+            return jsonify({'error': 'Invalid filename'}), 400
+        
+        # Get the bills folder path
+        bills_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads', 'bills')
+        
+        # Check if file exists
+        filepath = os.path.join(bills_folder, filename)
+        if not os.path.exists(filepath):
+            app.logger.error(f"Bill file not found: {filepath}")
+            return jsonify({'error': 'File not found'}), 404
+        
+        # Serve the file
+        return send_from_directory(bills_folder, filename)
+        
+    except Exception as e:
+        app.logger.error(f"Error serving bill file: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/accounting/reconcile/date-range', methods=['GET'])
 @login_required
 @role_required(['admin'])
