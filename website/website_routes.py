@@ -179,9 +179,9 @@ def register_routes(application):
         return send_from_directory(CHECKOUT_DIR, 'checkout.html')
 
     @application.route('/inventory_purchases/')
-    @application.route('/inventory_purchases/checkout2.html')
+    @application.route('/inventory_purchases/inventory-purchases.html')
     def inventory_purchases():
-        return send_from_directory(CHECKOUT_DIR2, 'checkout2.html')
+        return send_from_directory(CHECKOUT_DIR2, 'inventory-purchases.html')
 
     @application.route('/checkout/<path:filename>')
     def serve_checkout_asset(filename):
