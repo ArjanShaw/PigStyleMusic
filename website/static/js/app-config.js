@@ -221,7 +221,7 @@ const Auth = {
             const response = await fetch(AppConfig.getUrl('login'), { method: 'POST', headers: AppConfig.getHeaders(), body: JSON.stringify({ username, password }), credentials: 'include' });
             const text = await response.text();
             let data;
-            try { data = JSON.parse(text); } catch (e) { return { success: false, error: e }; }
+            try { data = JSON.parse(text); } catch (e) { return { success: false, error: e }; }   
             if (response.ok) {
                 this.user = data.user;
                 this.isLoggedIn = true;
