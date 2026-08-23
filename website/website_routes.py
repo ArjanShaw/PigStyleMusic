@@ -18,7 +18,7 @@ STATIC_DIR      = os.path.join(BASE_DIR, 'static')
 COMPONENTS_DIR  = os.path.join(BASE_DIR, 'index', 'components')
 ACCOUNTING_DIR  = os.path.join(BASE_DIR, 'accounting')
 CHECKOUT_DIR    = os.path.join(BASE_DIR, 'checkout')
-CHECKOUT_DIR2   = os.path.join(BASE_DIR, 'checkout2')
+CHECKOUT_DIR2   = os.path.join(BASE_DIR, 'inventory_purchases')
 
 ITEM_MANAGEMENT_DIR = os.path.join(ADMIN_DIR, 'item-management')  # ← NEW
 
