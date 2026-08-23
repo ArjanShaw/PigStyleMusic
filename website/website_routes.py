@@ -18,6 +18,8 @@ STATIC_DIR      = os.path.join(BASE_DIR, 'static')
 COMPONENTS_DIR  = os.path.join(BASE_DIR, 'index', 'components')
 ACCOUNTING_DIR  = os.path.join(BASE_DIR, 'accounting')
 CHECKOUT_DIR    = os.path.join(BASE_DIR, 'checkout')
+CHECKOUT_DIR2   = os.path.join(BASE_DIR, 'checkout2')
+
 ITEM_MANAGEMENT_DIR = os.path.join(ADMIN_DIR, 'item-management')  # ← NEW
 
 # Track if routes have been registered to prevent duplicates
@@ -171,11 +173,15 @@ def register_routes(application):
         return send_from_directory(ITEM_MANAGEMENT_DIR, filename)
 
     # ---------- CHECKOUT PAGE ----------
-    @application.route('/checkout')
     @application.route('/checkout/')
     @application.route('/checkout/checkout.html')
     def checkout():
         return send_from_directory(CHECKOUT_DIR, 'checkout.html')
+
+    @application.route('/checkout2/')
+    @application.route('/checkout2/checkout2.html')
+    def checkout2():
+        return send_from_directory(CHECKOUT_DIR2, 'checkout2.html')
 
     @application.route('/checkout/<path:filename>')
     def serve_checkout_asset(filename):
