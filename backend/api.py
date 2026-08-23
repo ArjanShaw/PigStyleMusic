@@ -12908,6 +12908,9 @@ def get_records_location_counts():
 
 @app.route('/api/events', methods=['GET'])
 def get_events():
+
+    return null;
+
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('''
