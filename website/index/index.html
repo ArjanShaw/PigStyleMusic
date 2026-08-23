@@ -99,7 +99,11 @@
                 <span>Cart</span>
                 <span class="cart-badge" id="cartBadge">0</span>
             </button>
-
+            <!-- EMAIL LIST NAV BUTTON (index 9) -->
+            <button class="mini-nav-item" data-index="9">
+                <i class="fas fa-envelope"></i>
+                <span>Email</span>
+            </button>
             <!-- Login link -->
             <a href="/login" class="mini-nav-item login-link">
                 <i class="fas fa-sign-in-alt"></i>
@@ -504,6 +508,38 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Tile 9: Email List -->
+<div class="tile" data-index="9">
+    <div class="flip-card" id="flipCard9">
+        <div class="flip-card-front email-front" style="background: transparent; display:flex; align-items:center; justify-content:center; padding:10px;">
+            <img src="/static/images/pig_shooting_from_cannon.png" alt="PigStyle Email List" style="max-width:95%; max-height:90%; width:auto; height:auto; object-fit:contain; border-radius:12px; filter:drop-shadow(0 4px 20px rgba(0,0,0,0.3));">
+            <div style="position:absolute; bottom:20px; left:0; right:0; text-align:center; pointer-events:none;">
+                <span style="color:rgba(255,255,255,0.85); font-size:0.7rem; background:rgba(0,0,0,0.5); padding:4px 14px; border-radius:20px; display:inline-block; backdrop-filter:blur(4px);">
+                    <i class="fas fa-rotate" style="margin-right:4px;"></i> Tap to sign up
+                </span>
+            </div>
+        </div>
+        <div class="flip-card-back">
+            <div class="back-content" id="emailListContent" style="background: white; border-radius: 16px; padding: 20px; width: 100%; box-sizing: border-box; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;">
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; padding:5px 0;">
+                    
+                    <form id="emailListForm" style="width:100%; display:flex; flex-direction:column; gap:8px; flex:1; justify-content:center; max-width:320px;">
+                        <div class="form-group" style="display:flex; flex-direction:column; gap:3px;">
+                            <label style="color:#555; font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Email Address</label>
+                            <input type="email" id="emailListInput" placeholder="your@email.com" required style="padding:10px 14px; border-radius:8px; border:2px solid #e0e0e0; font-size:0.95rem; outline:none; transition:border 0.2s; width:100%; box-sizing:border-box; background:#f8f8f8;" onfocus="this.style.borderColor='#2d1b69'; this.style.background='white'" onblur="this.style.borderColor='#e0e0e0'; this.style.background='#f8f8f8'">
+                        </div>
+                        <button type="submit" id="emailListSubmitBtn" style="padding:10px; background:linear-gradient(135deg, #2d1b69, #4a2b8a); color:white; border:none; border-radius:8px; font-size:0.95rem; font-weight:600; cursor:pointer; transition:all 0.2s; margin-top:2px; box-shadow:0 2px 8px rgba(45,27,105,0.3);">
+                            <i class="fas fa-paper-plane" style="margin-right:6px;"></i> Subscribe
+                        </button>
+                    </form>
+                    <div id="emailListStatus" style="padding:8px 12px; border-radius:6px; margin-top:8px; display:none; font-size:0.8rem; text-align:center; width:100%; max-width:320px; box-sizing:border-box;"></div>
+                    <span class="flip-hint" style="color:#bbb; margin-top:6px; font-size:0.65rem; cursor:pointer; flex-shrink:0;"><i class="fas fa-rotate" style="margin-right:4px;"></i> Tap to flip back</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
         </div> <!-- end tiles-wrapper -->
 
@@ -1587,6 +1623,87 @@
                 } finally {
                     submitBtn.disabled = false;
                     submitBtn.textContent = 'Send Message';
+                }
+            });
+        });
+
+        // ===== EMAIL LIST FORM HANDLER =====
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('emailListForm');
+            const statusDiv = document.getElementById('emailListStatus');
+            const submitBtn = document.getElementById('emailListSubmitBtn');
+            const emailInput = document.getElementById('emailListInput');
+
+            if (!form) return;
+
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+
+                const email = emailInput.value.trim().toLowerCase();
+
+                if (!email) {
+                    statusDiv.style.display = 'block';
+                    statusDiv.style.background = '#fff3cd';
+                    statusDiv.style.color = '#856404';
+                    statusDiv.textContent = '⚠️ Email address is required.';
+                    return;
+                }
+
+                // Basic email validation
+                if (!email.includes('@') || !email.includes('.')) {
+                    statusDiv.style.display = 'block';
+                    statusDiv.style.background = '#fff3cd';
+                    statusDiv.style.color = '#856404';
+                    statusDiv.textContent = '⚠️ Please enter a valid email address.';
+                    return;
+                }
+
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subscribing...';
+                statusDiv.style.display = 'none';
+
+                try {
+                    const response = await fetch(AppConfig.baseUrl + '/api/email-list/subscribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: email })
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(data.error || `HTTP ${response.status}`);
+                    }
+
+                    statusDiv.style.display = 'block';
+                    if (data.already_subscribed) {
+                        statusDiv.style.background = '#fff3cd';
+                        statusDiv.style.color = '#856404';
+                        statusDiv.textContent = '📧 You\'re already subscribed!';
+                    } else {
+                        statusDiv.style.background = '#d4edda';
+                        statusDiv.style.color = '#155724';
+                        statusDiv.textContent = '✅ You\'re subscribed! Check your email for updates.';
+                    }
+                    emailInput.value = '';
+
+                } catch (err) {
+                    console.error('❌ Email list subscription error:', err);
+                    statusDiv.style.display = 'block';
+                    statusDiv.style.background = '#f8d7da';
+                    statusDiv.style.color = '#721c24';
+                    statusDiv.textContent = `❌ Failed: ${err.message}. Please try again.`;
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Subscribe';
+                }
+            });
+
+            // Enter key support
+            emailInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    form.dispatchEvent(new Event('submit'));
                 }
             });
         });

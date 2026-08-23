@@ -1620,6 +1620,65 @@ def login2():
         response.headers.add('Access-Control-Allow-Credentials', 'true')
         return response, 500
 
+@app.route('/api/email-list/subscribe', methods=['POST'])
+def email_list_subscribe():
+    """
+    Subscribe an email to the email_list table.
+    Expects: {"email": "user@example.com"}
+    Returns: success or error message
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+        
+        email = data.get('email', '').strip().lower()
+        
+        if not email:
+            return jsonify({'status': 'error', 'error': 'Email is required'}), 400
+        
+        # Validate email format
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+            return jsonify({'status': 'error', 'error': 'Invalid email address'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if already subscribed
+        cursor.execute('SELECT email FROM email_list WHERE email = ?', (email,))
+        if cursor.fetchone():
+            conn.close()
+            return jsonify({
+                'status': 'success',
+                'message': 'Email already subscribed',
+                'already_subscribed': True
+            }), 200
+        
+        # Insert new email
+        cursor.execute('INSERT INTO email_list (email) VALUES (?)', (email,))
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"New email list subscription: {email}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'You are subscribed!',
+            'already_subscribed': False
+        }), 201
+        
+    except sqlite3.IntegrityError:
+        # Duplicate email (shouldn't happen since we check above, but just in case)
+        return jsonify({
+            'status': 'success',
+            'message': 'Email already subscribed',
+            'already_subscribed': True
+        }), 200
+    except Exception as e:
+        app.logger.error(f"Email list subscription error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 @app.route('/api/login', methods=['POST', 'OPTIONS'])
 def login():
     """Authenticate user and return user data with session"""
