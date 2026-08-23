@@ -41,7 +41,7 @@ const AppConfig = {
     get baseUrl() { return ENV_CONFIG.API_BASE_URL; },
     get frontendUrl() { return ENV_CONFIG.FRONTEND_URL; },
     endpoints: {
-        login: '/api/login',
+        login: '/api/login2',
         logout: '/logout',
         session: '/session/check',
         sessionCheck: '/session/check',
