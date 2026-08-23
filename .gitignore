@@ -8,10 +8,7 @@ __pycache__/
 env/
 .env/
 
-# Database files
-*.db
-*.sqlite
-*.sqlite3
+
 
 # IDE files
 .vscode/
@@ -36,4 +33,5 @@ logs/
 *.tmp
 *.temp
 .env
-backend/data/records.db
+backend/data/*.db
+backend/data/*.sqlite
