@@ -3,6 +3,23 @@
 
 var eventsInitialized = false;
 
+// Get image base URL from AppConfig or use default
+function getImageBaseUrl() {
+    if (typeof AppConfig !== 'undefined' && AppConfig.baseUrl) {
+        // Remove /api from the baseUrl to get the root URL
+        return AppConfig.baseUrl.replace(/\/api$/, '');
+    }
+    return 'http://localhost:5000'; // Fallback to backend port
+}
+
+// Helper to get full image URL
+function getFullImageUrl(path) {
+    if (!path) return '';
+    if (path.startsWith('http')) return path;
+    const base = getImageBaseUrl();
+    return base + path;
+}
+
 // --- Helper: download .ics file ---
 function downloadICS(event, occurrenceDate) {
     const dt = new Date(occurrenceDate);
@@ -103,16 +120,21 @@ function loadEvents() {
                     const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
                     const rsvpCount = ev.rsvp_count || 0;
 
+                    // Get full image URL (FIXED: use getFullImageUrl)
+                    const fullImageUrl = getFullImageUrl(ev.image_url);
+
                     // Column 1: Image
-                    const imageHtml = ev.image_url
-                        ? `<div style="flex:0 0 140px; height:140px; overflow:hidden;">
-                            <img src="${ev.image_url}" alt="${ev.title}" style="
+                    const imageHtml = fullImageUrl
+                        ? `<div style="flex:0 0 140px; height:140px; overflow:hidden; background:#f8f9fa;">
+                            <img src="${fullImageUrl}" alt="${ev.title}" style="
                                 width:100%;
                                 height:100%;
                                 object-fit:cover;
-                            ">
+                            " onerror="this.style.display='none'">
                         </div>`
-                        : '';
+                        : `<div style="flex:0 0 140px; height:140px; overflow:hidden; background:#f8f9fa; display:flex; align-items:center; justify-content:center; color:#ccc; font-size:40px; border-right:1px solid #e9ecef;">
+                            <i class="fas fa-calendar-alt"></i>
+                        </div>`;
 
                     // Column 2: Title + Description (top), RSVP link (bottom left)
                     const contentHtml = `

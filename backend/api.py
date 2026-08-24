@@ -57,7 +57,9 @@ from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchan
 from flask import send_from_directory
 
 
-app = Flask(__name__)
+app = Flask(__name__, 
+            static_folder='static',
+            static_url_path='/static')
 
 
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a7f8e9d3c5b1n2m4k6l7j8h9g0f1d2s3')
@@ -13033,16 +13035,20 @@ def get_records_location_counts():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
+
+ 
+ 
+
+# ---------- EVENTS CRUD ----------
+ 
 @app.route('/api/events', methods=['GET'])
 def get_events():
-
-    return null;
-
+    """Get all upcoming events"""
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('''
         SELECT id, title, description, event_date, image_url, rsvp_count,
-               repeat_type
+               created_at 
         FROM events
         WHERE event_date >= date('now')
         ORDER BY event_date ASC
@@ -13052,8 +13058,110 @@ def get_events():
     events = [dict(row) for row in rows]
     return jsonify({'status': 'success', 'events': events})
 
+@app.route('/api/events/<int:event_id>', methods=['GET'])
+def get_event(event_id):
+    """Get a single event by ID"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, title, description, event_date, image_url, rsvp_count, created_at FROM events WHERE id = ?', (event_id,))
+    event = cursor.fetchone()
+    conn.close()
+    if event:
+        return jsonify({'status': 'success', 'event': dict(event)})
+    return jsonify({'status': 'error', 'error': 'Event not found'}), 404
+
+@app.route('/api/events', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def create_event():
+    """Create a new event"""
+    data = request.json
+    required = ['title', 'event_date']
+    for field in required:
+        if field not in data:
+            return jsonify({'status': 'error', 'error': f'Missing field: {field}'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO events (
+            title, description, event_date, image_url
+        ) VALUES (?, ?, ?, ?)
+    ''', (
+        data['title'],
+        data.get('description', ''),
+        data['event_date'],
+        data.get('image_url', '')
+    ))
+    conn.commit()
+    event_id = cursor.lastrowid
+    conn.close()
+    
+    return jsonify({
+        'status': 'success', 
+        'message': 'Event created successfully',
+        'id': event_id
+    }), 201
+
+@app.route('/api/events/<int:event_id>', methods=['PUT'])
+@login_required
+@role_required(['admin'])
+def update_event(event_id):
+    """Update an existing event"""
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT id FROM events WHERE id = ?', (event_id,))
+    if not cursor.fetchone():
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'Event not found'}), 404
+
+    cursor.execute('''
+        UPDATE events SET
+            title = ?,
+            description = ?,
+            event_date = ?,
+            image_url = ?
+        WHERE id = ?
+    ''', (
+        data['title'],
+        data.get('description', ''),
+        data['event_date'],
+        data.get('image_url', ''),
+        event_id
+    ))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'status': 'success', 'message': 'Event updated successfully'})
+
+@app.route('/api/events/<int:event_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def delete_event(event_id):
+    """Delete an event"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT id FROM events WHERE id = ?', (event_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Event not found'}), 404
+            
+        cursor.execute('DELETE FROM events WHERE id = ?', (event_id,))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'status': 'success', 'message': 'Event deleted successfully'})
+    except Exception as e:
+        app.logger.error(f"Error deleting event {event_id}: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 @app.route('/api/events/<int:event_id>/rsvp', methods=['POST'])
-def rsvp_event(event_id):  # <-- add event_id here
+def rsvp_event(event_id):
+    """RSVP to an event"""
     try:
         data = request.get_json()
         if not data:
@@ -13070,19 +13178,16 @@ def rsvp_event(event_id):  # <-- add event_id here
         conn = get_db()
         cursor = conn.cursor()
 
-        # Check event exists
         cursor.execute('SELECT id FROM events WHERE id = ?', (event_id,))
         if not cursor.fetchone():
             conn.close()
             return jsonify({'status': 'error', 'error': 'Event not found'}), 404
 
-        # Insert attendee
         cursor.execute('''
             INSERT INTO event_rsvps (event_id, name, email)
             VALUES (?, ?, ?)
         ''', (event_id, name or None, email))
 
-        # Increment count
         cursor.execute('''
             UPDATE events
             SET rsvp_count = COALESCE(rsvp_count, 0) + 1
@@ -13104,93 +13209,6 @@ def rsvp_event(event_id):  # <-- add event_id here
 
     except Exception as e:
         app.logger.error(f"RSVP error: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
-# ---------- EVENTS CRUD ----------
-
-# GET single event (for editing)
-@app.route('/api/events/<int:event_id>', methods=['GET'])
-def get_event(event_id):
-    conn = get_db()
-    event = conn.execute('SELECT * FROM events WHERE id = ?', (event_id,)).fetchone()
-    conn.close()
-    if event:
-        return jsonify({'status': 'success', 'event': dict(event)})
-    return jsonify({'status': 'error', 'error': 'Event not found'}), 404
-
-@app.route('/api/events', methods=['POST'])
-def create_event():
-    data = request.json
-    required = ['title', 'event_date']
-    for field in required:
-        if field not in data:
-            return jsonify({'status': 'error', 'error': f'Missing field: {field}'}), 400
-
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO events (
-            title, description, event_date, image_url, repeat_type
-        ) VALUES (?, ?, ?, ?, ?)
-    ''', (
-        data['title'],
-        data.get('description', ''),
-        data['event_date'],
-        data.get('image_url', ''),
-        data.get('repeat_type', 'none')
-    ))
-    conn.commit()
-    event_id = cursor.lastrowid
-    conn.close()
-    return jsonify({'status': 'success', 'id': event_id}), 201
-
-@app.route('/api/events/<int:event_id>', methods=['PUT'])
-def update_event(event_id):
-    data = request.json
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT id FROM events WHERE id = ?', (event_id,))
-    if not cursor.fetchone():
-        conn.close()
-        return jsonify({'status': 'error', 'error': 'Event not found'}), 404
-
-    cursor.execute('''
-        UPDATE events SET
-            title = ?,
-            description = ?,
-            event_date = ?,
-            image_url = ?,
-            repeat_type = ?
-        WHERE id = ?
-    ''', (
-        data['title'],
-        data.get('description', ''),
-        data['event_date'],
-        data.get('image_url', ''),
-        data.get('repeat_type', 'none'),
-        event_id
-    ))
-    conn.commit()
-    conn.close()
-    return jsonify({'status': 'success'})
-
-# DELETE event
-@app.route('/api/events/<int:event_id>', methods=['DELETE'])
-def delete_event(event_id):
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT id FROM events WHERE id = ?', (event_id,))
-        if not cursor.fetchone():
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'Event not found'}), 404
-        cursor.execute('DELETE FROM events WHERE id = ?', (event_id,))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'success'})
-    except Exception as e:
-        app.logger.error(f"Error deleting event {event_id}: {e}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/events/<int:event_id>/rsvps', methods=['GET'])
@@ -13217,7 +13235,6 @@ def get_event_rsvps(event_id):
         })
 
     return jsonify({'status': 'success', 'rsvps': rsvps})
-
 
 @app.route('/api/plaid/create-link-token', methods=['POST'])
 @login_required

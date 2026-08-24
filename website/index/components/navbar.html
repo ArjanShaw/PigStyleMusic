@@ -36,6 +36,11 @@
             <i class="fas fa-shopping-cart"></i><span class="nav-label">Checkout</span>
         </a>
 
+        <!-- Events – only for admins (UPDATED ICON) -->
+        <a href="/events/events.html" id="nav-events-link" class="nav-link icon-only admin-only checkout-nav-link" style="display: none; color: #28a745; font-weight: 600; background: rgba(40, 167, 69, 0.15); border: 1px solid #28a745; border-radius: 6px; padding: 5px 12px; text-decoration: none; transition: all 0.3s ease;" title="Events">
+            <i class="fas fa-calendar-alt"></i><span class="nav-label">Events</span>
+        </a>
+
         <a href="/inventory_purchases/inventory-purchases.html" id="nav-purchases-link" class="nav-link icon-only admin-only checkout-nav-link" style="display: none; color: #28a745; font-weight: 600; background: rgba(40, 167, 69, 0.15); border: 1px solid #28a745; border-radius: 6px; padding: 5px 12px; text-decoration: none; transition: all 0.3s ease;" title="Purchases">
             <i class="fas fa-shopping-bag"></i><span class="nav-label">Purchases</span>
         </a>
@@ -242,7 +247,7 @@ window.checkAuthStatus = checkAuthStatus;
     transform: scale(1.02);
 }
 
-/* preserve special button look for checkout/purchases/addrecords, but text hidden */
+/* preserve special button look for checkout/purchases/addrecords/events, but text hidden */
 .checkout-nav-link .nav-label {
     display: none;
 }

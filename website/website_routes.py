@@ -20,7 +20,7 @@ ACCOUNTING_DIR  = os.path.join(BASE_DIR, 'accounting')
 CHECKOUT_DIR    = os.path.join(BASE_DIR, 'checkout')
 CHECKOUT_DIR2   = os.path.join(BASE_DIR, 'inventory_purchases')
 ADD_RECORDS_DIR = os.path.join(BASE_DIR, 'add_records')
-
+EVENTS_DIR  = os.path.join(BASE_DIR, 'events')
 
 ITEM_MANAGEMENT_DIR = os.path.join(ADMIN_DIR, 'item-management')  # ← NEW
 
@@ -179,6 +179,12 @@ def register_routes(application):
     @application.route('/checkout/checkout.html')
     def checkout():
         return send_from_directory(CHECKOUT_DIR, 'checkout.html')
+
+
+    @application.route('/events/')
+    @application.route('/events/events.html')
+    def events():
+        return send_from_directory(EVENTS_DIR, 'events.html')
 
     @application.route('/add_records/')
     @application.route('/add_records/add_records.html')
