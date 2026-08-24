@@ -10,9 +10,14 @@
         .btn { padding: 14px 40px; font-size: 18px; border: none; border-radius: 8px; cursor: pointer; background: #16a34a; color: white; }
         .btn:hover { background: #15803d; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-sm { padding: 6px 12px; font-size: 13px; border: none; border-radius: 4px; cursor: pointer; }
+        .btn-print { background: #2563eb; color: white; }
+        .btn-print:hover { background: #1d4ed8; }
+        .btn-print:disabled { opacity: 0.5; cursor: not-allowed; }
         #status { margin-top: 20px; padding: 10px; border-radius: 6px; display: none; font-size: 14px; }
         .success { background: #dcfce7; color: #166534; display: block; }
         .error { background: #fee2e2; color: #991b1b; display: block; }
+        .info { background: #dbeafe; color: #1e40af; display: block; }
         .table-section { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         .table-section h2 { margin-top: 0; color: #1e293b; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -27,6 +32,7 @@
         .form-group input, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
         .form-group textarea { resize: vertical; min-height: 60px; }
         .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .action-cell { display: flex; gap: 6px; flex-wrap: wrap; }
         @media (max-width: 768px) { .form-row { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -69,19 +75,59 @@
                             <th style="width:100px;">Amount</th>
                             <th style="min-width:200px;">Description</th>
                             <th style="width:120px;">Created</th>
+                            <th style="width:120px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="recent-body">
-                        <tr><td colspan="5" style="text-align:center;padding:30px;color:#94a3b8;">Loading recent purchases...</td></tr>
+                        <tr><td colspan="6" style="text-align:center;padding:30px;color:#94a3b8;">Loading recent purchases...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
 
+    <!-- ===== REQUIRED DEPENDENCIES ===== -->
+    <!-- jspdf for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- JsBarcode for barcode generation -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+    
+    <!-- LabelPrinter - must be loaded after dependencies -->
+    <script src="/static/js/label-printer.js"></script>
+    
     <script src="/static/js/app-config.js"></script>
     <script src="/static/js/shared.js"></script>
     <script>
+        // Wait for dependencies to load
+        var dependenciesLoaded = false;
+        var pendingPrintJobs = [];
+
+        function checkDependencies() {
+            if (typeof window.jspdf !== 'undefined' && typeof window.JsBarcode !== 'undefined') {
+                dependenciesLoaded = true;
+                // Process any pending print jobs
+                pendingPrintJobs.forEach(function(job) {
+                    printPurchaseLabels(job.purchaseId, job.records);
+                });
+                pendingPrintJobs = [];
+                return true;
+            }
+            return false;
+        }
+
+        // Check periodically until dependencies are loaded
+        var checkInterval = setInterval(function() {
+            if (checkDependencies()) {
+                clearInterval(checkInterval);
+                console.log('✅ Label printing dependencies loaded');
+            }
+        }, 200);
+
+        // Also check when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(checkDependencies, 500);
+        });
+
         function getBaseUrl() {
             if (typeof AppConfig !== 'undefined' && AppConfig.baseUrl) {
                 return AppConfig.baseUrl;
@@ -106,10 +152,129 @@
             }, 5000);
         }
 
+        function showToast(message, type) {
+            showStatus(message, type);
+        }
+
+        // Get record display (reused from inventory-ops.js)
+        function getRecordDisplay(record) {
+            if (!record) return 'Unknown - Unknown';
+            var artist = record.artist && record.artist.trim() ? record.artist.trim() : 'Unknown';
+            var title = record.title && record.title.trim() ? record.title.trim() : 'Unknown';
+            return artist + ' - ' + title;
+        }
+
+        // Get short record display
+        function getShortRecordDisplay(record, maxLength) {
+            maxLength = maxLength || 40;
+            var display = getRecordDisplay(record);
+            if (display.length > maxLength) {
+                return display.substring(0, maxLength - 3) + '…';
+            }
+            return display;
+        }
+
+        // Print labels for a purchase
+        async function printPurchaseLabels(purchaseId) {
+            var statusEl = document.getElementById('status');
+            
+            // Check if dependencies are loaded
+            if (!dependenciesLoaded) {
+                statusEl.textContent = '⏳ Loading label printer dependencies...';
+                statusEl.className = 'info';
+                statusEl.style.display = 'block';
+                
+                // Wait for dependencies to load
+                await new Promise(function(resolve) {
+                    var waitInterval = setInterval(function() {
+                        if (dependenciesLoaded) {
+                            clearInterval(waitInterval);
+                            resolve();
+                        }
+                    }, 200);
+                    // Timeout after 10 seconds
+                    setTimeout(function() {
+                        clearInterval(waitInterval);
+                        resolve();
+                    }, 10000);
+                });
+                
+                if (!dependenciesLoaded) {
+                    statusEl.textContent = '❌ Label printer dependencies failed to load. Please refresh the page.';
+                    statusEl.className = 'error';
+                    statusEl.style.display = 'block';
+                    return;
+                }
+            }
+
+            // Disable all print buttons for this purchase
+            var buttons = document.querySelectorAll('.btn-print[data-purchase-id="' + purchaseId + '"]');
+            buttons.forEach(function(btn) { btn.disabled = true; });
+
+            statusEl.textContent = '📄 Fetching records for purchase #' + purchaseId + '...';
+            statusEl.className = 'info';
+            statusEl.style.display = 'block';
+
+            try {
+                // Fetch records for this purchase
+                var url = getBaseUrl() + '/records?batch_id=' + purchaseId + '&limit=1000';
+                var response = await fetch(url, {
+                    credentials: 'include',
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+
+                var data = await response.json();
+                if (data.status !== 'success') {
+                    throw new Error(data.error || 'Failed to load records');
+                }
+
+                var records = data.records || [];
+
+                if (records.length === 0) {
+                    statusEl.textContent = '⚠️ No records found for purchase #' + purchaseId;
+                    statusEl.className = 'error';
+                    statusEl.style.display = 'block';
+                    setTimeout(function() { statusEl.style.display = 'none'; }, 3000);
+                    buttons.forEach(function(btn) { btn.disabled = false; });
+                    return;
+                }
+
+                statusEl.textContent = '🖨️ Generating ' + records.length + ' labels for purchase #' + purchaseId + '...';
+                statusEl.className = 'info';
+                statusEl.style.display = 'block';
+
+                // Use LabelPrinter if available
+                if (window.LabelPrinter) {
+                    await window.LabelPrinter.generatePriceTags(records, {
+                        title: 'Purchase #' + purchaseId + ' - ' + records.length + ' records'
+                    });
+                    statusEl.textContent = '✅ ' + records.length + ' labels printed for purchase #' + purchaseId;
+                    statusEl.className = 'success';
+                    statusEl.style.display = 'block';
+                    setTimeout(function() { statusEl.style.display = 'none'; }, 4000);
+                } else {
+                    throw new Error('LabelPrinter not available');
+                }
+
+            } catch (error) {
+                console.error('Print error:', error);
+                statusEl.textContent = '❌ Error printing labels: ' + error.message;
+                statusEl.className = 'error';
+                statusEl.style.display = 'block';
+                setTimeout(function() { statusEl.style.display = 'none'; }, 5000);
+            } finally {
+                buttons.forEach(function(btn) { btn.disabled = false; });
+            }
+        }
+
         function loadRecentPurchases() {
             var url = getBaseUrl() + '/api/inventory-purchases?limit=20';
             var tbody = document.getElementById('recent-body');
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
 
             fetch(url, {
                 credentials: 'include',
@@ -126,7 +291,7 @@
                 document.getElementById('recent-count').textContent = purchases.length;
 
                 if (purchases.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:#94a3b8;">No purchases found.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:#94a3b8;">No purchases found.</td></tr>';
                     return;
                 }
 
@@ -134,6 +299,7 @@
                 purchases.slice(0, 20).forEach(function(p) {
                     var amount = parseFloat(p.amount_spent || 0);
                     var date = p.created_at ? new Date(p.created_at).toLocaleString() : '—';
+                    var recordCount = p.record_count || 0;
 
                     html += '<tr class="recent-row">';
                     html += '<td><strong>' + p.id + '</strong></td>';
@@ -141,12 +307,23 @@
                     html += '<td style="color:' + (amount === 0 ? '#64748b' : '#16a34a') + '; font-weight:600;">$' + amount.toFixed(2) + '</td>';
                     html += '<td>' + escapeHtml(p.description || '—') + '</td>';
                     html += '<td>' + date + '</td>';
+                    html += '<td>';
+                    html += '<div class="action-cell">';
+                    if (recordCount > 0) {
+                        html += '<button class="btn-sm btn-print" data-purchase-id="' + p.id + '" onclick="printPurchaseLabels(' + p.id + ')" title="Print ' + recordCount + ' labels">';
+                        html += '🖨️ ' + recordCount;
+                        html += '</button>';
+                    } else {
+                        html += '<span style="color:#94a3b8;font-size:12px;">No records</span>';
+                    }
+                    html += '</div>';
+                    html += '</td>';
                     html += '</tr>';
                 });
                 tbody.innerHTML = html;
             })
             .catch(function(err) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:#dc2626;">Error: ' + err.message + '</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:#dc2626;">Error: ' + err.message + '</td></tr>';
             });
         }
 
@@ -204,7 +381,12 @@
             });
         }
 
-        document.addEventListener('DOMContentLoaded', loadRecentPurchases);
+        // Initial load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadRecentPurchases();
+            // Check dependencies after a delay
+            setTimeout(checkDependencies, 1000);
+        });
     </script>
 </body>
 </html>
