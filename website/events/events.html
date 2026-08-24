@@ -51,6 +51,7 @@
             object-fit: cover;
             border: 1px solid #e9ecef;
             background: #f8f9fa;
+            display: block;
         }
         .events-table-container .event-thumbnail-placeholder {
             width: 50px;
@@ -792,13 +793,20 @@
                 const title = escapeHtml(event.title || 'Untitled');
                 const desc = escapeHtml(event.description || '—');
 
+                // Display actual image with fallback to URL link if image fails
                 let imageHtml = '';
                 if (event.image_url) {
-                    let imageUrl = event.image_url;
-                    if (imageUrl.startsWith('/')) {
-                        imageUrl = API_BASE + imageUrl;
-                    }
-                    imageHtml = `<img src="${imageUrl}" alt="${title}" class="event-thumbnail" onerror="this.style.display='none'">`;
+                    imageHtml = `
+                        <div style="text-align:center;">
+                            <a href="${event.image_url}" target="_blank" title="Click to view full image">
+                                <img src="${event.image_url}" 
+                                     alt="${title}" 
+                                     class="event-thumbnail" 
+                                     style="display:block; margin:0 auto; max-width:50px; max-height:50px;"
+                                     onerror="this.onerror=null; this.style.display='none'; this.parentElement.innerHTML='<div style=\\'font-size:10px;color:#007bff;word-break:break-all;\\'><i class=\\'fas fa-link\\'></i> <a href=\\'${event.image_url}\\' target=\\'_blank\\' style=\\'color:#007bff;text-decoration:none;\\'>View</a></div>';">
+                            </a>
+                        </div>
+                    `;
                 } else {
                     imageHtml = `<div class="event-thumbnail-placeholder"><i class="fas fa-image"></i></div>`;
                 }
