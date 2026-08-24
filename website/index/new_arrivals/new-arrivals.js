@@ -73,7 +73,8 @@
                 var browseContainer = document.getElementById('newArrivalsBrowseContainer');
                 if (browseContainer) {
                     var newArrivalsBrowse = createBrowseComponent('newArrivalsBrowseContainer', {
-                        statusIds: '1',
+                        locationIds: '150,151,152,153',  // <-- CHANGED: Filter by New Arrivals bins
+                        // statusIds: '1',               // <-- REMOVED
                         defaultNewVinyl: false,
                         requireImage: true,
                         orderBy: 'created_at',
