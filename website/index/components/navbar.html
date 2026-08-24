@@ -7,52 +7,52 @@
     </a>
 
     <!-- Right side -->
-    <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
 
         <!-- ===== LINKS CONTROLLED BY AUTH STATE ===== -->
 
         <!-- Dashboard – only visible when logged in -->
-        <a href="/dashboard" id="nav-dashboard-link" class="nav-link" style="display: none;">
-            <i class="fas fa-tachometer-alt"></i> Dashboard
+        <a href="/dashboard" id="nav-dashboard-link" class="nav-link icon-only" style="display: none;" title="Dashboard">
+            <i class="fas fa-tachometer-alt"></i><span class="nav-label">Dashboard</span>
         </a>
 
-        <!-- Admin Panel – only for admins (hidden by default) -->
-        <a href="/admin" id="nav-admin-link" class="nav-link admin-only" style="display: none; color: #ffb3b3; border-color: rgba(255,107,107,0.4);">
-            <i class="fas fa-cog"></i> Admin Panel
+        <!-- Admin Panel – only for admins -->
+        <a href="/admin" id="nav-admin-link" class="nav-link icon-only admin-only" style="display: none; color: #ffb3b3; border-color: rgba(255,107,107,0.4);" title="Admin Panel">
+            <i class="fas fa-cog"></i><span class="nav-label">Admin Panel</span>
         </a>
 
-        <!-- Accounting – only for admins (hidden by default) -->
-        <a href="/admin/accounting" id="nav-accounting-link" class="nav-link admin-only" style="display: none; color: #ffb3b3; border-color: rgba(255,107,107,0.4);">
-            <i class="fas fa-calculator"></i> Accounting
+        <!-- Accounting – only for admins -->
+        <a href="/admin/accounting" id="nav-accounting-link" class="nav-link icon-only admin-only" style="display: none; color: #ffb3b3; border-color: rgba(255,107,107,0.4);" title="Accounting">
+            <i class="fas fa-calculator"></i><span class="nav-label">Accounting</span>
         </a>
 
-        <!-- Item Management – only for admins (hidden by default) -->
-        <a href="/item-management" id="nav-item-management-link" class="nav-link admin-only" style="display: none; color: #ffb3b3; border-color: rgba(255,107,107,0.4);">
-            <i class="fas fa-boxes"></i> Item Management
+        <!-- Item Management – only for admins -->
+        <a href="/item-management" id="nav-item-management-link" class="nav-link icon-only admin-only" style="display: none; color: #ffb3b3; border-color: rgba(255,107,107,0.4);" title="Item Management">
+            <i class="fas fa-boxes"></i><span class="nav-label">Item Management</span>
         </a>
 
-        <!-- Checkout – only for admins (hidden by default) -->
-        <a href="/checkout/checkout.html" id="nav-checkout-link" class="nav-link admin-only" style="display: none; color: #28a745; font-weight: 600; background: rgba(40, 167, 69, 0.15); border: 1px solid #28a745; border-radius: 6px; padding: 5px 15px; text-decoration: none; transition: all 0.3s ease;">
-            <i class="fas fa-shopping-cart"></i> Checkout
+        <!-- Checkout – only for admins -->
+        <a href="/checkout/checkout.html" id="nav-checkout-link" class="nav-link icon-only admin-only checkout-nav-link" style="display: none; color: #28a745; font-weight: 600; background: rgba(40, 167, 69, 0.15); border: 1px solid #28a745; border-radius: 6px; padding: 5px 12px; text-decoration: none; transition: all 0.3s ease;" title="Checkout">
+            <i class="fas fa-shopping-cart"></i><span class="nav-label">Checkout</span>
         </a>
 
-        <a href="/inventory_purchases/inventory-purchases.html" id="nav-checkout-link" class="nav-link admin-only" style="display: none; color: #28a745; font-weight: 600; background: rgba(40, 167, 69, 0.15); border: 1px solid #28a745; border-radius: 6px; padding: 5px 15px; text-decoration: none; transition: all 0.3s ease;">
-            <i class="fas fa-shopping-cart"></i> Purchases
+        <a href="/inventory_purchases/inventory-purchases.html" id="nav-purchases-link" class="nav-link icon-only admin-only checkout-nav-link" style="display: none; color: #28a745; font-weight: 600; background: rgba(40, 167, 69, 0.15); border: 1px solid #28a745; border-radius: 6px; padding: 5px 12px; text-decoration: none; transition: all 0.3s ease;" title="Purchases">
+            <i class="fas fa-shopping-bag"></i><span class="nav-label">Purchases</span>
         </a>
 
-        <a href="/add_records/add_records.html" id="nav-checkout-link" class="nav-link admin-only" style="display: none; color: #28a745; font-weight: 600; background: rgba(40, 167, 69, 0.15); border: 1px solid #28a745; border-radius: 6px; padding: 5px 15px; text-decoration: none; transition: all 0.3s ease;">
-            <i class="fas fa-shopping-cart"></i> Add records
+        <a href="/add_records/add_records.html" id="nav-addrecords-link" class="nav-link icon-only admin-only checkout-nav-link" style="display: none; color: #28a745; font-weight: 600; background: rgba(40, 167, 69, 0.15); border: 1px solid #28a745; border-radius: 6px; padding: 5px 12px; text-decoration: none; transition: all 0.3s ease;" title="Add records">
+            <i class="fas fa-plus-circle"></i><span class="nav-label">Add records</span>
         </a>
 
         <!-- ===== AUTH LINKS ===== -->
         <span id="nav-user-greeting" style="color: #fff; font-weight: 500; display: none;"></span>
 
-        <a href="/login" id="nav-login-link" class="nav-link">
-            <i class="fas fa-sign-in-alt"></i> Login
+        <a href="/login" id="nav-login-link" class="nav-link icon-only" title="Login">
+            <i class="fas fa-sign-in-alt"></i><span class="nav-label">Login</span>
         </a>
 
-        <a href="#" id="nav-logout-link" class="nav-link" style="display: none;">
-            <i class="fas fa-sign-out-alt"></i> Logout
+        <a href="#" id="nav-logout-link" class="nav-link icon-only" style="display: none;" title="Logout">
+            <i class="fas fa-sign-out-alt"></i><span class="nav-label">Logout</span>
         </a>
 
     </div>
@@ -120,13 +120,13 @@ function updateNavbar(user, isLoggedIn) {
     // Dashboard - show if logged in
     const dashboardLink = document.getElementById('nav-dashboard-link');
     if (dashboardLink) {
-        dashboardLink.style.display = isLoggedIn ? 'inline' : 'none';
+        dashboardLink.style.display = isLoggedIn ? 'inline-flex' : 'none';
     }
     
     // Admin-only links
     const adminLinks = document.querySelectorAll('.admin-only');
     adminLinks.forEach(el => {
-        el.style.display = (isLoggedIn && isAdmin) ? 'inline' : 'none';
+        el.style.display = (isLoggedIn && isAdmin) ? 'inline-flex' : 'none';
     });
     
     // User greeting
@@ -148,10 +148,10 @@ function updateNavbar(user, isLoggedIn) {
     const logoutLink = document.getElementById('nav-logout-link');
     
     if (loginLink) {
-        loginLink.style.display = isLoggedIn ? 'none' : 'inline';
+        loginLink.style.display = isLoggedIn ? 'none' : 'inline-flex';
     }
     if (logoutLink) {
-        logoutLink.style.display = isLoggedIn ? 'inline' : 'none';
+        logoutLink.style.display = isLoggedIn ? 'inline-flex' : 'none';
         if (isLoggedIn) {
             logoutLink.onclick = function(e) {
                 e.preventDefault();
@@ -197,14 +197,24 @@ window.checkAuthStatus = checkAuthStatus;
 </script>
 
 <style>
-/* Navbar styles */
+/* Navbar styles - icon only by default, text on hover */
 .nav-link {
     color: rgba(255,255,255,0.8);
     text-decoration: none;
-    padding: 6px 12px;
+    padding: 6px 10px;
     border-radius: 4px;
     transition: all 0.2s ease;
     font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.nav-link .nav-label {
+    display: none; /* hide text by default */
+    font-size: 13px;
+    font-weight: 400;
+    margin-left: 2px;
 }
 
 .nav-link:hover {
@@ -212,10 +222,17 @@ window.checkAuthStatus = checkAuthStatus;
     background: rgba(255,255,255,0.1);
 }
 
-.nav-link i {
-    margin-right: 6px;
+.nav-link:hover .nav-label {
+    display: inline; /* show text on hover */
 }
 
+.nav-link i {
+    font-size: 16px;
+    min-width: 20px;
+    text-align: center;
+}
+
+/* admin-only links keep their special styles, but text hidden */
 .admin-only {
     transition: all 0.3s ease;
 }
@@ -223,6 +240,14 @@ window.checkAuthStatus = checkAuthStatus;
 .checkout-nav-link:hover {
     background: rgba(40, 167, 69, 0.3) !important;
     transform: scale(1.02);
+}
+
+/* preserve special button look for checkout/purchases/addrecords, but text hidden */
+.checkout-nav-link .nav-label {
+    display: none;
+}
+.checkout-nav-link:hover .nav-label {
+    display: inline;
 }
 
 /* Mobile responsive */
@@ -235,7 +260,7 @@ window.checkAuthStatus = checkAuthStatus;
         display: none;
         flex-direction: column;
         width: 100%;
-        gap: 10px;
+        gap: 6px;
         padding: 10px 0;
     }
     
@@ -245,11 +270,21 @@ window.checkAuthStatus = checkAuthStatus;
     
     .nav-link {
         width: 100%;
-        text-align: center;
+        justify-content: center;
+        padding: 8px 12px;
+    }
+
+    .nav-link .nav-label {
+        display: inline !important; /* show text on mobile for clarity */
+        margin-left: 8px;
+    }
+
+    .checkout-nav-link .nav-label {
+        display: inline !important;
     }
 }
 
-/* Add a hamburger menu toggle for mobile */
+/* Hamburger toggle (hidden by default, shown via js if needed) */
 .menu-toggle {
     display: none;
     background: none;
