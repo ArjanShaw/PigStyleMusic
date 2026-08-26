@@ -419,3 +419,8 @@ nav button.login-btn:hover {
 .flip-card-front.connect-front {
     background-image: url('/images/pig_on_classroom_table.png') !important;
 }
+
+/* Alerts Front Image */
+.flip-card-front.alerts-front {
+    background-image: url('/images/pig_giving_record_alert.png') !important;
+}
