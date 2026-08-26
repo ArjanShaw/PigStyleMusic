@@ -429,3 +429,18 @@ nav button.login-btn:hover {
 .flip-card-front.order-front {
     background-image: url('/images/pig_delivering_order.png') !important;
 }
+
+/* Cart Front Image */
+.flip-card-front.cart-front {
+    background-image: url('/images/pig_head.png') !important;
+}
+
+/* Email Front Image */
+.flip-card-front.email-front {
+    background-image: url('/images/pig_shooting_from_cannon.png') !important;
+}
+
+/* Login Front Image */
+.flip-card-front.login-front {
+    background-image: url('/images/pig_head.png') !important;
+}

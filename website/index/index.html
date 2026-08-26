@@ -17,11 +17,11 @@
         <button onclick="showPage('connect', this)" title="Connect"><i class="fas fa-envelope"></i></button>
         <button onclick="showPage('alerts', this)" title="Alerts"><i class="fas fa-bell"></i></button>
         <button onclick="showPage('order', this)" title="Order"><i class="fas fa-box"></i></button>
+        <button onclick="showPage('email', this)" title="Email"><i class="fas fa-paper-plane"></i></button>
         <button onclick="showPage('cart', this)" title="Cart">
             <i class="fas fa-shopping-cart"></i>
-            <span class="badge">2</span>
+            <span class="badge" id="cartBadge">0</span>
         </button>
-        <button onclick="showPage('email', this)" title="Email"><i class="fas fa-paper-plane"></i></button>
         <button onclick="showPage('login', this)" class="login-btn" title="Login"><i class="fas fa-sign-in-alt"></i></button>
     </nav>
     <div id="content">
@@ -33,6 +33,9 @@
     <script src="/static/js/connect.js"></script>
     <script src="/static/js/alerts.js"></script>
     <script src="/static/js/order.js"></script>
+    <script src="/static/js/cart.js"></script>
+    <script src="/static/js/email.js"></script>
+    <script src="/static/js/login.js"></script>
     <script src="/static/js/shop.js"></script>
     <script src="/static/js/new.js"></script>
     <script src="/static/js/app.js"></script>

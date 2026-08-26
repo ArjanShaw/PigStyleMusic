@@ -45,6 +45,15 @@ async function showPage(page, btnElement) {
         if (page === 'order' && typeof initOrder === 'function') {
             initOrder();
         }
+        if (page === 'cart' && typeof initCart === 'function') {
+            initCart();
+        }
+        if (page === 'email' && typeof initEmail === 'function') {
+            initEmail();
+        }
+        if (page === 'login' && typeof initLogin === 'function') {
+            initLogin();
+        }
         
     } catch(err) {
         content.innerHTML = '<div class="simple-page"><h1>Error</h1><p>Failed to load page</p></div>';

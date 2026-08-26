@@ -1,0 +1,17 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; background: white; border-radius: 16px; padding: 40px; gap: 15px; overflow: hidden; width: 100%;">
+    <div style="font-size: 48px; color: #ff6b6b;">🔑</div>
+    <h2 style="color: #333; margin: 0;">Welcome Back</h2>
+    <p style="color: #666; text-align: center; max-width: 400px; margin: 0;">Sign in to your account</p>
+    <div style="display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 350px;">
+        <input type="text" id="loginUsername" placeholder="Username" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+        <input type="password" id="loginPassword" placeholder="Password" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+        <button onclick="handleLogin()" style="padding: 12px; background: #ff6b6b; color: white; border: none; border-radius: 30px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+            <i class="fas fa-sign-in-alt"></i> Login
+        </button>
+        <div id="loginStatus" style="font-size: 14px; text-align: center;"></div>
+        <div style="text-align: center; margin-top: 10px;">
+            <span style="color: #888; font-size: 13px;">Don't have an account? </span>
+            <a href="#" style="color: #ff6b6b; text-decoration: none; font-size: 13px;">Sign up</a>
+        </div>
+    </div>
+</div>
