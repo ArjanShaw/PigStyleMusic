@@ -1,0 +1,23 @@
+<div style="width: 100%; height: 100%; background: rgba(255,255,255,0.95); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; overflow: hidden;">
+    <h2 style="text-align: center; margin: 0 0 12px 0; color: #333; border-bottom: 2px solid #ffd93d; padding-bottom: 8px;">⭐ New Arrivals</h2>
+    
+    <div id="newCatalogContainer" style="flex: 1; overflow-y: auto; padding: 5px 0;">
+        <div style="text-align: center; padding: 40px; color: #888;">
+            <div style="margin-bottom: 10px;">⏳</div>
+            <p>Loading new arrivals...</p>
+        </div>
+    </div>
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 1px solid #ddd; flex-wrap: wrap; gap: 8px;">
+        <div style="font-size: 13px; color: #888;">
+            Showing <span id="newShowingRange">0-0</span> of <span id="newTotalRecords">0</span> new arrivals
+        </div>
+        <div style="display: flex; gap: 6px; align-items: center;">
+            <button id="newFirstPage" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer;"><i class="fas fa-angle-double-left"></i></button>
+            <button id="newPrevPage" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer;"><i class="fas fa-angle-left"></i></button>
+            <span id="newPageInfo" style="font-size: 13px; padding: 0 8px;">1 / 1</span>
+            <button id="newNextPage" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer;"><i class="fas fa-angle-right"></i></button>
+            <button id="newLastPage" style="padding: 4px 10px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer;"><i class="fas fa-angle-double-right"></i></button>
+        </div>
+    </div>
+</div>
