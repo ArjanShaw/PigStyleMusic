@@ -1,0 +1,27 @@
+<div class="flip-card" id="flipCardConnect">
+    <div class="flip-card-front connect-front">
+        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
+    </div>
+    <div class="flip-card-back">
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden;">
+            <h2 style="color: #333; margin: 0 0 10px 0;">📧 Connect</h2>
+            <div id="connectResponse" style="color: #333; text-align: left; width: 100%; flex: 1; overflow-y: auto; font-size: 13px;">
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 20px; gap: 15px;">
+                    <div style="font-size: 48px; color: #ff6b6b;">✉️</div>
+                    <h3 style="color: #333; margin: 0;">Get in Touch</h3>
+                    <p style="color: #666; text-align: center; max-width: 400px; margin: 0;">Have questions, feedback, or want to collaborate? Reach out to us!</p>
+                    <div style="display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 350px;">
+                        <input type="text" id="connectName" placeholder="Your Name" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+                        <input type="email" id="connectEmail" placeholder="Your Email" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+                        <textarea id="connectMessage" placeholder="Your Message" rows="4" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; resize: vertical;"></textarea>
+                        <button onclick="sendConnectMessage()" style="padding: 12px; background: #ff6b6b; color: white; border: none; border-radius: 30px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                            <i class="fas fa-paper-plane"></i> Send Message
+                        </button>
+                        <div id="connectStatus" style="font-size: 14px; text-align: center;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
+    </div>
+</div>

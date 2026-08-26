@@ -36,6 +36,9 @@ async function showPage(page, btnElement) {
         if (page === 'events' && typeof initEvents === 'function') {
             initEvents();
         }
+        if (page === 'connect' && typeof initConnect === 'function') {
+            initConnect();
+        }
         
     } catch(err) {
         content.innerHTML = '<div class="simple-page"><h1>Error</h1><p>Failed to load page</p></div>';
