@@ -26,6 +26,9 @@ async function showPage(page, btnElement) {
         if (page === 'shop' && typeof initShop === 'function') {
             initShop();
         }
+        if (page === 'new' && typeof initNew === 'function') {
+            initNew();
+        }
         
     } catch(err) {
         content.innerHTML = '<div class="simple-page"><h1>Error</h1><p>Failed to load page</p></div>';

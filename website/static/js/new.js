@@ -1,20 +1,9 @@
-/**
- * New Arrivals Component - Uses reusable RecordsComponent with location filter
- */
-
-// Create new arrivals component instance with location 150 filter
-const newComponent = new RecordsComponent({
-    containerId: 'newCatalogContainer',
-    title: 'New Arrivals',
-    idPrefix: 'new',
-    borderColor: '#ffd93d',
-    badgeText: 'NEW',
-    badgeColor: '#ffd93d',
-    buttonColor: '#ffd93d',
-    buttonTextColor: '#333',
-    locationId: 150,  // Loveland store
-    statusId: 1       // New arrivals
-});
-
-// Make it globally accessible
-window.NewComponent = newComponent;
+// New Arrivals - uses shared records component with location filter
+function initNew() {
+    console.log('New arrivals initialized');
+    window.loadRecords(1, { 
+        containerId: 'newRecordResponse', 
+        title: 'new arrivals',
+        locationId: 150 
+    });
+}
