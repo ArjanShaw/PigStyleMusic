@@ -42,6 +42,9 @@ async function showPage(page, btnElement) {
         if (page === 'alerts' && typeof initAlerts === 'function') {
             initAlerts();
         }
+        if (page === 'order' && typeof initOrder === 'function') {
+            initOrder();
+        }
         
     } catch(err) {
         content.innerHTML = '<div class="simple-page"><h1>Error</h1><p>Failed to load page</p></div>';

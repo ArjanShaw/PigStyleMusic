@@ -1,0 +1,27 @@
+<div class="flip-card" id="flipCardOrder">
+    <div class="flip-card-front order-front">
+        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
+    </div>
+    <div class="flip-card-back">
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden;">
+            <h2 style="color: #333; margin: 0 0 10px 0;">📦 Order Records</h2>
+            <div id="orderResponse" style="color: #333; text-align: left; width: 100%; flex: 1; overflow-y: auto; font-size: 13px;">
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 20px; gap: 15px;">
+                    <div style="font-size: 48px; color: #28a745;">📦</div>
+                    <h3 style="color: #333; margin: 0;">Request a Record</h3>
+                    <p style="color: #666; text-align: center; max-width: 400px; margin: 0;">Don't see what you're looking for? Request it and we'll try to get it for you!</p>
+                    <div style="display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 350px;">
+                        <input type="email" id="orderEmail" placeholder="Your Email" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+                        <input type="text" id="orderArtist" placeholder="Artist Name" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+                        <input type="text" id="orderTitle" placeholder="Album Title" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+                        <button onclick="createOrder()" style="padding: 12px; background: #28a745; color: white; border: none; border-radius: 30px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                            <i class="fas fa-box"></i> Place Order Request
+                        </button>
+                        <div id="orderStatus" style="font-size: 14px; text-align: center;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
+    </div>
+</div>
