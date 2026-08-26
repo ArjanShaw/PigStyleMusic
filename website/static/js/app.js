@@ -26,14 +26,17 @@ function updateMenu() {
     console.log('Updating menu, user:', user);
     
     // Remove existing dynamic buttons
+    const existingDashboard = nav.querySelector('[data-page="dashboard"]');
+    if (existingDashboard) existingDashboard.remove();
+    
     const existingCheckout = nav.querySelector('[data-page="checkout"]');
     if (existingCheckout) existingCheckout.remove();
     
     const existingAddRecords = nav.querySelector('[data-page="add-records"]');
     if (existingAddRecords) existingAddRecords.remove();
     
-    const existingDashboard = nav.querySelector('[data-page="dashboard"]');
-    if (existingDashboard) existingDashboard.remove();
+    const existingAccounting = nav.querySelector('[data-page="accounting"]');
+    if (existingAccounting) existingAccounting.remove();
     
     if (user && user.logged_in) {
         // Dashboard for admin OR consignor
@@ -43,7 +46,7 @@ function updateMenu() {
             dashboardBtn.setAttribute('data-page', 'dashboard');
             dashboardBtn.innerHTML = '<i class="fas fa-chart-pie"></i>';
             dashboardBtn.title = 'Dashboard';
-            dashboardBtn.onclick = function() { showPage('dashboard', this); };
+            dashboardBtn.onclick = function() { window.showPage('dashboard', this); };
             nav.insertBefore(dashboardBtn, loginBtn);
         }
         
@@ -53,7 +56,7 @@ function updateMenu() {
             checkoutBtn.setAttribute('data-page', 'checkout');
             checkoutBtn.innerHTML = '<i class="fas fa-shopping-bag"></i>';
             checkoutBtn.title = 'Checkout';
-            checkoutBtn.onclick = function() { showPage('checkout', this); };
+            checkoutBtn.onclick = function() { window.showPage('checkout', this); };
             nav.insertBefore(checkoutBtn, loginBtn);
         }
         
@@ -63,8 +66,18 @@ function updateMenu() {
             addRecordsBtn.setAttribute('data-page', 'add-records');
             addRecordsBtn.innerHTML = '<i class="fas fa-plus-circle"></i>';
             addRecordsBtn.title = 'Add Records';
-            addRecordsBtn.onclick = function() { showPage('add-records', this); };
+            addRecordsBtn.onclick = function() { window.showPage('add-records', this); };
             nav.insertBefore(addRecordsBtn, loginBtn);
+        }
+        
+        // Accounting ONLY for admin
+        if (user.role === 'admin') {
+            const accountingBtn = document.createElement('button');
+            accountingBtn.setAttribute('data-page', 'accounting');
+            accountingBtn.innerHTML = '<i class="fas fa-calculator"></i>';
+            accountingBtn.title = 'Accounting';
+            accountingBtn.onclick = function() { window.showPage('accounting', this); };
+            nav.insertBefore(accountingBtn, loginBtn);
         }
         
         // Change login to logout
@@ -75,7 +88,7 @@ function updateMenu() {
                 localStorage.removeItem('pigstyle_user');
                 currentUser = null;
                 updateMenu();
-                showPage('home');
+                window.showPage('home');
             };
         }
     } else {
@@ -83,14 +96,14 @@ function updateMenu() {
         if (loginBtn) {
             loginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i>';
             loginBtn.title = 'Login';
-            loginBtn.onclick = function() { showPage('login', this); };
+            loginBtn.onclick = function() { window.showPage('login', this); };
         }
     }
 }
 
 async function showPage(page, btnElement) {
     // Check if page requires authentication
-    const restrictedPages = ['dashboard', 'checkout', 'add-records'];
+    const restrictedPages = ['dashboard', 'checkout', 'add-records', 'accounting'];
     if (restrictedPages.includes(page)) {
         const user = getUser();
         if (!user || !user.logged_in) {
@@ -105,8 +118,8 @@ async function showPage(page, btnElement) {
                 return;
             }
         }
-        // Add Records ONLY for admin
-        if (page === 'add-records' && user.role !== 'admin') {
+        // Add Records and Accounting ONLY for admin
+        if ((page === 'add-records' || page === 'accounting') && user.role !== 'admin') {
             showPage('home');
             return;
         }
@@ -125,15 +138,6 @@ async function showPage(page, btnElement) {
         var html = await response.text();
         content.innerHTML = html;
         
-        // Show user info on dashboard
-        if (page === 'dashboard') {
-            const user = getUser();
-            const userInfo = document.getElementById('dashboardUser');
-            if (userInfo && user) {
-                userInfo.textContent = 'Logged in as: ' + (user.full_name || user.username) + ' (' + user.role + ')';
-            }
-        }
-        
         document.querySelectorAll('.flip-hint').forEach(function(hint) {
             hint.onclick = function(e) {
                 e.stopPropagation();
@@ -145,35 +149,47 @@ async function showPage(page, btnElement) {
         });
         
         // Initialize page-specific functionality
-        if (page === 'shop' && typeof initShop === 'function') {
-            initShop();
+        if (page === 'shop' && typeof window.initShop === 'function') {
+            window.initShop();
         }
-        if (page === 'new' && typeof initNew === 'function') {
-            initNew();
+        if (page === 'new' && typeof window.initNew === 'function') {
+            window.initNew();
         }
-        if (page === 'merch' && typeof initMerch === 'function') {
-            initMerch();
+        if (page === 'merch' && typeof window.initMerch === 'function') {
+            window.initMerch();
         }
-        if (page === 'events' && typeof initEvents === 'function') {
-            initEvents();
+        if (page === 'events' && typeof window.initEvents === 'function') {
+            window.initEvents();
         }
-        if (page === 'connect' && typeof initConnect === 'function') {
-            initConnect();
+        if (page === 'connect' && typeof window.initConnect === 'function') {
+            window.initConnect();
         }
-        if (page === 'alerts' && typeof initAlerts === 'function') {
-            initAlerts();
+        if (page === 'alerts' && typeof window.initAlerts === 'function') {
+            window.initAlerts();
         }
-        if (page === 'order' && typeof initOrder === 'function') {
-            initOrder();
+        if (page === 'order' && typeof window.initOrder === 'function') {
+            window.initOrder();
         }
-        if (page === 'cart' && typeof initCart === 'function') {
-            initCart();
+        if (page === 'cart' && typeof window.initCart === 'function') {
+            window.initCart();
         }
-        if (page === 'email' && typeof initEmail === 'function') {
-            initEmail();
+        if (page === 'email' && typeof window.initEmail === 'function') {
+            window.initEmail();
         }
-        if (page === 'login' && typeof initLogin === 'function') {
-            initLogin();
+        if (page === 'login' && typeof window.initLogin === 'function') {
+            window.initLogin();
+        }
+        if (page === 'dashboard' && typeof window.initDashboard === 'function') {
+            window.initDashboard();
+        }
+        if (page === 'checkout' && typeof window.initCheckout === 'function') {
+            window.initCheckout();
+        }
+        if (page === 'add-records' && typeof window.initAddRecords === 'function') {
+            window.initAddRecords();
+        }
+        if (page === 'accounting' && typeof window.initAccounting === 'function') {
+            window.initAccounting();
         }
         
     } catch(err) {
@@ -191,3 +207,5 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 window.updateMenu = updateMenu;
+window.showPage = showPage;
+window.getUser = getUser;

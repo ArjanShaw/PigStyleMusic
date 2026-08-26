@@ -1,5 +1,60 @@
-<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; background: white; border-radius: 16px; padding: 40px; gap: 15px; overflow: hidden; width: 100%;">
-    <div style="font-size: 48px; color: #ffd93d;">📀</div>
-    <h2 style="color: #333; margin: 0;">Add Records</h2>
-    <p style="color: #666; text-align: center; max-width: 400px; margin: 0;">Hello World - Add Records</p>
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">📀 Add Records</h2>
+    
+    <!-- Purchase Selection -->
+    <div style="display: flex; gap: 10px; width: 100%; align-items: center; flex-wrap: wrap;">
+        <label style="font-weight: 600; color: #555;">Purchase:</label>
+        <select id="add-purchase-select" style="flex: 1; min-width: 200px; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+            <option value="">-- Select a purchase --</option>
+        </select>
+        <span id="add-purchase-info" style="color: #666; font-size: 13px;"></span>
+    </div>
+    
+    <!-- Discogs Search -->
+    <div style="display: flex; gap: 10px; width: 100%;">
+        <input type="text" id="add-search-input" placeholder="Search Discogs (e.g., pink floyd dark side)" style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+        <button onclick="addRecordsSearch()" id="add-search-btn" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            <i class="fas fa-search"></i> Search
+        </button>
+        <button onclick="addRecordsClear()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    
+    <!-- Defaults Row -->
+    <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap; background: #f8f9fa; padding: 10px; border-radius: 8px; align-items: center;">
+        <span style="font-weight: 600; color: #555; font-size: 13px;">Defaults:</span>
+        <select id="add-default-sleeve" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; min-width: 100px;">
+            <option value="">Sleeve</option>
+        </select>
+        <select id="add-default-disc" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; min-width: 100px;">
+            <option value="">Disc</option>
+        </select>
+        <input type="number" id="add-default-price" placeholder="Price" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; width: 80px;">
+        <select id="add-default-format" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; min-width: 100px;">
+            <option value="">Format</option>
+        </select>
+        <select id="add-default-consignor" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; min-width: 120px;">
+            <option value="none">None (store)</option>
+        </select>
+    </div>
+    
+    <!-- Status Message -->
+    <div id="add-status" style="width: 100%; display: none; padding: 8px 12px; border-radius: 8px; font-size: 13px;"></div>
+    
+    <!-- Results -->
+    <div id="add-results" style="width: 100%; flex: 1; overflow-y: auto; padding: 5px 0;">
+        <div style="text-align: center; padding: 20px; color: #999;">Select a purchase and search Discogs</div>
+    </div>
+    
+    <!-- Recent Additions -->
+    <div style="width: 100%; flex: 0.5; overflow-y: auto; border-top: 1px solid #eee; padding-top: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h4 style="color: #333; margin: 0;">Recent Additions</h4>
+            <button onclick="addClearRecent()" style="padding: 4px 12px; background: #dc3545; color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 12px;">Clear</button>
+        </div>
+        <div id="add-recent" style="color: #666; font-size: 13px;">
+            <div style="text-align: center; padding: 10px; color: #999;">No records added yet</div>
+        </div>
+    </div>
 </div>

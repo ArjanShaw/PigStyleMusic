@@ -1,0 +1,130 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">📊 Accounting</h2>
+    
+    <!-- Tabs -->
+    <div style="display: flex; gap: 5px; width: 100%; overflow-x: auto; border-bottom: 2px solid #eee; padding-bottom: 5px; flex-wrap: nowrap;">
+        <button class="acc-tab active" data-tab="transactions" style="padding: 8px 16px; border: none; background: #007bff; color: white; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; white-space: nowrap;">
+            <i class="fas fa-exchange-alt"></i> Transactions
+        </button>
+        <button class="acc-tab" data-tab="accounts" style="padding: 8px 16px; border: none; background: #e9ecef; color: #333; border-radius: 8px 8px 0 0; cursor: pointer; white-space: nowrap;">
+            <i class="fas fa-sitemap"></i> Accounts
+        </button>
+        <button class="acc-tab" data-tab="journal" style="padding: 8px 16px; border: none; background: #e9ecef; color: #333; border-radius: 8px 8px 0 0; cursor: pointer; white-space: nowrap;">
+            <i class="fas fa-book"></i> Journal
+        </button>
+        <button class="acc-tab" data-tab="balance" style="padding: 8px 16px; border: none; background: #e9ecef; color: #333; border-radius: 8px 8px 0 0; cursor: pointer; white-space: nowrap;">
+            <i class="fas fa-balance-sheet"></i> Balance
+        </button>
+        <button class="acc-tab" data-tab="monthly" style="padding: 8px 16px; border: none; background: #e9ecef; color: #333; border-radius: 8px 8px 0 0; cursor: pointer; white-space: nowrap;">
+            <i class="fas fa-chart-bar"></i> Monthly P&L
+        </button>
+    </div>
+    
+    <!-- Tab Content -->
+    <div id="acc-transactions" class="acc-tab-content" style="width: 100%; flex: 1; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; align-items: center;">
+            <input type="text" id="acc-search" placeholder="Search transactions..." style="flex: 1; min-width: 150px; padding: 8px; border: 2px solid #ddd; border-radius: 8px; font-size: 13px;">
+            <button onclick="accSearch()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                <i class="fas fa-search"></i>
+            </button>
+            <button onclick="accClearSearch()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                <i class="fas fa-times"></i>
+            </button>
+            <button onclick="accRefresh()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                <i class="fas fa-sync"></i>
+            </button>
+            <select id="acc-filter" onchange="accLoadTransactions()" style="padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+                <option value="unposted">Unposted Only</option>
+                <option value="posted">Posted Only</option>
+                <option value="all">All Transactions</option>
+            </select>
+        </div>
+        <div id="acc-transactions-list" style="flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+            <div style="text-align: center; padding: 40px; color: #999;">Loading transactions...</div>
+        </div>
+    </div>
+    
+    <div id="acc-accounts" class="acc-tab-content" style="width: 100%; flex: 1; overflow: hidden; display: none; flex-direction: column;">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button onclick="accShowAddAccount()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                <i class="fas fa-plus"></i> Add Account
+            </button>
+            <button onclick="accLoadAccounts()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                <i class="fas fa-sync"></i> Refresh
+            </button>
+        </div>
+        <div id="acc-accounts-list" style="flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+            <div style="text-align: center; padding: 40px; color: #999;">Loading accounts...</div>
+        </div>
+    </div>
+    
+    <div id="acc-journal" class="acc-tab-content" style="width: 100%; flex: 1; overflow: hidden; display: none; flex-direction: column;">
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; align-items: center;">
+            <input type="text" id="acc-journal-search" placeholder="Search journal..." style="flex: 1; min-width: 150px; padding: 8px; border: 2px solid #ddd; border-radius: 8px; font-size: 13px;">
+            <button onclick="accLoadJournal()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                <i class="fas fa-search"></i>
+            </button>
+            <button onclick="accResetJournal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                <i class="fas fa-undo"></i>
+            </button>
+        </div>
+        <div id="acc-journal-list" style="flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+            <div style="text-align: center; padding: 40px; color: #999;">Loading journal entries...</div>
+        </div>
+    </div>
+    
+    <div id="acc-balance" class="acc-tab-content" style="width: 100%; flex: 1; overflow: hidden; display: none; flex-direction: column;">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button onclick="accLoadBalance()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                <i class="fas fa-sync"></i> Refresh
+            </button>
+        </div>
+        <div id="acc-balance-list" style="flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+            <div style="text-align: center; padding: 40px; color: #999;">Loading balances...</div>
+        </div>
+    </div>
+    
+    <div id="acc-monthly" class="acc-tab-content" style="width: 100%; flex: 1; overflow: hidden; display: none; flex-direction: column;">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button onclick="accLoadMonthlyPL()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                <i class="fas fa-sync"></i> Refresh
+            </button>
+        </div>
+        <div id="acc-monthly-list" style="flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+            <div style="text-align: center; padding: 40px; color: #999;">Loading monthly P&L...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Account Modal -->
+<div id="acc-add-account-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 16px; padding: 30px; max-width: 400px; width: 90%;">
+        <h3 style="color: #333; margin: 0 0 15px 0;">Add Account</h3>
+        <div style="margin-bottom: 10px;">
+            <label style="font-weight: 600; color: #555; font-size: 13px;">Code</label>
+            <input type="text" id="acc-account-code" placeholder="e.g., 1010" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px; margin-top: 4px;">
+        </div>
+        <div style="margin-bottom: 10px;">
+            <label style="font-weight: 600; color: #555; font-size: 13px;">Name</label>
+            <input type="text" id="acc-account-name" placeholder="e.g., Cash" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px; margin-top: 4px;">
+        </div>
+        <div style="margin-bottom: 15px;">
+            <label style="font-weight: 600; color: #555; font-size: 13px;">Type</label>
+            <select id="acc-account-type" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px; margin-top: 4px;">
+                <option value="asset">Asset</option>
+                <option value="liability">Liability</option>
+                <option value="equity">Equity</option>
+                <option value="revenue">Revenue</option>
+                <option value="expense">Expense</option>
+            </select>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="accSaveAccount()" style="flex: 1; padding: 10px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                Save
+            </button>
+            <button onclick="accCloseModal()" style="flex: 1; padding: 10px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                Cancel
+            </button>
+        </div>
+    </div>
+</div>

@@ -1,6 +1,57 @@
-<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; background: white; border-radius: 16px; padding: 40px; gap: 15px; overflow: hidden; width: 100%;">
-    <div style="font-size: 48px; color: #ff6b6b;">📊</div>
-    <h2 style="color: #333; margin: 0;">Dashboard</h2>
-    <p style="color: #666; text-align: center; max-width: 400px; margin: 0;">Hello World - Dashboard</p>
-    <p id="dashboardUser" style="color: #888; font-size: 14px;"></p>
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 15px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">📊 Dashboard</h2>
+    <p id="dashboardUser" style="color: #666; margin: 0 0 15px 0;">Welcome back!</p>
+    
+    <!-- Stats Grid -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; width: 100%;">
+        <div style="background: #f8f9fa; border-radius: 10px; padding: 15px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 24px; color: #dc3545;">💰</div>
+            <div style="font-size: 12px; color: #666;">Total Spent</div>
+            <div style="font-size: 20px; font-weight: bold; color: #dc3545;" id="dash-total-spent">$0.00</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 10px; padding: 15px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 24px; color: #ffc107;">📅</div>
+            <div style="font-size: 12px; color: #666;">This Month</div>
+            <div style="font-size: 20px; font-weight: bold; color: #ffc107;" id="dash-month-spent">$0.00</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 10px; padding: 15px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 24px; color: #007bff;">📦</div>
+            <div style="font-size: 12px; color: #666;">Total Purchases</div>
+            <div style="font-size: 20px; font-weight: bold; color: #007bff;" id="dash-total-purchases">0</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 10px; padding: 15px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 24px; color: #28a745;">📈</div>
+            <div style="font-size: 12px; color: #666;">This Month</div>
+            <div style="font-size: 20px; font-weight: bold; color: #28a745;" id="dash-month-purchases">0</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 10px; padding: 15px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 24px; color: #17a2b8;">📊</div>
+            <div style="font-size: 12px; color: #666;">Commission Rate</div>
+            <div style="font-size: 20px; font-weight: bold; color: #17a2b8;" id="dash-commission-rate">--%</div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; width: 100%; margin-top: 5px;">
+        <button onclick="window.showPage('shop')" style="padding: 12px; background: #ff6b6b; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;">
+            🛒 Go to Shop
+        </button>
+        <button onclick="window.showPage('add-records')" style="padding: 12px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;">
+            ➕ Add Records
+        </button>
+        <button onclick="window.showPage('checkout')" style="padding: 12px; background: #17a2b8; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;">
+            💳 Checkout
+        </button>
+        <button onclick="window.showPage('accounting')" style="padding: 12px; background: #6f42c1; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;">
+            📊 Accounting
+        </button>
+    </div>
+
+    <!-- Recent Activity -->
+    <div style="width: 100%; flex: 1; overflow-y: auto; margin-top: 5px;">
+        <h4 style="color: #333; margin: 0 0 8px 0;">Recent Activity</h4>
+        <div id="dash-recent-activity" style="color: #666; font-size: 13px;">
+            <div style="text-align: center; padding: 20px; color: #999;">No recent activity</div>
+        </div>
+    </div>
 </div>
