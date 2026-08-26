@@ -33,17 +33,8 @@ async function showPage(page, btnElement) {
     document.querySelectorAll('nav button').forEach(btn => {
         btn.classList.remove('active');
     });
-    
-    // If a button element was passed, highlight it
     if (btnElement) {
         btnElement.classList.add('active');
-    } else {
-        // Otherwise try to find the button by data attribute
-        document.querySelectorAll('nav button').forEach(btn => {
-            if (btn.onclick && btn.onclick.toString().includes(`'${page}'`)) {
-                btn.classList.add('active');
-            }
-        });
     }
     
     // If it's the home page, load the tile
@@ -52,6 +43,16 @@ async function showPage(page, btnElement) {
             const response = await fetch('/tiles/home.html');
             const html = await response.text();
             content.innerHTML = html;
+            
+            // Set up flip card after content loads
+            const flipCard = document.getElementById('flipCardHome');
+            if (flipCard) {
+                flipCard.addEventListener('click', function(e) {
+                    // Don't flip if clicking on interactive elements
+                    if (e.target.closest('a, .social-icons a, .map-container, iframe')) return;
+                    this.classList.toggle('flipped');
+                });
+            }
         } catch (err) {
             content.innerHTML = `
                 <div class="simple-page">
@@ -76,7 +77,6 @@ async function showPage(page, btnElement) {
 
 // Set Home as active by default and load it
 document.addEventListener('DOMContentLoaded', function() {
-    // Highlight Home button
     const homeBtn = document.querySelector('nav button:first-child');
     if (homeBtn) {
         homeBtn.classList.add('active');

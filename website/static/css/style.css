@@ -9,6 +9,8 @@ body {
     color: #fff;
     min-height: 100vh;
 }
+
+/* Navigation */
 nav {
     display: flex;
     gap: 6px;
@@ -65,6 +67,7 @@ nav button.login-btn {
 nav button.login-btn:hover {
     background: rgba(255,255,255,0.2);
 }
+
 #content {
     display: flex;
     flex-direction: column;
@@ -76,98 +79,185 @@ nav button.login-btn:hover {
 #page-content {
     width: 100%;
     max-width: 1200px;
+    height: 100%;
 }
 
-/* Landing Page */
-.landing-page {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+/* Flip Card */
+.flip-card {
+    width: 100%;
+    height: 100%;
     min-height: 70vh;
-}
-.hero-section {
-    text-align: center;
-    max-width: 800px;
-}
-.pig-record-container {
     position: relative;
-    width: 200px;
-    height: 200px;
-    margin: 0 auto 30px;
+    transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-style: preserve-3d;
+    cursor: pointer;
 }
-.pig-head-large {
-    position: relative;
-    width: 150px;
-    height: 150px;
-    object-fit: contain;
-    z-index: 2;
-    filter: drop-shadow(0 4px 30px rgba(255,107,107,0.3));
+
+.flip-card.flipped {
+    transform: rotateY(180deg);
 }
-.rotating-record {
+
+.flip-card-front,
+.flip-card-back {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%) scale(0.8);
-    width: 180px;
-    height: 180px;
-    animation: spin 8s linear infinite;
-    opacity: 0.5;
-    z-index: 1;
-}
-@keyframes spin {
-    from { transform: translate(-50%, -50%) scale(0.8) rotate(0deg); }
-    to { transform: translate(-50%, -50%) scale(0.8) rotate(360deg); }
-}
-.hero-title {
-    font-size: 3.5rem;
-    font-weight: 700;
-    margin-bottom: 10px;
-    background: linear-gradient(135deg, #ff6b6b, #ffd93d);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
-.hero-subtitle {
-    font-size: 1.3rem;
-    color: rgba(255,255,255,0.7);
-    margin-bottom: 30px;
-}
-.hero-features {
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    overflow-y: auto;
     display: flex;
-    gap: 30px;
+    flex-direction: column;
+    align-items: center;
     justify-content: center;
-    margin-bottom: 30px;
-    flex-wrap: wrap;
+    padding: 20px;
+    box-sizing: border-box;
+    border-radius: 16px;
 }
-.feature {
+
+.flip-card-front {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: white !important;
+    transform: rotateY(0deg) !important;
+    background-image: url('/images/pig_before_storefront.png') !important;
+    background-size: contain !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    min-height: 400px;
+}
+
+.flip-card-back {
+    background: white;
+    border: none;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    color: #333;
+    transform: rotateY(180deg);
+    overflow-y: auto;
+    justify-content: flex-start;
+    padding: 20px;
+}
+
+.flip-card-back::-webkit-scrollbar {
+    width: 0px;
+    background: transparent;
+}
+
+/* Flip Hint */
+.flip-hint {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 1rem;
+    color: #ffffff !important;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    animation: pulse 2s ease-in-out infinite;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 8px 20px;
+    border-radius: 30px;
+    text-shadow: 0 0 10px rgba(0,0,0,0.8);
+    z-index: 10;
+    pointer-events: auto;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.flip-card-back .flip-hint {
+    bottom: 20px;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
+}
+
+/* Home Back Grid */
+.home-back-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    width: 100%;
+    height: 100%;
+    padding: 5px 0;
+}
+
+.home-back-tile {
+    background: white;
+    border-radius: 10px;
+    padding: 15px;
+    color: #333;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+}
+
+.home-back-tile h3 {
+    font-family: 'KeepOnTruckin', cursive;
+    color: #4CAF50;
+    font-size: 1.4rem;
+    margin-bottom: 10px;
+    letter-spacing: 2px;
+    border-bottom: 2px solid #4CAF50;
+    padding-bottom: 5px;
+    flex-shrink: 0;
+}
+
+.home-back-tile .info-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    color: rgba(255,255,255,0.8);
-    font-size: 0.95rem;
+    gap: 10px;
+    padding: 6px 0;
+    color: #333;
+    font-size: 0.9rem;
 }
-.feature i {
+
+.home-back-tile .info-item i {
     color: #ff6b6b;
-    font-size: 20px;
+    width: 20px;
+    text-align: center;
 }
-.btn-primary {
-    padding: 14px 40px;
-    border: none;
-    border-radius: 30px;
-    background: linear-gradient(135deg, #ff6b6b, #ee5a24);
-    color: #fff;
-    font-size: 1.1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s;
-    font-family: inherit;
-    box-shadow: 0 4px 20px rgba(255,107,107,0.3);
+
+.home-back-tile .info-item a {
+    color: #333;
+    text-decoration: none;
 }
-.btn-primary:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 30px rgba(255,107,107,0.4);
+
+.home-back-tile .info-item a:hover {
+    color: #ff6b6b;
 }
-.btn-primary i {
-    margin-right: 8px;
+
+.home-back-tile .map-container {
+    flex: 1;
+    min-height: 100px;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.home-back-tile .map-container iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+/* Social Icons */
+.social-icons {
+    margin-top: 15px;
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    font-size: 2rem;
+}
+
+.social-icons a {
+    color: #555;
+    transition: color 0.2s;
+}
+
+.social-icons a:hover {
+    color: #ff6b6b;
 }
 
 /* Simple pages (for other tiles) */
@@ -197,21 +287,33 @@ nav button.login-btn:hover {
         height: 40px;
         font-size: 16px;
     }
-    .hero-title {
-        font-size: 2.5rem;
+    
+    .home-back-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+        height: auto;
+        min-height: 100%;
+        padding: 5px 0;
     }
-    .hero-subtitle {
-        font-size: 1rem;
+    .home-back-tile {
+        min-height: 200px;
+        padding: 12px;
     }
-    .hero-features {
-        gap: 15px;
+    .home-back-tile .map-container {
+        min-height: 150px;
     }
-    .feature {
-        font-size: 0.8rem;
+    .flip-hint {
+        top: 56px !important;
+        bottom: auto !important;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 0.7rem !important;
+        padding: 6px 14px !important;
+        background: rgba(0, 0, 0, 0.7) !important;
+        border-radius: 20px !important;
     }
-    .btn-primary {
-        padding: 12px 30px;
-        font-size: 1rem;
+    .flip-card-front {
+        min-height: 300px;
     }
     .simple-page h1 {
         font-size: 32px;

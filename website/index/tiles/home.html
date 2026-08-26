@@ -1,27 +1,46 @@
-<div class="landing-page">
-    <div class="hero-section">
-        <div class="pig-record-container">
-            <img src="/static/images/pig_head.png" alt="Pig Head" class="pig-head-large">
-            <img src="/static/images/yellow-record.png" alt="Record" class="rotating-record">
+<div class="flip-card" id="flipCardHome">
+    <div class="flip-card-front welcome-front">
+        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
+    </div>
+    <div class="flip-card-back">
+        <div class="home-back-grid">
+            <div class="home-back-tile">
+                <h3>About Us</h3>
+                <div class="info-item">
+                    <i class="fas fa-phone"></i>
+                    <a href="tel:9704925630">(970) 492-5630</a>
+                </div>
+                <div class="info-item">
+                    <i class="fas fa-clock"></i>
+                    <span>Wed-Sun 10am - 6pm</span>
+                </div>
+                <div class="info-item">
+                    <i class="fas fa-store"></i>
+                    <span>We buy, sell, and trade vinyl records, CDs, and more.</span>
+                </div>
+                <div class="info-item">
+                    <i class="fas fa-music"></i>
+                    <span>Located in the heart of Loveland, Colorado.</span>
+                </div>
+                <div class="social-icons">
+                    <a href="https://www.facebook.com/profile.php?id=61582821044262" target="_blank"><i class="fab fa-facebook"></i></a>
+                    <a href="https://www.instagram.com/pigstyle_loveland/" target="_blank"><i class="fab fa-instagram"></i></a>
+                    <a href="https://www.youtube.com/channel/UCz8jHllFjnbG9Jrb3xglDqQ" target="_blank"><i class="fab fa-youtube"></i></a>
+                    <a href="https://www.tiktok.com/@pigstyle.loveland" target="_blank"><i class="fab fa-tiktok"></i></a>
+                </div>
+            </div>
+            <div class="home-back-tile">
+                <h3>Find Us</h3>
+                <div class="map-container">
+                    <iframe 
+                        src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3058.123456789!2d-105.074567!3d40.397123!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x87694a123456789%3A0xabcdef123456789!2s100%20E%203rd%20St%2C%20Loveland%2C%20CO%2080537!5e0!3m2!1sen!2sus!4v1700000000000" 
+                        allowfullscreen="" 
+                        loading="lazy" 
+                        referrerpolicy="no-referrer-when-downgrade">
+                    </iframe>
+                </div>
+            </div>
         </div>
-        <h1 class="hero-title">Welcome to PigStyle Music</h1>
-        <p class="hero-subtitle">Your local vinyl haven in Loveland</p>
-        <div class="hero-features">
-            <div class="feature">
-                <i class="fas fa-record-vinyl"></i>
-                <span>500+ Vinyl Records</span>
-            </div>
-            <div class="feature">
-                <i class="fas fa-music"></i>
-                <span>Live Events</span>
-            </div>
-            <div class="feature">
-                <i class="fas fa-gift"></i>
-                <span>Merch & Gifts</span>
-            </div>
-        </div>
-        <button class="btn-primary" onclick="window.showPage('shop', this)">
-            <i class="fas fa-shopping-bag"></i> Browse Records
-        </button>
+        <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
     </div>
 </div>
