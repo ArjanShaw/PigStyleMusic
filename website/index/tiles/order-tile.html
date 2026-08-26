@@ -1,0 +1,39 @@
+<!-- Tile 6: Order Records -->
+<div class="tile" data-index="6">
+    <div class="flip-card" id="flipCard6">
+        <div class="flip-card-front order-front">
+            <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
+        </div>
+        <div class="flip-card-back">
+            <div class="back-content" id="orderContent">
+                <div class="order-container">
+                    <div class="order-box">
+                        <div class="order-header">
+                            <h2>🛒 Order Records</h2>
+                            <p>Request new vinyl from our distributor</p>
+                        </div>
+                        <form id="orderForm" class="order-form">
+                            <div class="form-group">
+                                <label for="orderEmail">Email Address <span class="required">*</span></label>
+                                <input type="email" id="orderEmail" placeholder="your@email.com" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="orderArtist">Artist <span class="required">*</span></label>
+                                <input type="text" id="orderArtist" placeholder="e.g., The Beatles" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="orderTitle">Title <span class="required">*</span></label>
+                                <input type="text" id="orderTitle" placeholder="e.g., Abbey Road" required>
+                            </div>
+                            <button type="submit" class="order-submit-btn" id="orderSubmitBtn">
+                                <i class="fas fa-box"></i> Place Order Request
+                            </button>
+                        </form>
+                        <div id="orderStatus" class="order-status"></div>
+                    </div>
+                </div>
+            </div>
+            <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
+        </div>
+    </div>
+</div>

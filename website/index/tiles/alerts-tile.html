@@ -1,0 +1,44 @@
+<!-- Tile 5: Record Alerts -->
+<div class="tile" data-index="5">
+    <div class="flip-card" id="flipCard5">
+        <div class="flip-card-front alerts-front">
+            <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
+        </div>
+        <div class="flip-card-back">
+            <div class="back-content" id="alertsContent">
+                <div class="alert-container">
+                    <div class="alert-box">
+                        <div class="alert-header">
+                            <h2>🔔 Record Alerts</h2>
+                            <p>Get notified when new records matching your interests arrive</p>
+                        </div>
+                        <div class="alert-warning-box">
+                            <strong><i class="fas fa-exclamation-triangle"></i> IMPORTANT:</strong>
+                            Enter <strong>ONE</strong> artist per line. Each line will be matched separately.
+                            <div class="example">Example: The Beatles</div>
+                        </div>
+                        <form id="alertsForm" class="alert-form">
+                            <div class="form-group">
+                                <label for="alertsEmail">Email Address <span class="required">*</span></label>
+                                <input type="email" id="alertsEmail" placeholder="your@email.com" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="alertsArtist">Artist <span class="required">*</span></label>
+                                <input type="text" id="alertsArtist" placeholder="e.g., The Beatles" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="alertsTitle">Title <span class="optional">(optional)</span></label>
+                                <input type="text" id="alertsTitle" placeholder="e.g., Abbey Road">
+                            </div>
+                            <button type="submit" class="alert-submit-btn" id="alertsSubmitBtn">
+                                <i class="fas fa-bell"></i> Subscribe
+                            </button>
+                        </form>
+                        <div id="alertsStatus" class="alert-status"></div>
+                    </div>
+                </div>
+            </div>
+            <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,53 @@
+<!-- Tile 7: Cart (static content, no flip) -->
+<div class="tile" data-index="7">
+    <div class="flip-card" id="flipCard7" style="background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+        <div class="cart-tile-content" id="cartTileContent">
+            <div class="cart-header">🛒 Your Cart</div>
+            <div id="cartConfirmationMessage" class="confirmation-message">
+                ✅ Your order has been placed successfully! Thank you for shopping at PigStyle Music.
+            </div>
+            <div id="cartTileList" class="cart-items-list">
+                <div class="empty-cart">Your cart is empty.</div>
+            </div>
+            <div id="cartTileSummary">
+                <div class="cart-total-row">
+                    <span>Subtotal:</span>
+                    <span id="cartTileSubtotal">$0.00</span>
+                </div>
+                <div class="shipping-section">
+                    <div style="font-weight:500; margin-bottom:6px;">Shipping</div>
+                    <div class="shipping-options">
+                        <label>
+                            <input type="radio" name="shippingMethodTile" value="pickup" checked>
+                            📦 Store Pickup (Free)
+                        </label>
+                        <label>
+                            <input type="radio" name="shippingMethodTile" value="ship">
+                            📬 Ship to Address
+                        </label>
+                    </div>
+                    <div class="address-fields" id="addressFieldsTile">
+                        <input type="text" id="shipStreetTile" placeholder="Street address" disabled>
+                        <input type="text" id="shipCityTile" placeholder="City" disabled>
+                        <div class="address-row">
+                            <input type="text" id="shipStateTile" placeholder="State" disabled>
+                            <input type="text" id="shipZipTile" placeholder="ZIP code" disabled>
+                        </div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:0.95rem;">
+                        <span>Shipping:</span>
+                        <span id="shippingCostTile">$0.00</span>
+                    </div>
+                    <div class="cart-total-row" style="margin-top:8px; border-top:2px solid #ddd; padding-top:8px;">
+                        <span>Total:</span>
+                        <span id="cartTileTotal" style="color:#ff6b6b;">$0.00</span>
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button class="checkout-btn" onclick="checkoutTile()">Proceed to Checkout</button>
+                    <button class="clear-btn" onclick="clearCartTile()">Clear Cart</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

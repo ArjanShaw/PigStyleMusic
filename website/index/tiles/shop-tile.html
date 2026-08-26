@@ -1,0 +1,98 @@
+<!-- Tile 1: Shop (Browse) -->
+<div class="tile" data-index="1">
+    <div class="flip-card" id="flipCard1">
+        <div class="flip-card-front shop-front">
+            <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
+        </div>
+        <div class="flip-card-back">
+            <!-- back-content with full width, white background, and padding -->
+            <div class="back-content" id="shopContent" style="background: white; border-radius: 16px; padding: 20px; width: 100%; box-sizing: border-box;">
+                <!-- HEADING -->
+                <h2 style="text-align:center; margin:0 0 8px 0; color:#333; border-bottom:2px solid #ff6b6b; padding-bottom:6px; flex-shrink:0;">⭐ Shop</h2>
+                <div class="browse-container" id="browseComponent">
+                    <!-- SEARCH -->
+                    <div class="browse-search-wrapper">
+                        <input type="text" id="browseSearchBox" placeholder="Search by artist or record title...">
+                    </div>
+                    <!-- FILTERS -->
+                    <div class="browse-filter-section">
+                        <div class="browse-filter-group">
+                            <button id="browseGenreFilterBtn" class="browse-filter-btn">
+                                <i class="fas fa-filter"></i> Genre
+                            </button>
+                            <div id="browseGenreDropdown" class="browse-filter-checkbox-container">
+                                <div class="browse-filter-checkbox-group" id="browseGenreList">
+                                    <div style="color: #999; text-align: center; padding: 20px; font-size: 12px;">Loading genres...</div>
+                                </div>
+                                <div class="browse-filter-actions">
+                                    <button id="browseSelectAllGenres" class="browse-filter-action-btn">All</button>
+                                    <button id="browseClearAllGenres" class="browse-filter-action-btn">Clear</button>
+                                    <button id="browseApplyGenres" class="browse-filter-action-btn filter-apply">Apply</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="browse-filter-group">
+                            <button id="browseFormatFilterBtn" class="browse-filter-btn">
+                                <i class="fas fa-record-vinyl"></i> Format
+                            </button>
+                            <div id="browseFormatDropdown" class="browse-filter-checkbox-container">
+                                <div class="browse-filter-checkbox-group" id="browseFormatList">
+                                    <div style="color: #999; text-align: center; padding: 20px; font-size: 12px;">Loading formats...</div>
+                                </div>
+                                <div class="browse-filter-actions">
+                                    <button id="browseSelectAllFormats" class="browse-filter-action-btn">All</button>
+                                    <button id="browseClearAllFormats" class="browse-filter-action-btn">Clear</button>
+                                    <button id="browseApplyFormats" class="browse-filter-action-btn filter-apply">Apply</button>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- New Vinyl button -->
+                        <button id="browseNewVinylBtn" class="browse-filter-btn">
+                            <i class="fas fa-record-vinyl"></i> New Vinyl
+                        </button>
+                    </div>
+                    <!-- Filter Status Row -->
+                    <div id="browseFilterStatusRow" class="browse-filter-status-row visible">
+                        <div class="browse-filter-summary" id="browseFilterSummary">All Records <span class="result-count-badge">0 results</span></div>
+                        <button id="browseClearAllFiltersBtn" class="browse-clear-filters-link">Clear all ✕</button>
+                    </div>
+                    <!-- RECORDS GRID CONTAINER -->
+                    <div id="browseCatalogContainer">
+                        <div class="browse-loading-indicator">
+                            <div class="browse-loading-dots">
+                                <div></div>
+                                <div></div>
+                                <div></div>
+                                <div></div>
+                            </div>
+                            <p style="font-size: 13px;">Loading records...</p>
+                        </div>
+                    </div>
+                    <!-- PAGINATION -->
+                    <div class="browse-pagination-container">
+                        <div class="browse-pagination-info">
+                            Showing <span id="browseShowingRange">0-0</span> of <span id="browseTotalRecords">0</span> records
+                        </div>
+                        <div class="browse-pagination-controls">
+                            <button id="browseFirstPage" class="browse-pagination-btn" disabled><i class="fas fa-angle-double-left"></i></button>
+                            <button id="browsePrevPage" class="browse-pagination-btn" disabled><i class="fas fa-angle-left"></i></button>
+                            <span class="browse-page-info" id="browsePageInfo">1 / 1</span>
+                            <button id="browseNextPage" class="browse-pagination-btn" disabled><i class="fas fa-angle-right"></i></button>
+                            <button id="browseLastPage" class="browse-pagination-btn" disabled><i class="fas fa-angle-double-right"></i></button>
+                            <div class="browse-page-size-selector">
+                                <label for="browsePageSize">Per page:</label>
+                                <select id="browsePageSize">
+                                    <option value="12">12</option>
+                                    <option value="24" selected>24</option>
+                                    <option value="48">48</option>
+                                    <option value="96">96</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
+        </div>
+    </div>
+</div>
