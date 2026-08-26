@@ -48,7 +48,6 @@ async function showPage(page, btnElement) {
             const flipCard = document.getElementById('flipCardHome');
             if (flipCard) {
                 flipCard.addEventListener('click', function(e) {
-                    // Don't flip if clicking on interactive elements
                     if (e.target.closest('a, .social-icons a, .map-container, iframe')) return;
                     this.classList.toggle('flipped');
                 });
@@ -58,6 +57,30 @@ async function showPage(page, btnElement) {
                 <div class="simple-page">
                     <h1>Hello World - Home</h1>
                     <p>Welcome to PigStyle Music</p>
+                </div>
+            `;
+        }
+        return;
+    }
+    
+    // If it's the shop page, load the shop tile
+    if (page === 'shop') {
+        try {
+            const response = await fetch('/tiles/shop.html');
+            const html = await response.text();
+            content.innerHTML = html;
+            
+            // Initialize shop component after content loads
+            setTimeout(() => {
+                if (typeof ShopComponent !== 'undefined') {
+                    ShopComponent.init();
+                }
+            }, 100);
+        } catch (err) {
+            content.innerHTML = `
+                <div class="simple-page">
+                    <h1>Hello World - Shop</h1>
+                    <p>Browse our vinyl collection</p>
                 </div>
             `;
         }
