@@ -1,0 +1,222 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+body {
+    font-family: Arial, sans-serif;
+    background: #1a1a2e;
+    color: #fff;
+    min-height: 100vh;
+}
+nav {
+    display: flex;
+    gap: 6px;
+    padding: 12px 20px;
+    background: rgba(255,255,255,0.05);
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+}
+nav button {
+    width: 48px;
+    height: 48px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.7);
+    font-size: 20px;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+nav button:hover {
+    background: rgba(255,107,107,0.2);
+    color: #fff;
+    transform: scale(1.1);
+}
+nav button.active {
+    background: #ff6b6b;
+    color: #fff;
+    box-shadow: 0 4px 15px rgba(255,107,107,0.4);
+}
+nav button .badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background: #ff6b6b;
+    color: #fff;
+    border-radius: 50%;
+    padding: 2px 7px;
+    font-size: 11px;
+    font-weight: 700;
+    min-width: 20px;
+    text-align: center;
+}
+nav button.login-btn {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.1);
+    margin-left: auto;
+}
+nav button.login-btn:hover {
+    background: rgba(255,255,255,0.2);
+}
+#content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 80vh;
+    padding: 20px;
+}
+#page-content {
+    width: 100%;
+    max-width: 1200px;
+}
+
+/* Landing Page */
+.landing-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 70vh;
+}
+.hero-section {
+    text-align: center;
+    max-width: 800px;
+}
+.pig-record-container {
+    position: relative;
+    width: 200px;
+    height: 200px;
+    margin: 0 auto 30px;
+}
+.pig-head-large {
+    position: relative;
+    width: 150px;
+    height: 150px;
+    object-fit: contain;
+    z-index: 2;
+    filter: drop-shadow(0 4px 30px rgba(255,107,107,0.3));
+}
+.rotating-record {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.8);
+    width: 180px;
+    height: 180px;
+    animation: spin 8s linear infinite;
+    opacity: 0.5;
+    z-index: 1;
+}
+@keyframes spin {
+    from { transform: translate(-50%, -50%) scale(0.8) rotate(0deg); }
+    to { transform: translate(-50%, -50%) scale(0.8) rotate(360deg); }
+}
+.hero-title {
+    font-size: 3.5rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+    background: linear-gradient(135deg, #ff6b6b, #ffd93d);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.hero-subtitle {
+    font-size: 1.3rem;
+    color: rgba(255,255,255,0.7);
+    margin-bottom: 30px;
+}
+.hero-features {
+    display: flex;
+    gap: 30px;
+    justify-content: center;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+}
+.feature {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: rgba(255,255,255,0.8);
+    font-size: 0.95rem;
+}
+.feature i {
+    color: #ff6b6b;
+    font-size: 20px;
+}
+.btn-primary {
+    padding: 14px 40px;
+    border: none;
+    border-radius: 30px;
+    background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+    color: #fff;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-family: inherit;
+    box-shadow: 0 4px 20px rgba(255,107,107,0.3);
+}
+.btn-primary:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(255,107,107,0.4);
+}
+.btn-primary i {
+    margin-right: 8px;
+}
+
+/* Simple pages (for other tiles) */
+.simple-page {
+    text-align: center;
+    padding: 40px;
+}
+.simple-page h1 {
+    font-size: 48px;
+    margin-bottom: 20px;
+    background: linear-gradient(135deg, #ff6b6b, #ffd93d);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.simple-page p {
+    font-size: 24px;
+    color: rgba(255,255,255,0.7);
+}
+
+@media (max-width: 768px) {
+    nav {
+        gap: 4px;
+        padding: 10px 12px;
+    }
+    nav button {
+        width: 40px;
+        height: 40px;
+        font-size: 16px;
+    }
+    .hero-title {
+        font-size: 2.5rem;
+    }
+    .hero-subtitle {
+        font-size: 1rem;
+    }
+    .hero-features {
+        gap: 15px;
+    }
+    .feature {
+        font-size: 0.8rem;
+    }
+    .btn-primary {
+        padding: 12px 30px;
+        font-size: 1rem;
+    }
+    .simple-page h1 {
+        font-size: 32px;
+    }
+    .simple-page p {
+        font-size: 18px;
+    }
+}
