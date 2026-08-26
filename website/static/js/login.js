@@ -29,11 +29,30 @@
             const data = await response.json();
             console.log('Login response:', data);
             
-            if (data.status === 'success') {
-                statusDiv.innerHTML = '<span style="color:#28a745;">✅ Login successful! Redirecting...</span>';
-                setTimeout(function() {
-                    window.location.href = '/dashboard';
-                }, 1000);
+            if (data.status === 'success' && data.user) {
+                // Store user data with role from response
+                localStorage.setItem('pigstyle_user', JSON.stringify({
+                    logged_in: true,
+                    username: data.user.username || username,
+                    role: data.user.role || 'user',
+                    user_id: data.user.id || data.user.user_id,
+                    full_name: data.user.full_name || username
+                }));
+                
+                statusDiv.innerHTML = '<span style="color:#28a745;">✅ Login successful! Menu updated.</span>';
+                document.getElementById('loginUsername').value = '';
+                document.getElementById('loginPassword').value = '';
+                
+                // Update menu
+                if (typeof updateMenu === 'function') {
+                    updateMenu();
+                }
+                
+                // If on login page, go home
+                const content = document.getElementById('page-content');
+                if (content && content.querySelector('#loginResponse')) {
+                    showPage('home');
+                }
             } else {
                 statusDiv.innerHTML = '<span style="color:#dc3545;">❌ ' + (data.error || 'Invalid credentials') + '</span>';
             }
