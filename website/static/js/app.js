@@ -41,6 +41,9 @@ function updateMenu() {
     const existingPurchases = nav.querySelector('[data-page="purchases"]');
     if (existingPurchases) existingPurchases.remove();
     
+    const existingScan = nav.querySelector('[data-page="scan"]');
+    if (existingScan) existingScan.remove();
+    
     if (user && user.logged_in) {
         const allowedRoles = ['admin', 'consignor'];
         
@@ -64,34 +67,23 @@ function updateMenu() {
             nav.insertBefore(checkoutBtn, loginBtn);
         }
         
-        // Add Records ONLY for admin
+        // Admin-only features
         if (user.role === 'admin') {
-            const addRecordsBtn = document.createElement('button');
-            addRecordsBtn.setAttribute('data-page', 'add-records');
-            addRecordsBtn.innerHTML = '<i class="fas fa-plus-circle"></i>';
-            addRecordsBtn.title = 'Add Records';
-            addRecordsBtn.onclick = function() { window.showPage('add-records', this); };
-            nav.insertBefore(addRecordsBtn, loginBtn);
-        }
-        
-        // Accounting ONLY for admin
-        if (user.role === 'admin') {
-            const accountingBtn = document.createElement('button');
-            accountingBtn.setAttribute('data-page', 'accounting');
-            accountingBtn.innerHTML = '<i class="fas fa-calculator"></i>';
-            accountingBtn.title = 'Accounting';
-            accountingBtn.onclick = function() { window.showPage('accounting', this); };
-            nav.insertBefore(accountingBtn, loginBtn);
-        }
-        
-        // Purchases ONLY for admin
-        if (user.role === 'admin') {
-            const purchasesBtn = document.createElement('button');
-            purchasesBtn.setAttribute('data-page', 'purchases');
-            purchasesBtn.innerHTML = '<i class="fas fa-boxes"></i>';
-            purchasesBtn.title = 'Purchases';
-            purchasesBtn.onclick = function() { window.showPage('purchases', this); };
-            nav.insertBefore(purchasesBtn, loginBtn);
+            const adminBtns = [
+                { page: 'add-records', icon: 'fa-plus-circle', label: 'Add Records' },
+                { page: 'accounting', icon: 'fa-calculator', label: 'Accounting' },
+                { page: 'purchases', icon: 'fa-boxes', label: 'Purchases' },
+                { page: 'scan', icon: 'fa-qrcode', label: 'Scan' }
+            ];
+            
+            adminBtns.forEach(b => {
+                const btn = document.createElement('button');
+                btn.setAttribute('data-page', b.page);
+                btn.innerHTML = `<i class="fas ${b.icon}"></i>`;
+                btn.title = b.label;
+                btn.onclick = function() { window.showPage(b.page, this); };
+                nav.insertBefore(btn, loginBtn);
+            });
         }
         
         // Change login to logout
@@ -117,7 +109,7 @@ function updateMenu() {
 
 async function showPage(page, btnElement) {
     // Check if page requires authentication
-    const restrictedPages = ['dashboard', 'checkout', 'add-records', 'accounting', 'purchases'];
+    const restrictedPages = ['dashboard', 'checkout', 'add-records', 'accounting', 'purchases', 'scan'];
     if (restrictedPages.includes(page)) {
         const user = getUser();
         if (!user || !user.logged_in) {
@@ -131,7 +123,8 @@ async function showPage(page, btnElement) {
                 return;
             }
         }
-        if ((page === 'add-records' || page === 'accounting' || page === 'purchases') && user.role !== 'admin') {
+        const adminOnly = ['add-records', 'accounting', 'purchases', 'scan'];
+        if (adminOnly.includes(page) && user.role !== 'admin') {
             showPage('home');
             return;
         }
@@ -161,50 +154,28 @@ async function showPage(page, btnElement) {
         });
         
         // Initialize page-specific functionality
-        if (page === 'shop' && typeof window.initShop === 'function') {
-            window.initShop();
-        }
-        if (page === 'new' && typeof window.initNew === 'function') {
-            window.initNew();
-        }
-        if (page === 'merch' && typeof window.initMerch === 'function') {
-            window.initMerch();
-        }
-        if (page === 'events' && typeof window.initEvents === 'function') {
-            window.initEvents();
-        }
-        if (page === 'connect' && typeof window.initConnect === 'function') {
-            window.initConnect();
-        }
-        if (page === 'alerts' && typeof window.initAlerts === 'function') {
-            window.initAlerts();
-        }
-        if (page === 'order' && typeof window.initOrder === 'function') {
-            window.initOrder();
-        }
-        if (page === 'cart' && typeof window.initCart === 'function') {
-            window.initCart();
-        }
-        if (page === 'email' && typeof window.initEmail === 'function') {
-            window.initEmail();
-        }
-        if (page === 'login' && typeof window.initLogin === 'function') {
-            window.initLogin();
-        }
-        if (page === 'dashboard' && typeof window.initDashboard === 'function') {
-            window.initDashboard();
-        }
-        if (page === 'checkout' && typeof window.initCheckout === 'function') {
-            window.initCheckout();
-        }
-        if (page === 'add-records' && typeof window.initAddRecords === 'function') {
-            window.initAddRecords();
-        }
-        if (page === 'accounting' && typeof window.initAccounting === 'function') {
-            window.initAccounting();
-        }
-        if (page === 'purchases' && typeof window.initPurchases === 'function') {
-            window.initPurchases();
+        const initMap = {
+            'shop': 'initShop',
+            'new': 'initNew',
+            'merch': 'initMerch',
+            'events': 'initEvents',
+            'connect': 'initConnect',
+            'alerts': 'initAlerts',
+            'order': 'initOrder',
+            'cart': 'initCart',
+            'email': 'initEmail',
+            'login': 'initLogin',
+            'dashboard': 'initDashboard',
+            'checkout': 'initCheckout',
+            'add-records': 'initAddRecords',
+            'accounting': 'initAccounting',
+            'purchases': 'initPurchases',
+            'scan': 'initScan'
+        };
+        
+        const initFn = initMap[page];
+        if (initFn && typeof window[initFn] === 'function') {
+            window[initFn]();
         }
         
     } catch(err) {
