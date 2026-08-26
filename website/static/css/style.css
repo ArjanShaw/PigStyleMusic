@@ -404,3 +404,8 @@ nav button.login-btn:hover {
     display: block;
     margin-bottom: 10px;
 }
+
+/* Merch Front Image */
+.flip-card-front.merch-front {
+    background-image: url('/images/pig_with_merch.png') !important;
+}
