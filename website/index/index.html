@@ -19,7 +19,6 @@
     <link rel="stylesheet" href="index.css">
     <link rel="stylesheet" href="/static/css/shared.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <!-- New Arrivals CSS (front image only) -->
     <link rel="stylesheet" href="new_arrivals/new-arrivals.css">
 
     <!-- JS FILES -->
@@ -47,8 +46,6 @@
     <!-- Navbar placeholder - hidden -->
     <div id="navbar-placeholder" style="display:none;"></div>
 
-     
-
     <!-- Sticky Notes Container -->
     <div class="sticky-notes-container"></div>
 
@@ -69,7 +66,6 @@
                 <i class="fas fa-record-vinyl"></i>
                 <span>Shop</span>
             </button>
-            <!-- NEW ARRIVALS NAV BUTTON (index 8) -->
             <button class="mini-nav-item" data-index="8">
                 <i class="fas fa-star"></i>
                 <span>New</span>
@@ -99,12 +95,10 @@
                 <span>Cart</span>
                 <span class="cart-badge" id="cartBadge">0</span>
             </button>
-            <!-- EMAIL LIST NAV BUTTON (index 9) -->
             <button class="mini-nav-item" data-index="9">
                 <i class="fas fa-envelope"></i>
                 <span>Email</span>
             </button>
-            <!-- Login link -->
             <a href="/login" class="mini-nav-item login-link">
                 <i class="fas fa-sign-in-alt"></i>
                 <span>Login</span>
@@ -119,49 +113,88 @@
         </button>
 
         <div class="tiles-wrapper" id="tilesWrapper">
-            <!-- Tile 0: Home -->
-            <div class="tile" data-index="0">
-                <div class="flip-card" id="flipCard0">
-                    <div class="flip-card-front welcome-front">
+            <!-- Tile 0: Home - LOADED FROM /tiles/home.html -->
+            <div id="tile-home" class="tile" data-index="0"></div>
+
+            <!-- Tile 1: Shop (Browse) -->
+            <div class="tile" data-index="1">
+                <div class="flip-card" id="flipCard1">
+                    <div class="flip-card-front shop-front">
                         <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
                     </div>
                     <div class="flip-card-back">
-                        <div class="back-content">
-                            <div class="home-back-grid">
-                                <div class="home-back-tile">
-                                    <h3>About Us</h3>
-                                    <div class="info-item">
-                                        <i class="fas fa-phone"></i>
-                                        <a href="tel:9704925630">(970) 492-5630</a>
+                        <div class="back-content" id="shopContent" style="background: white; border-radius: 16px; padding: 20px; width: 100%; box-sizing: border-box;">
+                            <h2 style="text-align:center; margin:0 0 8px 0; color:#333; border-bottom:2px solid #ff6b6b; padding-bottom:6px; flex-shrink:0;">⭐ Shop</h2>
+                            <div class="browse-container" id="browseComponent">
+                                <div class="browse-search-wrapper">
+                                    <input type="text" id="browseSearchBox" placeholder="Search by artist or record title...">
+                                </div>
+                                <div class="browse-filter-section">
+                                    <div class="browse-filter-group">
+                                        <button id="browseGenreFilterBtn" class="browse-filter-btn">
+                                            <i class="fas fa-filter"></i> Genre
+                                        </button>
+                                        <div id="browseGenreDropdown" class="browse-filter-checkbox-container">
+                                            <div class="browse-filter-checkbox-group" id="browseGenreList">
+                                                <div style="color: #999; text-align: center; padding: 20px; font-size: 12px;">Loading genres...</div>
+                                            </div>
+                                            <div class="browse-filter-actions">
+                                                <button id="browseSelectAllGenres" class="browse-filter-action-btn">All</button>
+                                                <button id="browseClearAllGenres" class="browse-filter-action-btn">Clear</button>
+                                                <button id="browseApplyGenres" class="browse-filter-action-btn filter-apply">Apply</button>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="info-item">
-                                        <i class="fas fa-clock"></i>
-                                        <span>Wed-Sun 10am - 6pm</span>
+                                    <div class="browse-filter-group">
+                                        <button id="browseFormatFilterBtn" class="browse-filter-btn">
+                                            <i class="fas fa-record-vinyl"></i> Format
+                                        </button>
+                                        <div id="browseFormatDropdown" class="browse-filter-checkbox-container">
+                                            <div class="browse-filter-checkbox-group" id="browseFormatList">
+                                                <div style="color: #999; text-align: center; padding: 20px; font-size: 12px;">Loading formats...</div>
+                                            </div>
+                                            <div class="browse-filter-actions">
+                                                <button id="browseSelectAllFormats" class="browse-filter-action-btn">All</button>
+                                                <button id="browseClearAllFormats" class="browse-filter-action-btn">Clear</button>
+                                                <button id="browseApplyFormats" class="browse-filter-action-btn filter-apply">Apply</button>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="info-item">
-                                        <i class="fas fa-store"></i>
-                                        <span>We buy, sell, and trade vinyl records, CDs, and more.</span>
-                                    </div>
-                                    <div class="info-item">
-                                        <i class="fas fa-music"></i>
-                                        <span>Located in the heart of Loveland, Colorado.</span>
-                                    </div>
-                                    <div class="social-icons">
-                                        <a href="https://www.facebook.com/profile.php?id=61582821044262" target="_blank" aria-label="Visit our Facebook page"><i class="fab fa-facebook"></i></a>
-                                        <a href="https://www.instagram.com/pigstyle_loveland/" target="_blank" aria-label="Visit our Instagram page"><i class="fab fa-instagram"></i></a>
-                                        <a href="https://www.youtube.com/channel/UCz8jHllFjnbG9Jrb3xglDqQ" target="_blank" aria-label="Visit our youtube channel"><i class="fab fa-youtube"></i></a>
-                                        <a href="https://www.tiktok.com/@pigstyle.loveland" target="_blank" aria-label="Visit our TikTok page"><i class="fab fa-tiktok"></i></a>
+                                    <button id="browseNewVinylBtn" class="browse-filter-btn">
+                                        <i class="fas fa-record-vinyl"></i> New Vinyl
+                                    </button>
+                                </div>
+                                <div id="browseFilterStatusRow" class="browse-filter-status-row visible">
+                                    <div class="browse-filter-summary" id="browseFilterSummary">All Records <span class="result-count-badge">0 results</span></div>
+                                    <button id="browseClearAllFiltersBtn" class="browse-clear-filters-link">Clear all ✕</button>
+                                </div>
+                                <div id="browseCatalogContainer">
+                                    <div class="browse-loading-indicator">
+                                        <div class="browse-loading-dots">
+                                            <div></div><div></div><div></div><div></div>
+                                        </div>
+                                        <p style="font-size: 13px;">Loading records...</p>
                                     </div>
                                 </div>
-                                <div class="home-back-tile">
-                                    <h3>Find Us</h3>
-                                    <div class="map-container">
-                                        <iframe 
-                                            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3058.123456789!2d-105.074567!3d40.397123!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x87694a123456789%3A0xabcdef123456789!2s100%20E%203rd%20St%2C%20Loveland%2C%20CO%2080537!5e0!3m2!1sen!2sus!4v1700000000000" 
-                                            allowfullscreen="" 
-                                            loading="lazy" 
-                                            referrerpolicy="no-referrer-when-downgrade">
-                                        </iframe>
+                                <div class="browse-pagination-container">
+                                    <div class="browse-pagination-info">
+                                        Showing <span id="browseShowingRange">0-0</span> of <span id="browseTotalRecords">0</span> records
+                                    </div>
+                                    <div class="browse-pagination-controls">
+                                        <button id="browseFirstPage" class="browse-pagination-btn" disabled><i class="fas fa-angle-double-left"></i></button>
+                                        <button id="browsePrevPage" class="browse-pagination-btn" disabled><i class="fas fa-angle-left"></i></button>
+                                        <span class="browse-page-info" id="browsePageInfo">1 / 1</span>
+                                        <button id="browseNextPage" class="browse-pagination-btn" disabled><i class="fas fa-angle-right"></i></button>
+                                        <button id="browseLastPage" class="browse-pagination-btn" disabled><i class="fas fa-angle-double-right"></i></button>
+                                        <div class="browse-page-size-selector">
+                                            <label for="browsePageSize">Per page:</label>
+                                            <select id="browsePageSize">
+                                                <option value="12">12</option>
+                                                <option value="24" selected>24</option>
+                                                <option value="48">48</option>
+                                                <option value="96">96</option>
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -171,109 +204,8 @@
                 </div>
             </div>
 
-         <!-- Tile 1: Shop (Browse) -->
-<div class="tile" data-index="1">
-    <div class="flip-card" id="flipCard1">
-        <div class="flip-card-front shop-front">
-            <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip</span>
-        </div>
-        <div class="flip-card-back">
-            <!-- back-content with full width, white background, and padding -->
-            <div class="back-content" id="shopContent" style="background: white; border-radius: 16px; padding: 20px; width: 100%; box-sizing: border-box;">
-                <!-- HEADING -->
-                <h2 style="text-align:center; margin:0 0 8px 0; color:#333; border-bottom:2px solid #ff6b6b; padding-bottom:6px; flex-shrink:0;">⭐ Shop</h2>
-                <div class="browse-container" id="browseComponent">
-                    <!-- SEARCH -->
-                    <div class="browse-search-wrapper">
-                        <input type="text" id="browseSearchBox" placeholder="Search by artist or record title...">
-                    </div>
-                    <!-- FILTERS -->
-                    <div class="browse-filter-section">
-                        <div class="browse-filter-group">
-                            <button id="browseGenreFilterBtn" class="browse-filter-btn">
-                                <i class="fas fa-filter"></i> Genre
-                            </button>
-                            <div id="browseGenreDropdown" class="browse-filter-checkbox-container">
-                                <div class="browse-filter-checkbox-group" id="browseGenreList">
-                                    <div style="color: #999; text-align: center; padding: 20px; font-size: 12px;">Loading genres...</div>
-                                </div>
-                                <div class="browse-filter-actions">
-                                    <button id="browseSelectAllGenres" class="browse-filter-action-btn">All</button>
-                                    <button id="browseClearAllGenres" class="browse-filter-action-btn">Clear</button>
-                                    <button id="browseApplyGenres" class="browse-filter-action-btn filter-apply">Apply</button>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="browse-filter-group">
-                            <button id="browseFormatFilterBtn" class="browse-filter-btn">
-                                <i class="fas fa-record-vinyl"></i> Format
-                            </button>
-                            <div id="browseFormatDropdown" class="browse-filter-checkbox-container">
-                                <div class="browse-filter-checkbox-group" id="browseFormatList">
-                                    <div style="color: #999; text-align: center; padding: 20px; font-size: 12px;">Loading formats...</div>
-                                </div>
-                                <div class="browse-filter-actions">
-                                    <button id="browseSelectAllFormats" class="browse-filter-action-btn">All</button>
-                                    <button id="browseClearAllFormats" class="browse-filter-action-btn">Clear</button>
-                                    <button id="browseApplyFormats" class="browse-filter-action-btn filter-apply">Apply</button>
-                                </div>
-                            </div>
-                        </div>
-                        <!-- New Vinyl button (New Arrivals button removed) -->
-                        <button id="browseNewVinylBtn" class="browse-filter-btn">
-                            <i class="fas fa-record-vinyl"></i> New Vinyl
-                        </button>
-                    </div>
-                    <!-- Filter Status Row -->
-                    <div id="browseFilterStatusRow" class="browse-filter-status-row visible">
-                        <div class="browse-filter-summary" id="browseFilterSummary">All Records <span class="result-count-badge">0 results</span></div>
-                        <button id="browseClearAllFiltersBtn" class="browse-clear-filters-link">Clear all ✕</button>
-                    </div>
-                    <!-- RECORDS GRID CONTAINER -->
-                    <div id="browseCatalogContainer">
-                        <div class="browse-loading-indicator">
-                            <div class="browse-loading-dots">
-                                <div></div>
-                                <div></div>
-                                <div></div>
-                                <div></div>
-                            </div>
-                            <p style="font-size: 13px;">Loading records...</p>
-                        </div>
-                    </div>
-                    <!-- PAGINATION -->
-                    <div class="browse-pagination-container">
-                        <div class="browse-pagination-info">
-                            Showing <span id="browseShowingRange">0-0</span> of <span id="browseTotalRecords">0</span> records
-                        </div>
-                        <div class="browse-pagination-controls">
-                            <button id="browseFirstPage" class="browse-pagination-btn" disabled><i class="fas fa-angle-double-left"></i></button>
-                            <button id="browsePrevPage" class="browse-pagination-btn" disabled><i class="fas fa-angle-left"></i></button>
-                            <span class="browse-page-info" id="browsePageInfo">1 / 1</span>
-                            <button id="browseNextPage" class="browse-pagination-btn" disabled><i class="fas fa-angle-right"></i></button>
-                            <button id="browseLastPage" class="browse-pagination-btn" disabled><i class="fas fa-angle-double-right"></i></button>
-                            <div class="browse-page-size-selector">
-                                <label for="browsePageSize">Per page:</label>
-                                <select id="browsePageSize">
-                                    <option value="12">12</option>
-                                    <option value="24" selected>24</option>
-                                    <option value="48">48</option>
-                                    <option value="96">96</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <span class="flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
-        </div>
-    </div>
-</div>
-
-            <!-- NEW ARRIVALS TILE (index 8) – placeholder, will be filled by new-arrivals.js -->
-            <div class="tile" data-index="8" id="newArrivalsTileContainer">
-                <!-- The flip-card will be generated by JavaScript -->
-            </div>
+            <!-- NEW ARRIVALS TILE (index 8) -->
+            <div class="tile" data-index="8" id="newArrivalsTileContainer"></div>
 
             <!-- Tile 2: Merch & Gifts -->
             <div class="tile" data-index="2">
@@ -284,7 +216,6 @@
                     <div class="flip-card-back">
                         <div class="back-content" style="width:100%; height:100%; padding:20px; box-sizing:border-box; display:flex; align-items:center; justify-content:center;">
                             <div style="display:flex; flex-direction:row; gap:20px; width:100%; height:100%; max-height:600px; align-items:stretch;">
-                                <!-- T-Shirt product -->
                                 <div class="merch-product" style="flex:1; aspect-ratio:1/2; background:white; border-radius:20px; box-shadow:0 4px 20px rgba(0,0,0,0.1); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; padding:15px; box-sizing:border-box;" onclick="openMerchPopup('tshirt')">
                                     <div style="flex:1; width:100%; background-image:url('/static/images/tee-black.png'); background-size:contain; background-position:center; background-repeat:no-repeat;"></div>
                                     <div style="text-align:center; margin-top:8px; background:rgba(255,255,255,0.85); padding:4px 8px; border-radius:8px; width:100%;">
@@ -292,7 +223,6 @@
                                         <p style="margin:2px 0 0; color:#ff6b6b; font-weight:bold;">$14.99</p>
                                     </div>
                                 </div>
-                                <!-- Sticker product -->
                                 <div class="merch-product" style="flex:1; aspect-ratio:1/2; background:white; border-radius:20px; box-shadow:0 4px 20px rgba(0,0,0,0.1); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; padding:15px; box-sizing:border-box;" onclick="openMerchPopup('sticker')">
                                     <div style="flex:1; width:100%; background-image:url('/static/images/sticker.png'); background-size:contain; background-position:center; background-repeat:no-repeat;"></div>
                                     <div style="text-align:center; margin-top:8px; background:rgba(255,255,255,0.85); padding:4px 8px; border-radius:8px; width:100%;">
@@ -300,7 +230,6 @@
                                         <p style="margin:2px 0 0; color:#ff6b6b; font-weight:bold;">$4.99</p>
                                     </div>
                                 </div>
-                                <!-- Gift Card product -->
                                 <div class="merch-product" style="flex:1; aspect-ratio:1/2; background:white; border-radius:20px; box-shadow:0 4px 20px rgba(0,0,0,0.1); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; padding:15px; box-sizing:border-box;" onclick="openMerchPopup('giftcard')">
                                     <div style="flex:1; width:100%; background-image:url('/static/images/traditional_gift_card.png'); background-size:contain; background-position:center; background-repeat:no-repeat;"></div>
                                     <div style="text-align:center; margin-top:8px; background:rgba(255,255,255,0.85); padding:4px 8px; border-radius:8px; width:100%; flex-shrink:0;">
@@ -455,7 +384,7 @@
                 </div>
             </div>
 
-            <!-- Tile 7: Cart (static content, no flip) -->
+            <!-- Tile 7: Cart -->
             <div class="tile" data-index="7">
                 <div class="flip-card" id="flipCard7" style="background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
                     <div class="cart-tile-content" id="cartTileContent">
@@ -510,36 +439,35 @@
             </div>
 
             <!-- Tile 9: Email List -->
-<div class="tile" data-index="9">
-    <div class="flip-card" id="flipCard9">
-        <div class="flip-card-front email-front" style="background: transparent; display:flex; align-items:center; justify-content:center; padding:10px;">
-            <img src="/static/images/pig_shooting_from_cannon.png" alt="PigStyle Email List" style="max-width:95%; max-height:90%; width:auto; height:auto; object-fit:contain; border-radius:12px; filter:drop-shadow(0 4px 20px rgba(0,0,0,0.3));">
-            <div style="position:absolute; bottom:20px; left:0; right:0; text-align:center; pointer-events:none;">
-                <span style="color:rgba(255,255,255,0.85); font-size:0.7rem; background:rgba(0,0,0,0.5); padding:4px 14px; border-radius:20px; display:inline-block; backdrop-filter:blur(4px);">
-                    <i class="fas fa-rotate" style="margin-right:4px;"></i> Tap to sign up
-                </span>
-            </div>
-        </div>
-        <div class="flip-card-back">
-            <div class="back-content" id="emailListContent" style="background: white; border-radius: 16px; padding: 20px; width: 100%; box-sizing: border-box; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;">
-                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; padding:5px 0;">
-                    
-                    <form id="emailListForm" style="width:100%; display:flex; flex-direction:column; gap:8px; flex:1; justify-content:center; max-width:320px;">
-                        <div class="form-group" style="display:flex; flex-direction:column; gap:3px;">
-                            <label style="color:#555; font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Email Address</label>
-                            <input type="email" id="emailListInput" placeholder="your@email.com" required style="padding:10px 14px; border-radius:8px; border:2px solid #e0e0e0; font-size:0.95rem; outline:none; transition:border 0.2s; width:100%; box-sizing:border-box; background:#f8f8f8;" onfocus="this.style.borderColor='#2d1b69'; this.style.background='white'" onblur="this.style.borderColor='#e0e0e0'; this.style.background='#f8f8f8'">
+            <div class="tile" data-index="9">
+                <div class="flip-card" id="flipCard9">
+                    <div class="flip-card-front email-front" style="background: transparent; display:flex; align-items:center; justify-content:center; padding:10px;">
+                        <img src="/static/images/pig_shooting_from_cannon.png" alt="PigStyle Email List" style="max-width:95%; max-height:90%; width:auto; height:auto; object-fit:contain; border-radius:12px; filter:drop-shadow(0 4px 20px rgba(0,0,0,0.3));">
+                        <div style="position:absolute; bottom:20px; left:0; right:0; text-align:center; pointer-events:none;">
+                            <span style="color:rgba(255,255,255,0.85); font-size:0.7rem; background:rgba(0,0,0,0.5); padding:4px 14px; border-radius:20px; display:inline-block; backdrop-filter:blur(4px);">
+                                <i class="fas fa-rotate" style="margin-right:4px;"></i> Tap to sign up
+                            </span>
                         </div>
-                        <button type="submit" id="emailListSubmitBtn" style="padding:10px; background:linear-gradient(135deg, #2d1b69, #4a2b8a); color:white; border:none; border-radius:8px; font-size:0.95rem; font-weight:600; cursor:pointer; transition:all 0.2s; margin-top:2px; box-shadow:0 2px 8px rgba(45,27,105,0.3);">
-                            <i class="fas fa-paper-plane" style="margin-right:6px;"></i> Subscribe
-                        </button>
-                    </form>
-                    <div id="emailListStatus" style="padding:8px 12px; border-radius:6px; margin-top:8px; display:none; font-size:0.8rem; text-align:center; width:100%; max-width:320px; box-sizing:border-box;"></div>
-                    <span class="flip-hint" style="color:#bbb; margin-top:6px; font-size:0.65rem; cursor:pointer; flex-shrink:0;"><i class="fas fa-rotate" style="margin-right:4px;"></i> Tap to flip back</span>
+                    </div>
+                    <div class="flip-card-back">
+                        <div class="back-content" id="emailListContent" style="background: white; border-radius: 16px; padding: 20px; width: 100%; box-sizing: border-box; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;">
+                            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; padding:5px 0;">
+                                <form id="emailListForm" style="width:100%; display:flex; flex-direction:column; gap:8px; flex:1; justify-content:center; max-width:320px;">
+                                    <div class="form-group" style="display:flex; flex-direction:column; gap:3px;">
+                                        <label style="color:#555; font-size:0.75rem; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Email Address</label>
+                                        <input type="email" id="emailListInput" placeholder="your@email.com" required style="padding:10px 14px; border-radius:8px; border:2px solid #e0e0e0; font-size:0.95rem; outline:none; transition:border 0.2s; width:100%; box-sizing:border-box; background:#f8f8f8;" onfocus="this.style.borderColor='#2d1b69'; this.style.background='white'" onblur="this.style.borderColor='#e0e0e0'; this.style.background='#f8f8f8'">
+                                    </div>
+                                    <button type="submit" id="emailListSubmitBtn" style="padding:10px; background:linear-gradient(135deg, #2d1b69, #4a2b8a); color:white; border:none; border-radius:8px; font-size:0.95rem; font-weight:600; cursor:pointer; transition:all 0.2s; margin-top:2px; box-shadow:0 2px 8px rgba(45,27,105,0.3);">
+                                        <i class="fas fa-paper-plane" style="margin-right:6px;"></i> Subscribe
+                                    </button>
+                                </form>
+                                <div id="emailListStatus" style="padding:8px 12px; border-radius:6px; margin-top:8px; display:none; font-size:0.8rem; text-align:center; width:100%; max-width:320px; box-sizing:border-box;"></div>
+                                <span class="flip-hint" style="color:#bbb; margin-top:6px; font-size:0.65rem; cursor:pointer; flex-shrink:0;"><i class="fas fa-rotate" style="margin-right:4px;"></i> Tap to flip back</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-    </div>
-</div>
 
         </div> <!-- end tiles-wrapper -->
 
@@ -580,7 +508,7 @@
         </div>
     </div>
 
-    <!-- Unified Popup Modal (used by both Shop and Merch) -->
+    <!-- Unified Popup Modal -->
     <div id="merchPopup" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
         <div id="merchPopupContent" class="merch-popup-content">
             <button class="popup-close" onclick="closeMerchPopup()">&times;</button>
@@ -588,7 +516,7 @@
         </div>
     </div>
 
-    <!-- ============ RSVP MODAL ============ -->
+    <!-- RSVP MODAL -->
     <div id="rsvpModal" class="modal-overlay" style="display:none; align-items:center; justify-content:center; z-index:10001; background:rgba(0,0,0,0.6);">
         <div class="modal-content" style="max-width:420px; background:white; border-radius:16px; padding:25px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.2);">
             <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:12px; margin-bottom:15px;">
@@ -617,7 +545,7 @@
         </div>
     </div>
 
-    <!-- ============ RSVP LIST MODAL ============ -->
+    <!-- RSVP LIST MODAL -->
     <div id="rsvpListModal" class="modal-overlay" style="display:none; align-items:center; justify-content:center; z-index:10002; background:rgba(0,0,0,0.6);">
         <div class="modal-content" style="max-width:500px; background:white; border-radius:16px; padding:25px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.2);">
             <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:12px; margin-bottom:15px;">
@@ -635,9 +563,29 @@
         </div>
     </div>
 
-    <!-- ============ ORIGINAL SCRIPTS (inline cart, etc.) ============ -->
+    <!-- SCRIPTS -->
     <script>
-        // ===== Existing inline scripts (cart, popups, navigation, etc.) =====
+        // ===== LOAD HOME TILE =====
+        async function loadHomeTile() {
+            try {
+                const response = await fetch('/tiles/home.html');
+                const html = await response.text();
+                document.getElementById('tile-home').innerHTML = html;
+                
+                // Add flip listener AFTER content is loaded
+                const card = document.getElementById('flipCard0');
+                if (card) {
+                    card.addEventListener('click', function(e) {
+                        card.classList.toggle('flipped');
+                    });
+                }
+            } catch (err) {
+                console.error('Failed to load home tile:', err);
+                document.getElementById('tile-home').innerHTML = '<div style="color:white; text-align:center; padding:40px;">Failed to load Home tile.</div>';
+            }
+        }
+
+        // ===== CART LOGIC =====
         console.log('📦 cart.js loaded (inline)');
         const CART_STORAGE_KEY = 'pigstyle_cart';
 
@@ -790,9 +738,7 @@
             window.cart = new ShoppingCart();
         }
         console.log('📦 Cart initialized with', window.cart.getItemCount(), 'items');
-    </script>
 
-    <script>
         // ===== PAYMENT MODAL =====
         window.closePaymentModal = function() {
             var modal = document.getElementById('payment-modal');
@@ -1073,7 +1019,6 @@
             }, 50);
         }
 
-        // ============ FIXED: openRecordPopup - Location without genre duplication ============
         function openRecordPopup(record) {
             var popup = document.getElementById('merchPopup');
             var content = document.getElementById('popupDynamicContent');
@@ -1085,12 +1030,10 @@
             var genre = record.discogs_genre_raw ? record.discogs_genre_raw.split(',')[0].trim() : '';
             var formatName = record.format_name || '';
             
-            // FIXED: Remove genre prefix from location name (if present)
             var locationText = '';
             if (record.location_name) {
                 var parts = record.location_name.split(' - ');
                 if (parts.length > 1) {
-                    // Format: "Genre - LocationName" -> extract "LocationName"
                     locationText = parts.slice(1).join(' - ');
                 } else {
                     locationText = record.location_name;
@@ -1353,7 +1296,7 @@
             });
         }
 
-        // ===== SWIPE GESTURE FOR CAROUSEL =====
+        // ===== SWIPE GESTURE =====
         function initSwipe() {
             var wrapper = document.getElementById('tilesWrapper');
             if (!wrapper) return;
@@ -1411,7 +1354,7 @@
             }, { passive: true });
         }
 
-        // ===== PAYMENT CONFIRMATION HANDLER =====
+        // ===== PAYMENT CONFIRMATION =====
         function checkPaymentStatus() {
             var params = new URLSearchParams(window.location.search);
             var status = params.get('status');
@@ -1443,7 +1386,7 @@
             }
         }
 
-        // ===== ORDER REQUEST HANDLER =====
+        // ===== ORDER REQUEST =====
         document.addEventListener('DOMContentLoaded', function() {
             const orderForm = document.getElementById('orderForm');
             const orderEmail = document.getElementById('orderEmail');
@@ -1502,7 +1445,7 @@
             });
         });
 
-        // ===== ALERTS / SUBSCRIPTION FORM HANDLER =====
+        // ===== ALERTS / SUBSCRIPTION =====
         document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('alertsForm');
             const statusDiv = document.getElementById('alertsStatus');
@@ -1562,7 +1505,7 @@
             });
         });
 
-        // ===== CONNECT / FEEDBACK FORM HANDLER =====
+        // ===== CONNECT / FEEDBACK =====
         document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('connectForm');
             const messageDiv = document.getElementById('connectMessage');
@@ -1627,7 +1570,7 @@
             });
         });
 
-        // ===== EMAIL LIST FORM HANDLER =====
+        // ===== EMAIL LIST =====
         document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('emailListForm');
             const statusDiv = document.getElementById('emailListStatus');
@@ -1649,7 +1592,6 @@
                     return;
                 }
 
-                // Basic email validation
                 if (!email.includes('@') || !email.includes('.')) {
                     statusDiv.style.display = 'block';
                     statusDiv.style.background = '#fff3cd';
@@ -1699,7 +1641,6 @@
                 }
             });
 
-            // Enter key support
             emailInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
@@ -1708,31 +1649,7 @@
             });
         });
 
-        // ===== INIT =====
-        document.addEventListener('DOMContentLoaded', function() {
-            updateCartUI();
-            initFlipHints();
-            initNavigation();
-            initSwipe();
-            checkPaymentStatus();
-
-            var popup = document.getElementById('merchPopup');
-            if (popup) {
-                popup.addEventListener('click', function(e) {
-                    if (e.target === this) closeMerchPopup();
-                });
-            }
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape') closeMerchPopup();
-            });
-            window.addEventListener('storage', function(e) {
-                if (e.key === 'pigstyle_cart') {
-                    updateCartUI();
-                }
-            });
-        });
-
-        // ============ RSVP MODAL FUNCTIONS ============
+        // ===== RSVP MODAL =====
         let currentRsvpEventId = null;
 
         function openRsvpModal(eventId, eventTitle) {
@@ -1821,7 +1738,7 @@
             }
         });
 
-        // ============ RSVP LIST ============
+        // ===== RSVP LIST =====
         function showRsvpList(eventId) {
             const modal = document.getElementById('rsvpListModal');
             const content = document.getElementById('rsvpListContent');
@@ -1881,6 +1798,30 @@
             return div.innerHTML;
         }
 
+        // ===== INIT =====
+        document.addEventListener('DOMContentLoaded', function() {
+            loadHomeTile();
+            updateCartUI();
+            initFlipHints();
+            initNavigation();
+            initSwipe();
+            checkPaymentStatus();
+
+            var popup = document.getElementById('merchPopup');
+            if (popup) {
+                popup.addEventListener('click', function(e) {
+                    if (e.target === this) closeMerchPopup();
+                });
+            }
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') closeMerchPopup();
+            });
+            window.addEventListener('storage', function(e) {
+                if (e.key === 'pigstyle_cart') {
+                    updateCartUI();
+                }
+            });
+        });
     </script>
 </body>
 </html>
