@@ -1,5 +1,5 @@
 /**
- * Shop Component - Simplified
+ * Shop Component - Simplified with modal
  */
 
 const API_BASE = 'http://localhost:5000';
@@ -26,7 +26,6 @@ const ShopComponent = {
             return;
         }
 
-        // Show loading
         container.innerHTML = `
             <div style="text-align: center; padding: 40px; color: #888;">
                 <div style="margin-bottom: 10px;">⏳</div>
@@ -92,7 +91,7 @@ const ShopComponent = {
             
             html += `
                 <div style="background: white; border-radius: 8px; overflow: hidden; border: 1px solid #eee; padding: 12px; cursor: pointer; transition: all 0.3s;" 
-                     onclick="alert('Record: ${record.artist} - ${record.title}')">
+                     onclick="ShopComponent.openCheckoutModal(${JSON.stringify(record).replace(/"/g, '&quot;')})">
                     <div style="height: 120px; display: flex; align-items: center; justify-content: center; background: #f5f5f5; border-radius: 4px; margin-bottom: 8px;">
                         ${record.image_url ? 
                             `<img src="${record.image_url}" style="width: 100%; height: 100%; object-fit: cover;">` : 
@@ -108,6 +107,97 @@ const ShopComponent = {
         });
         html += '</div>';
         container.innerHTML = html;
+    },
+
+    openCheckoutModal(record) {
+        // Create modal overlay
+        const modal = document.createElement('div');
+        modal.id = 'checkoutModal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease;
+        `;
+        
+        const price = parseFloat(record.store_price) || 0;
+        const inStock = record.status_id === 2 || record.status_id === 1;
+        
+        modal.innerHTML = `
+            <div style="background: white; border-radius: 16px; max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+                    <h2 style="margin: 0; color: #333; font-size: 24px;">${record.artist}</h2>
+                    <button onclick="ShopComponent.closeCheckoutModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
+                </div>
+                
+                <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+                    <div style="flex: 0 0 120px; height: 120px; background: #f5f5f5; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                        ${record.image_url ? 
+                            `<img src="${record.image_url}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;">` : 
+                            `<span style="font-size: 40px; color: #ddd;">🎵</span>`
+                        }
+                    </div>
+                    <div style="flex: 1;">
+                        <div style="font-size: 18px; font-weight: bold; color: #333;">${record.title}</div>
+                        <div style="color: #666; margin: 4px 0;">${record.condition || 'Unknown Condition'}</div>
+                        <div style="color: #666; font-size: 14px;">${record.format_name || 'Unknown Format'}</div>
+                        <div style="margin-top: 8px; font-size: 14px; color: ${inStock ? '#28a745' : '#dc3545'};">
+                            ${inStock ? '✅ In Stock' : '❌ Out of Stock'}
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="border-top: 1px solid #eee; padding-top: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <span style="font-size: 18px; color: #666;">Price</span>
+                        <span style="font-size: 28px; font-weight: bold; color: #ff6b6b;">$${price.toFixed(2)}</span>
+                    </div>
+                    
+                    ${inStock ? `
+                        <button onclick="ShopComponent.addToCart(${record.id}, '${record.artist}', '${record.title}', ${price})" 
+                                style="width: 100%; padding: 14px; background: #ff6b6b; color: white; border: none; border-radius: 30px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                            <i class="fas fa-shopping-cart"></i> Add to Cart
+                        </button>
+                    ` : `
+                        <button disabled style="width: 100%; padding: 14px; background: #ccc; color: #666; border: none; border-radius: 30px; font-size: 16px; font-weight: 600; cursor: not-allowed;">
+                            Out of Stock
+                        </button>
+                    `}
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Close on click outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.closeCheckoutModal();
+            }
+        });
+    },
+
+    closeCheckoutModal() {
+        const modal = document.getElementById('checkoutModal');
+        if (modal) {
+            modal.remove();
+        }
+    },
+
+    addToCart(id, artist, title, price) {
+        // Simple cart notification
+        alert(`🛒 Added to cart:\n${artist} - ${title}\n$${price.toFixed(2)}`);
+        this.closeCheckoutModal();
+        
+        // Here you would add to your cart system
+        console.log('Added to cart:', { id, artist, title, price });
     },
 
     updatePagination() {
@@ -157,3 +247,13 @@ const ShopComponent = {
         }
     }
 };
+
+// Add CSS animation for modal
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+`;
+document.head.appendChild(style);
