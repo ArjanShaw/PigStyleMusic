@@ -409,3 +409,8 @@ nav button.login-btn:hover {
 .flip-card-front.merch-front {
     background-image: url('/images/pig_with_merch.png') !important;
 }
+
+/* Events Front Image */
+.flip-card-front.events-front {
+    background-image: url('/images/pig_in_a_band.png') !important;
+}

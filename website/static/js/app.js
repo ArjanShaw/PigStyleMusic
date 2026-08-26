@@ -23,6 +23,7 @@ async function showPage(page, btnElement) {
             };
         });
         
+        // Initialize page-specific functionality
         if (page === 'shop' && typeof initShop === 'function') {
             initShop();
         }
@@ -31,6 +32,9 @@ async function showPage(page, btnElement) {
         }
         if (page === 'merch' && typeof initMerch === 'function') {
             initMerch();
+        }
+        if (page === 'events' && typeof initEvents === 'function') {
+            initEvents();
         }
         
     } catch(err) {
