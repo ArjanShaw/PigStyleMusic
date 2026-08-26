@@ -1,0 +1,46 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">📦 Inventory Purchases</h2>
+    
+    <!-- Stats -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; width: 100%;">
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #007bff;" id="purchases-total-count">0</div>
+            <div style="font-size: 11px; color: #666;">Total Purchases</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #28a745;" id="purchases-complete-count">0</div>
+            <div style="font-size: 11px; color: #666;">Complete</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #ffc107;" id="purchases-draft-count">0</div>
+            <div style="font-size: 11px; color: #666;">Drafts</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #17a2b8;" id="purchases-total-records">0</div>
+            <div style="font-size: 11px; color: #666;">Total Records</div>
+        </div>
+    </div>
+    
+    <!-- Actions -->
+    <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap;">
+        <button onclick="purchasesCreate()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-plus"></i> New Purchase
+        </button>
+        <button onclick="purchasesRefresh()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-sync"></i> Refresh
+        </button>
+        <button onclick="purchasesAcceptDraft()" id="purchases-accept-draft-btn" style="display: none; padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-check"></i> Accept Draft
+        </button>
+        <button onclick="purchasesDelete()" id="purchases-delete-btn" style="display: none; padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-trash"></i> Delete
+        </button>
+    </div>
+    
+    <!-- Purchases Table -->
+    <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+        <div id="purchases-list" style="width: 100%;">
+            <div style="text-align: center; padding: 40px; color: #999;">Loading purchases...</div>
+        </div>
+    </div>
+</div>

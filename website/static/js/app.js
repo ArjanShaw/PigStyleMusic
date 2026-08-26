@@ -38,9 +38,13 @@ function updateMenu() {
     const existingAccounting = nav.querySelector('[data-page="accounting"]');
     if (existingAccounting) existingAccounting.remove();
     
+    const existingPurchases = nav.querySelector('[data-page="purchases"]');
+    if (existingPurchases) existingPurchases.remove();
+    
     if (user && user.logged_in) {
-        // Dashboard for admin OR consignor
         const allowedRoles = ['admin', 'consignor'];
+        
+        // Dashboard for admin OR consignor
         if (allowedRoles.includes(user.role)) {
             const dashboardBtn = document.createElement('button');
             dashboardBtn.setAttribute('data-page', 'dashboard');
@@ -80,6 +84,16 @@ function updateMenu() {
             nav.insertBefore(accountingBtn, loginBtn);
         }
         
+        // Purchases ONLY for admin
+        if (user.role === 'admin') {
+            const purchasesBtn = document.createElement('button');
+            purchasesBtn.setAttribute('data-page', 'purchases');
+            purchasesBtn.innerHTML = '<i class="fas fa-boxes"></i>';
+            purchasesBtn.title = 'Purchases';
+            purchasesBtn.onclick = function() { window.showPage('purchases', this); };
+            nav.insertBefore(purchasesBtn, loginBtn);
+        }
+        
         // Change login to logout
         if (loginBtn) {
             loginBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i>';
@@ -103,14 +117,13 @@ function updateMenu() {
 
 async function showPage(page, btnElement) {
     // Check if page requires authentication
-    const restrictedPages = ['dashboard', 'checkout', 'add-records', 'accounting'];
+    const restrictedPages = ['dashboard', 'checkout', 'add-records', 'accounting', 'purchases'];
     if (restrictedPages.includes(page)) {
         const user = getUser();
         if (!user || !user.logged_in) {
             showPage('login');
             return;
         }
-        // Dashboard and Checkout for admin OR consignor
         if (page === 'dashboard' || page === 'checkout') {
             const allowedRoles = ['admin', 'consignor'];
             if (!allowedRoles.includes(user.role)) {
@@ -118,8 +131,7 @@ async function showPage(page, btnElement) {
                 return;
             }
         }
-        // Add Records and Accounting ONLY for admin
-        if ((page === 'add-records' || page === 'accounting') && user.role !== 'admin') {
+        if ((page === 'add-records' || page === 'accounting' || page === 'purchases') && user.role !== 'admin') {
             showPage('home');
             return;
         }
@@ -190,6 +202,9 @@ async function showPage(page, btnElement) {
         }
         if (page === 'accounting' && typeof window.initAccounting === 'function') {
             window.initAccounting();
+        }
+        if (page === 'purchases' && typeof window.initPurchases === 'function') {
+            window.initPurchases();
         }
         
     } catch(err) {
