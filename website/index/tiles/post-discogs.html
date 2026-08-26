@@ -1,0 +1,42 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">📤 Post to Discogs</h2>
+    
+    <!-- Location Filter -->
+    <div style="display: flex; gap: 10px; width: 100%; align-items: center; flex-wrap: wrap;">
+        <label style="font-weight: 600; color: #555;">Location:</label>
+        <select id="post-discogs-location-filter" style="flex: 1; min-width: 200px; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+            <option value="all">-- All (no filter) --</option>
+            <option value="all_with_location">-- All with Location --</option>
+        </select>
+        <button onclick="postDiscogsRefresh()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            <i class="fas fa-sync"></i> Refresh
+        </button>
+    </div>
+    
+    <!-- Last Seen Filter -->
+    <div style="display: flex; gap: 10px; width: 100%; align-items: center; flex-wrap: wrap;">
+        <label style="font-weight: 600; color: #555;">Last Seen After:</label>
+        <input type="date" id="post-last-seen-cutoff" style="padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+        <button onclick="postApplyLastSeen()" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            <i class="fas fa-filter"></i> Apply
+        </button>
+        <button onclick="postClearLastSeen()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            <i class="fas fa-times"></i> Clear
+        </button>
+    </div>
+    
+    <!-- Status -->
+    <div id="post-discogs-status" style="width: 100%; display: none; padding: 8px 12px; border-radius: 8px; font-size: 13px;"></div>
+    
+    <!-- Records Table -->
+    <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+        <div id="post-discogs-records" style="width: 100%;">
+            <div style="text-align: center; padding: 20px; color: #999;">Loading records...</div>
+        </div>
+    </div>
+    
+    <!-- Post Button -->
+    <button onclick="postDiscogsSelected()" id="post-discogs-btn" disabled style="padding: 10px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 30px; cursor: pointer; font-size: 14px; font-weight: 600;">
+        <i class="fas fa-share-alt"></i> Post Selected to Discogs
+    </button>
+</div>
