@@ -4,11 +4,12 @@
 
 function createBrowseComponent(containerId, options) {
     options = options || {};
-    var statusIds = options.statusIds || '2';
+    var statusIds = options.statusIds || '';  // ← CHANGED: Default to empty string
     var defaultNewVinyl = options.defaultNewVinyl || false;
     var requireImage = options.requireImage !== undefined ? options.requireImage : true;
     var orderBy = options.orderBy || 'created_at';
     var orderDir = options.orderDir || 'DESC';
+    var locationIds = options.locationIds || null;
 
     var records = [];
     var allGenres = [];
@@ -238,7 +239,17 @@ function createBrowseComponent(containerId, options) {
     function loadCatalogData() {
         currentSearchTerm = searchBox ? searchBox.value.trim() : '';
         var params = new URLSearchParams();
-        params.append('status_ids', statusIds);
+        
+        // ONLY add status filter if statusIds is NOT empty
+        if (statusIds && statusIds.trim() !== '') {
+            params.append('status_ids', statusIds);
+        }
+        
+        // Add location filter if provided
+        if (locationIds) {
+            params.append('location_ids', locationIds);
+        }
+        
         if (currentSearchTerm) params.append('search', currentSearchTerm);
         if (selectedGenreIds.length > 0) params.append('genre_ids', selectedGenreIds.join(','));
         if (selectedFormatIds.length > 0) params.append('format_ids', selectedFormatIds.join(','));
@@ -251,6 +262,8 @@ function createBrowseComponent(containerId, options) {
         params.append('limit', limit);
         params.append('offset', offset);
 
+        console.log('🔍 Fetching records with params:', params.toString());
+
         fetch(AppConfig.baseUrl + '/config/LAST_SEEN_CUTOFF_DATE')
             .then(function(r) { return r.json(); })
             .then(function(data) {
@@ -259,6 +272,7 @@ function createBrowseComponent(containerId, options) {
                 params.append('last_seen_after', cutoffDate);
 
                 var url = AppConfig.baseUrl + '/records?' + params.toString();
+                console.log('🔍 Fetching URL:', url);
                 if (catalogContainer) {
                     catalogContainer.innerHTML = '<div class="browse-loading-indicator"><div class="browse-loading-dots"><div></div><div></div><div></div><div></div></div><p style="font-size:13px;">Loading records...</p></div>';
                 }
@@ -266,6 +280,7 @@ function createBrowseComponent(containerId, options) {
             })
             .then(function(response) { return response.json(); })
             .then(function(data) {
+                console.log('📦 API Response:', data);
                 if (data.status === 'success') {
                     var fetched = data.records || [];
                     totalRecords = data.total || fetched.length;
@@ -276,6 +291,7 @@ function createBrowseComponent(containerId, options) {
                     displayRecords(records);
                     updateFilterUI();
                     updatePaginationUI();
+                    console.log('✅ Displayed', records.length, 'records');
                 } else {
                     throw new Error('API error');
                 }
@@ -329,7 +345,6 @@ function createBrowseComponent(containerId, options) {
             innerHtml += '<div class="browse-record-card-format"><i class="fas fa-record-vinyl"></i> ' + escapeHtml(formatName) + '</div>';
         }
         
-        // ============ FIXED: Display location WITHOUT duplicating genre ============
         if (record.location_name) {
             var locationText = record.location_name;
             if (record.location_index !== null && record.location_index !== undefined) {
