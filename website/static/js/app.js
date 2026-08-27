@@ -216,6 +216,12 @@ async function showPage(page, btnElement) {
     var content = document.getElementById('page-content');
     try {
         var response = await fetch('/tiles/' + page + '.html');
+        console.log('📄 Loading page:', page, 'Status:', response.status);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
         var html = await response.text();
         content.innerHTML = html;
         
@@ -270,10 +276,12 @@ async function showPage(page, btnElement) {
         
         const initFn = initMap[page];
         if (initFn && typeof window[initFn] === 'function') {
+            console.log('🔧 Initializing:', page);
             window[initFn]();
         }
         
     } catch(err) {
+        console.error('❌ Failed to load page:', page, err);
         content.innerHTML = '<div class="simple-page"><h1>Error</h1><p>Failed to load page</p></div>';
     }
 }
