@@ -56,6 +56,9 @@ function updateMenu() {
     const existingAccessories = nav.querySelector('[data-page="accessories"]');
     if (existingAccessories) existingAccessories.remove();
     
+    const existingCustomLabels = nav.querySelector('[data-page="custom-labels"]');
+    if (existingCustomLabels) existingCustomLabels.remove();
+    
     if (user && user.logged_in) {
         const allowedRoles = ['admin', 'consignor'];
         
@@ -89,7 +92,8 @@ function updateMenu() {
                 { page: 'post-discogs', icon: 'fa-share-alt', label: 'Post to Discogs' },
                 { page: 'discogs-orders', icon: 'fa-shopping-bag', label: 'Discogs Orders' },
                 { page: 'edit-records', icon: 'fa-edit', label: 'Edit Records' },
-                { page: 'accessories', icon: 'fa-tshirt', label: 'Accessories' }
+                { page: 'accessories', icon: 'fa-tshirt', label: 'Accessories' },
+                { page: 'custom-labels', icon: 'fa-tag', label: 'Custom Labels' }
             ];
             
             adminBtns.forEach(b => {
@@ -125,7 +129,7 @@ function updateMenu() {
 
 async function showPage(page, btnElement) {
     // Check if page requires authentication
-    const restrictedPages = ['dashboard', 'checkout', 'add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records', 'accessories'];
+    const restrictedPages = ['dashboard', 'checkout', 'add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records', 'accessories', 'custom-labels'];
     if (restrictedPages.includes(page)) {
         const user = getUser();
         if (!user || !user.logged_in) {
@@ -139,7 +143,7 @@ async function showPage(page, btnElement) {
                 return;
             }
         }
-        const adminOnly = ['add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records', 'accessories'];
+        const adminOnly = ['add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records', 'accessories', 'custom-labels'];
         if (adminOnly.includes(page) && user.role !== 'admin') {
             showPage('home');
             return;
@@ -190,7 +194,8 @@ async function showPage(page, btnElement) {
             'post-discogs': 'initPostDiscogs',
             'discogs-orders': 'initDiscogsOrders',
             'edit-records': 'initEditRecords',
-            'accessories': 'initAccessories'
+            'accessories': 'initAccessories',
+            'custom-labels': 'initCustomLabels'
         };
         
         const initFn = initMap[page];

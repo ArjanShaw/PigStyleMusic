@@ -1,0 +1,66 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">🏷️ Custom Labels</h2>
+    <p style="color: #666; margin: 0 0 10px 0;">Print custom labels, price tags, and barcodes</p>
+    
+    <!-- Info Box -->
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 12px 16px; border-radius: 8px; width: 100%; color: white; font-size: 13px;">
+        <i class="fas fa-info-circle"></i> Enter one label per line. Use <strong>|</strong> (pipe) for multi-line labels. Lines starting with <strong>GC-</strong> render as barcodes.
+    </div>
+    
+    <!-- Gift Card Barcode Generator -->
+    <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); padding: 12px 16px; border-radius: 8px; width: 100%; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+        <span style="color: white; font-weight: 600;"><i class="fas fa-barcode"></i> Generate 60 Gift Card Barcodes</span>
+        <button onclick="clGenerateGiftCards()" style="padding: 8px 20px; background: white; color: #28a745; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+            <i class="fas fa-bolt"></i> Generate
+        </button>
+    </div>
+    
+    <!-- Starting Position -->
+    <div style="background: linear-gradient(135deg, #fd7e14 0%, #ffc107 100%); padding: 10px 16px; border-radius: 8px; width: 100%; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+        <span style="color: white; font-weight: 600;"><i class="fas fa-flag-checkered"></i> Start At:</span>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="color: white; font-size: 13px;">Row:</label>
+            <input type="number" id="cl-start-row" min="1" max="15" value="1" style="width: 60px; padding: 4px 8px; border: none; border-radius: 4px; text-align: center;">
+            <label style="color: white; font-size: 13px;">Col:</label>
+            <input type="number" id="cl-start-col" min="1" max="4" value="1" style="width: 60px; padding: 4px 8px; border: none; border-radius: 4px; text-align: center;">
+            <button onclick="clUpdateStart()" style="padding: 4px 12px; background: white; color: #fd7e14; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
+                Update
+            </button>
+        </div>
+        <span id="cl-start-display" style="color: white; font-size: 13px;">Position: 1, 1</span>
+    </div>
+    
+    <!-- Label Text Area -->
+    <div style="width: 100%; flex: 0.6;">
+        <textarea id="cl-label-text" rows="8" placeholder="Enter one label per line...
+Examples:
+Summer Sale 50% Off
+New Arrivals|Vinyl Records
+GC-A7F3K9M2
+Buy One Get One Free|Limited Time" style="width: 100%; height: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; resize: vertical; font-family: monospace;"></textarea>
+    </div>
+    
+    <!-- Actions -->
+    <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap;">
+        <button onclick="clGeneratePDF()" style="padding: 10px 24px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;">
+            <i class="fas fa-print"></i> Generate PDF
+        </button>
+        <button onclick="clClearText()" style="padding: 10px 24px; background: #dc3545; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;">
+            <i class="fas fa-trash"></i> Clear
+        </button>
+        <button onclick="clLoadSample()" style="padding: 10px 24px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;">
+            <i class="fas fa-tasks"></i> Load Sample
+        </button>
+    </div>
+    
+    <!-- Preview -->
+    <div style="width: 100%; flex: 0.4; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 10px; background: #f8f9fa;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-weight: 600; color: #333;">Preview</span>
+            <span id="cl-preview-count" style="color: #666; font-size: 13px;">0 labels</span>
+        </div>
+        <div id="cl-preview" style="color: #666; font-size: 13px;">
+            <p style="text-align: center; padding: 20px; color: #999;">Enter labels above to see preview</p>
+        </div>
+    </div>
+</div>
