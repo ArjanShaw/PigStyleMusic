@@ -1,0 +1,111 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">📧 Email Subscriptions</h2>
+    <p style="color: #666; margin: 0 0 10px 0;">Manage users who want to be notified when specific records become available</p>
+    
+    <!-- Stats -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; width: 100%;">
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #007bff;" id="es-total">0</div>
+            <div style="font-size: 10px; color: #666;">Total</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #28a745;" id="es-active">0</div>
+            <div style="font-size: 10px; color: #666;">Active</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #dc3545;" id="es-inactive">0</div>
+            <div style="font-size: 10px; color: #666;">Inactive</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #ffc107;" id="es-unread">0</div>
+            <div style="font-size: 10px; color: #666;">Unread</div>
+        </div>
+    </div>
+    
+    <!-- Actions -->
+    <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap;">
+        <button onclick="esShowAdd()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-plus"></i> Add Subscription
+        </button>
+        <button onclick="esRefresh()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-sync"></i> Refresh
+        </button>
+        <button onclick="esMarkAllRead()" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-check-double"></i> Mark All Read
+        </button>
+        <button onclick="esDeactivateAll()" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-ban"></i> Deactivate All
+        </button>
+    </div>
+    
+    <!-- Search/Filter -->
+    <div style="display: flex; gap: 10px; width: 100%; flex-wrap: wrap;">
+        <input type="text" id="es-search" placeholder="Search by email, artist, title..." style="flex: 1; min-width: 150px; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+        <select id="es-status-filter" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px;">
+            <option value="all">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+        </select>
+        <select id="es-read-filter" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px;">
+            <option value="all">All Read Status</option>
+            <option value="unread">Unread</option>
+            <option value="read">Read</option>
+        </select>
+        <button onclick="esApplyFilters()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            <i class="fas fa-search"></i> Apply
+        </button>
+        <button onclick="esClearFilters()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            <i class="fas fa-times"></i> Clear
+        </button>
+    </div>
+    
+    <!-- Subscriptions Table -->
+    <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+        <div id="es-list" style="width: 100%;">
+            <div style="text-align: center; padding: 40px; color: #999;">Loading subscriptions...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Subscription Modal -->
+<div id="es-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10001; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 16px; max-width: 450px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+            <h2 id="es-modal-title" style="margin: 0; color: #333; font-size: 20px;">Add Subscription</h2>
+            <button onclick="esCloseModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
+        </div>
+        <input type="hidden" id="es-edit-id">
+        
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Email *</label>
+            <input type="email" id="es-email" placeholder="user@example.com" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Artist</label>
+            <input type="text" id="es-artist" placeholder="e.g., The Beatles" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Title</label>
+            <input type="text" id="es-title" placeholder="e.g., Abbey Road" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Catalog Number</label>
+            <input type="text" id="es-catalog" placeholder="e.g., 12345" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Status</label>
+            <select id="es-status" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+                <option value="1">Active</option>
+                <option value="0">Inactive</option>
+            </select>
+        </div>
+        
+        <div id="es-modal-status" style="margin-top: 10px; display: none; padding: 10px; border-radius: 8px; font-size: 13px;"></div>
+        <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
+            <button onclick="esCloseModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Cancel</button>
+            <button onclick="esSave()" id="es-save-btn" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                <i class="fas fa-save"></i> Save
+            </button>
+        </div>
+    </div>
+</div>
