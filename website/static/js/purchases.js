@@ -6,24 +6,79 @@
 
     const API_BASE = 'http://localhost:5000';
 
-    // Get headers with auth
-    function getHeaders() {
-        const headers = { 'Content-Type': 'application/json' };
-        const token = localStorage.getItem('auth_token');
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        return headers;
+    // Helper to show status messages
+    function showStatus(message, type = 'info') {
+        const statusDiv = document.getElementById('purchases-status');
+        if (!statusDiv) {
+            // Create status div if it doesn't exist
+            const container = document.querySelector('.purchases-container') || document.body;
+            const div = document.createElement('div');
+            div.id = 'purchases-status';
+            div.style.cssText = `
+                position: fixed;
+                top: 80px;
+                right: 20px;
+                padding: 12px 20px;
+                border-radius: 8px;
+                font-weight: 600;
+                z-index: 10000;
+                max-width: 400px;
+                display: none;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            `;
+            container.appendChild(div);
+        }
+        
+        const el = document.getElementById('purchases-status');
+        const colors = {
+            success: '#d4edda',
+            error: '#f8d7da',
+            warning: '#fff3cd',
+            info: '#cce5ff'
+        };
+        const textColors = {
+            success: '#155724',
+            error: '#721c24',
+            warning: '#856404',
+            info: '#004085'
+        };
+        el.style.display = 'block';
+        el.style.background = colors[type] || '#f8f9fa';
+        el.style.color = textColors[type] || '#333';
+        el.textContent = message;
+        setTimeout(() => { el.style.display = 'none'; }, 5000);
     }
 
     // Load purchases
     async function loadPurchases() {
         const list = document.getElementById('purchases-list');
+        if (!list) return;
+        
         list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading...</div>';
         
         try {
             const response = await fetch(`${API_BASE}/api/inventory-purchases`, {
                 credentials: 'include',
-                headers: getHeaders()
+                headers: { 'Content-Type': 'application/json' }
             });
+            
+            if (response.status === 401) {
+                list.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #dc3545;">
+                        <div style="font-size: 48px; margin-bottom: 10px;">🔒</div>
+                        <p style="font-size: 16px; font-weight: 600;">Please log in to view purchases</p>
+                        <button onclick="window.showPage('login')" style="margin-top: 10px; padding: 8px 20px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                            Go to Login
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
             const data = await response.json();
             
             if (data.status === 'success') {
@@ -42,6 +97,8 @@
     // Render purchases table
     function renderPurchases(purchasesList) {
         const list = document.getElementById('purchases-list');
+        if (!list) return;
+        
         if (!purchasesList || purchasesList.length === 0) {
             list.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">No purchases found. Click "New Purchase" to create one.</div>';
             return;
@@ -94,10 +151,15 @@
         const draft = purchasesList.filter(p => p.status === 'draft').length;
         const totalRecords = purchasesList.reduce((sum, p) => sum + (p.record_count || 0), 0);
         
-        document.getElementById('purchases-total-count').textContent = total;
-        document.getElementById('purchases-complete-count').textContent = complete;
-        document.getElementById('purchases-draft-count').textContent = draft;
-        document.getElementById('purchases-total-records').textContent = totalRecords;
+        const totalEl = document.getElementById('purchases-total-count');
+        const completeEl = document.getElementById('purchases-complete-count');
+        const draftEl = document.getElementById('purchases-draft-count');
+        const recordsEl = document.getElementById('purchases-total-records');
+        
+        if (totalEl) totalEl.textContent = total;
+        if (completeEl) completeEl.textContent = complete;
+        if (draftEl) draftEl.textContent = draft;
+        if (recordsEl) recordsEl.textContent = totalRecords;
     }
 
     // Select a purchase
@@ -130,7 +192,8 @@
     // Load records for a purchase
     async function loadPurchaseRecords(purchaseId) {
         const list = document.getElementById('purchases-list');
-        // Find the row and add a details section
+        if (!list) return;
+        
         const row = list.querySelector(`tr[data-id="${purchaseId}"]`);
         if (!row) return;
         
@@ -143,8 +206,13 @@
         try {
             const response = await fetch(`${API_BASE}/records?batch_id=${purchaseId}&limit=500`, {
                 credentials: 'include',
-                headers: getHeaders()
+                headers: { 'Content-Type': 'application/json' }
             });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
             const data = await response.json();
             
             if (data.status === 'success') {
@@ -153,12 +221,15 @@
             }
         } catch (err) {
             console.error('Error loading purchase records:', err);
+            showStatus('Error loading records: ' + err.message, 'error');
         }
     }
 
     // Render purchase records
     function renderPurchaseRecords(purchaseId, records) {
         const list = document.getElementById('purchases-list');
+        if (!list) return;
+        
         const row = list.querySelector(`tr[data-id="${purchaseId}"]`);
         if (!row) return;
         
@@ -199,7 +270,6 @@
         
         html += `</div></td></tr>`;
         
-        // Insert after the current row
         row.insertAdjacentHTML('afterend', html);
     }
 
@@ -214,34 +284,41 @@
             const response = await fetch(`${API_BASE}/api/purchases`, {
                 method: 'POST',
                 credentials: 'include',
-                headers: getHeaders(),
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ seller_name: sellerName, seller_contact: contact, description: description })
             });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
             const data = await response.json();
             if (data.status === 'success') {
-                alert('✅ Purchase created successfully!');
+                showStatus('✅ Purchase created successfully!', 'success');
                 loadPurchases();
                 if (data.id) {
                     selectedPurchaseId = data.id;
                     setTimeout(() => purchasesSelect(data.id), 300);
                 }
             } else {
-                alert('❌ Error: ' + (data.error || 'Failed to create purchase'));
+                showStatus('❌ Error: ' + (data.error || 'Failed to create purchase'), 'error');
             }
         } catch (err) {
-            alert('❌ Error: ' + err.message);
+            console.error('Error creating purchase:', err);
+            showStatus('❌ Error: ' + err.message, 'error');
         }
     };
 
     // Refresh
     window.purchasesRefresh = function() {
         loadPurchases();
+        showStatus('✅ Refreshed', 'success');
     };
 
     // Accept draft
     window.purchasesAcceptDraft = async function() {
         if (!selectedPurchaseId) {
-            alert('Please select a purchase first.');
+            showStatus('Please select a purchase first.', 'warning');
             return;
         }
         
@@ -249,21 +326,25 @@
         if (amount === null) return;
         const offerAmount = parseFloat(amount);
         if (isNaN(offerAmount) || offerAmount <= 0) {
-            alert('Please enter a valid amount.');
+            showStatus('Please enter a valid amount.', 'warning');
             return;
         }
         
-        // Get records for this purchase
         try {
             const response = await fetch(`${API_BASE}/records?batch_id=${selectedPurchaseId}&limit=500`, {
                 credentials: 'include',
-                headers: getHeaders()
+                headers: { 'Content-Type': 'application/json' }
             });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
             const data = await response.json();
             const records = data.records || [];
             
             if (records.length === 0) {
-                alert('No records linked to this purchase.');
+                showStatus('No records linked to this purchase.', 'warning');
                 return;
             }
             
@@ -272,33 +353,39 @@
             const result = await fetch(`${API_BASE}/api/purchases/${selectedPurchaseId}`, {
                 method: 'PUT',
                 credentials: 'include',
-                headers: getHeaders(),
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     offer_amount: offerAmount,
                     signature_method: signatureMethod ? 'square' : 'upload',
                     record_ids: records.map(r => r.id)
                 })
             });
+            
+            if (!result.ok) {
+                throw new Error(`HTTP ${result.status}`);
+            }
+            
             const resultData = await result.json();
             
             if (resultData.status === 'success') {
-                alert('✅ Draft accepted! Offer: $' + offerAmount.toFixed(2));
+                showStatus('✅ Draft accepted! Offer: $' + offerAmount.toFixed(2), 'success');
                 loadPurchases();
                 if (selectedPurchaseId) {
                     setTimeout(() => purchasesSelect(selectedPurchaseId), 300);
                 }
             } else {
-                alert('❌ Error: ' + (resultData.error || 'Failed to accept draft'));
+                showStatus('❌ Error: ' + (resultData.error || 'Failed to accept draft'), 'error');
             }
         } catch (err) {
-            alert('❌ Error: ' + err.message);
+            console.error('Error accepting draft:', err);
+            showStatus('❌ Error: ' + err.message, 'error');
         }
     };
 
     // Delete purchase
     window.purchasesDelete = async function() {
         if (!selectedPurchaseId) {
-            alert('Please select a purchase first.');
+            showStatus('Please select a purchase first.', 'warning');
             return;
         }
         
@@ -306,24 +393,43 @@
             return;
         }
         
+        const deleteBtn = document.getElementById('purchases-delete-btn');
+        if (deleteBtn) {
+            deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
+            deleteBtn.disabled = true;
+        }
+        
         try {
             const response = await fetch(`${API_BASE}/api/purchases/${selectedPurchaseId}`, {
                 method: 'DELETE',
                 credentials: 'include',
-                headers: getHeaders()
+                headers: { 'Content-Type': 'application/json' }
             });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
             const data = await response.json();
             if (data.status === 'success') {
-                alert('✅ Purchase deleted.');
+                showStatus('✅ Purchase deleted.', 'success');
                 selectedPurchaseId = null;
-                document.getElementById('purchases-delete-btn').style.display = 'none';
-                document.getElementById('purchases-accept-draft-btn').style.display = 'none';
+                const deleteBtn2 = document.getElementById('purchases-delete-btn');
+                const acceptBtn = document.getElementById('purchases-accept-draft-btn');
+                if (deleteBtn2) deleteBtn2.style.display = 'none';
+                if (acceptBtn) acceptBtn.style.display = 'none';
                 loadPurchases();
             } else {
-                alert('❌ Error: ' + (data.error || 'Failed to delete'));
+                showStatus('❌ Error: ' + (data.error || 'Failed to delete'), 'error');
             }
         } catch (err) {
-            alert('❌ Error: ' + err.message);
+            console.error('Error deleting purchase:', err);
+            showStatus('❌ Error: ' + err.message, 'error');
+        } finally {
+            if (deleteBtn) {
+                deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
+                deleteBtn.disabled = false;
+            }
         }
     };
 
