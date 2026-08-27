@@ -47,6 +47,9 @@ function updateMenu() {
     const existingPostDiscogs = nav.querySelector('[data-page="post-discogs"]');
     if (existingPostDiscogs) existingPostDiscogs.remove();
     
+    const existingDiscogsOrders = nav.querySelector('[data-page="discogs-orders"]');
+    if (existingDiscogsOrders) existingDiscogsOrders.remove();
+    
     if (user && user.logged_in) {
         const allowedRoles = ['admin', 'consignor'];
         
@@ -77,7 +80,8 @@ function updateMenu() {
                 { page: 'accounting', icon: 'fa-calculator', label: 'Accounting' },
                 { page: 'purchases', icon: 'fa-boxes', label: 'Purchases' },
                 { page: 'scan', icon: 'fa-qrcode', label: 'Scan' },
-                { page: 'post-discogs', icon: 'fa-share-alt', label: 'Post to Discogs' }
+                { page: 'post-discogs', icon: 'fa-share-alt', label: 'Post to Discogs' },
+                { page: 'discogs-orders', icon: 'fa-shopping-bag', label: 'Discogs Orders' }
             ];
             
             adminBtns.forEach(b => {
@@ -113,7 +117,7 @@ function updateMenu() {
 
 async function showPage(page, btnElement) {
     // Check if page requires authentication
-    const restrictedPages = ['dashboard', 'checkout', 'add-records', 'accounting', 'purchases', 'scan', 'post-discogs'];
+    const restrictedPages = ['dashboard', 'checkout', 'add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders'];
     if (restrictedPages.includes(page)) {
         const user = getUser();
         if (!user || !user.logged_in) {
@@ -127,7 +131,7 @@ async function showPage(page, btnElement) {
                 return;
             }
         }
-        const adminOnly = ['add-records', 'accounting', 'purchases', 'scan', 'post-discogs'];
+        const adminOnly = ['add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders'];
         if (adminOnly.includes(page) && user.role !== 'admin') {
             showPage('home');
             return;
@@ -175,7 +179,8 @@ async function showPage(page, btnElement) {
             'accounting': 'initAccounting',
             'purchases': 'initPurchases',
             'scan': 'initScan',
-            'post-discogs': 'initPostDiscogs'
+            'post-discogs': 'initPostDiscogs',
+            'discogs-orders': 'initDiscogsOrders'
         };
         
         const initFn = initMap[page];
