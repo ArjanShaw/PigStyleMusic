@@ -1,0 +1,79 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">📝 Sticky Notes</h2>
+    <p style="color: #666; margin: 0 0 10px 0;">Manage in-store notes and announcements</p>
+    
+    <!-- Stats -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; width: 100%;">
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #007bff;" id="sn-total">0</div>
+            <div style="font-size: 10px; color: #666;">Total</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #28a745;" id="sn-active">0</div>
+            <div style="font-size: 10px; color: #666;">Active</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #dc3545;" id="sn-inactive">0</div>
+            <div style="font-size: 10px; color: #666;">Inactive</div>
+        </div>
+    </div>
+    
+    <!-- Actions -->
+    <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap;">
+        <button onclick="snShowAdd()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-plus"></i> Add Note
+        </button>
+        <button onclick="snRefresh()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-sync"></i> Refresh
+        </button>
+    </div>
+    
+    <!-- Notes List -->
+    <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 10px;">
+        <div id="sn-list" style="width: 100%;">
+            <div style="text-align: center; padding: 40px; color: #999;">Loading notes...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Sticky Note Modal -->
+<div id="sn-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10001; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 16px; max-width: 450px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+            <h2 id="sn-modal-title" style="margin: 0; color: #333; font-size: 20px;">Add Sticky Note</h2>
+            <button onclick="snCloseModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
+        </div>
+        <input type="hidden" id="sn-edit-id">
+        
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Note Text *</label>
+            <textarea id="sn-text" rows="4" placeholder="Enter note (max 200 characters)" maxlength="200" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px; resize: vertical;"></textarea>
+            <div style="text-align: right; font-size: 12px; color: #666;"><span id="sn-char-count">0</span>/200</div>
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Position</label>
+            <input type="number" id="sn-position" placeholder="Leave blank for auto" min="0" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+            <div style="font-size: 12px; color: #666; margin-top: 4px;">Higher numbers appear lower on the page</div>
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="sn-active" checked style="width: 18px; height: 18px;">
+                <span style="font-weight: 600; color: #555; font-size: 13px;">Active</span>
+            </label>
+        </div>
+        
+        <!-- Preview -->
+        <div style="margin-top: 12px; padding: 12px; background: #ffeb3b; border-radius: 8px; font-family: 'Comic Sans MS', cursive; font-size: 15px; border: 1px solid #e6c300;">
+            <strong style="color: #333;">Preview:</strong>
+            <div id="sn-preview" style="margin-top: 5px; padding: 5px; background: rgba(255,255,255,0.5); border-radius: 4px; min-height: 30px; color: #333;">Your note will appear here</div>
+        </div>
+        
+        <div id="sn-modal-status" style="margin-top: 10px; display: none; padding: 10px; border-radius: 8px; font-size: 13px;"></div>
+        <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
+            <button onclick="snCloseModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Cancel</button>
+            <button onclick="snSave()" id="sn-save-btn" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                <i class="fas fa-save"></i> Save
+            </button>
+        </div>
+    </div>
+</div>

@@ -68,6 +68,9 @@ function updateMenu() {
     const existingFeedback = nav.querySelector('[data-page="feedback"]');
     if (existingFeedback) existingFeedback.remove();
     
+    const existingStickyNotes = nav.querySelector('[data-page="sticky-notes"]');
+    if (existingStickyNotes) existingStickyNotes.remove();
+    
     if (user && user.logged_in) {
         const allowedRoles = ['admin', 'consignor'];
         
@@ -105,7 +108,8 @@ function updateMenu() {
                 { page: 'custom-labels', icon: 'fa-tag', label: 'Custom Labels' },
                 { page: 'email-subscriptions', icon: 'fa-envelope', label: 'Email Subscriptions' },
                 { page: 'record-orders', icon: 'fa-shopping-cart', label: 'Record Orders' },
-                { page: 'feedback', icon: 'fa-comment', label: 'Feedback' }
+                { page: 'feedback', icon: 'fa-comment', label: 'Feedback' },
+                { page: 'sticky-notes', icon: 'fa-sticky-note', label: 'Sticky Notes' }
             ];
             
             adminBtns.forEach(b => {
@@ -141,7 +145,7 @@ function updateMenu() {
 
 async function showPage(page, btnElement) {
     // Check if page requires authentication
-    const restrictedPages = ['dashboard', 'checkout', 'add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records', 'accessories', 'custom-labels', 'email-subscriptions', 'record-orders', 'feedback'];
+    const restrictedPages = ['dashboard', 'checkout', 'add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records', 'accessories', 'custom-labels', 'email-subscriptions', 'record-orders', 'feedback', 'sticky-notes'];
     if (restrictedPages.includes(page)) {
         const user = getUser();
         if (!user || !user.logged_in) {
@@ -155,7 +159,7 @@ async function showPage(page, btnElement) {
                 return;
             }
         }
-        const adminOnly = ['add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records', 'accessories', 'custom-labels', 'email-subscriptions', 'record-orders', 'feedback'];
+        const adminOnly = ['add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records', 'accessories', 'custom-labels', 'email-subscriptions', 'record-orders', 'feedback', 'sticky-notes'];
         if (adminOnly.includes(page) && user.role !== 'admin') {
             showPage('home');
             return;
@@ -210,7 +214,8 @@ async function showPage(page, btnElement) {
             'custom-labels': 'initCustomLabels',
             'email-subscriptions': 'initEmailSubscriptions',
             'record-orders': 'initRecordOrders',
-            'feedback': 'initFeedback'
+            'feedback': 'initFeedback',
+            'sticky-notes': 'initStickyNotes'
         };
         
         const initFn = initMap[page];
