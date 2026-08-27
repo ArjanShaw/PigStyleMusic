@@ -1,0 +1,141 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">💰 Creditors</h2>
+    <p style="color: #666; margin: 0 0 10px 0;">Manage store credit, gift cards, and consignor payouts</p>
+    
+    <!-- Stats -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; width: 100%;">
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #dc3545;" id="cr-total-owed">$0.00</div>
+            <div style="font-size: 10px; color: #666;">Total Owed</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #007bff;" id="cr-active-debtors">0</div>
+            <div style="font-size: 10px; color: #666;">Active Creditors</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #28a745;" id="cr-gift-cards">0</div>
+            <div style="font-size: 10px; color: #666;">Gift Cards</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #ffc107;" id="cr-bernie-funds">$0.00</div>
+            <div style="font-size: 10px; color: #666;">Bernie Funds</div>
+        </div>
+    </div>
+    
+    <!-- Tabs -->
+    <div style="display: flex; gap: 5px; width: 100%; overflow-x: auto; border-bottom: 2px solid #eee; padding-bottom: 5px; flex-wrap: nowrap;">
+        <button class="cr-tab active" data-tab="store-credit" style="padding: 6px 14px; border: none; background: #007bff; color: white; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; white-space: nowrap; font-size: 12px;">
+            <i class="fas fa-hand-holding-usd"></i> Store Credit
+        </button>
+        <button class="cr-tab" data-tab="gift-cards" style="padding: 6px 14px; border: none; background: #e9ecef; color: #333; border-radius: 8px 8px 0 0; cursor: pointer; white-space: nowrap; font-size: 12px;">
+            <i class="fas fa-gift"></i> Gift Cards
+        </button>
+        <button class="cr-tab" data-tab="consignors" style="padding: 6px 14px; border: none; background: #e9ecef; color: #333; border-radius: 8px 8px 0 0; cursor: pointer; white-space: nowrap; font-size: 12px;">
+            <i class="fas fa-users"></i> Consignors
+        </button>
+    </div>
+    
+    <!-- Tab Content -->
+    <div id="cr-store-credit" class="cr-tab-content" style="width: 100%; flex: 1; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap; margin-bottom: 8px;">
+            <input type="text" id="cr-debtor-search" placeholder="Search by name..." style="flex: 1; min-width: 150px; padding: 8px; border: 2px solid #ddd; border-radius: 6px; font-size: 13px;">
+            <button onclick="crSearchDebtors()" style="padding: 6px 14px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                <i class="fas fa-search"></i>
+            </button>
+            <button onclick="crClearDebtorSearch()" style="padding: 6px 14px; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                <i class="fas fa-times"></i>
+            </button>
+            <button onclick="crShowIssueCredit()" style="padding: 6px 14px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                <i class="fas fa-plus"></i> Issue Credit
+            </button>
+        </div>
+        <div id="cr-debtors-list" style="flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+            <div style="text-align: center; padding: 20px; color: #999;">Loading creditors...</div>
+        </div>
+    </div>
+    
+    <div id="cr-gift-cards" class="cr-tab-content" style="width: 100%; flex: 1; overflow: hidden; display: none; flex-direction: column;">
+        <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap; margin-bottom: 8px;">
+            <button onclick="crShowCreateGiftCard()" style="padding: 6px 14px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                <i class="fas fa-plus"></i> Create Gift Card
+            </button>
+            <button onclick="crRefreshGiftCards()" style="padding: 6px 14px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                <i class="fas fa-sync"></i> Refresh
+            </button>
+        </div>
+        <div id="cr-gift-cards-list" style="flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+            <div style="text-align: center; padding: 20px; color: #999;">Loading gift cards...</div>
+        </div>
+    </div>
+    
+    <div id="cr-consignors" class="cr-tab-content" style="width: 100%; flex: 1; overflow: hidden; display: none; flex-direction: column;">
+        <div id="cr-consignors-list" style="flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+            <div style="text-align: center; padding: 20px; color: #999;">Loading consignors...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Issue Credit Modal -->
+<div id="cr-credit-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10001; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 16px; max-width: 450px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+            <h2 style="margin: 0; color: #333; font-size: 20px;">💳 Issue Store Credit</h2>
+            <button onclick="crCloseCreditModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Debtor Name *</label>
+            <input type="text" id="cr-debtor-name" placeholder="e.g., JANE DOE" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Cash Value ($) *</label>
+            <input type="number" id="cr-cash-value" placeholder="100.00" step="0.01" min="0.01" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+            <div style="font-size: 12px; color: #666; margin-top: 4px;">Store credit will be 50% higher: <span id="cr-credit-preview" style="font-weight: 600; color: #28a745;">$0.00</span></div>
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Reason</label>
+            <input type="text" id="cr-reason" placeholder="e.g., 5 records traded in" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+        </div>
+        <div id="cr-credit-status" style="margin-top: 10px; display: none; padding: 10px; border-radius: 8px; font-size: 13px;"></div>
+        <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
+            <button onclick="crCloseCreditModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Cancel</button>
+            <button onclick="crIssueCredit()" id="cr-credit-btn" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                <i class="fas fa-plus"></i> Issue Credit
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Gift Card Modal -->
+<div id="cr-gift-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10001; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 16px; max-width: 450px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+            <h2 style="margin: 0; color: #333; font-size: 20px;">🎁 Create Gift Card</h2>
+            <button onclick="crCloseGiftModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Card Value ($) *</label>
+            <input type="number" id="cr-gift-value" placeholder="25.00" step="0.01" min="0.01" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+            <div style="display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap;">
+                <button onclick="document.getElementById('cr-gift-value').value=10" style="padding: 2px 12px; background: #e9ecef; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px;">$10</button>
+                <button onclick="document.getElementById('cr-gift-value').value=25" style="padding: 2px 12px; background: #e9ecef; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px;">$25</button>
+                <button onclick="document.getElementById('cr-gift-value').value=50" style="padding: 2px 12px; background: #e9ecef; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px;">$50</button>
+                <button onclick="document.getElementById('cr-gift-value').value=100" style="padding: 2px 12px; background: #e9ecef; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px;">$100</button>
+            </div>
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Recipient Name *</label>
+            <input type="text" id="cr-gift-recipient" placeholder="Recipient name" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Notes</label>
+            <input type="text" id="cr-gift-notes" placeholder="Reason for gift card" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+        </div>
+        <div id="cr-gift-status" style="margin-top: 10px; display: none; padding: 10px; border-radius: 8px; font-size: 13px;"></div>
+        <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
+            <button onclick="crCloseGiftModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Cancel</button>
+            <button onclick="crCreateGiftCard()" id="cr-gift-btn" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                <i class="fas fa-gift"></i> Create
+            </button>
+        </div>
+    </div>
+</div>
