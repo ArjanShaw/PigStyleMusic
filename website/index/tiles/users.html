@@ -1,0 +1,155 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">👥 Users</h2>
+    <p style="color: #666; margin: 0 0 10px 0;">Manage user accounts and permissions</p>
+    
+    <!-- Stats -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; width: 100%;">
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #007bff;" id="us-total">0</div>
+            <div style="font-size: 10px; color: #666;">Total Users</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #28a745;" id="us-consignors">0</div>
+            <div style="font-size: 10px; color: #666;">Consignors</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #dc3545;" id="us-admins">0</div>
+            <div style="font-size: 10px; color: #666;">Admins</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #ffc107;" id="us-sellers">0</div>
+            <div style="font-size: 10px; color: #666;">Sellers</div>
+        </div>
+    </div>
+    
+    <!-- Actions -->
+    <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap;">
+        <button onclick="usShowAdd()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-plus"></i> Add User
+        </button>
+        <button onclick="usRefresh()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-sync"></i> Refresh
+        </button>
+    </div>
+    
+    <!-- Search -->
+    <div style="display: flex; gap: 10px; width: 100%;">
+        <input type="text" id="us-search" placeholder="Search by username, email, or name..." style="flex: 1; padding: 8px; border: 2px solid #ddd; border-radius: 6px; font-size: 13px;">
+        <button onclick="usSearch()" style="padding: 6px 14px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">
+            <i class="fas fa-search"></i>
+        </button>
+        <button onclick="usClear()" style="padding: 6px 14px; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer;">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    
+    <!-- Users Table -->
+    <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+        <div id="us-list" style="width: 100%;">
+            <div style="text-align: center; padding: 40px; color: #999;">Loading users...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit User Modal -->
+<div id="us-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10001; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 16px; max-width: 450px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+            <h2 id="us-modal-title" style="margin: 0; color: #333; font-size: 20px;">Add User</h2>
+            <button onclick="usCloseModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
+        </div>
+        <input type="hidden" id="us-edit-id">
+        
+        <div style="margin-bottom: 10px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Username *</label>
+            <input type="text" id="us-username" placeholder="Enter username" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+        </div>
+        <div style="margin-bottom: 10px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Email *</label>
+            <input type="email" id="us-email" placeholder="Enter email" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+        </div>
+        <div style="margin-bottom: 10px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Password *</label>
+            <input type="password" id="us-password" placeholder="Enter password" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;" onkeyup="usCheckPasswordStrength(this.value)">
+            <div id="us-password-strength" style="font-size: 12px; margin-top: 4px;"></div>
+        </div>
+        <div style="margin-bottom: 10px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Full Name</label>
+            <input type="text" id="us-fullname" placeholder="Enter full name" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+        </div>
+        <div style="margin-bottom: 10px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Initials</label>
+            <input type="text" id="us-initials" placeholder="e.g., ADB" maxlength="5" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+        </div>
+        <div style="margin-bottom: 10px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Role *</label>
+            <select id="us-role" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+                <option value="consignor">Consignor</option>
+                <option value="seller">Seller</option>
+                <option value="youtube_linker">YouTube Linker</option>
+                <option value="admin">Admin</option>
+            </select>
+        </div>
+        <div style="margin-bottom: 10px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Flag Color</label>
+            <input type="text" id="us-flag-color" placeholder="e.g., blue, #ff0000, white_yellow" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+            <div style="font-size: 12px; color: #666; margin-top: 4px;">Enter any color name or hex code</div>
+        </div>
+        
+        <div id="us-modal-status" style="margin-top: 10px; display: none; padding: 10px; border-radius: 8px; font-size: 13px;"></div>
+        <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
+            <button onclick="usCloseModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Cancel</button>
+            <button onclick="usSave()" id="us-save-btn" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                <i class="fas fa-save"></i> Save
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Reset Password Modal -->
+<div id="us-reset-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10001; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 16px; max-width: 400px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+            <h2 style="margin: 0; color: #333; font-size: 20px;">🔑 Reset Password</h2>
+            <button onclick="usCloseResetModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
+        </div>
+        <input type="hidden" id="us-reset-id">
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">New Password *</label>
+            <input type="password" id="us-reset-password" placeholder="Enter new password" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;" onkeyup="usCheckResetStrength(this.value)">
+            <div id="us-reset-strength" style="font-size: 12px; margin-top: 4px;"></div>
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Confirm Password *</label>
+            <input type="password" id="us-reset-confirm" placeholder="Confirm new password" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+        </div>
+        <div id="us-reset-status" style="margin-top: 10px; display: none; padding: 10px; border-radius: 8px; font-size: 13px;"></div>
+        <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
+            <button onclick="usCloseResetModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Cancel</button>
+            <button onclick="usConfirmReset()" id="us-reset-btn" style="padding: 10px 20px; background: #ffc107; color: #333; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                <i class="fas fa-key"></i> Reset Password
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Payment Modal -->
+<div id="us-payment-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10001; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 16px; max-width: 400px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+            <h2 style="margin: 0; color: #333; font-size: 20px;">💰 Pay Consignor</h2>
+            <button onclick="usClosePaymentModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
+        </div>
+        <div style="text-align: center; margin-bottom: 15px;">
+            <p style="color: #666;">User: <strong id="us-payment-name"></strong></p>
+            <p style="color: #666;">Amount Owed: <strong id="us-payment-amount" style="color: #28a745; font-size: 24px;"></strong></p>
+            <p style="color: #999; font-size: 13px;">Are you sure you want to mark this amount as paid?</p>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: center;">
+            <button onclick="usClosePaymentModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Cancel</button>
+            <button onclick="usProcessPayment()" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                <i class="fas fa-check"></i> Confirm Payment
+            </button>
+        </div>
+    </div>
+</div>
