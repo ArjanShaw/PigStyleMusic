@@ -50,6 +50,9 @@ function updateMenu() {
     const existingDiscogsOrders = nav.querySelector('[data-page="discogs-orders"]');
     if (existingDiscogsOrders) existingDiscogsOrders.remove();
     
+    const existingEditRecords = nav.querySelector('[data-page="edit-records"]');
+    if (existingEditRecords) existingEditRecords.remove();
+    
     if (user && user.logged_in) {
         const allowedRoles = ['admin', 'consignor'];
         
@@ -81,7 +84,8 @@ function updateMenu() {
                 { page: 'purchases', icon: 'fa-boxes', label: 'Purchases' },
                 { page: 'scan', icon: 'fa-qrcode', label: 'Scan' },
                 { page: 'post-discogs', icon: 'fa-share-alt', label: 'Post to Discogs' },
-                { page: 'discogs-orders', icon: 'fa-shopping-bag', label: 'Discogs Orders' }
+                { page: 'discogs-orders', icon: 'fa-shopping-bag', label: 'Discogs Orders' },
+                { page: 'edit-records', icon: 'fa-edit', label: 'Edit Records' }
             ];
             
             adminBtns.forEach(b => {
@@ -117,7 +121,7 @@ function updateMenu() {
 
 async function showPage(page, btnElement) {
     // Check if page requires authentication
-    const restrictedPages = ['dashboard', 'checkout', 'add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders'];
+    const restrictedPages = ['dashboard', 'checkout', 'add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records'];
     if (restrictedPages.includes(page)) {
         const user = getUser();
         if (!user || !user.logged_in) {
@@ -131,7 +135,7 @@ async function showPage(page, btnElement) {
                 return;
             }
         }
-        const adminOnly = ['add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders'];
+        const adminOnly = ['add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records'];
         if (adminOnly.includes(page) && user.role !== 'admin') {
             showPage('home');
             return;
@@ -180,7 +184,8 @@ async function showPage(page, btnElement) {
             'purchases': 'initPurchases',
             'scan': 'initScan',
             'post-discogs': 'initPostDiscogs',
-            'discogs-orders': 'initDiscogsOrders'
+            'discogs-orders': 'initDiscogsOrders',
+            'edit-records': 'initEditRecords'
         };
         
         const initFn = initMap[page];

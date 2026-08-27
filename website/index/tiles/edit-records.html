@@ -1,0 +1,89 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">✏️ Edit Records</h2>
+    <p style="color: #666; margin: 0 0 10px 0;">Search and edit existing records</p>
+    
+    <!-- Search -->
+    <div style="display: flex; gap: 10px; width: 100%;">
+        <input type="text" id="er-search" placeholder="Search by ID, artist, title, or barcode..." style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+        <button onclick="erSearch()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            <i class="fas fa-search"></i>
+        </button>
+        <button onclick="erClear()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            <i class="fas fa-times"></i>
+        </button>
+        <button onclick="erRefresh()" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            <i class="fas fa-sync"></i>
+        </button>
+    </div>
+    
+    <!-- Records Table -->
+    <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+        <div id="er-records-list" style="width: 100%;">
+            <div style="text-align: center; padding: 40px; color: #999;">Loading records...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Record Modal -->
+<div id="er-edit-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10001; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 16px; max-width: 600px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+            <h2 id="er-modal-title" style="margin: 0; color: #333; font-size: 20px;">Edit Record</h2>
+            <button onclick="erCloseModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
+        </div>
+        <input type="hidden" id="er-edit-id">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div>
+                <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Artist *</label>
+                <input type="text" id="er-edit-artist" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+            </div>
+            <div>
+                <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Title *</label>
+                <input type="text" id="er-edit-title" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+            </div>
+            <div>
+                <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Price</label>
+                <input type="number" id="er-edit-price" step="0.01" min="0" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+            </div>
+            <div>
+                <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Status</label>
+                <select id="er-edit-status" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+                    <option value="1">New</option>
+                    <option value="2">Active</option>
+                    <option value="3">Sold</option>
+                </select>
+            </div>
+            <div>
+                <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Sleeve Condition</label>
+                <select id="er-edit-sleeve" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+                    <option value="">Select...</option>
+                </select>
+            </div>
+            <div>
+                <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Disc Condition</label>
+                <select id="er-edit-disc" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+                    <option value="">Select...</option>
+                </select>
+            </div>
+            <div style="grid-column: 1 / -1;">
+                <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Catalog Number</label>
+                <input type="text" id="er-edit-catalog" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+            </div>
+            <div style="grid-column: 1 / -1;">
+                <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Location</label>
+                <input type="text" id="er-edit-location" placeholder="e.g., Bin 24 | Left Top" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+            </div>
+            <div style="grid-column: 1 / -1;">
+                <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Notes</label>
+                <textarea id="er-edit-notes" rows="3" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;"></textarea>
+            </div>
+        </div>
+        <div id="er-edit-status-msg" style="margin-top: 10px; display: none; padding: 10px; border-radius: 8px; font-size: 13px;"></div>
+        <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
+            <button onclick="erCloseModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Cancel</button>
+            <button onclick="erSaveRecord()" id="er-save-btn" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                <i class="fas fa-save"></i> Save Changes
+            </button>
+        </div>
+    </div>
+</div>
