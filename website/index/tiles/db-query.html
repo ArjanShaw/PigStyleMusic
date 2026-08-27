@@ -1,0 +1,111 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">🗄️ Database Query</h2>
+    <p style="color: #666; margin: 0 0 10px 0;">Execute SQL queries and view database schema</p>
+    
+    <div class="db-query-container" style="width: 100%; flex: 1; overflow: hidden; display: flex; gap: 15px; align-items: flex-start; flex-wrap: wrap;">
+        <!-- Left Panel: Schema -->
+        <div style="flex: 0 0 280px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 12px; max-height: 100%; overflow-y: auto; min-height: 300px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-weight: bold; color: #333;">
+                <span><i class="fas fa-database"></i> Schema</span>
+                <button onclick="refreshSchema()" style="padding: 3px 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                    <i class="fas fa-sync"></i>
+                </button>
+            </div>
+            <div id="schema-tree" style="font-size: 13px; overflow-y: auto; max-height: 400px;">
+                <div style="text-align:center; padding:20px; color:#666;">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Loading schema...</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Right Panel: Query Editor -->
+        <div style="flex: 1; min-width: 300px; display: flex; flex-direction: column; gap: 12px; height: 100%;">
+            <!-- Query Editor -->
+            <div style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                    <span style="font-weight: bold; color: #333;"><i class="fas fa-code"></i> SQL Editor</span>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                        <button onclick="executeQuery()" style="padding: 5px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                            <i class="fas fa-play"></i> Run (Ctrl+Enter)
+                        </button>
+                        <button onclick="formatQuery()" style="padding: 5px 12px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                            <i class="fas fa-magic"></i> Format
+                        </button>
+                        <button onclick="showQueryBuilder()" style="padding: 5px 12px; background: #ffc107; color: #333; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                            <i class="fas fa-wrench"></i> Builder
+                        </button>
+                        <button onclick="document.getElementById('sql-query').value = ''; document.getElementById('query-results').innerHTML = ''; document.getElementById('results-stats').textContent = '';" style="padding: 5px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                            <i class="fas fa-times"></i> Clear
+                        </button>
+                    </div>
+                </div>
+                <textarea id="sql-query" class="db-query-textarea" onkeydown="handleQueryKeydown(event)" style="width: 100%; height: 120px; font-family: 'Courier New', monospace; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333; font-size: 13px; resize: vertical; box-sizing: border-box;">SELECT * FROM copies LIMIT 10;</textarea>
+                <div style="display: flex; justify-content: space-between; font-size: 12px; color: #666; margin-top: 5px;">
+                    <span>Ctrl+Enter to execute</span>
+                    <span id="query-history-count">0</span>
+                </div>
+            </div>
+            
+            <!-- Query Builder -->
+            <div id="query-builder" style="display: none; background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span style="font-weight: bold; color: #333;"><i class="fas fa-wrench"></i> Query Builder</span>
+                    <button onclick="hideQueryBuilder()" style="padding: 3px 10px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+                <div class="builder-fields" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div style="display: flex; flex-direction: column;">
+                        <label style="font-weight: 500; font-size: 13px; margin-bottom: 4px;">Operation</label>
+                        <select id="builder-operation" onchange="updateBuilderFields()" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333;">
+                            <option value="select">SELECT</option>
+                            <option value="insert">INSERT</option>
+                            <option value="update">UPDATE</option>
+                            <option value="delete">DELETE</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; flex-direction: column;">
+                        <label style="font-weight: 500; font-size: 13px; margin-bottom: 4px;">Table</label>
+                        <select id="builder-table" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333;">
+                            <option value="">Select a table...</option>
+                        </select>
+                    </div>
+                    <div id="builder-columns-field" style="display: flex; flex-direction: column;">
+                        <label style="font-weight: 500; font-size: 13px; margin-bottom: 4px;">Columns</label>
+                        <input type="text" id="builder-columns" placeholder="e.g., id, artist, title" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333;">
+                    </div>
+                    <div id="builder-values-field" style="display: none; flex-direction: column;">
+                        <label style="font-weight: 500; font-size: 13px; margin-bottom: 4px;">Values</label>
+                        <input type="text" id="builder-values" placeholder="e.g., 'value1', 'value2'" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333;">
+                    </div>
+                    <div id="builder-set-field" style="display: none; flex-direction: column;">
+                        <label style="font-weight: 500; font-size: 13px; margin-bottom: 4px;">SET clause</label>
+                        <input type="text" id="builder-set" placeholder="e.g., artist = 'New Artist'" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333;">
+                    </div>
+                    <div id="builder-where-field" style="display: none; flex-direction: column;">
+                        <label style="font-weight: 500; font-size: 13px; margin-bottom: 4px;">WHERE clause</label>
+                        <input type="text" id="builder-where" placeholder="e.g., id = 1" style="padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #333;">
+                    </div>
+                </div>
+                <div style="margin-top: 10px; display: flex; gap: 10px;">
+                    <button onclick="buildQuery()" style="padding: 5px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
+                        <i class="fas fa-sync"></i> Build Query
+                    </button>
+                    <div id="builder-preview" style="flex: 1; padding: 8px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 13px; white-space: pre-wrap; word-break: break-all; min-height: 30px; color: #333;">Query preview will appear here</div>
+                </div>
+            </div>
+            
+            <!-- Results -->
+            <div style="background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 12px; flex: 1; display: flex; flex-direction: column; min-height: 150px; max-height: 350px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-shrink: 0;">
+                    <span style="font-weight: bold; color: #333;"><i class="fas fa-table"></i> Results</span>
+                    <span id="results-stats" style="font-size: 12px; color: #666;"></span>
+                </div>
+                <div id="query-results" style="overflow: auto; flex: 1; background: white; border: 1px solid #ddd; border-radius: 4px; padding: 8px; min-height: 80px;">
+                    <div class="db-message" style="color: #666; text-align: center; padding: 20px;">Run a query to see results</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
