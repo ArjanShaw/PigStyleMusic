@@ -80,6 +80,24 @@ function updateMenu() {
     const existingUsers = nav.querySelector('[data-page="users"]');
     if (existingUsers) existingUsers.remove();
     
+    const existingPrintSettings = nav.querySelector('[data-page="print-settings"]');
+    if (existingPrintSettings) existingPrintSettings.remove();
+    
+    const existingStoreSettings = nav.querySelector('[data-page="store-settings"]');
+    if (existingStoreSettings) existingStoreSettings.remove();
+    
+    const existingGiftCards = nav.querySelector('[data-page="gift-cards"]');
+    if (existingGiftCards) existingGiftCards.remove();
+    
+    const existingConfigKeys = nav.querySelector('[data-page="config-keys"]');
+    if (existingConfigKeys) existingConfigKeys.remove();
+    
+    const existingCacheManagement = nav.querySelector('[data-page="cache-management"]');
+    if (existingCacheManagement) existingCacheManagement.remove();
+    
+    const existingSystemInfo = nav.querySelector('[data-page="system-info"]');
+    if (existingSystemInfo) existingSystemInfo.remove();
+    
     if (user && user.logged_in) {
         const allowedRoles = ['admin', 'consignor'];
         
@@ -121,7 +139,13 @@ function updateMenu() {
                 { page: 'sticky-notes', icon: 'fa-sticky-note', label: 'Sticky Notes' },
                 { page: 'stats', icon: 'fa-chart-line', label: 'Stats' },
                 { page: 'creditors', icon: 'fa-hand-holding-usd', label: 'Creditors' },
-                { page: 'users', icon: 'fa-users', label: 'Users' }
+                { page: 'users', icon: 'fa-users', label: 'Users' },
+                { page: 'print-settings', icon: 'fa-print', label: 'Print Settings' },
+                { page: 'store-settings', icon: 'fa-store', label: 'Store Settings' },
+                { page: 'gift-cards', icon: 'fa-gift', label: 'Gift Cards' },
+                { page: 'config-keys', icon: 'fa-key', label: 'Config Keys' },
+                { page: 'cache-management', icon: 'fa-trash', label: 'Cache Management' },
+                { page: 'system-info', icon: 'fa-info-circle', label: 'System Info' }
             ];
             
             adminBtns.forEach(b => {
@@ -157,7 +181,7 @@ function updateMenu() {
 
 async function showPage(page, btnElement) {
     // Check if page requires authentication
-    const restrictedPages = ['dashboard', 'checkout', 'add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records', 'accessories', 'custom-labels', 'email-subscriptions', 'record-orders', 'feedback', 'sticky-notes', 'stats', 'creditors', 'users'];
+    const restrictedPages = ['dashboard', 'checkout', 'add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records', 'accessories', 'custom-labels', 'email-subscriptions', 'record-orders', 'feedback', 'sticky-notes', 'stats', 'creditors', 'users', 'print-settings', 'store-settings', 'gift-cards', 'config-keys', 'cache-management', 'system-info'];
     if (restrictedPages.includes(page)) {
         const user = getUser();
         if (!user || !user.logged_in) {
@@ -171,7 +195,7 @@ async function showPage(page, btnElement) {
                 return;
             }
         }
-        const adminOnly = ['add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records', 'accessories', 'custom-labels', 'email-subscriptions', 'record-orders', 'feedback', 'sticky-notes', 'stats', 'creditors', 'users'];
+        const adminOnly = ['add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records', 'accessories', 'custom-labels', 'email-subscriptions', 'record-orders', 'feedback', 'sticky-notes', 'stats', 'creditors', 'users', 'print-settings', 'store-settings', 'gift-cards', 'config-keys', 'cache-management', 'system-info'];
         if (adminOnly.includes(page) && user.role !== 'admin') {
             showPage('home');
             return;
@@ -230,7 +254,13 @@ async function showPage(page, btnElement) {
             'sticky-notes': 'initStickyNotes',
             'stats': 'initStats',
             'creditors': 'initCreditors',
-            'users': 'initUsers'
+            'users': 'initUsers',
+            'print-settings': 'initPrintSettings',
+            'store-settings': 'initStoreSettings',
+            'gift-cards': 'initGiftCards',
+            'config-keys': 'initConfigKeys',
+            'cache-management': 'initCacheManagement',
+            'system-info': 'initSystemInfo'
         };
         
         const initFn = initMap[page];

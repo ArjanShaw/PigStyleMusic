@@ -1,0 +1,34 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">🏪 Store Settings</h2>
+    <p style="color: #666; margin: 0 0 10px 0;">Configure store information and general settings</p>
+    
+    <!-- Status -->
+    <div id="ss-status" style="width: 100%; display: none; padding: 8px 12px; border-radius: 8px; font-size: 13px;"></div>
+    
+    <!-- Settings Grid -->
+    <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 10px;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <thead>
+                <tr style="background: #f8f9fa; border-bottom: 2px solid #ddd;">
+                    <th style="padding: 8px 10px; text-align: left; color: #333; width: 200px;">Setting</th>
+                    <th style="padding: 8px 10px; text-align: left; color: #333;">Value</th>
+                    <th style="padding: 8px 10px; text-align: left; color: #333;">Description</th>
+                    <th style="padding: 8px 10px; text-align: center; color: #333; width: 100px;">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="ss-body">
+                <tr><td colspan="4" style="text-align: center; padding: 20px; color: #888;">Loading store settings...</td></tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Actions -->
+    <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap;">
+        <button onclick="ssRefresh()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-sync"></i> Refresh
+        </button>
+        <button onclick="ssResetDefaults()" style="padding: 8px 16px; background: #ffc107; color: #333; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-undo"></i> Reset to Defaults
+        </button>
+    </div>
+</div>

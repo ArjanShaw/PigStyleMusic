@@ -1,0 +1,46 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">🗑️ Cache Management</h2>
+    <p style="color: #666; margin: 0 0 10px 0;">Manage configuration cache</p>
+    
+    <!-- Status -->
+    <div id="cm-status" style="width: 100%; display: none; padding: 8px 12px; border-radius: 8px; font-size: 13px;"></div>
+    
+    <!-- Cache Info -->
+    <div style="width: 100%; background: #f8f9fa; border-radius: 8px; padding: 15px; border: 1px solid #eee;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div>
+                <div style="font-weight: 600; color: #555; font-size: 13px;">Cache Status</div>
+                <div id="cm-status-text" style="font-size: 16px; color: #28a745; font-weight: 600;">✅ Active</div>
+            </div>
+            <div>
+                <div style="font-weight: 600; color: #555; font-size: 13px;">Config Keys Cached</div>
+                <div id="cm-count" style="font-size: 16px; color: #007bff; font-weight: 600;">0</div>
+            </div>
+        </div>
+        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee;">
+            <div style="font-weight: 600; color: #555; font-size: 13px;">Last Updated</div>
+            <div id="cm-last-updated" style="font-size: 14px; color: #666;">Never</div>
+        </div>
+    </div>
+    
+    <!-- Actions -->
+    <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap; margin-top: 5px;">
+        <button onclick="cmClearCache()" style="padding: 10px 24px; background: #dc3545; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;">
+            <i class="fas fa-trash"></i> Clear Cache
+        </button>
+        <button onclick="cmRefreshCache()" style="padding: 10px 24px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;">
+            <i class="fas fa-sync"></i> Refresh Cache
+        </button>
+        <button onclick="cmReloadPage()" style="padding: 10px 24px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;">
+            <i class="fas fa-redo"></i> Reload Page
+        </button>
+    </div>
+    
+    <!-- Cache Details -->
+    <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 10px; margin-top: 5px;">
+        <div style="font-weight: 600; color: #333; font-size: 13px; margin-bottom: 8px;">Cached Config Keys</div>
+        <div id="cm-keys-list" style="color: #666; font-size: 13px; font-family: monospace;">
+            <div style="text-align: center; padding: 20px; color: #999;">No cache data loaded</div>
+        </div>
+    </div>
+</div>

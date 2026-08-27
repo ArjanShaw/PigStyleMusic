@@ -1,0 +1,31 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">🔑 Config Keys</h2>
+    <p style="color: #666; margin: 0 0 10px 0;">Manage all configuration keys</p>
+    
+    <!-- Status -->
+    <div id="ck-status" style="width: 100%; display: none; padding: 8px 12px; border-radius: 8px; font-size: 13px;"></div>
+    
+    <!-- Add New -->
+    <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap; background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
+        <input type="text" id="ck-new-key" placeholder="New config key..." style="flex: 1; min-width: 150px; padding: 8px; border: 2px solid #ddd; border-radius: 6px; font-size: 13px;">
+        <input type="text" id="ck-new-value" placeholder="Value..." style="flex: 1; min-width: 100px; padding: 8px; border: 2px solid #ddd; border-radius: 6px; font-size: 13px;">
+        <input type="text" id="ck-new-desc" placeholder="Description..." style="flex: 1; min-width: 150px; padding: 8px; border: 2px solid #ddd; border-radius: 6px; font-size: 13px;">
+        <button onclick="ckAdd()" style="padding: 8px 20px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+            <i class="fas fa-plus"></i> Add
+        </button>
+    </div>
+    
+    <!-- Config Keys Table -->
+    <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+        <div id="ck-list" style="width: 100%;">
+            <div style="text-align: center; padding: 40px; color: #999;">Loading config keys...</div>
+        </div>
+    </div>
+    
+    <!-- Actions -->
+    <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap;">
+        <button onclick="ckRefresh()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-sync"></i> Refresh
+        </button>
+    </div>
+</div>
