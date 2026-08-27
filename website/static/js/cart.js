@@ -1,25 +1,121 @@
-// Cart page - displays shopping cart
+// Cart - Global cart singleton
 (function() {
-    // Get cart from localStorage
+    // ===== Cart Storage =====
+    const STORAGE_KEY = 'pigstyle_cart';
+
     function getCart() {
         try {
-            const cart = localStorage.getItem('pigstyle_cart');
-            return cart ? JSON.parse(cart) : [];
+            const stored = localStorage.getItem(STORAGE_KEY);
+            return stored ? JSON.parse(stored) : [];
         } catch {
             return [];
         }
     }
 
-    // Save cart to localStorage
     function saveCart(cart) {
-        localStorage.setItem('pigstyle_cart', JSON.stringify(cart));
-        updateCartBadge();
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
+        updateBadge();
     }
 
-    // Update the cart badge in the navigation
-    function updateCartBadge() {
-        const cart = getCart();
-        const count = cart.reduce((sum, item) => sum + (item.quantity || 1), 0);
+    // ===== Global Cart Object =====
+    window.cart = {
+        items: getCart(),
+
+        getItems() {
+            return this.items;
+        },
+
+        addItem(item) {
+            if (!item.title || item.price === undefined) {
+                console.warn('Invalid cart item:', item);
+                return false;
+            }
+            
+            const existing = this.items.find(i =>
+                i.type === item.type &&
+                i.id === item.id &&
+                JSON.stringify(i.options) === JSON.stringify(item.options || {})
+            );
+            
+            if (existing) {
+                existing.quantity = (existing.quantity || 1) + (item.quantity || 1);
+            } else {
+                item.id = item.id || Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+                item.quantity = item.quantity || 1;
+                this.items.push(item);
+            }
+            
+            saveCart(this.items);
+            return true;
+        },
+
+        removeItem(id) {
+            this.items = this.items.filter(item => item.id !== id);
+            saveCart(this.items);
+        },
+
+        updateQuantity(id, quantity) {
+            const item = this.items.find(i => i.id === id);
+            if (!item) return false;
+            
+            if (quantity <= 0) {
+                this.removeItem(id);
+            } else {
+                item.quantity = quantity;
+                saveCart(this.items);
+            }
+            return true;
+        },
+
+        clear() {
+            this.items = [];
+            saveCart(this.items);
+        },
+
+        getTotal() {
+            return this.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        },
+
+        getItemCount() {
+            return this.items.reduce((sum, item) => sum + item.quantity, 0);
+        },
+
+        isEmpty() {
+            return this.items.length === 0;
+        },
+
+        getCheckoutPayload() {
+            return this.items.map(item => {
+                if (item.type === 'record') {
+                    return {
+                        copy_id: item.id,
+                        artist: item.artist || '',
+                        title: item.title,
+                        condition: item.condition || 'Unknown',
+                        price: item.price,
+                        quantity: item.quantity
+                    };
+                } else if (item.type === 'accessory') {
+                    return {
+                        accessory_id: item.id,
+                        title: item.title,
+                        price: item.price,
+                        quantity: item.quantity
+                    };
+                } else {
+                    return {
+                        title: item.title,
+                        price: item.price,
+                        quantity: item.quantity
+                    };
+                }
+            });
+        }
+    };
+
+    // ===== Badge Update =====
+    function updateBadge() {
+        const count = window.cart.getItemCount();
         const badge = document.getElementById('cartBadge');
         if (badge) {
             badge.textContent = count;
@@ -27,14 +123,14 @@
         }
     }
 
+    // ===== Render Cart UI =====
     window.renderCart = function() {
         const container = document.getElementById('cartResponse');
         if (!container) return;
         
-        const cart = getCart();
-        console.log('Cart items:', cart);
+        const items = window.cart.getItems();
         
-        if (!cart || cart.length === 0) {
+        if (items.length === 0) {
             container.innerHTML = `
                 <div style="text-align: center; padding: 40px; color: #888;">
                     <div style="margin-bottom: 10px; font-size: 48px;">🛒</div>
@@ -42,13 +138,14 @@
                     <p style="font-size: 13px; margin-top: 5px;">Start shopping to add items!</p>
                 </div>
             `;
+            updateBadge();
             return;
         }
         
         let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
         let total = 0;
         
-        cart.forEach(function(item, index) {
+        items.forEach((item, index) => {
             const itemTotal = (item.price || 0) * (item.quantity || 1);
             total += itemTotal;
             
@@ -60,12 +157,12 @@
                         <div style="color: #ff6b6b; font-weight: bold; font-size: 14px;">$${(item.price || 0).toFixed(2)}</div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <button onclick="updateCartItem(${index}, -1)" style="padding: 2px 8px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer;">-</button>
+                        <button onclick="window.updateCartItem(${index}, -1)" style="padding: 2px 8px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer;">-</button>
                         <span style="font-size: 14px; min-width: 20px; text-align: center;">${item.quantity || 1}</span>
-                        <button onclick="updateCartItem(${index}, 1)" style="padding: 2px 8px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer;">+</button>
+                        <button onclick="window.updateCartItem(${index}, 1)" style="padding: 2px 8px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer;">+</button>
                     </div>
                     <div style="font-weight: bold; color: #333; font-size: 14px; min-width: 60px; text-align: right;">$${itemTotal.toFixed(2)}</div>
-                    <button onclick="removeCartItem(${index})" style="background: none; border: none; color: #dc3545; font-size: 20px; cursor: pointer;">×</button>
+                    <button onclick="window.removeCartItem(${index})" style="background: none; border: none; color: #dc3545; font-size: 20px; cursor: pointer;">×</button>
                 </div>
             `;
         });
@@ -76,10 +173,10 @@
                 <span style="font-size: 24px; font-weight: bold; color: #ff6b6b;">$${total.toFixed(2)}</span>
             </div>
             <div style="display: flex; gap: 10px; margin-top: 10px;">
-                <button onclick="clearCart()" style="flex: 1; padding: 10px; background: #dc3545; color: white; border: none; border-radius: 30px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                <button onclick="window.clearCart()" style="flex: 1; padding: 10px; background: #dc3545; color: white; border: none; border-radius: 30px; font-size: 14px; font-weight: 600; cursor: pointer;">
                     <i class="fas fa-trash"></i> Clear Cart
                 </button>
-                <button onclick="checkout()" style="flex: 2; padding: 10px; background: #ff6b6b; color: white; border: none; border-radius: 30px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                <button onclick="window.checkoutCart()" style="flex: 2; padding: 10px; background: #ff6b6b; color: white; border: none; border-radius: 30px; font-size: 14px; font-weight: 600; cursor: pointer;">
                     <i class="fas fa-check"></i> Proceed to Checkout
                 </button>
             </div>
@@ -87,47 +184,60 @@
         html += '</div>';
         
         container.innerHTML = html;
-        updateCartBadge();
+        updateBadge();
     };
 
+    // ===== Cart Actions =====
     window.updateCartItem = function(index, delta) {
-        const cart = getCart();
-        if (cart[index]) {
-            cart[index].quantity = (cart[index].quantity || 1) + delta;
-            if (cart[index].quantity <= 0) {
-                cart.splice(index, 1);
+        const items = window.cart.getItems();
+        if (items[index]) {
+            const newQty = (items[index].quantity || 1) + delta;
+            if (newQty <= 0) {
+                window.cart.removeItem(items[index].id);
+            } else {
+                window.cart.updateQuantity(items[index].id, newQty);
             }
-            saveCart(cart);
-            renderCart();
+            window.renderCart();
         }
     };
 
     window.removeCartItem = function(index) {
-        const cart = getCart();
-        cart.splice(index, 1);
-        saveCart(cart);
-        renderCart();
+        const items = window.cart.getItems();
+        if (items[index]) {
+            window.cart.removeItem(items[index].id);
+            window.renderCart();
+        }
     };
 
     window.clearCart = function() {
         if (confirm('Are you sure you want to clear your cart?')) {
-            saveCart([]);
-            renderCart();
+            window.cart.clear();
+            window.renderCart();
         }
     };
 
-    window.checkout = function() {
-        const cart = getCart();
-        if (!cart || cart.length === 0) {
+    window.checkoutCart = function() {
+        if (window.cart.isEmpty()) {
             alert('Your cart is empty!');
             return;
         }
-        alert('🛒 Checkout functionality coming soon!\n\nItems: ' + cart.length + '\nTotal: $' + cart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0).toFixed(2));
+        const total = window.cart.getTotal();
+        const count = window.cart.getItemCount();
+        alert('🛒 Checkout coming soon!\n\nItems: ' + count + '\nTotal: $' + total.toFixed(2));
     };
 
+    // ===== Update Badge (exposed for other pages) =====
+    window.updateCartBadge = updateBadge;
+
+    // ===== Init =====
     window.initCart = function() {
-        console.log('Cart initialized');
-        updateCartBadge();
-        renderCart();
+        console.log('🛒 Cart initialized with', window.cart.getItemCount(), 'items');
+        updateBadge();
+        window.renderCart();
     };
+
+    // Auto-init when script loads
+    updateBadge();
+    console.log('🛒 Cart global ready. Items:', window.cart.getItemCount());
+
 })();
