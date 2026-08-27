@@ -28,6 +28,26 @@
                         </div>
 
                         <div id="newArrivalsRecordsContainer" style="flex:1; min-height:0; overflow-y:auto; width:100%; padding: 5px 0;"></div>
+                        
+                        <!-- Pagination -->
+                        <div id="newArrivalsPagination" style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid #eee; flex-shrink:0; margin-top:8px;">
+                            <div style="font-size:13px; color:#666;">
+                                Showing <span id="newArrivalsStart">0</span>-<span id="newArrivalsEnd">0</span> of <span id="newArrivalsTotal">0</span>
+                            </div>
+                            <div style="display:flex; gap:8px;">
+                                <button id="newArrivalsPrevBtn" style="padding:4px 12px; border:1px solid #ddd; border-radius:4px; background:white; cursor:pointer; font-size:13px;">← Prev</button>
+                                <span id="newArrivalsPageInfo" style="font-size:13px; color:#666; padding:4px 8px;">1 / 1</span>
+                                <button id="newArrivalsNextBtn" style="padding:4px 12px; border:1px solid #ddd; border-radius:4px; background:white; cursor:pointer; font-size:13px;">Next →</button>
+                            </div>
+                            <div>
+                                <select id="newArrivalsPageSize" style="padding:4px 8px; border:1px solid #ddd; border-radius:4px; font-size:13px;">
+                                    <option value="12">12</option>
+                                    <option value="24" selected>24</option>
+                                    <option value="48">48</option>
+                                    <option value="96">96</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
                     <span class="new-arrivals-flip-hint"><i class="fas fa-rotate"></i> Tap to flip back</span>
                 </div>
@@ -36,11 +56,11 @@
 
         const flipCard = document.getElementById('newArrivalsFlipCard');
 
-        // Flip logic - ONLY flip when clicking the card itself or the hint, NOT on records
+        // Flip logic
         flipCard.addEventListener('click', function(e) {
-            // If clicking on a record card or anything inside it, DON'T flip
             if (e.target.closest('.new-arrivals-record-card') ||
-                e.target.closest('.new-arrivals-flip-hint')) {
+                e.target.closest('.new-arrivals-flip-hint') ||
+                e.target.closest('button, select')) {
                 return;
             }
             this.classList.toggle('flipped');
@@ -63,14 +83,22 @@
             });
         });
 
+        // ============ PAGINATION STATE ============
+        let currentPage = 1;
+        let pageSize = 24;
+        let totalRecords = 0;
+        let allRecords = [];
+
         // ============ LOAD NEW ARRIVALS ============
-        function loadNewArrivals() {
+        function loadNewArrivals(page) {
+            page = page || 1;
             const recordsContainer = document.getElementById('newArrivalsRecordsContainer');
             if (!recordsContainer) return;
 
             recordsContainer.innerHTML = '<div style="text-align:center;padding:20px;color:#666;">Loading records...</div>';
 
-            const url = AppConfig.baseUrl + '/records?location_ids=150,151,152,153&require_image=true&order_by=created_at&order_dir=DESC&limit=24';
+            const offset = (page - 1) * pageSize;
+            const url = AppConfig.baseUrl + '/records?location_ids=150,151,152,153&require_image=true&order_by=created_at&order_dir=DESC&limit=' + pageSize + '&offset=' + offset;
 
             console.log('🔍 Fetching New Arrivals:', url);
 
@@ -85,39 +113,18 @@
                     }
 
                     const records = data.records || [];
-                    if (records.length === 0) {
+                    totalRecords = data.total || 0;
+                    currentPage = page;
+                    allRecords = records;
+
+                    if (records.length === 0 && totalRecords === 0) {
                         recordsContainer.innerHTML = '<div style="text-align:center;padding:20px;color:#666;">No new arrivals available</div>';
+                        updatePaginationUI();
                         return;
                     }
 
-                    // Display records in a grid
-                    let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;">';
-                    
-                    records.forEach(record => {
-                        const price = parseFloat(record.store_price || 0).toFixed(2);
-                        const image = record.image_url || '';
-                        const artist = record.artist || 'Unknown Artist';
-                        const title = record.title || 'Unknown Title';
-                        
-                        html += `
-                            <div class="new-arrivals-record-card" 
-                                 style="background:#f8f9fa;border-radius:8px;padding:8px;text-align:center;cursor:pointer;border:2px solid transparent;transition:all 0.2s;"
-                                 onmouseover="this.style.borderColor='#ff6b6b';this.style.background='#fff5f5';"
-                                 onmouseout="this.style.borderColor='transparent';this.style.background='#f8f9fa';"
-                                 onclick="event.stopPropagation(); openRecordPopupFromNewArrivals(${record.id})">
-                                <div style="aspect-ratio:1;background:#ddd;border-radius:4px;overflow:hidden;display:flex;align-items:center;justify-content:center;margin-bottom:6px;">
-                                    ${image ? `<img src="${image}" alt="${title}" style="width:100%;height:100%;object-fit:cover;">` : '<i class="fas fa-music" style="font-size:32px;color:#999;"></i>'}
-                                </div>
-                                <div style="font-size:12px;font-weight:600;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHTML(artist)}</div>
-                                <div style="font-size:11px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHTML(title)}</div>
-                                <div style="font-size:14px;font-weight:700;color:#16a34a;">$${price}</div>
-                            </div>
-                        `;
-                    });
-                    
-                    html += '</div>';
-                    recordsContainer.innerHTML = html;
-                    console.log('✅ Displayed', records.length, 'new arrivals');
+                    displayRecords(records);
+                    updatePaginationUI();
                 })
                 .catch(error => {
                     console.error('❌ Error loading new arrivals:', error);
@@ -125,32 +132,94 @@
                 });
         }
 
-        // Helper functions
-        function escapeHTML(str) {
-            if (!str) return '';
-            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        // ============ DISPLAY RECORDS ============
+        function displayRecords(records) {
+            const recordsContainer = document.getElementById('newArrivalsRecordsContainer');
+            if (!recordsContainer) return;
+
+            if (!records || records.length === 0) {
+                recordsContainer.innerHTML = '<div style="text-align:center;padding:20px;color:#666;">No records found</div>';
+                return;
+            }
+
+            let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;">';
+            
+            records.forEach(record => {
+                const price = parseFloat(record.store_price || 0).toFixed(2);
+                const image = record.image_url || '';
+                const artist = record.artist || 'Unknown Artist';
+                const title = record.title || 'Unknown Title';
+                
+                html += `
+                    <div class="new-arrivals-record-card" 
+                         style="background:#f8f9fa;border-radius:8px;padding:8px;text-align:center;cursor:pointer;border:2px solid transparent;transition:all 0.2s;"
+                         onmouseover="this.style.borderColor='#ff6b6b';this.style.background='#fff5f5';"
+                         onmouseout="this.style.borderColor='transparent';this.style.background='#f8f9fa';"
+                         onclick="event.stopPropagation(); openRecordPopupFromNewArrivals(${record.id})">
+                        <div style="aspect-ratio:1;background:#ddd;border-radius:4px;overflow:hidden;display:flex;align-items:center;justify-content:center;margin-bottom:6px;">
+                            ${image ? `<img src="${image}" alt="${title}" style="width:100%;height:100%;object-fit:cover;">` : '<i class="fas fa-music" style="font-size:32px;color:#999;"></i>'}
+                        </div>
+                        <div style="font-size:12px;font-weight:600;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHTML(artist)}</div>
+                        <div style="font-size:11px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHTML(title)}</div>
+                        <div style="font-size:14px;font-weight:700;color:#16a34a;">$${price}</div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            recordsContainer.innerHTML = html;
         }
 
-        // ============ RECORD POPUP FUNCTION ============
+        // ============ PAGINATION UI ============
+        function updatePaginationUI() {
+            const totalPages = Math.ceil(totalRecords / pageSize);
+            const start = (currentPage - 1) * pageSize + 1;
+            const end = Math.min(currentPage * pageSize, totalRecords);
+
+            document.getElementById('newArrivalsStart').textContent = totalRecords > 0 ? start : 0;
+            document.getElementById('newArrivalsEnd').textContent = totalRecords > 0 ? end : 0;
+            document.getElementById('newArrivalsTotal').textContent = totalRecords;
+            document.getElementById('newArrivalsPageInfo').textContent = currentPage + ' / ' + totalPages;
+
+            document.getElementById('newArrivalsPrevBtn').disabled = currentPage <= 1;
+            document.getElementById('newArrivalsNextBtn').disabled = currentPage >= totalPages;
+        }
+
+        // ============ PAGINATION EVENTS ============
+        function setupPaginationEvents() {
+            document.getElementById('newArrivalsPrevBtn').addEventListener('click', function() {
+                if (currentPage > 1) {
+                    loadNewArrivals(currentPage - 1);
+                }
+            });
+
+            document.getElementById('newArrivalsNextBtn').addEventListener('click', function() {
+                const totalPages = Math.ceil(totalRecords / pageSize);
+                if (currentPage < totalPages) {
+                    loadNewArrivals(currentPage + 1);
+                }
+            });
+
+            document.getElementById('newArrivalsPageSize').addEventListener('change', function() {
+                pageSize = parseInt(this.value);
+                currentPage = 1;
+                loadNewArrivals(1);
+            });
+        }
+
+        // ============ RECORD POPUP ============
         window.openRecordPopupFromNewArrivals = function(recordId) {
             console.log('🔍 Opening popup for record:', recordId);
             
-            // Check if openRecordPopup function exists (from the shop page)
             if (typeof openRecordPopup === 'function') {
-                // Fetch the full record data
                 const url = AppConfig.baseUrl + '/records?search=' + recordId + '&limit=1';
-                console.log('📡 Fetching record data:', url);
-                
                 fetch(url)
                     .then(response => response.json())
                     .then(data => {
-                        console.log('📦 Record data:', data);
                         if (data.status === 'success' && data.records && data.records.length > 0) {
-                            const record = data.records[0];
-                            openRecordPopup(record);
+                            openRecordPopup(data.records[0]);
                         } else {
-                            console.error('❌ Record not found:', recordId);
-                            alert('Record not found. Please try again.');
+                            alert('Record not found.');
                         }
                     })
                     .catch(error => {
@@ -158,27 +227,25 @@
                         alert('Error loading record details.');
                     });
             } else {
-                // Fallback: try using the global function from cart.js
-                console.warn('⚠️ openRecordPopup not found, trying fallback');
-                
-                // If we have the record data already in the DOM, we could use it
-                // But we'll just use the popup from the browse component if available
-                if (window.openRecordPopupFromBrowse) {
-                    window.openRecordPopupFromBrowse(recordId);
-                } else {
-                    // Last resort: show a simple alert
-                    alert('Record ID: ' + recordId + '\nCheckout functionality not fully loaded.');
-                }
+                alert('Record ID: ' + recordId + '\nCheckout not available.');
             }
         };
 
-        // ============ LOAD RECORDS ============
-        loadNewArrivals();
+        // ============ HELPER ============
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        // ============ INIT ============
+        loadNewArrivals(1);
+        setupPaginationEvents();
 
         // Refresh every 60 seconds
-        setInterval(loadNewArrivals, 60000);
+        setInterval(function() {
+            loadNewArrivals(currentPage);
+        }, 60000);
 
-        // Initialize flip state
         if (window.flippedState !== undefined) {
             window.flippedState[8] = false;
         } else {
@@ -186,6 +253,6 @@
             window.flippedState[8] = false;
         }
 
-        console.log('✅ New Arrivals tile initialised (with popup support)');
+        console.log('✅ New Arrivals tile initialised (with pagination)');
     });
 })();
