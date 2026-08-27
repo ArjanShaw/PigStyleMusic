@@ -1,4 +1,4 @@
-// Cart - Global cart singleton
+// Cart - Global cart singleton with checkout
 (function() {
     // ===== Cart Storage =====
     const STORAGE_KEY = 'pigstyle_cart';
@@ -176,8 +176,8 @@
                 <button onclick="window.clearCart()" style="flex: 1; padding: 10px; background: #dc3545; color: white; border: none; border-radius: 30px; font-size: 14px; font-weight: 600; cursor: pointer;">
                     <i class="fas fa-trash"></i> Clear Cart
                 </button>
-                <button onclick="window.checkoutCart()" style="flex: 2; padding: 10px; background: #ff6b6b; color: white; border: none; border-radius: 30px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                    <i class="fas fa-check"></i> Proceed to Checkout
+                <button onclick="window.checkoutCart()" style="flex: 2; padding: 10px; background: #28a745; color: white; border: none; border-radius: 30px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                    <i class="fas fa-credit-card"></i> Checkout
                 </button>
             </div>
         `;
@@ -216,14 +216,65 @@
         }
     };
 
-    window.checkoutCart = function() {
+    // ===== CHECKOUT =====
+    window.checkoutCart = async function() {
         if (window.cart.isEmpty()) {
             alert('Your cart is empty!');
             return;
         }
+
+        const items = window.cart.getItems();
         const total = window.cart.getTotal();
         const count = window.cart.getItemCount();
-        alert('🛒 Checkout coming soon!\n\nItems: ' + count + '\nTotal: $' + total.toFixed(2));
+
+        // Build order summary
+        let summary = '🛒 Order Summary\n\n';
+        items.forEach(item => {
+            const lineTotal = (item.price || 0) * (item.quantity || 1);
+            summary += `${item.title} x${item.quantity} = $${lineTotal.toFixed(2)}\n`;
+        });
+        summary += `\nTotal: $${total.toFixed(2)}`;
+        summary += `\nItems: ${count}`;
+
+        // Show confirmation
+        if (!confirm(summary + '\n\nProceed to checkout?')) {
+            return;
+        }
+
+        const payload = {
+            items: window.cart.getCheckoutPayload(),
+            subtotal: total,
+            total: total,
+            item_type: 'mixed'
+        };
+
+        try {
+            const response = await fetch('http://localhost:5000/api/checkout/process', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success' && data.checkout_url) {
+                // Redirect to payment page
+                window.location.href = data.checkout_url;
+            } else if (data.status === 'success') {
+                // Checkout complete - clear cart
+                window.cart.clear();
+                window.renderCart();
+                alert('✅ Order placed successfully! Thank you for shopping at PigStyle Music.');
+            } else {
+                alert('❌ Checkout failed: ' + (data.error || 'Unknown error'));
+            }
+        } catch (err) {
+            console.error('Checkout error:', err);
+            alert('❌ Error during checkout: ' + err.message + '\n\nPlease try again or contact the store.');
+        }
     };
 
     // ===== Update Badge (exposed for other pages) =====
