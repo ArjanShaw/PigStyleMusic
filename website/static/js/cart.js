@@ -1,12 +1,41 @@
-// Cart - Global cart singleton with full checkout
+// ============================================================
+// CART - Global cart singleton with full checkout
+// ============================================================
+
 (function() {
     'use strict';
 
-    const STORAGE_KEY = 'pigstyle_cart';
-    const API_BASE = '';
-    const SHIPPING_COST = 5.70;
+    console.log('🛒 Cart module loading...');
 
-    // ===== Cart Storage =====
+    // ===== DETECT ENVIRONMENT =====
+    function getApiBase() {
+        const hostname = window.location.hostname;
+        const port = window.location.port;
+        
+        if (hostname === 'www.pigstylemusic.com' || hostname === 'pigstylemusic.com') {
+            return '';
+        }
+        
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            if (port === '8000') {
+                return 'http://localhost:5000';
+            }
+            if (port === '5000' || port === '5001') {
+                return '';
+            }
+            return 'http://localhost:5000';
+        }
+        
+        return '';
+    }
+
+    const API_BASE = getApiBase();
+    console.log('🔧 Cart API_BASE:', API_BASE || '(same origin)');
+
+    // ===== STORAGE KEY =====
+    const STORAGE_KEY = 'pigstyle_cart';
+
+    // ===== GET CART FROM LOCALSTORAGE =====
     function getCart() {
         try {
             const stored = localStorage.getItem(STORAGE_KEY);
@@ -16,12 +45,24 @@
         }
     }
 
+    // ===== SAVE CART TO LOCALSTORAGE =====
     function saveCart(cart) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
         updateBadge();
+        document.dispatchEvent(new CustomEvent('cartUpdated'));
     }
 
-    // ===== Global Cart Object =====
+    // ===== UPDATE BADGE =====
+    function updateBadge() {
+        const count = window.cart ? window.cart.getItemCount() : 0;
+        const badge = document.getElementById('cartBadge');
+        if (badge) {
+            badge.textContent = count;
+            badge.style.display = count > 0 ? 'inline' : 'none';
+        }
+    }
+
+    // ===== GLOBAL CART OBJECT =====
     window.cart = {
         items: getCart(),
 
@@ -30,32 +71,46 @@
         },
 
         addItem(item) {
-            if (!item.title || item.price === undefined) {
-                console.warn('Invalid cart item:', item);
+            console.log('🛒 Adding item to cart:', item);
+            
+            if (!item || !item.title || item.price === undefined) {
+                console.warn('⚠️ Invalid cart item:', item);
                 return false;
             }
             
             const existing = this.items.find(i =>
                 i.type === item.type &&
-                i.id === item.id &&
-                JSON.stringify(i.options) === JSON.stringify(item.options || {})
+                i.id === item.id
             );
             
             if (existing) {
                 existing.quantity = (existing.quantity || 1) + (item.quantity || 1);
+                console.log(`🛒 Updated quantity for ${item.title}: ${existing.quantity}`);
             } else {
-                item.id = item.id || Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+                if (!item.id) {
+                    item.id = Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+                }
                 item.quantity = item.quantity || 1;
                 this.items.push(item);
+                console.log(`🛒 Added new item: ${item.title}`);
             }
             
             saveCart(this.items);
+            
+            if (typeof window.renderCart === 'function') {
+                window.renderCart();
+            }
+            
             return true;
         },
 
         removeItem(id) {
+            console.log(`🛒 Removing item: ${id}`);
             this.items = this.items.filter(item => item.id !== id);
             saveCart(this.items);
+            if (typeof window.renderCart === 'function') {
+                window.renderCart();
+            }
         },
 
         updateQuantity(id, quantity) {
@@ -72,16 +127,20 @@
         },
 
         clear() {
+            console.log('🛒 Clearing cart');
             this.items = [];
             saveCart(this.items);
+            if (typeof window.renderCart === 'function') {
+                window.renderCart();
+            }
         },
 
         getTotal() {
-            return this.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            return this.items.reduce((sum, item) => sum + ((item.price || 0) * (item.quantity || 1)), 0);
         },
 
         getItemCount() {
-            return this.items.reduce((sum, item) => sum + item.quantity, 0);
+            return this.items.reduce((sum, item) => sum + (item.quantity || 1), 0);
         },
 
         isEmpty() {
@@ -117,20 +176,13 @@
         }
     };
 
-    // ===== Badge Update =====
-    function updateBadge() {
-        const count = window.cart.getItemCount();
-        const badge = document.getElementById('cartBadge');
-        if (badge) {
-            badge.textContent = count;
-            badge.style.display = count > 0 ? 'inline' : 'none';
-        }
-    }
-
-    // ===== Render Cart UI =====
+    // ===== RENDER CART UI =====
     window.renderCart = function() {
         const container = document.getElementById('cartResponse');
-        if (!container) return;
+        if (!container) {
+            console.warn('⚠️ cartResponse container not found');
+            return;
+        }
         
         const items = window.cart.getItems();
         
@@ -146,8 +198,6 @@
             return;
         }
         
-        const isAdmin = getUserRole() === 'admin';
-        
         let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
         let total = 0;
         
@@ -155,12 +205,17 @@
             const itemTotal = (item.price || 0) * (item.quantity || 1);
             total += itemTotal;
             
+            let icon = '📦';
+            if (item.type === 'bernie') icon = '🌹';
+            else if (item.type === 'giftcard') icon = '🎁';
+            else if (item.type === 'custom') icon = '🛍️';
+            
             html += `
                 <div style="display: flex; align-items: center; gap: 12px; background: #f8f8f8; border-radius: 8px; padding: 10px; border: 1px solid #eee;">
                     <div style="flex: 1;">
-                        <div style="font-weight: bold; color: #333; font-size: 14px;">${item.title || 'Item'}</div>
+                        <div style="font-weight: bold; color: #333; font-size: 14px;">${icon} ${item.title || 'Item'}</div>
                         <div style="color: #666; font-size: 12px;">${item.artist || ''} ${item.type ? '[' + item.type + ']' : ''}</div>
-                        <div style="color: #ff6b6b; font-weight: bold; font-size: 14px;">$${(item.price || 0).toFixed(2)}</div>
+                        <div style="color: #ff6b6b; font-weight: bold; font-size: 14px;">$${(item.price || 0).toFixed(2)} × ${item.quantity || 1}</div>
                     </div>
                     <div style="font-weight: bold; color: #333; font-size: 14px; min-width: 70px; text-align: right;">$${itemTotal.toFixed(2)}</div>
                     <button onclick="window.removeCartItem('${item.id}')" style="background: none; border: none; color: #dc3545; font-size: 20px; cursor: pointer; padding: 0 4px;">×</button>
@@ -188,39 +243,102 @@
         updateBadge();
     };
 
-    // ===== GET USER ROLE =====
-    function getUserRole() {
+    // ============================================================
+    // CHECKOUT FUNCTIONALITY
+    // ============================================================
+
+    // ===== CHECKOUT STATE =====
+    let checkoutItems = [];
+    let checkoutTotal = 0;
+    let checkoutRemaining = 0;
+    let checkoutPaymentEntries = [];
+    let checkoutDebtorData = null;
+    let squareAvailable = false;
+    let availableTerminals = [];
+    let squareCheckoutId = null;
+    let squarePollInterval = null;
+
+    // ===== OPEN CHECKOUT =====
+    window.openCheckout = function() {
+        console.log('🛒 Opening checkout...');
+        
+        if (window.cart.isEmpty()) {
+            window.showToast('Your cart is empty!', 'warning');
+            return;
+        }
+
+        // Check if user is logged in
+        let isAdmin = false;
         try {
             const userData = localStorage.getItem('pigstyle_user');
             if (userData) {
                 const user = JSON.parse(userData);
-                return user.role || null;
+                isAdmin = user.role === 'admin' || user.role === 'manager';
             }
         } catch {}
-        return null;
-    }
 
-    // ===== OPEN CHECKOUT =====
-    window.openCheckout = function() {
-        const isAdmin = getUserRole() === 'admin';
-        
-        if (window.cart.isEmpty()) {
-            showToast('Your cart is empty!', 'warning');
-            return;
-        }
+        console.log('👤 Is admin:', isAdmin);
 
-        if (isAdmin) {
-            openAdminCheckout();
-        } else {
-            openGuestCheckoutModal();
-        }
+        // Check Square availability
+        checkSquareAvailability().then(() => {
+            showCheckoutModal(isAdmin);
+        });
     };
 
-    // ===== GUEST CHECKOUT MODAL =====
-    function openGuestCheckoutModal() {
+    // ===== CHECK SQUARE AVAILABILITY =====
+    async function checkSquareAvailability() {
+        try {
+            console.log('📟 Checking Square terminals...');
+            const response = await fetch(`${API_BASE}/api/square/terminals`, {
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (!response.ok) {
+                console.warn('⚠️ Square terminals API returned', response.status);
+                squareAvailable = false;
+                availableTerminals = [];
+                return false;
+            }
+            
+            const data = await response.json();
+            if (data.status === 'success' && data.terminals && data.terminals.length > 0) {
+                squareAvailable = true;
+                availableTerminals = data.terminals;
+                console.log('📟 Square terminals available:', availableTerminals.length);
+                return true;
+            } else {
+                squareAvailable = false;
+                availableTerminals = [];
+                console.log('📟 No Square terminals found');
+                return false;
+            }
+        } catch (err) {
+            console.warn('⚠️ Square check failed:', err.message);
+            squareAvailable = false;
+            availableTerminals = [];
+            return false;
+        }
+    }
+
+    // ===== SHOW CHECKOUT MODAL =====
+    function showCheckoutModal(isAdmin) {
+        console.log('🛒 Showing checkout modal...');
+        
+        const items = window.cart.getItems();
         const total = window.cart.getTotal();
+        
+        checkoutItems = items;
+        checkoutTotal = total;
+        checkoutRemaining = total;
+        checkoutPaymentEntries = [];
+
+        // Remove existing modal
+        const existing = document.getElementById('checkout-payment-modal');
+        if (existing) existing.remove();
+
         const modal = document.createElement('div');
-        modal.id = 'guest-checkout-modal';
+        modal.id = 'checkout-payment-modal';
         modal.style.cssText = `
             position: fixed;
             top: 0;
@@ -234,341 +352,740 @@
             justify-content: center;
             animation: fadeIn 0.3s ease;
         `;
-        
+
+        let itemsHtml = '';
+        items.forEach(item => {
+            const price = item.price || 0;
+            const qty = item.quantity || 1;
+            const totalPrice = price * qty;
+            let icon = '📦';
+            if (item.type === 'bernie') icon = '🌹';
+            else if (item.type === 'giftcard') icon = '🎁';
+            else if (item.type === 'custom') icon = '🛍️';
+            itemsHtml += `
+                <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #eee; font-size: 13px;">
+                    <span>${icon} ${item.title}</span>
+                    <span>${qty}× $${price.toFixed(2)} = $${totalPrice.toFixed(2)}</span>
+                </div>
+            `;
+        });
+
         modal.innerHTML = `
-            <div style="background: white; border-radius: 16px; max-width: 450px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
-                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
-                    <h2 style="margin: 0; color: #333; font-size: 24px;">🛒 Checkout</h2>
-                    <button onclick="closeGuestCheckoutModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
+            <div style="background: white; border-radius: 16px; max-width: 550px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 0; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+                <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 20px; border-radius: 16px 16px 0 0; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0; color: white;"><i class="fas fa-credit-card"></i> Checkout</h3>
+                    <button onclick="closeCheckoutModal()" style="background: none; border: none; color: white; font-size: 28px; cursor: pointer;">&times;</button>
                 </div>
                 
-                <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                    <div style="display: flex; justify-content: space-between; font-size: 14px; color: #666; margin-bottom: 5px;">
-                        <span>Subtotal</span>
-                        <span>$${total.toFixed(2)}</span>
+                <div style="padding: 20px;">
+                    <!-- Order Summary -->
+                    <div style="margin-bottom: 15px; max-height: 150px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 8px;">
+                        <div style="font-weight: 600; margin-bottom: 5px; color: #333;">Order Summary (${items.length} items)</div>
+                        <div style="font-size: 13px; color: #666;">${itemsHtml}</div>
                     </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 14px; color: #666; margin-bottom: 5px;" id="guest-shipping-display">
-                        <span>Shipping</span>
-                        <span id="guest-shipping-amount">$0.00</span>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 10px; background: #e8f5e9; border-radius: 8px;">
+                        <span style="font-weight: 600; color: #333;">Total Due:</span>
+                        <span id="checkout-total-due" style="font-size: 24px; font-weight: bold; color: #28a745;">$${total.toFixed(2)}</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 18px; font-weight: bold; color: #333; border-top: 2px solid #ddd; padding-top: 10px;">
-                        <span>Total</span>
-                        <span id="guest-total-amount">$${total.toFixed(2)}</span>
+
+                    <!-- Remaining Balance -->
+                    <div style="margin-bottom: 15px; padding: 10px; background: #e9ecef; border-radius: 8px; display: flex; justify-content: space-between;">
+                        <span style="font-weight: 600; color: #333;">Remaining:</span>
+                        <span id="checkout-remaining" style="font-weight: bold; color: #dc3545;">$${total.toFixed(2)}</span>
                     </div>
-                </div>
-                
-                <div style="margin-bottom: 20px;">
-                    <label style="display: block; font-weight: 600; color: #555; margin-bottom: 8px;">Delivery Method</label>
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        <button onclick="selectGuestShipping('pickup')" id="guest-pickup-btn" style="flex: 1; padding: 12px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                            <i class="fas fa-store"></i> Pickup In-Store
-                        </button>
-                        <button onclick="selectGuestShipping('shipping')" id="guest-shipping-btn" style="flex: 1; padding: 12px; background: #e9ecef; color: #333; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                            <i class="fas fa-truck"></i> Ship ($${SHIPPING_COST.toFixed(2)})
-                        </button>
-                    </div>
-                </div>
-                
-                <div id="guest-address-section" style="display: none; margin-bottom: 20px;">
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Full Name</label>
-                        <input type="text" id="guest-name" placeholder="John Doe" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Email</label>
-                        <input type="email" id="guest-email" placeholder="john@example.com" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Address Line 1</label>
-                        <input type="text" id="guest-address1" placeholder="123 Main St" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Address Line 2 (optional)</label>
-                        <input type="text" id="guest-address2" placeholder="Apt 4B" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <div style="margin-bottom: 10px;">
-                            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">City</label>
-                            <input type="text" id="guest-city" placeholder="Loveland" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
+
+                    <!-- Debtor Lookup -->
+                    <div style="background: #e3f2fd; padding: 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #b8daff;">
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <input type="text" id="checkout-debtor-code" placeholder="GIFT-XXXXX or debtor name" style="flex: 2; min-width: 150px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+                            <button onclick="window.lookupDebtorForCheckout()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Lookup</button>
                         </div>
-                        <div style="margin-bottom: 10px;">
-                            <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">State</label>
-                            <input type="text" id="guest-state" placeholder="CO" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
+                        <div id="checkout-debtor-info" style="display: none; margin-top: 8px; padding: 8px; background: white; border-radius: 4px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                                <span><strong id="checkout-debtor-name">—</strong> <span id="checkout-debtor-type" style="font-size: 12px; color: #666;">(Store Credit)</span></span>
+                                <span style="font-weight: bold; color: #28a745;">Balance: $<span id="checkout-debtor-balance">0.00</span></span>
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+                                <button onclick="window.applyDebtorToCheckout()" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;"><i class="fas fa-check"></i> Apply Credit</button>
+                                <button onclick="document.getElementById('checkout-debtor-info').style.display='none'" style="padding: 6px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+                            </div>
+                            <div id="checkout-debtor-status" style="font-size: 13px; margin-top: 5px;"></div>
                         </div>
                     </div>
-                    <div style="margin-bottom: 10px;">
-                        <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">ZIP Code</label>
-                        <input type="text" id="guest-zip" placeholder="80537" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
+
+                    <!-- Payment Methods -->
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 8px;">Payment Methods</label>
+                        
+                        <!-- ===== CARD PAYMENT (Square) ===== -->
+                        <div id="payment-card" style="background: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 8px; border: 2px solid #28a745;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-weight: 600; color: #333;"><i class="fas fa-credit-card" style="color: #17a2b8;"></i> Card (Square)</span>
+                                <span style="font-size: 12px; color: #6c757d;">Charges full remaining</span>
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-top: 5px;">
+                                <input type="number" id="card-amount" placeholder="0.00" min="0" step="0.01" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                                <button onclick="setMaxCard()" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">MAX</button>
+                                <button onclick="addCardPayment()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Pay</button>
+                            </div>
+                            <div id="card-status" style="margin-top: 5px; font-size: 12px; color: #6c757d; display: none;"></div>
+                        </div>
+
+                        <!-- ===== POS TERMINAL PAYMENT ===== -->
+                        <div id="payment-pos" style="background: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 8px; border: 2px solid #6f42c1;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-weight: 600; color: #333;"><i class="fas fa-cash-register" style="color: #6f42c1;"></i> POS Terminal</span>
+                                <span style="font-size: 12px; color: #6c757d;">Send to Square POS</span>
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-top: 5px; flex-wrap: wrap;">
+                                <input type="number" id="pos-amount" placeholder="0.00" min="0" step="0.01" style="flex: 1; min-width: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                                <button onclick="setMaxPos()" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">MAX</button>
+                                <button onclick="addPosPayment()" style="padding: 8px 16px; background: #6f42c1; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                    <i class="fas fa-cash-register"></i> Send to POS
+                                </button>
+                            </div>
+                            <div id="pos-status" style="margin-top: 5px; font-size: 12px; color: #6c757d; display: none;"></div>
+                            <div id="pos-terminal-select" style="margin-top: 5px; display: none;">
+                                <label style="font-size: 12px; color: #555;">Select Terminal:</label>
+                                <select id="pos-device-select" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; width: 100%; margin-top: 2px;">
+                                    ${availableTerminals.map(t => `<option value="${t.id}">${t.device_name || t.id}</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- ===== CASH PAYMENT (Admin only) ===== -->
+                        <div id="payment-cash" style="background: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 8px; border: 1px solid #ddd; ${!isAdmin ? 'display: none;' : ''}">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-weight: 600; color: #333;"><i class="fas fa-money-bill-wave" style="color: #28a745;"></i> Cash</span>
+                                <span style="font-size: 12px; color: #6c757d;">Enter amount received</span>
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-top: 5px;">
+                                <input type="number" id="cash-amount" placeholder="0.00" min="0" step="0.01" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                                <button onclick="setMaxCash()" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">MAX</button>
+                                <button onclick="addCashPayment()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Pay</button>
+                            </div>
+                            <div id="cash-status" style="margin-top: 5px; font-size: 12px; color: #6c757d; display: none;"></div>
+                        </div>
+
+                        <!-- ===== GIFT CARD PAYMENT ===== -->
+                        <div id="payment-giftcard" style="background: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 8px; border: 1px solid #ddd;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-weight: 600; color: #333;"><i class="fas fa-gift" style="color: #ffc107;"></i> Gift Card</span>
+                                <span style="font-size: 12px; color: #6c757d;">Apply gift card balance</span>
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-top: 5px;">
+                                <input type="text" id="giftcard-code" placeholder="GIFT-XXXXX" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; text-transform: uppercase;">
+                                <button onclick="checkGiftCardForPayment()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Check</button>
+                            </div>
+                            <div id="giftcard-info" style="display: none; background: #d4edda; padding: 8px; border-radius: 6px; margin-top: 5px;">
+                                <span style="font-weight: bold; color: #155724;">Balance: $<span id="giftcard-balance-display">0.00</span></span>
+                                <button onclick="applyGiftCardPayment()" style="margin-left: 10px; padding: 4px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Apply</button>
+                            </div>
+                        </div>
                     </div>
+
+                    <!-- Payment Summary -->
+                    <div id="payment-summary" style="margin-top: 10px; display: none; border-top: 1px solid #eee; padding-top: 10px;">
+                        <div style="font-weight: 600; color: #333; font-size: 13px; margin-bottom: 5px;">Payment Summary:</div>
+                        <div id="payment-entries-list" style="font-size: 12px; color: #666;"></div>
+                    </div>
+
+                    <div id="checkout-status" style="margin-top: 10px; display: none; padding: 10px; border-radius: 8px; font-size: 13px;"></div>
+
+                    <button onclick="completeCheckout()" id="checkout-complete-btn" style="width: 100%; margin-top: 15px; padding: 14px; background: #28a745; color: white; border: none; border-radius: 30px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                        <i class="fas fa-check"></i> Complete Order
+                    </button>
                 </div>
-                
-                <div id="guest-status" style="display: none; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 13px;"></div>
-                
-                <button onclick="processGuestCheckout()" id="guest-checkout-btn" style="width: 100%; padding: 14px; background: #28a745; color: white; border: none; border-radius: 30px; font-size: 16px; font-weight: 600; cursor: pointer;">
-                    <i class="fas fa-credit-card"></i> Pay with Card
-                </button>
             </div>
         `;
-        
+
         document.body.appendChild(modal);
-        
+        modal.style.display = 'flex';
+
         // Close on click outside
         modal.addEventListener('click', function(e) {
             if (e.target === modal) {
-                closeGuestCheckoutModal();
+                closeCheckoutModal();
             }
         });
-        
-        // Escape key to close
+
+        // Escape key
         const escHandler = function(e) {
             if (e.key === 'Escape') {
-                closeGuestCheckoutModal();
+                closeCheckoutModal();
                 document.removeEventListener('keydown', escHandler);
             }
         };
         document.addEventListener('keydown', escHandler);
-        
-        // Default to pickup
-        selectGuestShipping('pickup');
+
+        // If terminals available, show the select dropdown
+        if (availableTerminals.length > 0) {
+            const select = document.getElementById('pos-device-select');
+            if (select) {
+                document.getElementById('pos-terminal-select').style.display = 'block';
+            }
+        }
+
+        updateCheckoutUI();
     }
 
-    window.closeGuestCheckoutModal = function() {
-        const modal = document.getElementById('guest-checkout-modal');
+    // ===== CLOSE CHECKOUT MODAL =====
+    window.closeCheckoutModal = function() {
+        const modal = document.getElementById('checkout-payment-modal');
         if (modal) modal.remove();
-    };
-
-    let guestShippingMethod = 'pickup';
-    let guestTotal = 0;
-
-    window.selectGuestShipping = function(method) {
-        guestShippingMethod = method;
-        const total = window.cart.getTotal();
-        const pickupBtn = document.getElementById('guest-pickup-btn');
-        const shippingBtn = document.getElementById('guest-shipping-btn');
-        const addressSection = document.getElementById('guest-address-section');
-        const shippingDisplay = document.getElementById('guest-shipping-display');
-        const shippingAmount = document.getElementById('guest-shipping-amount');
-        const totalDisplay = document.getElementById('guest-total-amount');
-        
-        if (method === 'pickup') {
-            pickupBtn.style.background = '#28a745';
-            pickupBtn.style.color = 'white';
-            shippingBtn.style.background = '#e9ecef';
-            shippingBtn.style.color = '#333';
-            addressSection.style.display = 'none';
-            shippingAmount.textContent = '$0.00';
-            guestTotal = total;
-            totalDisplay.textContent = '$' + total.toFixed(2);
-        } else {
-            shippingBtn.style.background = '#28a745';
-            shippingBtn.style.color = 'white';
-            pickupBtn.style.background = '#e9ecef';
-            pickupBtn.style.color = '#333';
-            addressSection.style.display = 'block';
-            const shippingCost = SHIPPING_COST;
-            shippingAmount.textContent = '$' + shippingCost.toFixed(2);
-            guestTotal = total + shippingCost;
-            totalDisplay.textContent = '$' + guestTotal.toFixed(2);
+        if (squarePollInterval) {
+            clearInterval(squarePollInterval);
+            squarePollInterval = null;
         }
     };
 
-    window.processGuestCheckout = async function() {
-        const statusDiv = document.getElementById('guest-status');
-        const btn = document.getElementById('guest-checkout-btn');
+    // ===== UPDATE CHECKOUT UI =====
+    function updateCheckoutUI() {
+        const remainingEl = document.getElementById('checkout-remaining');
+        if (remainingEl) remainingEl.textContent = '$' + checkoutRemaining.toFixed(2);
         
-        if (window.cart.isEmpty()) {
-            showToast('Your cart is empty!', 'warning');
+        const totalEl = document.getElementById('checkout-total-due');
+        if (totalEl) totalEl.textContent = '$' + checkoutTotal.toFixed(2);
+        
+        const completeBtn = document.getElementById('checkout-complete-btn');
+        if (completeBtn) {
+            completeBtn.disabled = checkoutRemaining > 0.01;
+            completeBtn.style.opacity = checkoutRemaining > 0.01 ? '0.5' : '1';
+            completeBtn.textContent = checkoutRemaining > 0.01 ? 
+                'Remaining: $' + checkoutRemaining.toFixed(2) : 
+                '✅ Complete Order';
+        }
+
+        updatePaymentSummary();
+    }
+
+    // ===== UPDATE PAYMENT SUMMARY =====
+    function updatePaymentSummary() {
+        const container = document.getElementById('payment-entries-list');
+        const summary = document.getElementById('payment-summary');
+        
+        if (!container) return;
+
+        if (checkoutPaymentEntries.length === 0) {
+            summary.style.display = 'none';
             return;
         }
 
-        // Validate address if shipping
-        if (guestShippingMethod === 'shipping') {
-            const name = document.getElementById('guest-name').value.trim();
-            const email = document.getElementById('guest-email').value.trim();
-            const address1 = document.getElementById('guest-address1').value.trim();
-            const city = document.getElementById('guest-city').value.trim();
-            const state = document.getElementById('guest-state').value.trim();
-            const zip = document.getElementById('guest-zip').value.trim();
-            
-            if (!name) {
-                statusDiv.style.display = 'block';
-                statusDiv.textContent = '❌ Please enter your full name';
-                statusDiv.className = 'status-message status-error';
-                return;
-            }
-            if (!email || !email.includes('@')) {
-                statusDiv.style.display = 'block';
-                statusDiv.textContent = '❌ Please enter a valid email';
-                statusDiv.className = 'status-message status-error';
-                return;
-            }
-            if (!address1) {
-                statusDiv.style.display = 'block';
-                statusDiv.textContent = '❌ Please enter your address';
-                statusDiv.className = 'status-message status-error';
-                return;
-            }
-            if (!city || !state || !zip) {
-                statusDiv.style.display = 'block';
-                statusDiv.textContent = '❌ Please enter city, state, and ZIP';
-                statusDiv.className = 'status-message status-error';
-                return;
-            }
+        summary.style.display = 'block';
+        let html = '';
+        checkoutPaymentEntries.forEach((entry, idx) => {
+            html += `
+                <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #eee;">
+                    <span>${entry.method}</span>
+                    <span>$${entry.amount.toFixed(2)}</span>
+                    <button onclick="removePaymentEntry(${idx})" style="background: none; border: none; color: #dc3545; cursor: pointer; font-size: 12px;">×</button>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
+    // ===== ADD CARD PAYMENT =====
+    window.addCardPayment = function() {
+        const input = document.getElementById('card-amount');
+        const amount = parseFloat(input.value);
+        
+        let payAmount = amount;
+        if (!amount || amount <= 0) {
+            payAmount = checkoutRemaining;
+        }
+        
+        if (payAmount <= 0) {
+            showCheckoutStatus('No remaining balance to pay.', 'warning');
+            return;
         }
 
-        statusDiv.style.display = 'block';
-        statusDiv.textContent = '⏳ Processing...';
-        statusDiv.className = 'status-message status-info';
-        btn.disabled = true;
+        if (payAmount > checkoutRemaining) {
+            payAmount = checkoutRemaining;
+        }
 
-        const items = window.cart.getItems();
-        const payload = window.cart.getCheckoutPayload();
-        const total = guestTotal;
+        if (!squareAvailable) {
+            showCheckoutStatus('Square POS is not available. Please use Cash or Gift Card.', 'error');
+            return;
+        }
 
-        const requestBody = {
-            items: payload,
-            subtotal: window.cart.getTotal(),
-            total: total,
-            tax: 0,
-            shipping: {
-                method: guestShippingMethod,
-                amount: guestShippingMethod === 'shipping' ? SHIPPING_COST : 0
-            },
-            customer_name: guestShippingMethod === 'shipping' ? document.getElementById('guest-name').value.trim() : 'Guest',
-            customer_email: guestShippingMethod === 'shipping' ? document.getElementById('guest-email').value.trim() : '',
-            address: guestShippingMethod === 'shipping' ? document.getElementById('guest-address1').value.trim() : '',
-            apt: guestShippingMethod === 'shipping' ? document.getElementById('guest-address2').value.trim() : '',
-            city: guestShippingMethod === 'shipping' ? document.getElementById('guest-city').value.trim() : '',
-            state: guestShippingMethod === 'shipping' ? document.getElementById('guest-state').value.trim() : '',
-            zip: guestShippingMethod === 'shipping' ? document.getElementById('guest-zip').value.trim() : '',
-            notes: 'Guest checkout from cart',
-            payment_entries: [{ method: 'Card (Square)', amount: total }]
-        };
+        addPaymentEntry('Card (Square)', payAmount);
+        document.getElementById('card-amount').value = '';
+        showCheckoutStatus('💳 Added $' + payAmount.toFixed(2) + ' via Card', 'success');
+    };
+
+    // ===== ADD POS PAYMENT =====
+    window.addPosPayment = function() {
+        const input = document.getElementById('pos-amount');
+        const amount = parseFloat(input.value);
+        
+        let payAmount = amount;
+        if (!amount || amount <= 0) {
+            payAmount = checkoutRemaining;
+        }
+        
+        if (payAmount <= 0) {
+            showCheckoutStatus('No remaining balance to pay.', 'warning');
+            return;
+        }
+
+        if (payAmount > checkoutRemaining) {
+            payAmount = checkoutRemaining;
+        }
+
+        if (!squareAvailable || availableTerminals.length === 0) {
+            showCheckoutStatus('No Square Terminal available. Please use Card or Cash.', 'error');
+            return;
+        }
+
+        // Get selected device
+        const select = document.getElementById('pos-device-select');
+        let deviceId = null;
+        if (select) {
+            deviceId = select.value;
+        } else {
+            // Use first available
+            deviceId = availableTerminals[0]?.id;
+        }
+
+        if (!deviceId) {
+            showCheckoutStatus('No terminal selected. Please select a terminal.', 'warning');
+            return;
+        }
+
+        // Clean device ID (remove 'device:' prefix if present)
+        if (deviceId.startsWith('device:')) {
+            deviceId = deviceId.substring(7);
+        }
+
+        // Send to POS
+        sendToPosTerminal(payAmount, deviceId);
+    };
+
+    // ===== SEND TO POS TERMINAL =====
+    async function sendToPosTerminal(amount, deviceId) {
+        const statusEl = document.getElementById('pos-status');
+        const posBtn = document.querySelector('#payment-pos button:last-child');
+        
+        if (statusEl) {
+            statusEl.style.display = 'block';
+            statusEl.textContent = '⏳ Sending payment request to POS...';
+            statusEl.style.color = '#17a2b8';
+        }
+        if (posBtn) posBtn.disabled = true;
 
         try {
-            const response = await fetch(`${API_BASE}/api/checkout/process`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify(requestBody)
-            });
-            
-            const data = await response.json();
+            // Get record IDs and titles from cart
+            const items = window.cart.getItems();
+            const recordIds = items.filter(i => i.type === 'record').map(i => i.id);
+            const titles = items.map(i => i.title);
 
-            if (data.status === 'success' && data.checkout_url) {
-                // Store the order ID for when the customer returns
-                sessionStorage.setItem('pending_order_id', data.order_id);
-                sessionStorage.setItem('pending_order_number', data.order_number);
-                
-                window.cart.clear();
-                window.renderCart();
-                closeGuestCheckoutModal();
-                
-                // Redirect to Square
-                window.location.href = data.checkout_url;
+            const payload = {
+                amount_cents: Math.round(amount * 100),
+                record_ids: recordIds,
+                record_titles: titles,
+                reference_id: 'pos_' + Date.now(),
+                device_id: deviceId
+            };
+
+            console.log('📟 Sending to POS:', payload);
+
+            const response = await fetch(`${API_BASE}/api/square/terminal/checkout`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+            console.log('📟 POS response:', data);
+
+            if (data.status === 'success') {
+                const checkout = data.checkout;
+                squareCheckoutId = checkout.id;
+
+                if (statusEl) {
+                    statusEl.textContent = '⏳ Payment request sent. Waiting for customer to complete on POS...';
+                    statusEl.style.color = '#17a2b8';
+                }
+
+                // Start polling for status
+                startPosPolling(checkout.id, amount);
             } else {
-                statusDiv.textContent = '❌ Payment failed: ' + (data.error || 'Unknown error');
-                statusDiv.className = 'status-message status-error';
-                btn.disabled = false;
+                if (statusEl) {
+                    statusEl.textContent = '❌ Failed to send to POS: ' + (data.message || 'Unknown error');
+                    statusEl.style.color = '#dc3545';
+                }
+                if (posBtn) posBtn.disabled = false;
             }
         } catch (err) {
-            console.error('Checkout error:', err);
-            statusDiv.textContent = '❌ Error: ' + err.message;
-            statusDiv.className = 'status-message status-error';
-            btn.disabled = false;
+            console.error('❌ POS error:', err);
+            if (statusEl) {
+                statusEl.textContent = '❌ Error: ' + err.message;
+                statusEl.style.color = '#dc3545';
+            }
+            if (posBtn) posBtn.disabled = false;
+        }
+    }
+
+    // ===== START POS POLLING =====
+    function startPosPolling(checkoutId, amount) {
+        if (squarePollInterval) {
+            clearInterval(squarePollInterval);
+        }
+
+        let attempts = 0;
+        const maxAttempts = 60; // 60 seconds timeout
+
+        squarePollInterval = setInterval(async () => {
+            attempts++;
+            try {
+                const response = await fetch(`${API_BASE}/api/square/terminal/checkout/${checkoutId}/status`, {
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+                if (data.status !== 'success') {
+                    return;
+                }
+
+                const checkout = data.checkout;
+                const status = checkout.status;
+                const statusEl = document.getElementById('pos-status');
+
+                console.log(`📟 POS status ${attempts}/${maxAttempts}: ${status}`);
+
+                if (status === 'COMPLETED') {
+                    clearInterval(squarePollInterval);
+                    squarePollInterval = null;
+                    
+                    // Add payment entry
+                    addPaymentEntry('POS Terminal', amount);
+                    
+                    if (statusEl) {
+                        statusEl.textContent = '✅ Payment completed successfully!';
+                        statusEl.style.color = '#28a745';
+                    }
+                    
+                    // Enable complete button
+                    updateCheckoutUI();
+                    
+                    // Close modal after delay
+                    setTimeout(() => {
+                        // Check if remaining balance is paid
+                        if (checkoutRemaining <= 0.01) {
+                            completeCheckout();
+                        }
+                    }, 1000);
+
+                } else if (status === 'CANCELED' || status === 'FAILED') {
+                    clearInterval(squarePollInterval);
+                    squarePollInterval = null;
+                    
+                    if (statusEl) {
+                        statusEl.textContent = '❌ Payment ' + status.toLowerCase() + '. Please try again.';
+                        statusEl.style.color = '#dc3545';
+                    }
+                    
+                    const posBtn = document.querySelector('#payment-pos button:last-child');
+                    if (posBtn) posBtn.disabled = false;
+
+                } else if (status === 'PENDING' || status === 'IN_PROGRESS') {
+                    if (statusEl) {
+                        statusEl.textContent = `⏳ Waiting for payment on POS... (${attempts}s)`;
+                        statusEl.style.color = '#17a2b8';
+                    }
+                }
+
+                if (attempts >= maxAttempts) {
+                    clearInterval(squarePollInterval);
+                    squarePollInterval = null;
+                    
+                    if (statusEl) {
+                        statusEl.textContent = '⏰ Payment timed out. Please try again.';
+                        statusEl.style.color = '#856404';
+                    }
+                    
+                    const posBtn = document.querySelector('#payment-pos button:last-child');
+                    if (posBtn) posBtn.disabled = false;
+                }
+
+            } catch (err) {
+                console.warn('⚠️ POS polling error:', err.message);
+            }
+        }, 2000);
+    }
+
+    // ===== ADD CASH PAYMENT =====
+    window.addCashPayment = function() {
+        const input = document.getElementById('cash-amount');
+        const amount = parseFloat(input.value);
+        
+        if (!amount || amount <= 0) {
+            showCheckoutStatus('Please enter an amount.', 'warning');
+            return;
+        }
+
+        if (amount > checkoutRemaining) {
+            showCheckoutStatus('Amount exceeds remaining balance.', 'warning');
+            return;
+        }
+
+        addPaymentEntry('Cash', amount);
+        document.getElementById('cash-amount').value = '';
+        showCheckoutStatus('💰 Added $' + amount.toFixed(2) + ' Cash', 'success');
+    };
+
+    // ===== ADD PAYMENT ENTRY =====
+    function addPaymentEntry(method, amount) {
+        checkoutPaymentEntries.push({ method, amount });
+        checkoutRemaining -= amount;
+        updateCheckoutUI();
+    }
+
+    // ===== REMOVE PAYMENT ENTRY =====
+    window.removePaymentEntry = function(index) {
+        if (index >= 0 && index < checkoutPaymentEntries.length) {
+            const entry = checkoutPaymentEntries[index];
+            checkoutRemaining += entry.amount;
+            checkoutPaymentEntries.splice(index, 1);
+            updateCheckoutUI();
         }
     };
 
-    // ===== CHECK FOR PAYMENT REDIRECT =====
-    function checkPaymentRedirect() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const status = urlParams.get('status');
-        const orderId = urlParams.get('order_id');
+    // ===== SET MAX CARD =====
+    window.setMaxCard = function() {
+        document.getElementById('card-amount').value = checkoutRemaining.toFixed(2);
+    };
+
+    // ===== SET MAX POS =====
+    window.setMaxPos = function() {
+        document.getElementById('pos-amount').value = checkoutRemaining.toFixed(2);
+    };
+
+    // ===== SET MAX CASH =====
+    window.setMaxCash = function() {
+        document.getElementById('cash-amount').value = checkoutRemaining.toFixed(2);
+    };
+
+    // ===== CHECK GIFT CARD =====
+    window.checkGiftCardForPayment = function() {
+        const input = document.getElementById('giftcard-code');
+        const code = input.value.trim().toUpperCase();
         
-        console.log('status:', status);
-        console.log('orderId:', orderId);
-
-        if (status === 'completed' && orderId) {
-
-            console.log('✅ Completing order:', orderId);
-
-
-            // Clean the URL (remove the query params)
-            window.history.replaceState({}, document.title, window.location.pathname);
-            
-            // Show processing message
-            showConfirmationModal('⏳', 'Processing your order...', 'Please wait while we confirm your payment.');
-            
-            // Call the order complete endpoint
-            fetch(`${API_BASE}/api/order/complete`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    order_id: orderId,
-                    transaction_id: ''
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    showConfirmationModal('🎉', 'Order Placed Successfully!', 
-                        'Thank you for your order! You will receive a confirmation email shortly.');
-                } else {
-                    showConfirmationModal('⚠️', 'Order Received', 
-                        'Your order was placed, but we\'re having trouble confirming it. Please contact us if you don\'t receive a confirmation email.');
-                }
-            })
-            .catch(err => {
-                console.error('Error completing order:', err);
-                showConfirmationModal('⚠️', 'Order Received', 
-                    'Your order was placed, but we\'re having trouble confirming it. Please contact us if you don\'t receive a confirmation email.');
-            });
+        if (!code) {
+            showCheckoutStatus('Please enter a gift card code.', 'warning');
+            return;
         }
-    }
 
-    // ===== CONFIRMATION MODAL =====
-    function showConfirmationModal(emoji, title, message) {
-        // Remove any existing confirmation modal
-        const existing = document.getElementById('order-confirmation-modal');
-        if (existing) existing.remove();
+        showCheckoutStatus('Checking gift card...', 'info');
+
+        fetch(`${API_BASE}/api/gift-card/balance/${encodeURIComponent(code)}`, {
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const balance = data.balance || 0;
+                document.getElementById('giftcard-balance-display').textContent = balance.toFixed(2);
+                document.getElementById('giftcard-info').style.display = 'block';
+                document.getElementById('giftcard-info').dataset.code = code;
+                document.getElementById('giftcard-info').dataset.balance = balance;
+                showCheckoutStatus('✅ Gift card found. Balance: $' + balance.toFixed(2), 'success');
+            } else {
+                showCheckoutStatus('❌ Gift card not found or invalid.', 'error');
+                document.getElementById('giftcard-info').style.display = 'none';
+            }
+        })
+        .catch(err => {
+            showCheckoutStatus('❌ Error checking gift card: ' + err.message, 'error');
+        });
+    };
+
+    // ===== APPLY GIFT CARD PAYMENT =====
+    window.applyGiftCardPayment = function() {
+        const info = document.getElementById('giftcard-info');
+        const code = info.dataset.code;
+        const balance = parseFloat(info.dataset.balance || 0);
         
-        const modal = document.createElement('div');
-        modal.id = 'order-confirmation-modal';
-        modal.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.7);
-            z-index: 10002;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            animation: fadeIn 0.3s ease;
-        `;
-        modal.innerHTML = `
-            <div style="background: white; border-radius: 16px; max-width: 450px; width: 90%; padding: 40px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
-                <div style="font-size: 64px; margin-bottom: 15px;">${emoji}</div>
-                <h2 style="margin: 0 0 10px 0; color: #333; font-size: 24px;">${title}</h2>
-                <p style="color: #666; margin-bottom: 25px; font-size: 15px; line-height: 1.5;">${message}</p>
-                <button onclick="document.getElementById('order-confirmation-modal').remove(); window.location.href='/?page=home'" 
-                        style="padding: 12px 40px; background: #28a745; color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: 600; font-size: 16px;">
-                    Continue Shopping
-                </button>
-            </div>
-        `;
-        document.body.appendChild(modal);
+        if (!code || balance <= 0) {
+            showCheckoutStatus('No valid gift card to apply.', 'warning');
+            return;
+        }
+
+        const amount = Math.min(balance, checkoutRemaining);
+        if (amount <= 0) {
+            showCheckoutStatus('No remaining balance to pay.', 'warning');
+            return;
+        }
+
+        addPaymentEntry('Gift Card (' + code + ')', amount);
+        info.dataset.balance = (balance - amount).toFixed(2);
+        document.getElementById('giftcard-balance-display').textContent = (balance - amount).toFixed(2);
+        
+        if (balance - amount <= 0.01) {
+            info.style.display = 'none';
+            document.getElementById('giftcard-code').value = '';
+            showCheckoutStatus('✅ Gift card fully used.', 'success');
+        } else {
+            showCheckoutStatus('✅ Applied $' + amount.toFixed(2) + ' from gift card. Remaining: $' + (balance - amount).toFixed(2), 'success');
+        }
+    };
+
+    // ===== SHOW CHECKOUT STATUS =====
+    function showCheckoutStatus(message, type = 'info') {
+        const el = document.getElementById('checkout-status');
+        if (!el) return;
+        el.style.display = 'block';
+        el.textContent = message;
+        const colors = {
+            success: '#d4edda; color: #155724; border: 1px solid #c3e6cb;',
+            error: '#f8d7da; color: #721c24; border: 1px solid #f5c6cb;',
+            warning: '#fff3cd; color: #856404; border: 1px solid #ffeeba;',
+            info: '#cce5ff; color: #004085; border: 1px solid #b8daff;'
+        };
+        el.style.background = colors[type] || colors.info;
+        el.style.border = '1px solid';
+        el.style.padding = '10px';
+        el.style.borderRadius = '8px';
+        clearTimeout(el._timeout);
+        el._timeout = setTimeout(() => {
+            el.style.display = 'none';
+        }, 4000);
     }
 
-    // ===== ADMIN CHECKOUT =====
-    function openAdminCheckout() {
-        // ... (admin checkout logic from existing code)
-    }
+    // ===== COMPLETE CHECKOUT =====
+    window.completeCheckout = function() {
+        console.log('🛒 Completing checkout...');
+        console.log('📊 Payment entries:', checkoutPaymentEntries);
+        console.log('💰 Remaining:', checkoutRemaining);
 
-    // ===== Toast Helper =====
-    function showToast(message, type = 'success') {
+        if (checkoutRemaining > 0.01) {
+            showCheckoutStatus('⚠️ Please pay the remaining balance.', 'warning');
+            return;
+        }
+
+        if (checkoutPaymentEntries.length === 0) {
+            showCheckoutStatus('⚠️ No payments added.', 'warning');
+            return;
+        }
+
+        const items = window.cart.getItems();
+        const total = window.cart.getTotal();
+
+        const orderData = {
+            items: window.cart.getCheckoutPayload(),
+            subtotal: total,
+            total: total,
+            tax: 0,
+            shipping: { method: 'pickup', amount: 0 },
+            customer_name: 'Walk-in Customer',
+            customer_email: '',
+            notes: 'In-store purchase',
+            payment_entries: checkoutPaymentEntries
+        };
+
+        console.log('📦 Order data:', orderData);
+
+        showCheckoutStatus('⏳ Processing order...', 'info');
+
+        fetch(`${API_BASE}/api/checkout/process`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(orderData)
+        })
+        .then(res => res.json())
+        .then(data => {
+            console.log('📥 Order response:', data);
+            
+            if (data.status === 'success') {
+                window.cart.clear();
+                window.renderCart();
+                
+                showCheckoutStatus('✅ Order completed successfully!', 'success');
+                
+                setTimeout(() => {
+                    closeCheckoutModal();
+                    window.showToast('🎉 Order complete! Thank you!', 'success');
+                }, 1500);
+            } else {
+                showCheckoutStatus('❌ Order failed: ' + (data.error || 'Unknown error'), 'error');
+            }
+        })
+        .catch(err => {
+            console.error('❌ Checkout error:', err);
+            showCheckoutStatus('❌ Error: ' + err.message, 'error');
+        });
+    };
+
+    // ===== DEBTOR FUNCTIONS =====
+    window.lookupDebtorForCheckout = function() {
+        const input = document.getElementById('checkout-debtor-code');
+        const code = input.value.trim().toUpperCase();
+        
+        if (!code) {
+            document.getElementById('checkout-debtor-status').textContent = '⚠️ Please enter a code or name.';
+            return;
+        }
+
+        fetch(`${API_BASE}/api/debtor/lookup`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: code })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success' && data.balance !== undefined) {
+                checkoutDebtorData = data;
+                document.getElementById('checkout-debtor-info').style.display = 'block';
+                document.getElementById('checkout-debtor-name').textContent = data.debtor;
+                document.getElementById('checkout-debtor-balance').textContent = data.balance.toFixed(2);
+                document.getElementById('checkout-debtor-status').textContent = '✅ Balance: $' + data.balance.toFixed(2);
+                document.getElementById('checkout-debtor-status').style.color = '#28a745';
+            } else {
+                document.getElementById('checkout-debtor-status').textContent = '❌ Not found. Check the code or name.';
+                document.getElementById('checkout-debtor-status').style.color = '#dc3545';
+                checkoutDebtorData = null;
+            }
+        })
+        .catch(err => {
+            document.getElementById('checkout-debtor-status').textContent = '❌ Error: ' + err.message;
+            checkoutDebtorData = null;
+        });
+    };
+
+    window.applyDebtorToCheckout = function() {
+        if (!checkoutDebtorData) {
+            showCheckoutStatus('Please lookup a debtor first.', 'warning');
+            return;
+        }
+
+        const balance = checkoutDebtorData.balance || 0;
+        if (balance <= 0) {
+            showCheckoutStatus('This account has no balance.', 'warning');
+            return;
+        }
+
+        const amount = Math.min(balance, checkoutRemaining);
+        if (amount <= 0) {
+            showCheckoutStatus('No remaining balance to pay.', 'warning');
+            return;
+        }
+
+        addPaymentEntry('Store Credit (' + checkoutDebtorData.debtor + ')', amount);
+        checkoutDebtorData.balance = balance - amount;
+        document.getElementById('checkout-debtor-balance').textContent = (balance - amount).toFixed(2);
+        document.getElementById('checkout-debtor-status').textContent = '✅ Applied $' + amount.toFixed(2) + '. Remaining: $' + (balance - amount).toFixed(2);
+        document.getElementById('checkout-debtor-status').style.color = '#28a745';
+    };
+
+    // ===== TOAST =====
+    window.showToast = function(message, type = 'success') {
         const existing = document.querySelector('.checkout-toast');
         if (existing) existing.remove();
 
@@ -598,55 +1115,48 @@
             toast.style.transition = 'opacity 0.3s';
             setTimeout(() => toast.remove(), 300);
         }, 5000);
-    }
-
-    // ===== Cart Actions =====
-    window.updateCartItem = function(itemId, delta) {
-        const items = window.cart.getItems();
-        const item = items.find(i => i.id === itemId);
-        if (item) {
-            const newQty = (item.quantity || 1) + delta;
-            if (newQty <= 0) {
-                window.cart.removeItem(itemId);
-            } else {
-                window.cart.updateQuantity(itemId, newQty);
-            }
-            window.renderCart();
-        }
     };
 
+    // ===== CART ACTIONS =====
     window.removeCartItem = function(itemId) {
         window.cart.removeItem(itemId);
-        window.renderCart();
     };
 
     window.clearCart = function() {
         if (confirm('Are you sure you want to clear your cart?')) {
             window.cart.clear();
-            window.renderCart();
         }
     };
 
-    // ===== Init =====
+    // ===== UPDATE CART BADGE =====
     window.updateCartBadge = updateBadge;
 
+    // ===== INIT CART =====
     window.initCart = function() {
         console.log('🛒 Cart initialized with', window.cart.getItemCount(), 'items');
         updateBadge();
         window.renderCart();
         
-        // Check if we're returning from a payment
-        checkPaymentRedirect();
+        // Check Square availability in background
+        checkSquareAvailability();
     };
 
-    // Check on page load if not initialized yet
-    if (document.readyState === 'complete') {
-        checkPaymentRedirect();
-    } else {
-        document.addEventListener('DOMContentLoaded', checkPaymentRedirect);
-    }
+    // ===== EXPOSE TO WINDOW =====
+    window.cart = window.cart;
+    window.renderCart = window.renderCart;
+    window.updateCartBadge = window.updateCartBadge;
+    window.removeCartItem = window.removeCartItem;
+    window.clearCart = window.clearCart;
+    window.openCheckout = window.openCheckout;
+    window.closeCheckoutModal = window.closeCheckoutModal;
 
-    updateBadge();
-    console.log('🛒 Cart global ready. Items:', window.cart.getItemCount());
+    // ===== AUTO-INIT ON LOAD =====
+    console.log('🛒 Cart module loaded');
+
+    if (document.getElementById('cartResponse')) {
+        setTimeout(function() {
+            window.renderCart();
+        }, 500);
+    }
 
 })();
