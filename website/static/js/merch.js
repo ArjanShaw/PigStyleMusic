@@ -10,11 +10,27 @@
         ? 'http://localhost:5000' 
         : 'https://www.pigstylemusic.com';
 
+    // ✅ Helper function to get full image URL
+    function getFullImageUrl(imageUrl) {
+        if (!imageUrl) return '';
+        // If it's already a full URL, return it
+        if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+            return imageUrl;
+        }
+        // Replace /static/images/ with /website/images/
+        let path = imageUrl;
+        if (path.startsWith('/static/images/')) {
+            path = path.replace('/static/images/', '/website/images/');
+        }
+        // Otherwise prepend API_BASE
+        return API_BASE + path;
+    }
+
     // Modal functions for merch
     window.openMerchModal = function(item) {
         const price = parseFloat(item.price || item.store_price) || 0;
         const inStock = item.stock > 0 || item.status === 'active' || item.status_id === 1;
-        const imageUrl = item.image_url || '';
+        const imageUrl = getFullImageUrl(item.image_url || '');
         
         const modal = document.createElement('div');
         modal.id = 'merchModal';
@@ -98,7 +114,6 @@
 
     window.loadMerch = async function(page = 1) {
         try {
-            // ✅ Use API_BASE dynamically
             const response = await fetch(`${API_BASE}/accessories?page=${page}&limit=${pageSize}`, {
                 credentials: 'include',
                 headers: {
@@ -152,7 +167,7 @@
                 allMerch.forEach(function(item) {
                     const price = parseFloat(item.price || item.store_price) || 0;
                     const inStock = item.stock > 0 || item.status_id === 1 || item.status === 'active';
-                    const imageUrl = item.image_url || '';
+                    const imageUrl = getFullImageUrl(item.image_url || '');
                     const itemData = JSON.stringify(item).replace(/"/g, '&quot;');
                     const displayName = item.name || item.title || 'Unknown';
                     const category = item.category || 'Accessory';

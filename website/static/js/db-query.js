@@ -21,12 +21,12 @@ function refreshSchema() {
                 return;
             }
             const schema = data.schema;
-            let html = '<ul style="list-style:none; padding:0; margin:0;">';
+            let html = '<ul style="list-style:none; padding:0; margin:0; color: #333;">';
             for (const [table, columns] of Object.entries(schema.tables)) {
-                html += `<li><strong>${table}</strong><ul style="list-style:none; padding-left:20px; margin:5px 0;">`;
+                html += `<li><strong style="color: #2c3e50;">${table}</strong><ul style="list-style:none; padding-left:20px; margin:5px 0;">`;
                 columns.forEach(col => {
                     const pk = col.is_primary ? ' 🔑' : '';
-                    html += `<li>${col.column_name} (${col.data_type})${pk}</li>`;
+                    html += `<li style="color: #555;">${col.column_name} <span style="color: #888; font-size: 12px;">(${col.data_type})</span>${pk}</li>`;
                 });
                 html += '</ul></li>';
             }
@@ -87,20 +87,26 @@ function executeQuery() {
                     resultsEl.innerHTML = '<div class="db-message" style="color: #666; text-align: center; padding: 20px;">Query returned 0 rows.</div>';
                     return;
                 }
-                let tableHtml = '<table style="width:100%; border-collapse:collapse; font-size:13px;">';
+                // ✅ Fixed table with dark mode support
+                let tableHtml = '<table style="width:100%; border-collapse:collapse; font-size:13px; color: #333; background: #fff;">';
                 // Header
                 tableHtml += '<thead><tr>';
                 const cols = Object.keys(rows[0]);
                 cols.forEach(col => {
-                    tableHtml += `<th style="border:1px solid #ddd; padding:6px; background:#f5f5f5; text-align:left;">${col}</th>`;
+                    tableHtml += `<th style="border:1px solid #ddd; padding:8px 10px; background:#f0f0f0; text-align:left; color: #222; font-weight:600;">${col}</th>`;
                 });
                 tableHtml += '</tr></thead><tbody>';
-                rows.forEach(row => {
-                    tableHtml += '<tr>';
+                rows.forEach((row, rowIndex) => {
+                    const bgColor = rowIndex % 2 === 0 ? '#ffffff' : '#f9f9f9';
+                    tableHtml += `<tr style="background: ${bgColor};">`;
                     cols.forEach(col => {
                         let val = row[col] !== undefined && row[col] !== null ? row[col] : '';
                         if (typeof val === 'object') val = JSON.stringify(val);
-                        tableHtml += `<td style="border:1px solid #ddd; padding:6px;">${val}</td>`;
+                        // Truncate long values for display
+                        if (typeof val === 'string' && val.length > 1000) {
+                            val = val.substring(0, 1000) + '...';
+                        }
+                        tableHtml += `<td style="border:1px solid #ddd; padding:6px 10px; color: #333;">${val}</td>`;
                     });
                     tableHtml += '</tr>';
                 });
@@ -108,7 +114,7 @@ function executeQuery() {
                 resultsEl.innerHTML = tableHtml;
             } else {
                 // INSERT / UPDATE / DELETE
-                resultsEl.innerHTML = `<div style="color:#28a745; padding:20px;">${data.message || 'Query executed successfully'}<br>Affected rows: ${data.affected_rows || 0}</div>`;
+                resultsEl.innerHTML = `<div style="color:#28a745; padding:20px; background: #f0fff0; border-radius: 4px;">${data.message || 'Query executed successfully'}<br>Affected rows: ${data.affected_rows || 0}</div>`;
             }
 
             // Update history count
