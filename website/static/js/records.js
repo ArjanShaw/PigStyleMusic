@@ -227,18 +227,23 @@
                 this.filteredData = [...this.allData];
             } else {
                 const term = this.searchTerm.toLowerCase().trim();
+                // Check if term is a number (for ID or barcode exact match)
                 const isNumeric = /^\d+$/.test(term);
                 
                 this.filteredData = this.allData.filter(record => {
+                    // Exact match for ID if numeric
                     if (isNumeric && record.id && record.id.toString() === term) {
                         return true;
                     }
+                    // Exact match for barcode
                     if (record.barcode && record.barcode.toLowerCase() === term) {
                         return true;
                     }
+                    // Partial match for artist
                     if (record.artist && record.artist.toLowerCase().includes(term)) {
                         return true;
                     }
+                    // Partial match for title
                     if (record.title && record.title.toLowerCase().includes(term)) {
                         return true;
                     }
@@ -270,20 +275,17 @@
             try {
                 const params = new URLSearchParams({
                     page: 1,
-                    limit: 500
+                    limit: 500  // Load all records for client-side filtering
                 });
                 
                 if (this.config.locationId) {
                     params.append('location_id', this.config.locationId);
                 }
                 if (this.config.statusId) {
-                    params.append('status_ids', this.config.statusId);
+                    params.append('status_id', this.config.statusId);
                 }
 
-                const url = `http://localhost:5000/records?${params.toString()}`;
-                console.log(`📀 ${this.config.title} fetching:`, url);
-                
-                const response = await fetch(url);
+                const response = await fetch(`http://localhost:5000/records?${params.toString()}`);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
@@ -299,7 +301,6 @@
                     this.currentPage = 1;
                     this.renderPage();
                     this.updatePagination();
-                    console.log(`📀 ${this.config.title} loaded ${this.totalRecords} records`);
                 } else {
                     container.innerHTML = `
                         <div style="text-align: center; padding: 40px; color: #888;">
@@ -314,7 +315,7 @@
                     <div style="text-align: center; padding: 40px; color: #dc3545;">
                         <div style="margin-bottom: 10px;">❌</div>
                         <p>Failed to load: ${err.message}</p>
-                        <button onclick="window.location.reload()" style="margin-top: 10px; padding: 8px 20px; border: none; border-radius: 4px; background: ${this.config.borderColor}; color: ${this.config.buttonTextColor}; cursor: pointer;">
+                        <button onclick="this.loadRecords()" style="margin-top: 10px; padding: 8px 20px; border: none; border-radius: 4px; background: ${this.config.borderColor}; color: ${this.config.buttonTextColor}; cursor: pointer;">
                             Retry
                         </button>
                     </div>

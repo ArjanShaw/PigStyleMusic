@@ -3279,7 +3279,74 @@ def delete_record(record_id):
     conn.commit()
     conn.close()
     return jsonify({'status': 'success', 'message': 'Record deleted'})
- 
+
+@app.route('/records/search', methods=['GET'])
+def search_records():
+    query = request.args.get('q', '').strip()
+    if not query:
+        return jsonify({'status': 'error', 'error': 'Search query required'}), 400
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    is_numeric = query.isdigit()
+    
+    if is_numeric:
+        id_value = int(query)
+        
+        cursor.execute('''
+            SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name,
+            f.name as format_name,
+            l.name as location_name
+            FROM records r
+            LEFT JOIN d_status s ON r.status_id = s.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            LEFT JOIN formats f ON r.format_id = f.id
+            LEFT JOIN locations l ON r.location_id = l.id
+            WHERE r.id = ? OR r.barcode = ?
+            ORDER BY 
+                CASE 
+                    WHEN r.id = ? THEN 1
+                    WHEN r.barcode = ? THEN 2
+                    ELSE 3
+                END,
+                r.created_at DESC
+        ''', (id_value, query, id_value, query))
+        
+    else:
+        search_term = f'%{query}%'
+        
+        cursor.execute('''
+            SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name,
+            f.name as format_name,
+            l.name as location_name
+            FROM records r
+            LEFT JOIN d_status s ON r.status_id = s.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            LEFT JOIN formats f ON r.format_id = f.id
+            LEFT JOIN locations l ON r.location_id = l.id
+            WHERE r.artist LIKE ? OR r.title LIKE ? OR r.catalog_number LIKE ?
+            ORDER BY r.created_at DESC
+        ''', (search_term, search_term, search_term))
+    
+    records = cursor.fetchall()
+    conn.close()
+    
+    records_list = []
+    for record in records:
+        record_dict = dict(record)
+        if record_dict.get('sleeve_condition_name'):
+            record_dict['condition'] = record_dict['sleeve_condition_name']
+        records_list.append(record_dict)
+    
+    return jsonify({
+        'status': 'success', 
+        'records': records_list, 
+        'count': len(records_list)
+    })
+
 
 
 @app.route('/records/count', methods=['GET'])
@@ -3300,7 +3367,29 @@ def get_records_count():
     return jsonify({'status': 'success', 'count': result['count']})
 
 
- 
+
+@app.route('/records/update-status', methods=['POST'])
+def update_records_status():
+    data = request.get_json()
+    if not data or 'record_ids' not in data or 'status_id' not in data:
+        return jsonify({'status': 'error', 'error': 'record_ids and status_id required'}), 400
+    record_ids = data['record_ids']
+    status_id = data['status_id']
+    if not isinstance(record_ids, list):
+        return jsonify({'status': 'error', 'error': 'record_ids must be a list'}), 400
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM d_status WHERE id = ?', (status_id,))
+    if not cursor.fetchone():
+        conn.close()
+        return jsonify({'status': 'error', 'error': 'Invalid status ID'}), 400
+    placeholders = ','.join('?' for _ in record_ids)
+    cursor.execute(f'UPDATE records SET status_id = ? WHERE id IN ({placeholders})', [status_id] + record_ids)
+    updated_count = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success', 'message': f'Updated status for {updated_count} records', 'updated_count': updated_count, 'status_id': status_id})
+
 
 @app.route('/records/user/<int:user_id>', methods=['GET'])
 def get_user_records(user_id):
