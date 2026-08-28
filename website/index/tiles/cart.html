@@ -1,4 +1,4 @@
-<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+<!-- <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
     <h2 style="color: #333; margin: 0 0 5px 0;">🛒 Your Cart</h2>
     <div id="cartResponse" style="color: #333; text-align: left; width: 100%; flex: 1; overflow-y: auto; font-size: 13px;">
         <div style="text-align: center; padding: 40px; color: #888;">
@@ -38,10 +38,9 @@
                         <span style="font-size: 12px; color: #6c757d;">Charges full remaining</span>
                     </div>
                     <div style="display: flex; gap: 8px; margin-top: 5px;">
-                        <input type="number" id="card-amount" placeholder="0.00" min="0" step="0.01" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; background: #fff;">
+                        <input type="number" id="card-amount" placeholder="0.00" min="0" step="0.01" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; background: #fff;" readonly value="0.00">
                         <button onclick="setMaxCard()" id="card-max-btn" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">MAX</button>
                     </div>
-                    <div id="card-status" style="margin-top: 5px; font-size: 12px; color: #6c757d; display: none;">Ready</div>
                 </div>
                 
                 <!-- Cash Payment (Admin only) -->
@@ -91,7 +90,6 @@
                         <input type="number" id="pos-amount" placeholder="0.00" min="0" step="0.01" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
                         <button onclick="setMaxPos()" id="pos-max-btn" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">MAX</button>
                     </div>
-                    <div id="pos-status" style="margin-top: 5px; font-size: 12px; color: #6c757d; display: none;">Ready</div>
                 </div>
             </div>
             
@@ -111,12 +109,9 @@
         </div>
         <div class="modal-footer" style="padding: 15px 20px; border-top: 1px solid #eee; display: flex; gap: 10px; justify-content: flex-end; background: #f8f9fa; border-radius: 0 0 16px 16px;">
             <button onclick="closeCheckoutModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Cancel</button>
-            <button onclick="submitPayment()" id="submit-btn" style="display: none; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                <i class="fas fa-paper-plane"></i> Submit
-            </button>
-            <button onclick="completeOrder()" id="checkout-complete-btn" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                <i class="fas fa-check"></i> Complete
+            <button onclick="processCheckout()" id="checkout-complete-btn" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                <i class="fas fa-check"></i> Complete Payment
             </button>
         </div>
     </div>
-</div>
+</div> 
