@@ -13,7 +13,31 @@
         return headers;
     }
 
-    // Update preview
+    // ===== FETCH A SINGLE CONFIG VALUE =====
+    async function fetchConfigValue(key) {
+        try {
+            const response = await fetch(`${API_BASE}/config/${key}`, {
+                credentials: 'include',
+                headers: getHeaders()
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.status !== 'success' || data.config_value === undefined || data.config_value === null) {
+                throw new Error(`Config key "${key}" not found in database`);
+            }
+            
+            return data.config_value;
+        } catch (error) {
+            throw new Error(`Failed to load config "${key}": ${error.message}`);
+        }
+    }
+
+    // ===== UPDATE PREVIEW =====
     function updatePreview() {
         const textarea = document.getElementById('cl-label-text');
         const preview = document.getElementById('cl-preview');
@@ -30,7 +54,6 @@
             return;
         }
         
-        // Check for barcodes
         const hasBarcodes = lines.some(line => line.trim().startsWith('GC-'));
         
         if (hasBarcodes) {
@@ -47,7 +70,6 @@
             });
             preview.innerHTML = html;
             
-            // Render barcodes
             const canvases = preview.querySelectorAll('canvas');
             lines.forEach((line, index) => {
                 const canvas = canvases[index];
@@ -74,7 +96,7 @@
         }
     }
 
-    // Generate PDF
+    // ===== GENERATE PDF =====
     window.clGeneratePDF = async function() {
         const textarea = document.getElementById('cl-label-text');
         if (!textarea) return;
@@ -86,29 +108,33 @@
         }
         
         try {
-            // Load config
-            const config = await loadConfig();
-            
-            // Generate PDF using jsPDF
+            // ===== FETCH EACH CONFIG VALUE INDIVIDUALLY =====
+            const labelWidthMm = parseFloat(await fetchConfigValue('LABEL_WIDTH_MM'));
+            const labelHeightMm = parseFloat(await fetchConfigValue('LABEL_HEIGHT_MM'));
+            const leftMarginMm = parseFloat(await fetchConfigValue('LEFT_MARGIN_MM'));
+            const gutterMm = parseFloat(await fetchConfigValue('GUTTER_SPACING_MM'));
+            const topMarginMm = parseFloat(await fetchConfigValue('TOP_MARGIN_MM'));
+            const printBorders = await fetchConfigValue('PRINT_BORDERS');
+
             const { jsPDF } = window.jspdf;
             if (!jsPDF) {
                 alert('jsPDF library not loaded. Please check your internet connection.');
                 return;
             }
             
-            const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-            
-            const labelWidth = parseFloat(config['LABEL_WIDTH_MM'] || 63.5) * 2.83465;
-            const labelHeight = parseFloat(config['LABEL_HEIGHT_MM'] || 33.9) * 2.83465;
-            const leftMargin = parseFloat(config['LEFT_MARGIN_MM'] || 11.1) * 2.83465;
-            const gutter = parseFloat(config['GUTTER_SPACING_MM'] || 3.2) * 2.83465;
-            const topMargin = parseFloat(config['TOP_MARGIN_MM'] || 12.7) * 2.83465;
-            const printBorders = (config['PRINT_BORDERS'] || 'false') === 'true';
+            const mmToPt = 2.83465;
+            const labelWidth = labelWidthMm * mmToPt;
+            const labelHeight = labelHeightMm * mmToPt;
+            const leftMargin = leftMarginMm * mmToPt;
+            const gutter = gutterMm * mmToPt;
+            const topMargin = topMarginMm * mmToPt;
+            const printBordersEnabled = printBorders === 'true';
             
             const cols = 4;
             const rows = 15;
             const labelsPerPage = cols * rows;
             
+            const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'legal' });
             let currentLabel = 0;
             let pageNum = 0;
             
@@ -127,14 +153,12 @@
                 const x = leftMargin + col * (labelWidth + gutter);
                 const y = topMargin + row * labelHeight;
                 
-                // Draw border
-                if (printBorders) {
+                if (printBordersEnabled) {
                     doc.setDrawColor(0);
                     doc.setLineWidth(0.5);
                     doc.rect(x, y, labelWidth, labelHeight);
                 }
                 
-                // Check if barcode
                 if (line.startsWith('GC-')) {
                     try {
                         const canvas = document.createElement('canvas');
@@ -147,35 +171,32 @@
                             margin: 0
                         });
                         
-                        const maxWidth = labelWidth - 6 * 2.83465;
+                        const maxWidth = labelWidth - 6 * mmToPt;
                         const maxHeight = labelHeight * 0.33;
                         const imgWidth = Math.min(maxWidth, maxHeight * (canvas.width / canvas.height));
                         const imgHeight = imgWidth * (canvas.height / canvas.width);
                         const imgX = x + (labelWidth - imgWidth) / 2;
-                        const imgY = y + (labelHeight - imgHeight - 4 * 2.83465) / 2;
+                        const imgY = y + (labelHeight - imgHeight - 4 * mmToPt) / 2;
                         
                         doc.addImage(canvas.toDataURL('image/png'), 'PNG', imgX, imgY, imgWidth, imgHeight);
                         
-                        // Human-readable text
                         doc.setFontSize(6);
                         doc.setFont('helvetica', 'normal');
                         doc.setTextColor(50, 50, 50);
                         const textWidth = doc.getTextWidth(line);
                         const textX = x + (labelWidth - textWidth) / 2;
-                        const textY = y + labelHeight - 2 * 2.83465;
+                        const textY = y + labelHeight - 2 * mmToPt;
                         doc.text(line, textX, textY);
                     } catch (e) {
-                        // Fallback to text
                         doc.setFontSize(10);
                         doc.setFont('helvetica', 'bold');
                         doc.setTextColor(0, 0, 0);
                         const textWidth = doc.getTextWidth(line);
                         const textX = x + (labelWidth - textWidth) / 2;
-                        const textY = y + labelHeight / 2 + 3 * 2.83465;
+                        const textY = y + labelHeight / 2 + 3 * mmToPt;
                         doc.text(line, textX, textY);
                     }
                 } else {
-                    // Text label (multi-line support)
                     const parts = line.split('|').map(p => p.trim());
                     if (parts.length === 1) {
                         doc.setFontSize(10);
@@ -183,12 +204,12 @@
                         doc.setTextColor(0, 0, 0);
                         const textWidth = doc.getTextWidth(parts[0]);
                         const textX = x + (labelWidth - textWidth) / 2;
-                        const textY = y + labelHeight / 2 + 3 * 2.83465;
+                        const textY = y + labelHeight / 2 + 3 * mmToPt;
                         doc.text(parts[0], textX, textY);
                     } else {
-                        const lineHeight = 6 * 2.83465;
+                        const lineHeight = 6 * mmToPt;
                         const totalLines = parts.length;
-                        const startTextY = y + (labelHeight - (totalLines * lineHeight)) / 2 + 4 * 2.83465;
+                        const startTextY = y + (labelHeight - (totalLines * lineHeight)) / 2 + 4 * mmToPt;
                         doc.setFontSize(8);
                         doc.setFont('helvetica', 'bold');
                         doc.setTextColor(0, 0, 0);
@@ -204,7 +225,6 @@
                 currentLabel++;
             }
             
-            // Open PDF
             const pdfBlob = doc.output('blob');
             const pdfUrl = URL.createObjectURL(pdfBlob);
             window.open(pdfUrl, '_blank');
@@ -217,32 +237,7 @@
         }
     };
 
-    // Load config
-    async function loadConfig() {
-        const keys = [
-            'LABEL_WIDTH_MM', 'LABEL_HEIGHT_MM', 'LEFT_MARGIN_MM',
-            'GUTTER_SPACING_MM', 'TOP_MARGIN_MM', 'PRINT_BORDERS'
-        ];
-        
-        const config = {};
-        for (const key of keys) {
-            try {
-                const response = await fetch(`${API_BASE}/config/${key}`, {
-                    credentials: 'include',
-                    headers: getHeaders()
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    config[key] = data.config_value;
-                }
-            } catch (e) {
-                console.warn('Could not load config key:', key, e);
-            }
-        }
-        return config;
-    }
-
-    // Generate gift card barcodes
+    // ===== GENERATE GIFT CARD BARCODES =====
     window.clGenerateGiftCards = function() {
         const textarea = document.getElementById('cl-label-text');
         if (!textarea) return;
@@ -263,7 +258,7 @@
         showToast('✅ 60 gift card barcodes generated!');
     };
 
-    // Update start position
+    // ===== START POSITION =====
     window.clUpdateStart = function() {
         const rowInput = document.getElementById('cl-start-row');
         const colInput = document.getElementById('cl-start-col');
@@ -281,7 +276,6 @@
         colInput.value = startCol;
         display.textContent = `Position: ${startRow}, ${startCol}`;
         
-        // Save to localStorage
         try {
             localStorage.setItem('customLabelsStartPosition', JSON.stringify({ row: startRow, col: startCol }));
         } catch (e) {}
@@ -289,7 +283,6 @@
         showToast('✅ Start position updated');
     };
 
-    // Load start position
     function loadStartPosition() {
         try {
             const stored = localStorage.getItem('customLabelsStartPosition');
@@ -306,7 +299,7 @@
         clUpdateStart();
     }
 
-    // Clear text
+    // ===== CLEAR / SAMPLE =====
     window.clClearText = function() {
         const textarea = document.getElementById('cl-label-text');
         if (textarea) {
@@ -315,7 +308,6 @@
         }
     };
 
-    // Load sample
     window.clLoadSample = function() {
         const textarea = document.getElementById('cl-label-text');
         if (textarea) {
@@ -333,7 +325,7 @@
         }
     };
 
-    // Toast notification
+    // ===== TOAST =====
     function showToast(message) {
         const toast = document.createElement('div');
         toast.style.cssText = `
@@ -365,7 +357,7 @@
         return div.innerHTML;
     }
 
-    // Init
+    // ===== INIT =====
     window.initCustomLabels = function() {
         console.log('Custom Labels initialized');
         loadStartPosition();
