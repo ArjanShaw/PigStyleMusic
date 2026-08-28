@@ -1,5 +1,38 @@
 // Shared records component - used by both Shop and New
 (function() {
+    'use strict';
+
+    // ===== DETECT ENVIRONMENT =====
+    function getApiBase() {
+        const hostname = window.location.hostname;
+        const port = window.location.port;
+        
+        // Production: pigstylemusic.com
+        if (hostname === 'www.pigstylemusic.com' || hostname === 'pigstylemusic.com') {
+            return '';
+        }
+        
+        // Local development
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            // If we're on port 8000 (static server), Flask is likely on 5000
+            if (port === '8000') {
+                return 'http://localhost:5000';
+            }
+            // If we're on port 5000, Flask is serving everything
+            if (port === '5000' || port === '5001') {
+                return '';
+            }
+            // Default to 5000 for local development
+            return 'http://localhost:5000';
+        }
+        
+        // Fallback: use relative URLs (same origin)
+        return '';
+    }
+
+    const API_BASE = getApiBase();
+    console.log('🔧 Records API_BASE:', API_BASE || '(same origin)');
+
     let currentPage = 1;
     const pageSize = 24;
     let totalRecords = 0;
@@ -49,7 +82,6 @@
                         <div style="font-size: 18px; font-weight: bold; color: #333;">${record.title || 'Untitled'}</div>
                         <div style="color: #666; margin: 4px 0;">${record.condition || 'Unknown Condition'}</div>
                         <div style="color: #666; font-size: 14px;">${record.format_name || 'Unknown Format'}</div>
-                         
                     </div>
                 </div>
                 
@@ -283,7 +315,14 @@
                     params.append('status_ids', this.config.statusId);
                 }
 
-                const response = await fetch(`/records?${params.toString()}`);
+                // Use API_BASE for the fetch URL
+                const url = `${API_BASE}/records?${params.toString()}`;
+                console.log(`📡 Fetching records from: ${url}`);
+
+                const response = await fetch(url, {
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' }
+                });
 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
@@ -313,7 +352,7 @@
                     <div style="text-align: center; padding: 40px; color: #dc3545;">
                         <div style="margin-bottom: 10px;">❌</div>
                         <p>Failed to load: ${err.message}</p>
-                        <button onclick="this.loadRecords()" style="margin-top: 10px; padding: 8px 20px; border: none; border-radius: 4px; background: ${this.config.borderColor}; color: ${this.config.buttonTextColor}; cursor: pointer;">
+                        <button onclick="recordsComponent.loadRecords()" style="margin-top: 10px; padding: 8px 20px; border: none; border-radius: 4px; background: ${this.config.borderColor}; color: ${this.config.buttonTextColor}; cursor: pointer;">
                             Retry
                         </button>
                     </div>
@@ -352,7 +391,7 @@
                          onclick="openRecordModal(${recordData})">
                         <div style="height: 120px; display: flex; align-items: center; justify-content: center; background: #e0e0e0; border-radius: 4px; margin-bottom: 8px; position: relative; overflow: hidden;">
                             ${imageUrl ? 
-                                `<img src="${imageUrl}" style="width: 100%; height: 100%; object-fit: cover;">` : 
+                                `<img src="${imageUrl}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\\'font-size: 40px; color: #bbb;\\'>🎵</span>';">` : 
                                 `<span style="font-size: 40px; color: #bbb;">🎵</span>`
                             }
                             ${this.config.badgeText ? `
@@ -422,6 +461,11 @@
                 this.updatePagination();
             }
         }
+
+        // Reload records (for when data changes)
+        reload() {
+            this.loadRecords();
+        }
     };
 
     // Global search functions for shop and new
@@ -448,5 +492,7 @@
             window.newComponent.clearSearch();
         }
     };
+
+    console.log('📀 Records component loaded with API_BASE:', API_BASE || '(same origin)');
 
 })();
