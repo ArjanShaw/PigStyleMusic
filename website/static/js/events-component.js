@@ -9,7 +9,7 @@ function getImageBaseUrl() {
         // Remove /api from the baseUrl to get the root URL
         return AppConfig.baseUrl.replace(/\/api$/, '');
     }
-    return 'http://localhost:5000'; // Fallback to backend port
+    return window.AppConfig ? window.AppConfig.baseUrl : 'http://localhost:5000'; // Fallback to backend port
 }
 
 // Helper to get full image URL

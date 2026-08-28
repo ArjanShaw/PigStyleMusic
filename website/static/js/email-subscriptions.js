@@ -727,7 +727,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function checkNotifications() {
         const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const apiUrl = isLocalhost 
-            ? 'http://localhost:5000/api/subscriptions/notifications/count'
+            ? window.AppConfig ? window.AppConfig.baseUrl + '/api/subscriptions/notifications/count'
             : `https://${window.location.hostname}/api/subscriptions/notifications/count`;
         
         fetch(apiUrl, {
@@ -772,7 +772,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function loadNotifications() {
         const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const apiUrl = isLocalhost 
-            ? 'http://localhost:5000/api/subscriptions/notifications'
+            ? window.AppConfig ? window.AppConfig.baseUrl + '/api/subscriptions/notifications'
             : `https://${window.location.hostname}/api/subscriptions/notifications`;
         
         fetch(apiUrl, {

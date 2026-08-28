@@ -190,7 +190,7 @@ document.addEventListener('DOMContentLoaded', function() {
     async function fetchStickyNotes() {
         try {
             var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            var apiUrl = isLocalhost ? 'http://localhost:5000/api/sticky-notes' : 'https://' + window.location.hostname + '/api/sticky-notes';
+            var apiUrl = isLocalhost ? window.AppConfig ? window.AppConfig.baseUrl + '/api/sticky-notes' : 'http://localhost:5000/api/sticky-notes' : 'https://' + window.location.hostname + '/api/sticky-notes';
             var response = await fetch(apiUrl, { method: 'GET', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' } });
             if (!response.ok) throw new Error('API returned ' + response.status);
             var data = await response.json();

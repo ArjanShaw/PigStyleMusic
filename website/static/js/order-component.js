@@ -60,7 +60,7 @@ async function handleOrderSubmit() {
     try {
         const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const apiUrl = isLocalhost 
-            ? 'http://localhost:5000/api/record-orders'
+            ? window.AppConfig ? window.AppConfig.baseUrl + '/api/record-orders' : 'http://localhost:5000/api/record-orders'
             : 'https://' + window.location.hostname + '/api/record-orders';
         
         const response = await fetch(apiUrl, {

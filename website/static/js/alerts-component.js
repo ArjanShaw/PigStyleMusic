@@ -54,7 +54,7 @@ async function handleAlertSubmit() {
     try {
         const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const apiUrl = isLocalhost 
-            ? 'http://localhost:5000/api/subscribe'
+            ? window.AppConfig ? window.AppConfig.baseUrl + '/api/subscribe' : 'http://localhost:5000/api/subscribe'
             : 'https://' + window.location.hostname + '/api/subscribe';
         
         const response = await fetch(apiUrl, {

@@ -60,7 +60,7 @@ function setupConnectForm() {
             const isLocalhost = window.location.hostname === 'localhost' || 
                               window.location.hostname === '127.0.0.1';
             const apiUrl = isLocalhost 
-                ? 'http://localhost:5000/api/feedback'
+                ? window.AppConfig ? window.AppConfig.baseUrl + '/api/feedback' : 'http://localhost:5000/api/feedback'
                 : 'https://' + window.location.hostname + '/api/feedback';
             
             const response = await fetch(apiUrl, {
