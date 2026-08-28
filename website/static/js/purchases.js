@@ -3,12 +3,116 @@
     let selectedPurchaseId = null;
     let purchases = [];
     let purchaseRecords = [];
+    let dependenciesLoaded = false;
 
     const API_BASE = 'http://localhost:5000';
 
-    // Helper to show status messages
-    function showStatus(message, type = 'info') {
+    // ===== CHECK DEPENDENCIES FOR LABEL PRINTING =====
+    function checkDependencies() {
+        if (typeof window.jspdf !== 'undefined' && typeof window.JsBarcode !== 'undefined') {
+            dependenciesLoaded = true;
+            return true;
+        }
+        return false;
+    }
+
+    // Check periodically until dependencies are loaded
+    var checkInterval = setInterval(function() {
+        if (checkDependencies()) {
+            clearInterval(checkInterval);
+            console.log('✅ Label printing dependencies loaded');
+        }
+    }, 500);
+
+    // Also check when DOM is ready
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(checkDependencies, 500);
+    });
+
+    // ===== PRINT LABELS =====
+    window.printPurchaseLabels = async function(purchaseId) {
         const statusDiv = document.getElementById('purchases-status');
+        
+        // Check if dependencies are loaded
+        if (!dependenciesLoaded) {
+            showStatus('⏳ Loading label printer dependencies...', 'info');
+            
+            // Wait for dependencies to load
+            await new Promise(function(resolve) {
+                var waitInterval = setInterval(function() {
+                    if (dependenciesLoaded) {
+                        clearInterval(waitInterval);
+                        resolve();
+                    }
+                }, 200);
+                // Timeout after 10 seconds
+                setTimeout(function() {
+                    clearInterval(waitInterval);
+                    resolve();
+                }, 10000);
+            });
+            
+            if (!dependenciesLoaded) {
+                showStatus('❌ Label printer dependencies failed to load. Please refresh the page.', 'error');
+                return;
+            }
+        }
+
+        // Disable all print buttons for this purchase
+        var buttons = document.querySelectorAll('.btn-print[data-purchase-id="' + purchaseId + '"]');
+        buttons.forEach(function(btn) { btn.disabled = true; });
+
+        showStatus('📄 Fetching records for purchase #' + purchaseId + '...', 'info');
+
+        try {
+            // Fetch records for this purchase
+            var url = API_BASE + '/records?batch_id=' + purchaseId + '&limit=1000';
+            var response = await fetch(url, {
+                credentials: 'include',
+                headers: { 'Accept': 'application/json' }
+            });
+
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+
+            var data = await response.json();
+            if (data.status !== 'success') {
+                throw new Error(data.error || 'Failed to load records');
+            }
+
+            var records = data.records || [];
+
+            if (records.length === 0) {
+                showStatus('⚠️ No records found for purchase #' + purchaseId, 'warning');
+                buttons.forEach(function(btn) { btn.disabled = false; });
+                return;
+            }
+
+            showStatus('🖨️ Generating ' + records.length + ' labels for purchase #' + purchaseId + '...', 'info');
+
+            // Use LabelPrinter if available
+            if (window.LabelPrinter) {
+                await window.LabelPrinter.generatePriceTags(records, {
+                    title: 'Purchase #' + purchaseId + ' - ' + records.length + ' records'
+                });
+                showStatus('✅ ' + records.length + ' labels printed for purchase #' + purchaseId, 'success');
+            } else {
+                throw new Error('LabelPrinter not available');
+            }
+
+        } catch (error) {
+            console.error('Print error:', error);
+            showStatus('❌ Error printing labels: ' + error.message, 'error');
+        } finally {
+            buttons.forEach(function(btn) { btn.disabled = false; });
+        }
+    };
+
+    // ===== SHOW STATUS =====
+    function showStatus(message, type = 'info') {
+        let statusDiv = document.getElementById('purchases-status');
+        
         if (!statusDiv) {
             // Create status div if it doesn't exist
             const container = document.querySelector('.purchases-container') || document.body;
@@ -16,7 +120,7 @@
             div.id = 'purchases-status';
             div.style.cssText = `
                 position: fixed;
-                top: 80px;
+                bottom: 20px;
                 right: 20px;
                 padding: 12px 20px;
                 border-radius: 8px;
@@ -27,9 +131,9 @@
                 box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             `;
             container.appendChild(div);
+            statusDiv = div;
         }
         
-        const el = document.getElementById('purchases-status');
         const colors = {
             success: '#d4edda',
             error: '#f8d7da',
@@ -42,14 +146,16 @@
             warning: '#856404',
             info: '#004085'
         };
-        el.style.display = 'block';
-        el.style.background = colors[type] || '#f8f9fa';
-        el.style.color = textColors[type] || '#333';
-        el.textContent = message;
-        setTimeout(() => { el.style.display = 'none'; }, 5000);
+        
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = colors[type] || '#f8f9fa';
+        statusDiv.style.color = textColors[type] || '#333';
+        statusDiv.textContent = message;
+        
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 5000);
     }
 
-    // Load purchases
+    // ===== LOAD PURCHASES =====
     async function loadPurchases() {
         const list = document.getElementById('purchases-list');
         if (!list) return;
@@ -94,7 +200,7 @@
         }
     }
 
-    // Render purchases table
+    // ===== RENDER PURCHASES =====
     function renderPurchases(purchasesList) {
         const list = document.getElementById('purchases-list');
         if (!list) return;
@@ -114,7 +220,7 @@
                     <th style="padding: 8px 10px; text-align: right; color: #333;">Amount</th>
                     <th style="padding: 8px 10px; text-align: left; color: #333;">Date</th>
                     <th style="padding: 8px 10px; text-align: center; color: #333;">Bill</th>
-                    <th style="padding: 8px 10px; text-align: center; color: #333;">Action</th>
+                    <th style="padding: 8px 10px; text-align: center; color: #333;">Actions</th>
                 </tr>
             </thead>
             <tbody>`;
@@ -123,19 +229,29 @@
             const isSelected = (p.id === selectedPurchaseId);
             const statusColor = p.status === 'complete' ? '#28a745' : '#ffc107';
             const statusText = p.status === 'complete' ? '✅ Complete' : '📝 Draft';
+            const recordCount = p.record_count || 0;
             
             html += `<tr ${isSelected ? 'style="background: #e3f2fd;"' : ''} data-id="${p.id}">
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333; font-weight: 600;">${p.id}</td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333;">${p.seller_name || 'Unknown'}</td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: ${statusColor};">${statusText}</td>
-                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center; color: #333;">${p.record_count || 0}</td>
+                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center; color: #333;">${recordCount}</td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: right; color: #333;">${p.amount_spent && p.amount_spent > 0 ? '$' + p.amount_spent.toFixed(2) : '—'}</td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333;">${p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center; color: #333;">${p.bill_of_sale_path ? '📄 Yes' : '—'}</td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">
-                    <button onclick="purchasesSelect(${p.id})" style="padding: 4px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
-                        <i class="fas fa-eye"></i> View
-                    </button>
+                    <div style="display: flex; gap: 4px; flex-wrap: wrap; justify-content: center;">
+                        <button onclick="purchasesSelect(${p.id})" style="padding: 4px 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        ${recordCount > 0 ? `
+                            <button class="btn-print" data-purchase-id="${p.id}" onclick="printPurchaseLabels(${p.id})" 
+                                    style="padding: 4px 10px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;" 
+                                    title="Print ${recordCount} labels">
+                                <i class="fas fa-print"></i> ${recordCount}
+                            </button>
+                        ` : ''}
+                    </div>
                 </td>
             </tr>`;
         });
@@ -144,7 +260,7 @@
         list.innerHTML = html;
     }
 
-    // Update stats
+    // ===== UPDATE STATS =====
     function updateStats(purchasesList) {
         const total = purchasesList.length;
         const complete = purchasesList.filter(p => p.status === 'complete').length;
@@ -162,16 +278,14 @@
         if (recordsEl) recordsEl.textContent = totalRecords;
     }
 
-    // Select a purchase
+    // ===== SELECT PURCHASE =====
     window.purchasesSelect = async function(id) {
         selectedPurchaseId = id;
         
-        // Highlight selected row
         document.querySelectorAll('#purchases-list tr[data-id]').forEach(row => {
             row.style.background = row.dataset.id == id ? '#e3f2fd' : '';
         });
         
-        // Show action buttons
         const purchase = purchases.find(p => p.id === id);
         if (purchase) {
             const deleteBtn = document.getElementById('purchases-delete-btn');
@@ -185,11 +299,10 @@
             }
         }
         
-        // Load records for this purchase
         await loadPurchaseRecords(id);
     };
 
-    // Load records for a purchase
+    // ===== LOAD PURCHASE RECORDS =====
     async function loadPurchaseRecords(purchaseId) {
         const list = document.getElementById('purchases-list');
         if (!list) return;
@@ -197,7 +310,6 @@
         const row = list.querySelector(`tr[data-id="${purchaseId}"]`);
         if (!row) return;
         
-        // Remove existing details row
         const existingDetails = row.nextElementSibling;
         if (existingDetails && existingDetails.classList && existingDetails.classList.contains('purchase-details')) {
             existingDetails.remove();
@@ -225,7 +337,7 @@
         }
     }
 
-    // Render purchase records
+    // ===== RENDER PURCHASE RECORDS =====
     function renderPurchaseRecords(purchaseId, records) {
         const list = document.getElementById('purchases-list');
         if (!list) return;
@@ -273,7 +385,7 @@
         row.insertAdjacentHTML('afterend', html);
     }
 
-    // Create new purchase
+    // ===== CREATE NEW PURCHASE =====
     window.purchasesCreate = async function() {
         const sellerName = prompt('Enter seller name:');
         if (!sellerName) return;
@@ -309,13 +421,13 @@
         }
     };
 
-    // Refresh
+    // ===== REFRESH =====
     window.purchasesRefresh = function() {
         loadPurchases();
         showStatus('✅ Refreshed', 'success');
     };
 
-    // Accept draft
+    // ===== ACCEPT DRAFT =====
     window.purchasesAcceptDraft = async function() {
         if (!selectedPurchaseId) {
             showStatus('Please select a purchase first.', 'warning');
@@ -382,7 +494,7 @@
         }
     };
 
-    // Delete purchase
+    // ===== DELETE PURCHASE =====
     window.purchasesDelete = async function() {
         if (!selectedPurchaseId) {
             showStatus('Please select a purchase first.', 'warning');
@@ -433,9 +545,11 @@
         }
     };
 
-    // Initialize
+    // ===== INITIALIZE =====
     window.initPurchases = function() {
         console.log('Purchases initialized');
         loadPurchases();
+        // Check dependencies after a delay
+        setTimeout(checkDependencies, 1000);
     };
 })();
