@@ -49,9 +49,7 @@
                         <div style="font-size: 18px; font-weight: bold; color: #333;">${record.title || 'Untitled'}</div>
                         <div style="color: #666; margin: 4px 0;">${record.condition || 'Unknown Condition'}</div>
                         <div style="color: #666; font-size: 14px;">${record.format_name || 'Unknown Format'}</div>
-                        <div style="margin-top: 8px; font-size: 14px; color: ${inStock ? '#28a745' : '#dc3545'};">
-                            ${inStock ? '✅ In Stock' : '❌ Out of Stock'}
-                        </div>
+                         
                     </div>
                 </div>
                 
@@ -282,7 +280,7 @@
                     params.append('location_id', this.config.locationId);
                 }
                 if (this.config.statusId) {
-                    params.append('status_id', this.config.statusId);
+                    params.append('status_ids', this.config.statusId);
                 }
 
                 const response = await fetch(`http://localhost:5000/records?${params.toString()}`);
@@ -366,7 +364,6 @@
                         <div style="font-weight: bold; color: #333; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${record.artist || 'Unknown Artist'}</div>
                         <div style="color: #666; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${record.title || 'Untitled'}</div>
                         <div style="color: #ff6b6b; font-size: 16px; font-weight: bold; margin-top: 4px;">$${price.toFixed(2)}</div>
-                        <div style="font-size: 10px; color: ${inStock ? '#28a745' : '#dc3545'}; margin-top: 2px;">${inStock ? '✅ In Stock' : '❌ Out of Stock'}</div>
                         ${this.config.locationId ? '<div style="font-size: 9px; color: #999; margin-top: 2px;">📍 Loveland</div>' : ''}
                         ${record.barcode ? `<div style="font-size: 8px; color: #999; margin-top: 2px; font-family: monospace;">${record.barcode}</div>` : ''}
                     </div>
