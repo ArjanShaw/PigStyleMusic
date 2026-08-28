@@ -2,7 +2,7 @@
 (function() {
     window.loadEvents = async function() {
         try {
-            const response = await fetch('http://localhost:5000/api/events');
+            const response = await fetch('/api/events');
             const data = await response.json();
             console.log('Events response:', data);
             

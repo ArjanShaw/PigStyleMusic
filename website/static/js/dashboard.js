@@ -18,7 +18,7 @@
 
         try {
             // Load user records
-            const response = await fetch(`http://localhost:5000/records/user/${user.user_id}`, {
+            const response = await fetch(`/records/user/${user.user_id}`, {
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -56,7 +56,7 @@
                 document.getElementById('dash-month-purchases').textContent = monthPurchases;
 
                 // Commission rate
-                const commissionResponse = await fetch('http://localhost:5000/api/commission-rate', {
+                const commissionResponse = await fetch('/api/commission-rate', {
                     credentials: 'include',
                     headers: { 'Content-Type': 'application/json' }
                 });

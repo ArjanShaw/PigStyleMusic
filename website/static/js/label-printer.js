@@ -9,7 +9,7 @@
 
     console.log('🏷️ label-printer.js loading...');
 
-    const API_BASE = 'http://localhost:5000';
+    const API_BASE = '';
 
     // ========== CONFIG CACHE ==========
     let configCache = {};

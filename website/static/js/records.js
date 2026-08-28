@@ -283,8 +283,8 @@
                     params.append('status_ids', this.config.statusId);
                 }
 
-                const response = await fetch(`http://localhost:5000/records?${params.toString()}`);
-                
+                const response = await fetch(`/records?${params.toString()}`);
+
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }

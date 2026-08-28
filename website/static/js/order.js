@@ -26,7 +26,7 @@
         statusDiv.innerHTML = '<span style="color:#666;">⏳ Submitting request...</span>';
         
         try {
-            const response = await fetch('http://localhost:5000/api/record-orders', {
+            const response = await fetch('/api/record-orders', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 

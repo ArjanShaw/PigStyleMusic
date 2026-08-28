@@ -41,7 +41,7 @@
         const search = document.getElementById('acc-search').value.trim();
         
         try {
-            let url = 'http://localhost:5000/api/accounting/bank-transactions-full';
+            let url = '/api/accounting/bank-transactions-full';
             const params = new URLSearchParams();
             if (filter === 'unposted') params.append('filter', 'unposted');
             else if (filter === 'posted') params.append('filter', 'posted');
@@ -116,7 +116,7 @@
         list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading...</div>';
         
         try {
-            const response = await fetch('http://localhost:5000/api/accounting/accounts', { credentials: 'include' });
+            const response = await fetch('/api/accounting/accounts', { credentials: 'include' });
             const data = await response.json();
             
             if (data.status === 'success') {
@@ -186,7 +186,7 @@
         }
         
         try {
-            const response = await fetch('http://localhost:5000/api/accounting/accounts', {
+            const response = await fetch('/api/accounting/accounts', {
                 method: 'POST',
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
@@ -220,7 +220,7 @@
             params.append('per_page', journalPageSize);
             if (search) params.append('search', search);
             
-            const response = await fetch(`http://localhost:5000/api/accounting/journal?${params.toString()}`, { credentials: 'include' });
+            const response = await fetch(`/api/accounting/journal?${params.toString()}`, { credentials: 'include' });
             const data = await response.json();
             
             if (data.status === 'success') {
@@ -285,7 +285,7 @@
         list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading...</div>';
         
         try {
-            const response = await fetch('http://localhost:5000/api/accounting/balances', { credentials: 'include' });
+            const response = await fetch('/api/accounting/balances', { credentials: 'include' });
             const data = await response.json();
             
             if (data.status === 'success') {
@@ -350,7 +350,7 @@
         list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading...</div>';
         
         try {
-            const response = await fetch('http://localhost:5000/api/accounting/monthly-pl', { credentials: 'include' });
+            const response = await fetch('/api/accounting/monthly-pl', { credentials: 'include' });
             const data = await response.json();
             
             if (data.status === 'success') {

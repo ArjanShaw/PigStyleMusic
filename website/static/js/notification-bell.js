@@ -17,7 +17,7 @@
     let sessionCheckAttempts = 0;
     const MAX_ATTEMPTS = 3;
 
-    const API_BASE = 'http://localhost:5000';
+    const API_BASE = '';
     const POLL_INTERVAL = 30000;
 
     function getHeaders() {

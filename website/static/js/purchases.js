@@ -5,7 +5,7 @@
     let purchaseRecords = [];
     let dependenciesLoaded = false;
 
-    const API_BASE = 'http://localhost:5000';
+    const API_BASE = '';
 
     // ===== CHECK DEPENDENCIES FOR LABEL PRINTING =====
     function checkDependencies() {

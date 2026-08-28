@@ -17,7 +17,7 @@
         statusDiv.innerHTML = '<span style="color:#666;">⏳ Logging in...</span>';
         
         try {
-            const response = await fetch('http://localhost:5000/api/login', {
+            const response = await fetch('/api/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',  // <-- THIS WAS MISSING

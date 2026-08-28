@@ -3,7 +3,7 @@
     'use strict';
 
     const STORAGE_KEY = 'pigstyle_cart';
-    const API_BASE = 'http://localhost:5000';
+    const API_BASE = '';
     const SHIPPING_COST = 5.70;
 
     // ===== Cart Storage =====

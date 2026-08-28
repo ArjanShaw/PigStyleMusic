@@ -26,7 +26,7 @@
         statusDiv.innerHTML = '<span style="color:#666;">⏳ Sending...</span>';
         
         try {
-            const response = await fetch('http://localhost:5000/api/feedback', {
+            const response = await fetch('/api/feedback', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 

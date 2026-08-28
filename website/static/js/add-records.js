@@ -19,7 +19,7 @@
     // Load purchases
     async function loadPurchases() {
         try {
-            const response = await fetch('http://localhost:5000/api/inventory-purchases', {
+            const response = await fetch('/api/inventory-purchases', {
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -50,7 +50,7 @@
     // Load conditions
     async function loadConditions() {
         try {
-            const response = await fetch('http://localhost:5000/api/conditions', {
+            const response = await fetch('/api/conditions', {
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -73,7 +73,7 @@
     // Load formats
     async function loadFormats() {
         try {
-            const response = await fetch('http://localhost:5000/api/formats', {
+            const response = await fetch('/api/formats', {
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -93,7 +93,7 @@
     // Load consignors
     async function loadConsignors() {
         try {
-            const response = await fetch('http://localhost:5000/users', {
+            const response = await fetch('/users', {
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -163,7 +163,7 @@
         resultsDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Searching Discogs...</div>';
         
         try {
-            const response = await fetch(`http://localhost:5000/api/discogs/search?q=${encodeURIComponent(term)}`, {
+            const response = await fetch(`/api/discogs/search?q=${encodeURIComponent(term)}`, {
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -340,7 +340,7 @@
         };
         
         try {
-            const response = await fetch('http://localhost:5000/records', {
+            const response = await fetch('/records', {
                 method: 'POST',
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },

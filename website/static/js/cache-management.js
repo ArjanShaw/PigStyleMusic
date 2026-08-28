@@ -1,6 +1,6 @@
 // Cache Management page
 (function() {
-    const API_BASE = 'http://localhost:5000';
+    const API_BASE = '';
 
     function getHeaders() {
         const headers = { 'Content-Type': 'application/json' };

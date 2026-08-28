@@ -90,7 +90,7 @@
 
     window.loadMerch = async function(page = 1) {
         try {
-            const response = await fetch('http://localhost:5000/accessories?page=' + page + '&limit=' + pageSize);
+            const response = await fetch('/accessories?page=' + page + '&limit=' + pageSize);
             const data = await response.json();
             console.log('Merch response:', data);
             
