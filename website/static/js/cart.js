@@ -302,10 +302,17 @@
             }
             
             const data = await response.json();
+            console.log('📟 Terminals response:', data);
+            
             if (data.status === 'success' && data.terminals && data.terminals.length > 0) {
                 squareAvailable = true;
                 availableTerminals = data.terminals;
-                console.log('📟 Square terminals available:', availableTerminals.length);
+                
+                // Log each terminal with its raw ID
+                availableTerminals.forEach(t => {
+                    console.log(`📟 Terminal: ${t.device_name || 'Unknown'} - ID: ${t.id}`);
+                });
+                
                 return true;
             } else {
                 squareAvailable = false;
@@ -616,7 +623,7 @@
     };
 
     // ===== ADD POS PAYMENT =====
-    window.addPosPayment = function() {
+    window.addPosPayment = async function() {
         const input = document.getElementById('pos-amount');
         const amount = parseFloat(input.value);
         
@@ -634,15 +641,22 @@
             payAmount = checkoutRemaining;
         }
 
+        // Check if we have terminals
         if (!squareAvailable || availableTerminals.length === 0) {
-            showCheckoutStatus('No Square Terminal available. Please use Card or Cash.', 'error');
-            return;
+            // Try to refresh terminals
+            showCheckoutStatus('Checking for Square terminals...', 'info');
+            await checkSquareAvailability();
+            
+            if (!squareAvailable || availableTerminals.length === 0) {
+                showCheckoutStatus('No Square Terminal available. Please use Card or Cash.', 'error');
+                return;
+            }
         }
 
         // Get selected device
         const select = document.getElementById('pos-device-select');
         let deviceId = null;
-        if (select) {
+        if (select && select.value) {
             deviceId = select.value;
         } else {
             // Use first available
@@ -657,6 +671,16 @@
         // Clean device ID (remove 'device:' prefix if present)
         if (deviceId.startsWith('device:')) {
             deviceId = deviceId.substring(7);
+        }
+
+        // Double-check the device ID format
+        console.log('📟 Selected device ID:', deviceId);
+        console.log('📟 Available terminals:', availableTerminals);
+
+        // Make sure deviceId is just the ID part
+        if (deviceId.includes(':')) {
+            const parts = deviceId.split(':');
+            deviceId = parts[parts.length - 1];
         }
 
         // Send to POS
@@ -678,30 +702,60 @@
         try {
             // Get record IDs and titles from cart
             const items = window.cart.getItems();
-            const recordIds = items.filter(i => i.type === 'record').map(i => i.id);
-            const titles = items.map(i => i.title);
+            const recordIds = items.filter(i => i.type === 'record' && i.id).map(i => String(i.id));
+            const titles = items.map(i => i.title || 'Item');
+
+            // Clean device ID - remove any prefixes
+            let cleanDeviceId = deviceId;
+            if (cleanDeviceId.startsWith('device:')) {
+                cleanDeviceId = cleanDeviceId.substring(7);
+            }
+            // Remove any extra whitespace
+            cleanDeviceId = cleanDeviceId.trim();
+
+            console.log('📟 Clean device ID:', cleanDeviceId);
 
             const payload = {
                 amount_cents: Math.round(amount * 100),
-                record_ids: recordIds,
-                record_titles: titles,
+                record_ids: recordIds.length > 0 ? recordIds : ['1'],
+                record_titles: titles.length > 0 ? titles : ['Item'],
                 reference_id: 'pos_' + Date.now(),
-                device_id: deviceId
+                device_id: cleanDeviceId
             };
 
-            console.log('📟 Sending to POS:', payload);
+            console.log('📟 Sending to POS payload:', payload);
 
             const response = await fetch(`${API_BASE}/api/square/terminal/checkout`, {
                 method: 'POST',
                 credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
                 body: JSON.stringify(payload)
             });
 
-            const data = await response.json();
-            console.log('📟 POS response:', data);
+            // Log the response status
+            console.log('📟 POS response status:', response.status);
+            
+            // Get the response text first
+            const responseText = await response.text();
+            console.log('📟 POS response text:', responseText);
 
-            if (data.status === 'success') {
+            let data;
+            try {
+                data = JSON.parse(responseText);
+            } catch (parseErr) {
+                console.error('❌ Failed to parse POS response:', parseErr);
+                if (statusEl) {
+                    statusEl.textContent = '❌ Server error: Invalid response from POS API';
+                    statusEl.style.color = '#dc3545';
+                }
+                if (posBtn) posBtn.disabled = false;
+                return;
+            }
+
+            if (response.ok && data.status === 'success') {
                 const checkout = data.checkout;
                 squareCheckoutId = checkout.id;
 
@@ -713,10 +767,24 @@
                 // Start polling for status
                 startPosPolling(checkout.id, amount);
             } else {
+                // Show the specific error from Square
+                let errorMsg = data.message || data.error || 'Unknown error';
+                
+                // Check for missing fields
+                if (data.missing_fields) {
+                    errorMsg = `Missing required fields: ${data.missing_fields.join(', ')}`;
+                }
+                
+                // Check for detailed error from Square
+                if (data.errors && Array.isArray(data.errors)) {
+                    errorMsg = data.errors.map(e => e.detail || e.message || e).join('; ');
+                }
+                
                 if (statusEl) {
-                    statusEl.textContent = '❌ Failed to send to POS: ' + (data.message || 'Unknown error');
+                    statusEl.textContent = `❌ Failed to send to POS: ${errorMsg}`;
                     statusEl.style.color = '#dc3545';
                 }
+                console.error('❌ POS error details:', data);
                 if (posBtn) posBtn.disabled = false;
             }
         } catch (err) {

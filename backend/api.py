@@ -525,7 +525,7 @@ def get_terminal_devices():
     
     app.logger.info(f"Found {len(enhanced_devices)} terminal devices")
     return enhanced_devices, None
-
+ 
 def create_square_terminal_checkout(
     amount_cents,
     record_ids,
@@ -536,6 +536,9 @@ def create_square_terminal_checkout(
     """Create a Square Terminal checkout using a direct API call."""
 
     print(f"\n🔍 DEBUG - Received device_id: {device_id!r}")
+    print(f"🔍 DEBUG - amount_cents: {amount_cents!r}")
+    print(f"🔍 DEBUG - record_ids: {record_ids!r}")
+    print(f"🔍 DEBUG - record_titles: {record_titles!r}")
 
     access_token = os.environ.get("SQUARE_ACCESS_TOKEN")
     environment = os.environ.get("SQUARE_ENVIRONMENT", "production")
@@ -546,12 +549,8 @@ def create_square_terminal_checkout(
     if not device_id:
         return None, "No Square Terminal device_id provided"
 
-    # The Devices API returns IDs such as:
-    # device:549CS149C4001476
-    # Terminal checkout requires:
-    # 549CS149C4001476
+    # Clean device ID
     device_id = str(device_id).strip()
-
     if device_id.startswith("device:"):
         device_id = device_id[len("device:"):]
 
@@ -574,6 +573,7 @@ def create_square_terminal_checkout(
 
     idempotency_key = str(uuid.uuid4())
 
+    # Build the checkout data
     checkout_data = {
         "idempotency_key": idempotency_key,
         "checkout": {
@@ -594,22 +594,8 @@ def create_square_terminal_checkout(
         }
     }
 
-    print(
-        "🔍 DEBUG - Sending device_id in payload: "
-        f"{checkout_data['checkout']['device_options']['device_id']!r}"
-    )
-
-    # Do not print the access token.
-    safe_headers = {
-        **headers,
-        "Authorization": "Bearer [REDACTED]"
-    }
-
-    print("\n========== SQUARE REQUEST ==========")
-    print(f"URL: {base_url}/v2/terminals/checkouts")
-    print("Headers:")
-    print(json.dumps(safe_headers, indent=2))
-    print("Payload:")
+    # Log the full payload
+    print("\n========== SQUARE PAYLOAD ==========")
     print(json.dumps(checkout_data, indent=2))
     print("====================================\n")
 
@@ -625,17 +611,16 @@ def create_square_terminal_checkout(
 
     print("\n========== SQUARE RESPONSE ==========")
     print(f"Status Code: {response.status_code}")
-    print(f"Reason: {response.reason}")
-    print("Headers:")
-    print(response.headers)
-    print("Body:")
-    print(response.text)
+    print(f"Response: {response.text}")
     print("=====================================\n")
 
     if response.status_code not in (200, 201):
-        return None, (
-            f"Square API error ({response.status_code}): {response.text}"
-        )
+        try:
+            error_data = response.json()
+            error_message = error_data.get('errors', [{}])[0].get('detail', response.text)
+            return None, f"Square API error ({response.status_code}): {error_message}"
+        except:
+            return None, f"Square API error ({response.status_code}): {response.text}"
 
     return response.json(), None
 
@@ -1486,24 +1471,87 @@ def api_create_terminal_checkout():
     """Create a new terminal checkout"""
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+            
+        # Log the full request for debugging
+        app.logger.info("=" * 60)
+        app.logger.info("📟 POS CHECKOUT REQUEST RECEIVED")
+        app.logger.info(f"Raw data: {data}")
+        
         amount_cents = data.get('amount_cents')
         record_ids = data.get('record_ids', [])
         record_titles = data.get('record_titles', [])
         reference_id = data.get('reference_id')
         device_id = data.get('device_id')
         
-        if not amount_cents or not record_ids or not record_titles:
-            return jsonify({'status': 'error', 'message': 'Missing required fields'}), 400
+        # Check each required field individually
+        missing_fields = []
         
-        result, error = create_square_terminal_checkout(amount_cents, record_ids, record_titles, reference_id, device_id)
+        if amount_cents is None:
+            missing_fields.append('amount_cents')
+        elif not isinstance(amount_cents, (int, float)) or amount_cents <= 0:
+            app.logger.error(f"Invalid amount_cents: {amount_cents}")
+            return jsonify({'status': 'error', 'message': f'amount_cents must be a positive number, got {amount_cents}'}), 400
+            
+        if not record_ids:
+            missing_fields.append('record_ids')
+        elif not isinstance(record_ids, list):
+            app.logger.error(f"record_ids is not a list: {record_ids}")
+            return jsonify({'status': 'error', 'message': 'record_ids must be an array'}), 400
+            
+        if not record_titles:
+            missing_fields.append('record_titles')
+        elif not isinstance(record_titles, list):
+            app.logger.error(f"record_titles is not a list: {record_titles}")
+            return jsonify({'status': 'error', 'message': 'record_titles must be an array'}), 400
+            
+        if not device_id:
+            missing_fields.append('device_id')
+        elif not isinstance(device_id, str) or not device_id.strip():
+            app.logger.error(f"Invalid device_id: {device_id}")
+            return jsonify({'status': 'error', 'message': 'device_id must be a non-empty string'}), 400
+        
+        if missing_fields:
+            app.logger.error(f"Missing fields: {missing_fields}")
+            return jsonify({
+                'status': 'error', 
+                'message': f'Missing required fields: {", ".join(missing_fields)}',
+                'missing_fields': missing_fields
+            }), 400
+        
+        # Clean device_id
+        original_device_id = device_id
+        device_id = str(device_id).strip()
+        if device_id.startswith('device:'):
+            device_id = device_id[len('device:'):]
+        
+        app.logger.info(f"✅ All fields present:")
+        app.logger.info(f"  amount_cents: {amount_cents}")
+        app.logger.info(f"  record_ids: {record_ids}")
+        app.logger.info(f"  record_titles: {record_titles}")
+        app.logger.info(f"  reference_id: {reference_id}")
+        app.logger.info(f"  device_id (original): {original_device_id}")
+        app.logger.info(f"  device_id (cleaned): {device_id}")
+        
+        result, error = create_square_terminal_checkout(
+            amount_cents, 
+            record_ids, 
+            record_titles, 
+            reference_id, 
+            device_id
+        )
         
         if error:
+            app.logger.error(f"Square checkout error: {error}")
             return jsonify({'status': 'error', 'message': error}), 400
         
+        app.logger.info("✅ POS checkout successful")
         return jsonify({'status': 'success', 'checkout': result.get('checkout', {})}), 200
         
     except Exception as e:
         app.logger.error(f"Error in api_create_terminal_checkout: {e}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
