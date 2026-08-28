@@ -1,10 +1,9 @@
-// New Arrivals - Uses shared records component with location filter
+// New Arrivals component
 function initNew() {
-    console.log('New arrivals initialized');
+    console.log('⭐ New arrivals initialized');
     
-    // Create new arrivals component instance with location 150 filter
     if (typeof window.RecordsComponent !== 'undefined') {
-        const newComp = new window.RecordsComponent({
+        window.newComponent = new window.RecordsComponent({
             containerId: 'newCatalogContainer',
             title: 'New Arrivals',
             idPrefix: 'new',
@@ -13,14 +12,14 @@ function initNew() {
             badgeColor: '#ffd93d',
             buttonColor: '#ffd93d',
             buttonTextColor: '#333',
-            locationId: 150,  // Loveland store
-            statusId: 1       // New arrivals
+            locationId: 150,
+            statusId: 1,
+            searchInputId: 'newSearchInput'
         });
-        newComp.init();
+        window.newComponent.init();
     } else {
         console.error('RecordsComponent not loaded');
     }
 }
 
-// Make it globally accessible
 window.initNew = initNew;

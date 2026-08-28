@@ -5,7 +5,7 @@
     let totalRecords = 0;
     let allRecords = [];
     let currentFilter = {};
-    let onAddToCartCallback = null;
+    let searchTerm = '';
 
     // Modal functions
     window.openRecordModal = function(record) {
@@ -99,9 +99,8 @@
         }
     };
 
-    // Add record to cart - uses the global cart
+    // Add record to cart
     window.addRecordToCart = function(record) {
-        // Ensure cart is initialized
         if (!window.cart) {
             console.error('Cart not initialized');
             alert('Cart not initialized. Please refresh the page.');
@@ -119,7 +118,6 @@
             condition: record.condition || 'Unknown'
         });
         
-        // Update cart UI
         if (typeof window.renderCart === 'function') {
             window.renderCart();
         }
@@ -127,10 +125,8 @@
             window.updateCartBadge();
         }
         
-        // Close modal
         closeRecordModal();
         
-        // Show toast
         if (typeof window.showToast === 'function') {
             window.showToast('✅ Added to cart: ' + record.artist + ' - ' + record.title);
         } else {
@@ -138,7 +134,7 @@
         }
     };
 
-    // RecordsComponent class for shop
+    // RecordsComponent class
     window.RecordsComponent = class RecordsComponent {
         constructor(config) {
             this.config = {
@@ -156,10 +152,14 @@
                 buttonColor: config.buttonColor || '#ff6b6b',
                 buttonTextColor: config.buttonTextColor || 'white',
                 onAddToCart: config.onAddToCart || null,
-                idPrefix: config.idPrefix || 'records'
+                idPrefix: config.idPrefix || 'records',
+                searchInputId: config.searchInputId || null
             };
             
             this.isInitialized = false;
+            this.allData = [];
+            this.filteredData = [];
+            this.searchTerm = '';
         }
 
         init() {
@@ -169,6 +169,7 @@
             console.log(`📀 ${this.config.title} component initializing...`);
             this.loadRecords();
             this.bindEvents();
+            this.bindSearchEvents();
         }
 
         bindEvents() {
@@ -193,6 +194,70 @@
             }
         }
 
+        bindSearchEvents() {
+            const searchInput = document.getElementById(this.config.searchInputId);
+            if (searchInput) {
+                searchInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        this.performSearch();
+                    }
+                });
+            }
+        }
+
+        performSearch() {
+            const searchInput = document.getElementById(this.config.searchInputId);
+            if (searchInput) {
+                this.searchTerm = searchInput.value.trim();
+                this.applySearch();
+            }
+        }
+
+        clearSearch() {
+            const searchInput = document.getElementById(this.config.searchInputId);
+            if (searchInput) {
+                searchInput.value = '';
+                this.searchTerm = '';
+                this.applySearch();
+            }
+        }
+
+        applySearch() {
+            if (!this.searchTerm) {
+                this.filteredData = [...this.allData];
+            } else {
+                const term = this.searchTerm.toLowerCase().trim();
+                // Check if term is a number (for ID or barcode exact match)
+                const isNumeric = /^\d+$/.test(term);
+                
+                this.filteredData = this.allData.filter(record => {
+                    // Exact match for ID if numeric
+                    if (isNumeric && record.id && record.id.toString() === term) {
+                        return true;
+                    }
+                    // Exact match for barcode
+                    if (record.barcode && record.barcode.toLowerCase() === term) {
+                        return true;
+                    }
+                    // Partial match for artist
+                    if (record.artist && record.artist.toLowerCase().includes(term)) {
+                        return true;
+                    }
+                    // Partial match for title
+                    if (record.title && record.title.toLowerCase().includes(term)) {
+                        return true;
+                    }
+                    return false;
+                });
+            }
+            
+            this.totalRecords = this.filteredData.length;
+            this.currentPage = 1;
+            this.totalPages = Math.ceil(this.totalRecords / this.config.pageSize) || 1;
+            this.renderPage();
+            this.updatePagination();
+        }
+
         async loadRecords() {
             const container = document.getElementById(this.config.containerId);
             if (!container) {
@@ -209,8 +274,8 @@
 
             try {
                 const params = new URLSearchParams({
-                    page: this.currentPage,
-                    limit: this.config.pageSize
+                    page: 1,
+                    limit: 500  // Load all records for client-side filtering
                 });
                 
                 if (this.config.locationId) {
@@ -229,9 +294,12 @@
                 const data = await response.json();
 
                 if (data.status === 'success' && data.records) {
-                    this.totalRecords = data.pagination?.total || data.records.length;
-                    this.totalPages = data.pagination?.total_pages || 1;
-                    this.renderRecords(data.records);
+                    this.allData = data.records || [];
+                    this.filteredData = [...this.allData];
+                    this.totalRecords = this.filteredData.length;
+                    this.totalPages = Math.ceil(this.totalRecords / this.config.pageSize) || 1;
+                    this.currentPage = 1;
+                    this.renderPage();
                     this.updatePagination();
                 } else {
                     container.innerHTML = `
@@ -255,22 +323,27 @@
             }
         }
 
-        renderRecords(records) {
+        renderPage() {
             const container = document.getElementById(this.config.containerId);
             if (!container) return;
 
-            if (!records || records.length === 0) {
+            const start = (this.currentPage - 1) * this.config.pageSize;
+            const end = Math.min(start + this.config.pageSize, this.filteredData.length);
+            const pageData = this.filteredData.slice(start, end);
+            
+            if (!pageData || pageData.length === 0) {
                 container.innerHTML = `
                     <div style="text-align: center; padding: 40px; color: #888;">
-                        <div style="margin-bottom: 10px;">📀</div>
+                        <div style="margin-bottom: 10px;">🔍</div>
                         <p>No ${this.config.title.toLowerCase()} found</p>
+                        ${this.searchTerm ? `<p style="font-size: 12px; color: #999;">Try adjusting your search</p>` : ''}
                     </div>
                 `;
                 return;
             }
 
             let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; padding: 10px 0;">';
-            records.forEach(record => {
+            pageData.forEach(record => {
                 const price = parseFloat(record.store_price) || 0;
                 const inStock = record.status_id === 2 || record.status_id === 1;
                 const imageUrl = record.image_url || '';
@@ -295,6 +368,7 @@
                         <div style="color: #ff6b6b; font-size: 16px; font-weight: bold; margin-top: 4px;">$${price.toFixed(2)}</div>
                         <div style="font-size: 10px; color: ${inStock ? '#28a745' : '#dc3545'}; margin-top: 2px;">${inStock ? '✅ In Stock' : '❌ Out of Stock'}</div>
                         ${this.config.locationId ? '<div style="font-size: 9px; color: #999; margin-top: 2px;">📍 Loveland</div>' : ''}
+                        ${record.barcode ? `<div style="font-size: 8px; color: #999; margin-top: 2px; font-family: monospace;">${record.barcode}</div>` : ''}
                     </div>
                 `;
             });
@@ -332,21 +406,50 @@
         goToPage(page) {
             if (page < 1 || page > this.totalPages) return;
             this.currentPage = page;
-            this.loadRecords();
+            this.renderPage();
+            this.updatePagination();
         }
 
         nextPage() {
             if (this.currentPage < this.totalPages) {
                 this.currentPage++;
-                this.loadRecords();
+                this.renderPage();
+                this.updatePagination();
             }
         }
 
         prevPage() {
             if (this.currentPage > 1) {
                 this.currentPage--;
-                this.loadRecords();
+                this.renderPage();
+                this.updatePagination();
             }
         }
     };
+
+    // Global search functions for shop and new
+    window.shopSearch = function() {
+        if (window.shopComponent) {
+            window.shopComponent.performSearch();
+        }
+    };
+
+    window.shopClearSearch = function() {
+        if (window.shopComponent) {
+            window.shopComponent.clearSearch();
+        }
+    };
+
+    window.newSearch = function() {
+        if (window.newComponent) {
+            window.newComponent.performSearch();
+        }
+    };
+
+    window.newClearSearch = function() {
+        if (window.newComponent) {
+            window.newComponent.clearSearch();
+        }
+    };
+
 })();

@@ -1,16 +1,16 @@
-// Shop component - simple initialization
+// Shop component
 function initShop() {
     console.log('🛒 Shop initialized');
     
-    // Create shop component with the correct container ID
     if (typeof window.RecordsComponent !== 'undefined') {
-        const shopComp = new window.RecordsComponent({
+        window.shopComponent = new window.RecordsComponent({
             containerId: 'shopCatalogContainer',
             title: 'Shop',
             idPrefix: 'shop',
             borderColor: '#ff6b6b',
             buttonColor: '#ff6b6b',
             buttonTextColor: 'white',
+            searchInputId: 'shopSearchInput',
             onAddToCart: function(record) {
                 if (window.cart) {
                     window.cart.addItem({
@@ -32,13 +32,12 @@ function initShop() {
                 }
             }
         });
-        shopComp.init();
+        window.shopComponent.init();
     } else {
         console.error('RecordsComponent not loaded');
     }
 }
 
-// Toast helper
 function showToast(message) {
     const existing = document.querySelector('.shop-toast');
     if (existing) existing.remove();

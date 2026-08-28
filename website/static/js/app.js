@@ -29,9 +29,6 @@ function updateMenu() {
     const existingDashboard = nav.querySelector('[data-page="dashboard"]');
     if (existingDashboard) existingDashboard.remove();
     
-    const existingCheckout = nav.querySelector('[data-page="checkout"]');
-    if (existingCheckout) existingCheckout.remove();
-    
     const existingAddRecords = nav.querySelector('[data-page="add-records"]');
     if (existingAddRecords) existingAddRecords.remove();
     
@@ -114,16 +111,6 @@ function updateMenu() {
             nav.insertBefore(dashboardBtn, loginBtn);
         }
         
-        // Checkout for admin OR consignor
-        if (allowedRoles.includes(user.role)) {
-            const checkoutBtn = document.createElement('button');
-            checkoutBtn.setAttribute('data-page', 'checkout');
-            checkoutBtn.innerHTML = '<i class="fas fa-shopping-bag"></i>';
-            checkoutBtn.title = 'Checkout';
-            checkoutBtn.onclick = function() { window.showPage('checkout', this); };
-            nav.insertBefore(checkoutBtn, loginBtn);
-        }
-        
         // Admin-only features
         if (user.role === 'admin') {
             const adminBtns = [
@@ -184,20 +171,14 @@ function updateMenu() {
 }
 
 async function showPage(page, btnElement) {
-    // Check if page requires authentication
-    const restrictedPages = ['dashboard', 'checkout', 'add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records', 'accessories', 'custom-labels', 'email-subscriptions', 'record-orders', 'feedback', 'sticky-notes', 'stats', 'creditors', 'users', 'print-settings', 'store-settings', 'gift-cards', 'config-keys', 'cache-management', 'system-info', 'db-query'];
+    // Pages that require authentication
+    const restrictedPages = ['dashboard', 'add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records', 'accessories', 'custom-labels', 'email-subscriptions', 'record-orders', 'feedback', 'sticky-notes', 'stats', 'creditors', 'users', 'print-settings', 'store-settings', 'gift-cards', 'config-keys', 'cache-management', 'system-info', 'db-query'];
+    
     if (restrictedPages.includes(page)) {
         const user = getUser();
         if (!user || !user.logged_in) {
             showPage('login');
             return;
-        }
-        if (page === 'dashboard' || page === 'checkout') {
-            const allowedRoles = ['admin', 'consignor'];
-            if (!allowedRoles.includes(user.role)) {
-                showPage('home');
-                return;
-            }
         }
         const adminOnly = ['add-records', 'accounting', 'purchases', 'scan', 'post-discogs', 'discogs-orders', 'edit-records', 'accessories', 'custom-labels', 'email-subscriptions', 'record-orders', 'feedback', 'sticky-notes', 'stats', 'creditors', 'users', 'print-settings', 'store-settings', 'gift-cards', 'config-keys', 'cache-management', 'system-info', 'db-query'];
         if (adminOnly.includes(page) && user.role !== 'admin') {
@@ -248,7 +229,6 @@ async function showPage(page, btnElement) {
             'email': 'initEmail',
             'login': 'initLogin',
             'dashboard': 'initDashboard',
-            'checkout': 'initCheckout',
             'add-records': 'initAddRecords',
             'accounting': 'initAccounting',
             'purchases': 'initPurchases',

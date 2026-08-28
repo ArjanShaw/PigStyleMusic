@@ -1,10 +1,117 @@
 <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
-    <h2 style="color: #333; margin: 0 0 10px 0;">🛒 Your Cart</h2>
+    <h2 style="color: #333; margin: 0 0 5px 0;">🛒 Your Cart</h2>
     <div id="cartResponse" style="color: #333; text-align: left; width: 100%; flex: 1; overflow-y: auto; font-size: 13px;">
         <div style="text-align: center; padding: 40px; color: #888;">
-            <div style="margin-bottom: 10px; font-size: 48px;">🛒</div>
-            <p style="font-size: 18px;">Your cart is empty</p>
-            <p style="font-size: 13px; margin-top: 5px;">Start shopping to add items!</p>
+            <div style="font-size: 48px; margin-bottom: 10px;">🛒</div>
+            <p>Loading your cart...</p>
+        </div>
+    </div>
+</div>
+
+<!-- ===== CHECKOUT MODAL ===== -->
+<div id="checkout-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 10001; background: rgba(0,0,0,0.7);">
+    <div class="modal-content" style="max-width: 550px; width: 95%; background: white; border-radius: 16px; max-height: 90vh; overflow-y: auto;">
+        <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 15px 20px; border-radius: 16px 16px 0 0; display: flex; justify-content: space-between; align-items: center;">
+            <h3 class="modal-title" style="margin: 0; color: white;"><i class="fas fa-credit-card"></i> Checkout</h3>
+            <button class="modal-close" onclick="closeCheckoutModal()" style="background: none; border: none; color: white; font-size: 28px; cursor: pointer;">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 20px; background: white;">
+            <!-- Order Summary -->
+            <div style="margin-bottom: 15px; max-height: 150px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 8px;">
+                <div style="font-weight: 600; margin-bottom: 5px; color: #333;">Order Summary</div>
+                <div id="checkout-items-list" style="font-size: 13px; color: #666;"></div>
+            </div>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 10px; background: #e8f5e9; border-radius: 8px;">
+                <span style="font-weight: 600; color: #333;">Total Due:</span>
+                <span id="checkout-total-due" style="font-size: 24px; font-weight: bold; color: #28a745;">$0.00</span>
+            </div>
+            
+            <!-- ===== STACKED PAYMENT METHODS ===== -->
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 8px;">Payment Methods</label>
+                
+                <!-- Card Payment -->
+                <div id="payment-card" style="background: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 8px; border: 2px solid #28a745;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 600; color: #333;"><i class="fas fa-credit-card" style="color: #17a2b8;"></i> Card (Square)</span>
+                        <span style="font-size: 12px; color: #6c757d;">Charges full remaining</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-top: 5px;">
+                        <input type="number" id="card-amount" placeholder="0.00" min="0" step="0.01" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; background: #fff;" readonly value="0.00">
+                        <button onclick="setMaxCard()" id="card-max-btn" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">MAX</button>
+                    </div>
+                </div>
+                
+                <!-- Cash Payment (Admin only) -->
+                <div id="payment-cash" style="background: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 8px; border: 1px solid #ddd; display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 600; color: #333;"><i class="fas fa-money-bill-wave" style="color: #28a745;"></i> Cash</span>
+                        <span style="font-size: 12px; color: #6c757d;">Enter amount received</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-top: 5px;">
+                        <input type="number" id="cash-amount" placeholder="0.00" min="0" step="0.01" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                        <button onclick="setMaxCash()" id="cash-max-btn" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">MAX</button>
+                    </div>
+                    <div id="change-display-container" style="display: none; background: #fff3cd; padding: 8px; border-radius: 6px; margin-top: 5px; text-align: center;">
+                        <span style="font-weight: 600; color: #856404;">Change Due: $<span id="change-amount">0.00</span></span>
+                    </div>
+                </div>
+                
+                <!-- Gift Card Payment -->
+                <div id="payment-giftcard" style="background: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 8px; border: 1px solid #ddd;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 600; color: #333;"><i class="fas fa-gift" style="color: #ffc107;"></i> Gift Card</span>
+                        <span style="font-size: 12px; color: #6c757d;">Apply gift card balance</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-top: 5px;">
+                        <input type="text" id="giftcard-code" placeholder="GC-CODE" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; text-transform: uppercase;">
+                        <button onclick="checkGiftCardForPayment()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Check</button>
+                    </div>
+                    <div id="giftcard-info" style="display: none; background: #d4edda; padding: 8px; border-radius: 6px; margin-top: 5px;">
+                        <span style="font-weight: bold; color: #155724;">Balance: $<span id="giftcard-balance-display">0.00</span></span>
+                    </div>
+                    <div id="giftcard-apply-section" style="display: none; margin-top: 5px;">
+                        <div style="display: flex; gap: 8px;">
+                            <input type="number" id="giftcard-amount" placeholder="0.00" min="0" step="0.01" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                            <button onclick="setMaxGift()" id="gift-max-btn" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">MAX</button>
+                            <button onclick="applyGiftCardToCart()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Apply</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- POS Payment (Admin only) -->
+                <div id="payment-pos" style="background: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 8px; border: 1px solid #ddd; display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 600; color: #333;"><i class="fas fa-cash-register" style="color: #6f42c1;"></i> POS Terminal</span>
+                        <span style="font-size: 12px; color: #6c757d;">Send to POS</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-top: 5px;">
+                        <input type="number" id="pos-amount" placeholder="0.00" min="0" step="0.01" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                        <button onclick="setMaxPos()" id="pos-max-btn" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">MAX</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Remaining Balance -->
+            <div id="checkout-remaining-display" style="margin-top: 10px; padding: 10px; background: #e9ecef; border-radius: 8px; display: flex; justify-content: space-between;">
+                <span style="font-weight: 600; color: #333;">Remaining Balance:</span>
+                <span id="checkout-remaining" style="font-weight: bold; color: #dc3545;">$0.00</span>
+            </div>
+            
+            <!-- Payment Summary -->
+            <div id="payment-summary" style="margin-top: 10px; display: none; border-top: 1px solid #eee; padding-top: 10px;">
+                <div style="font-weight: 600; color: #333; font-size: 13px; margin-bottom: 5px;">Payment Summary:</div>
+                <div id="payment-entries-list" style="font-size: 12px; color: #666;"></div>
+            </div>
+            
+            <div id="checkout-status" style="margin-top: 10px; display: none; padding: 10px; border-radius: 8px; font-size: 13px;"></div>
+        </div>
+        <div class="modal-footer" style="padding: 15px 20px; border-top: 1px solid #eee; display: flex; gap: 10px; justify-content: flex-end; background: #f8f9fa; border-radius: 0 0 16px 16px;">
+            <button onclick="closeCheckoutModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Cancel</button>
+            <button onclick="processCheckout()" id="checkout-complete-btn" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                <i class="fas fa-check"></i> Complete Payment
+            </button>
         </div>
     </div>
 </div>
