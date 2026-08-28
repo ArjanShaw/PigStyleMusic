@@ -12772,69 +12772,108 @@ def mark_order_read(order_id):
 @app.route('/api/order/complete', methods=['POST'])
 def order_complete():
     """Update order status and mark records as sold after successful payment."""
+    app.logger.info("=" * 60)
+    app.logger.info("🔄 ORDER_COMPLETE called")
+    
     try:
         data = request.json
+        app.logger.info(f"📦 Request data: {data}")
+        
         transaction_id = data.get('transaction_id')
         order_id = data.get('order_id')
         
-        if not transaction_id or not order_id:
-            return jsonify({'status': 'error', 'error': 'Missing transaction_id or order_id'}), 400
+        app.logger.info(f"📋 transaction_id: {transaction_id}")
+        app.logger.info(f"📋 order_id: {order_id}")
+        
+        if not order_id:
+            app.logger.error("❌ Missing order_id")
+            return jsonify({'status': 'error', 'error': 'Missing order_id'}), 400
         
         conn = get_db()
         cursor = conn.cursor()
         
+        # Check if order exists
+        cursor.execute('SELECT id, order_status, payment_status, square_payment_id FROM orders WHERE id = ?', (order_id,))
+        order = cursor.fetchone()
+        
+        if not order:
+            app.logger.error(f"❌ Order {order_id} not found in database")
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Order not found'}), 404
+        
+        app.logger.info(f"📊 Order found: status={order['order_status']}, payment={order['payment_status']}")
+        
+        if order['order_status'] == 'completed':
+            app.logger.info(f"✅ Order {order_id} already completed")
+            conn.close()
+            return jsonify({'status': 'success', 'message': 'Order already completed'}), 200
+        
         try:
             cursor.execute("BEGIN TRANSACTION")
+            app.logger.info("🔄 Transaction started")
             
-            access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
-            headers = {'Authorization': f'Bearer {access_token}', 'Square-Version': '2026-01-22'}
+            # Update order status
+            app.logger.info(f"🔄 Updating order {order_id} to paid/completed")
+            cursor.execute('''
+                UPDATE orders 
+                SET payment_status = 'paid', 
+                    order_status = 'completed',
+                    updated_at = CURRENT_TIMESTAMP,
+                    notified = 0
+                WHERE id = ?
+            ''', (order_id,))
             
-            payment_response = requests.get(f'https://connect.squareup.com/v2/payments/{transaction_id}', headers=headers)
-            
-            if payment_response.status_code == 200:
-                payment_data = payment_response.json()
-                payment = payment_data.get('payment', {})
-                square_total = float(payment.get('amount_money', {}).get('amount', 0)) / 100
-                square_tax = float(payment.get('tax_money', {}).get('amount', 0)) / 100 if payment.get('tax_money') else 0
-                
-                cursor.execute('''
-                    UPDATE orders SET square_payment_id = ?, payment_status = 'paid', order_status = 'confirmed',
-                    total = ?, tax = ?, updated_at = CURRENT_TIMESTAMP, notified = 0
-                    WHERE id = ? AND payment_status = 'pending'
-                ''', (transaction_id, square_total, square_tax, order_id))
-            else:
-                cursor.execute('''
-                    UPDATE orders SET square_payment_id = ?, payment_status = 'paid', order_status = 'confirmed',
-                    updated_at = CURRENT_TIMESTAMP, notified = 0
-                    WHERE id = ? AND payment_status = 'pending'
-                ''', (transaction_id, order_id))
+            affected = cursor.rowcount
+            app.logger.info(f"✅ Order updated, rows affected: {affected}")
             
             # Get record IDs from order items
             cursor.execute('SELECT record_id FROM order_items WHERE order_id = ?', (order_id,))
-            record_ids = [row['record_id'] for row in cursor.fetchall()]
+            order_items = cursor.fetchall()
+            record_ids = [row['record_id'] for row in order_items]
+            
+            app.logger.info(f"📀 Found {len(record_ids)} record(s) in order_items: {record_ids}")
             
             if record_ids:
                 placeholders = ','.join('?' for _ in record_ids)
-                # CHANGED: status_id = 5 (Sold Online) instead of 3
-                cursor.execute(f'UPDATE records SET status_id = 5, date_sold = CURRENT_DATE WHERE id IN ({placeholders})', record_ids)
+                app.logger.info(f"🔄 Marking {len(record_ids)} records as sold (status_id = 5)")
+                cursor.execute(f'''
+                    UPDATE records 
+                    SET status_id = 5, date_sold = CURRENT_DATE 
+                    WHERE id IN ({placeholders})
+                ''', record_ids)
+                app.logger.info(f"✅ {cursor.rowcount} records marked as sold")
+                
+                # Verify the update
+                cursor.execute(f'SELECT id, status_id FROM records WHERE id IN ({placeholders})', record_ids)
+                updated_records = cursor.fetchall()
+                for rec in updated_records:
+                    app.logger.info(f"📀 Record {rec['id']} now status_id = {rec['status_id']}")
+            else:
+                app.logger.warning(f"⚠️ No records found in order_items for order {order_id}")
             
-            # --- AUTO-ACCOUNTING ---
+            # Auto-accounting
+            app.logger.info("🔄 Processing auto-accounting...")
             try:
                 cursor.execute('SELECT * FROM orders WHERE id = ?', (order_id,))
                 order_row = cursor.fetchone()
                 if order_row:
                     process_order_for_accounting(order_row, conn, cursor)
                     app.logger.info(f"✅ Auto-accounting created for order {order_id}")
+                else:
+                    app.logger.warning(f"⚠️ Order row not found for accounting")
             except Exception as e:
-                app.logger.error(f"Auto-accounting failed for order {order_id}: {str(e)}")
+                app.logger.error(f"❌ Auto-accounting failed: {str(e)}")
                 # Don't rollback - order still completes
             
             conn.commit()
+            app.logger.info(f"✅ Transaction committed for order {order_id}")
             
-            # Send order confirmation email
+            # Send confirmation email
+            app.logger.info("🔄 Sending confirmation email...")
             try:
                 cursor.execute('SELECT customer_name, customer_email, order_number, total FROM orders WHERE id = ?', (order_id,))
                 order_details = cursor.fetchone()
+                app.logger.info(f"📧 Order details: {order_details}")
                 
                 if order_details and order_details['customer_email']:
                     email_body = f"""Thank you for your order from PigStyle Music!
@@ -12861,21 +12900,32 @@ Questions? Reply to this email or contact us at the store.
 - PigStyle Music Team
 """
                     send_email(order_details['customer_email'], f"Order Confirmation - {order_details['order_number']}", email_body)
+                    app.logger.info(f"✅ Confirmation email sent to {order_details['customer_email']}")
+                else:
+                    app.logger.warning(f"⚠️ No customer email found for order {order_id}")
             except Exception as email_error:
-                app.logger.error(f"Failed to send order confirmation email: {str(email_error)}")
+                app.logger.error(f"❌ Failed to send confirmation email: {str(email_error)}")
             
-            return jsonify({'status': 'success', 'message': f'Order completed, {len(record_ids)} records marked as sold'})
+            app.logger.info(f"✅ Order {order_id} completed successfully")
+            app.logger.info("=" * 60)
+            
+            return jsonify({
+                'status': 'success',
+                'message': f'Order completed, {len(record_ids)} records marked as sold',
+                'records_sold': len(record_ids)
+            })
             
         except Exception as e:
+            app.logger.error(f"❌ Transaction error: {str(e)}")
             conn.rollback()
             raise
         finally:
             conn.close()
         
     except Exception as e:
-        app.logger.error(f"Order complete error: {str(e)}")
-        return jsonify({'status': 'error', 'error': f'Server error: {str(e)}'}), 500    
- 
+        app.logger.error(f"❌ Order complete error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': f'Server error: {str(e)}'}), 500
    
 @app.route('/api/record-orders/unread', methods=['GET'])
 @login_required
