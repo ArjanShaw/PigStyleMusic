@@ -5,10 +5,15 @@
     let totalRecords = 0;
     let allMerch = [];
 
+    // ✅ Dynamic API_BASE - works locally and in production
+    const API_BASE = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5000' 
+        : 'https://www.pigstylemusic.com';
+
     // Modal functions for merch
     window.openMerchModal = function(item) {
-        const price = parseFloat(item.price) || 0;
-        const inStock = item.stock > 0 || item.status === 'active';
+        const price = parseFloat(item.price || item.store_price) || 0;
+        const inStock = item.stock > 0 || item.status === 'active' || item.status_id === 1;
         const imageUrl = item.image_url || '';
         
         const modal = document.createElement('div');
@@ -27,10 +32,13 @@
             animation: fadeIn 0.3s ease;
         `;
         
+        const displayName = item.name || item.title || 'Merch Item';
+        const displayCategory = item.category || 'Accessory';
+        
         modal.innerHTML = `
             <div style="background: white; border-radius: 16px; max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
-                    <h2 style="margin: 0; color: #333; font-size: 24px;">${item.name || 'Merch Item'}</h2>
+                    <h2 style="margin: 0; color: #333; font-size: 24px;">${displayName}</h2>
                     <button onclick="closeMerchModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
                 </div>
                 
@@ -42,8 +50,8 @@
                         }
                     </div>
                     <div style="flex: 1;">
-                        <div style="font-size: 18px; font-weight: bold; color: #333;">${item.name || 'Untitled'}</div>
-                        <div style="color: #666; margin: 4px 0;">${item.category || 'Accessory'}</div>
+                        <div style="font-size: 18px; font-weight: bold; color: #333;">${displayName}</div>
+                        <div style="color: #666; margin: 4px 0;">${displayCategory}</div>
                         ${item.size ? `<div style="color: #666; font-size: 14px;">Size: ${item.size}</div>` : ''}
                         ${item.color ? `<div style="color: #666; font-size: 14px;">Color: ${item.color}</div>` : ''}
                         <div style="margin-top: 8px; font-size: 14px; color: ${inStock ? '#28a745' : '#dc3545'};">
@@ -59,7 +67,7 @@
                     </div>
                     
                     ${inStock ? `
-                        <button onclick="alert('Added to cart: ${item.name}')" 
+                        <button onclick="alert('Added to cart: ${displayName}')" 
                                 style="width: 100%; padding: 14px; background: #ff6b6b; color: white; border: none; border-radius: 30px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
                             <i class="fas fa-shopping-cart"></i> Add to Cart
                         </button>
@@ -90,7 +98,18 @@
 
     window.loadMerch = async function(page = 1) {
         try {
-            const response = await fetch('/accessories?page=' + page + '&limit=' + pageSize);
+            // ✅ Use API_BASE dynamically
+            const response = await fetch(`${API_BASE}/accessories?page=${page}&limit=${pageSize}`, {
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
             const data = await response.json();
             console.log('Merch response:', data);
             
@@ -111,6 +130,9 @@
             } else if (data.records && Array.isArray(data.records)) {
                 items = data.records;
                 totalRecords = data.total || items.length;
+            } else if (data.accessories && Array.isArray(data.accessories)) {
+                items = data.accessories;
+                totalRecords = data.count || items.length;
             } else {
                 // If no array found, try to find any array property
                 for (let key in data) {
@@ -128,10 +150,13 @@
             let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;padding:5px 0;">';
             if (allMerch.length > 0) {
                 allMerch.forEach(function(item) {
-                    const price = parseFloat(item.price) || 0;
-                    const inStock = item.stock > 0 || item.status === 'active';
+                    const price = parseFloat(item.price || item.store_price) || 0;
+                    const inStock = item.stock > 0 || item.status_id === 1 || item.status === 'active';
                     const imageUrl = item.image_url || '';
                     const itemData = JSON.stringify(item).replace(/"/g, '&quot;');
+                    const displayName = item.name || item.title || 'Unknown';
+                    const category = item.category || 'Accessory';
+                    
                     html += '<div style="background:#f8f8f8;border-radius:8px;padding:10px;border:1px solid #eee;cursor:pointer;transition:all 0.2s;" onclick="openMerchModal(' + itemData + ')">';
                     if (imageUrl) {
                         html += '<div style="height:100px;border-radius:4px;margin-bottom:8px;overflow:hidden;background:#e0e0e0;display:flex;align-items:center;justify-content:center;">';
@@ -140,8 +165,8 @@
                     } else {
                         html += '<div style="height:100px;background:#e0e0e0;border-radius:4px;margin-bottom:8px;display:flex;align-items:center;justify-content:center;font-size:30px;color:#bbb;">👕</div>';
                     }
-                    html += '<div style="font-weight:bold;color:#333;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (item.name || 'Unknown') + '</div>';
-                    html += '<div style="color:#666;font-size:11px;">' + (item.category || 'Accessory') + '</div>';
+                    html += '<div style="font-weight:bold;color:#333;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + displayName + '</div>';
+                    html += '<div style="color:#666;font-size:11px;">' + category + '</div>';
                     html += '<div style="color:#ff6b6b;font-weight:bold;font-size:15px;margin-top:4px;">$' + price.toFixed(2) + '</div>';
                     html += '<div style="font-size:10px;color:' + (inStock ? '#28a745' : '#dc3545') + ';">' + (inStock ? '✅ In Stock' : '❌ Out of Stock') + '</div>';
                     html += '</div>';
@@ -177,7 +202,7 @@
     };
 
     window.initMerch = function() {
-        console.log('Merch initialized');
+        console.log('Merch initialized with API_BASE:', API_BASE);
         currentPage = 1;
         setTimeout(function() { window.loadMerch(1); }, 200);
     };
