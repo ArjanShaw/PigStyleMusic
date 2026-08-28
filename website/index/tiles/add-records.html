@@ -21,22 +21,37 @@
         </button>
     </div>
     
-    <!-- Defaults Row -->
+    <!-- Defaults Row with Headers -->
     <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap; background: #f8f9fa; padding: 10px; border-radius: 8px; align-items: center;">
-        <span style="font-weight: 600; color: #555; font-size: 13px;">Defaults:</span>
-        <select id="add-default-sleeve" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; min-width: 100px;">
-            <option value="">Sleeve</option>
-        </select>
-        <select id="add-default-disc" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; min-width: 100px;">
-            <option value="">Disc</option>
-        </select>
-        <input type="number" id="add-default-price" placeholder="Price" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; width: 80px;">
-        <select id="add-default-format" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; min-width: 100px;">
-            <option value="">Format</option>
-        </select>
-        <select id="add-default-consignor" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; min-width: 120px;">
-            <option value="none">None (store)</option>
-        </select>
+        <span style="font-weight: 600; color: #555; font-size: 13px; margin-right: 4px;">Defaults:</span>
+        <div style="display: flex; flex-direction: column; align-items: flex-start;">
+            <label style="font-size: 10px; color: #888; font-weight: 600;">Sleeve</label>
+            <select id="add-default-sleeve" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; min-width: 100px;">
+                <option value="">Select...</option>
+            </select>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-start;">
+            <label style="font-size: 10px; color: #888; font-weight: 600;">Disc</label>
+            <select id="add-default-disc" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; min-width: 100px;">
+                <option value="">Select...</option>
+            </select>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-start;">
+            <label style="font-size: 10px; color: #888; font-weight: 600;">Price</label>
+            <input type="number" id="add-default-price" placeholder="0.00" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; width: 80px;">
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-start;">
+            <label style="font-size: 10px; color: #888; font-weight: 600;">Format</label>
+            <select id="add-default-format" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; min-width: 100px;">
+                <option value="">Select...</option>
+            </select>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-start;">
+            <label style="font-size: 10px; color: #888; font-weight: 600;">Consignor</label>
+            <select id="add-default-consignor" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; min-width: 120px;">
+                <option value="none">None (store)</option>
+            </select>
+        </div>
     </div>
     
     <!-- Status Message -->

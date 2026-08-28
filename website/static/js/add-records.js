@@ -6,7 +6,6 @@
     let consignors = [];
     let searchResults = [];
     let recentAdditions = [];
-    let selectedPurchaseId = null;
 
     // Defaults
     let defaults = {
@@ -28,6 +27,7 @@
             if (data.status === 'success') {
                 purchases = data.purchases || [];
                 const select = document.getElementById('add-purchase-select');
+                const currentValue = select.value;
                 select.innerHTML = '<option value="">-- Select a purchase --</option>';
                 purchases.forEach(p => {
                     const opt = document.createElement('option');
@@ -36,6 +36,9 @@
                     opt.textContent = `#${p.id} - ${p.seller_name || 'Unknown'}${count}`;
                     select.appendChild(opt);
                 });
+                if (currentValue && purchases.some(p => p.id == currentValue)) {
+                    select.value = currentValue;
+                }
                 document.getElementById('add-purchase-info').textContent = `${purchases.length} purchases loaded`;
             }
         } catch (err) {
@@ -107,6 +110,37 @@
         }
     }
 
+    // ===== BIND DEFAULT CHANGE EVENTS =====
+    function bindDefaultEvents() {
+        const defaultFields = [
+            'add-default-sleeve',
+            'add-default-disc',
+            'add-default-price',
+            'add-default-format',
+            'add-default-consignor'
+        ];
+        
+        defaultFields.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('change', function() {
+                    // Re-render results instantly when any default changes
+                    if (searchResults.length > 0) {
+                        renderResults(searchResults);
+                    }
+                });
+                el.addEventListener('input', function() {
+                    // For price input, re-render on every keystroke
+                    if (id === 'add-default-price') {
+                        if (searchResults.length > 0) {
+                            renderResults(searchResults);
+                        }
+                    }
+                });
+            }
+        });
+    }
+
     // Search Discogs
     window.addRecordsSearch = async function() {
         const purchaseSelect = document.getElementById('add-purchase-select');
@@ -116,7 +150,6 @@
             showStatus('Please select a purchase first', 'error');
             return;
         }
-        selectedPurchaseId = parseInt(purchaseId);
         
         const searchInput = document.getElementById('add-search-input');
         const term = searchInput.value.trim();
@@ -165,12 +198,12 @@
             return;
         }
         
-        // Get current defaults
-        defaults.sleeve = document.getElementById('add-default-sleeve').value || null;
-        defaults.disc = document.getElementById('add-default-disc').value || null;
-        defaults.price = document.getElementById('add-default-price').value || null;
-        defaults.format = document.getElementById('add-default-format').value || null;
-        defaults.consignor = document.getElementById('add-default-consignor').value || 'none';
+        // Get current defaults (read fresh from DOM each time)
+        const defaultSleeve = document.getElementById('add-default-sleeve').value;
+        const defaultDisc = document.getElementById('add-default-disc').value;
+        const defaultPrice = document.getElementById('add-default-price').value;
+        const defaultFormat = document.getElementById('add-default-format').value;
+        const defaultConsignor = document.getElementById('add-default-consignor').value;
         
         let html = '';
         results.forEach((record, idx) => {
@@ -183,6 +216,14 @@
                 `<img src="${image}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;">` : 
                 `<div style="width:50px;height:50px;background:#e0e0e0;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:20px;color:#bbb;">🎵</div>`;
             
+            // Determine which fields to show based on defaults
+            // If default is set, field is HIDDEN (disappears instantly)
+            const showSleeve = !defaultSleeve;
+            const showDisc = !defaultDisc;
+            const showPrice = !defaultPrice;
+            const showFormat = !defaultFormat;
+            const showConsignor = !defaultConsignor || defaultConsignor === 'none';
+            
             html += `
                 <div style="display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid #f0f0f0; hover:background:#f8f9fa;">
                     <div style="flex: 0 0 50px;">${imgHtml}</div>
@@ -190,25 +231,38 @@
                         <div style="font-weight: 600; color: #333; font-size: 14px;">${artist}</div>
                         <div style="color: #666; font-size: 13px;">${title}</div>
                         <div style="color: #999; font-size: 11px;">Catalog: ${catalog}</div>
+                        ${!showPrice ? `<div style="color: #28a745; font-size: 11px; font-weight: 600;">Default Price: $${parseFloat(defaultPrice).toFixed(2)}</div>` : ''}
+                        ${!showSleeve ? `<div style="color: #888; font-size: 10px;">Sleeve: ${conditions.find(c => c.id == defaultSleeve)?.display_name || ''}</div>` : ''}
+                        ${!showDisc ? `<div style="color: #888; font-size: 10px;">Disc: ${conditions.find(c => c.id == defaultDisc)?.display_name || ''}</div>` : ''}
                     </div>
-                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                        <select class="add-sleeve-select" data-index="${idx}" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
-                            <option value="">Sleeve</option>
-                            ${conditions.map(c => `<option value="${c.id}" ${c.id == defaults.sleeve ? 'selected' : ''}>${c.display_name || c.condition_name}</option>`).join('')}
-                        </select>
-                        <select class="add-disc-select" data-index="${idx}" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
-                            <option value="">Disc</option>
-                            ${conditions.map(c => `<option value="${c.id}" ${c.id == defaults.disc ? 'selected' : ''}>${c.display_name || c.condition_name}</option>`).join('')}
-                        </select>
-                        <input type="number" class="add-price-input" data-index="${idx}" placeholder="Price" style="width:70px;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:11px;" value="${defaults.price || ''}">
-                        <select class="add-format-select" data-index="${idx}" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
-                            <option value="">Format</option>
-                            ${formats.map(f => `<option value="${f.id}" ${f.id == defaults.format ? 'selected' : ''}>${f.name}</option>`).join('')}
-                        </select>
-                        <select class="add-consignor-select" data-index="${idx}" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
-                            <option value="none">None</option>
-                            ${consignors.map(c => `<option value="${c.id}" ${c.id == defaults.consignor ? 'selected' : ''}>${c.username}</option>`).join('')}
-                        </select>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+                        ${showSleeve ? `
+                            <select class="add-sleeve-select" data-index="${idx}" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
+                                <option value="">Sleeve</option>
+                                ${conditions.map(c => `<option value="${c.id}">${c.display_name || c.condition_name}</option>`).join('')}
+                            </select>
+                        ` : ''}
+                        ${showDisc ? `
+                            <select class="add-disc-select" data-index="${idx}" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
+                                <option value="">Disc</option>
+                                ${conditions.map(c => `<option value="${c.id}">${c.display_name || c.condition_name}</option>`).join('')}
+                            </select>
+                        ` : ''}
+                        ${showPrice ? `
+                            <input type="number" class="add-price-input" data-index="${idx}" placeholder="Price" style="width:70px;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:11px;">
+                        ` : ''}
+                        ${showFormat ? `
+                            <select class="add-format-select" data-index="${idx}" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
+                                <option value="">Format</option>
+                                ${formats.map(f => `<option value="${f.id}">${f.name}</option>`).join('')}
+                            </select>
+                        ` : ''}
+                        ${showConsignor ? `
+                            <select class="add-consignor-select" data-index="${idx}" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
+                                <option value="none">None</option>
+                                ${consignors.map(c => `<option value="${c.id}">${c.username}</option>`).join('')}
+                            </select>
+                        ` : ''}
                         <button onclick="addRecord(${idx})" style="padding: 4px 14px; background: #28a745; color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 12px;">
                             <i class="fas fa-plus"></i> Add
                         </button>
@@ -226,23 +280,36 @@
             return;
         }
         
-        if (!selectedPurchaseId) {
+        const purchaseSelect = document.getElementById('add-purchase-select');
+        const purchaseId = purchaseSelect.value;
+        
+        if (!purchaseId) {
             showStatus('Please select a purchase', 'error');
             return;
         }
         
+        // Get current defaults (read fresh)
+        const defaultSleeve = document.getElementById('add-default-sleeve').value;
+        const defaultDisc = document.getElementById('add-default-disc').value;
+        const defaultPrice = document.getElementById('add-default-price').value;
+        const defaultFormat = document.getElementById('add-default-format').value;
+        const defaultConsignor = document.getElementById('add-default-consignor').value;
+        
         const row = document.querySelectorAll('.add-sleeve-select')[index]?.closest('div');
+        
+        // Use values from fields if they exist, otherwise use defaults
         const sleeveSelect = row?.querySelector('.add-sleeve-select');
         const discSelect = row?.querySelector('.add-disc-select');
         const priceInput = row?.querySelector('.add-price-input');
         const formatSelect = row?.querySelector('.add-format-select');
         const consignorSelect = row?.querySelector('.add-consignor-select');
         
-        const sleeveId = sleeveSelect ? parseInt(sleeveSelect.value) : null;
-        const discId = discSelect ? parseInt(discSelect.value) : null;
-        const price = priceInput ? parseFloat(priceInput.value) : null;
-        const formatId = formatSelect ? parseInt(formatSelect.value) : null;
-        const consignorId = consignorSelect && consignorSelect.value !== 'none' ? parseInt(consignorSelect.value) : null;
+        const sleeveId = sleeveSelect ? parseInt(sleeveSelect.value) : (defaultSleeve ? parseInt(defaultSleeve) : null);
+        const discId = discSelect ? parseInt(discSelect.value) : (defaultDisc ? parseInt(defaultDisc) : null);
+        const price = priceInput ? parseFloat(priceInput.value) : (defaultPrice ? parseFloat(defaultPrice) : null);
+        const formatId = formatSelect ? parseInt(formatSelect.value) : (defaultFormat ? parseInt(defaultFormat) : null);
+        const consignorId = consignorSelect && consignorSelect.value !== 'none' ? parseInt(consignorSelect.value) : 
+                           (defaultConsignor && defaultConsignor !== 'none' ? parseInt(defaultConsignor) : null);
         
         if (!sleeveId) {
             showStatus('Please select sleeve condition', 'error');
@@ -268,7 +335,7 @@
             store_price: price,
             consignor_id: consignorId,
             format_id: formatId,
-            batch_id: selectedPurchaseId,
+            batch_id: parseInt(purchaseId),
             status_id: 1
         };
         
@@ -284,11 +351,13 @@
             if (result.status === 'success') {
                 showStatus(`✅ Added: ${record.artist} - ${record.title}`, 'success');
                 addToRecent(record.artist || 'Unknown', record.title || 'Unknown', price);
-                // Remove from results
                 searchResults.splice(index, 1);
                 renderResults(searchResults);
-                // Reload purchases to update count
                 loadPurchases();
+                setTimeout(() => {
+                    const select = document.getElementById('add-purchase-select');
+                    if (select) select.value = purchaseId;
+                }, 100);
             } else {
                 showStatus('❌ Error: ' + (result.error || 'Failed to add'), 'error');
             }
@@ -377,5 +446,6 @@
         loadConditions();
         loadFormats();
         loadConsignors();
+        bindDefaultEvents(); // <-- Bind events to default fields
     };
 })();
