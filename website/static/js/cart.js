@@ -226,19 +226,19 @@
 
     // ===== CHECKOUT =====
     let checkoutState = {
-        selectedMethod: 'card',
         totalDue: 0,
         remaining: 0,
         giftCardCode: null,
         giftCardBalance: 0,
         paymentEntries: [],
         selectedItems: [],
-        cashAmount: 0,
-        giftCardAmount: 0,
         cachedDeviceId: null,
-        isPOS: false,
         posCheckoutId: null,
-        paymentProcessing: false
+        paymentProcessing: false,
+        cardSubmitted: false,
+        posSubmitted: false,
+        cardConfirmed: false,
+        posConfirmed: false
     };
 
     // ===== Update Remaining Balance =====
@@ -269,19 +269,8 @@
             changeDisplay.style.display = 'none';
         }
         
-        // Update card amount display
-        const cardDisplay = document.getElementById('card-amount-display');
-        if (cardDisplay) {
-            cardDisplay.textContent = cardAmount.toFixed(2);
-        }
-        
-        // Enable/disable complete button
-        const completeBtn = document.getElementById('checkout-complete-btn');
-        if (completeBtn) {
-            completeBtn.disabled = remaining > 0.01 || checkoutState.paymentProcessing;
-        }
-        
         updatePaymentSummary();
+        updateButtons();
     }
 
     // ===== Payment Summary =====
@@ -315,6 +304,41 @@
         }
     }
 
+    // ===== Update Buttons =====
+    function updateButtons() {
+        const isAdmin = getUserRole() === 'admin';
+        
+        const submitBtn = document.getElementById('submit-btn');
+        if (submitBtn) {
+            if (isAdmin) {
+                submitBtn.style.display = 'inline-block';
+                if (checkoutState.paymentProcessing) {
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '⏳ Submitting...';
+                } else if (checkoutState.cardSubmitted || checkoutState.posSubmitted) {
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<i class="fas fa-check"></i> Submitted';
+                } else {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit';
+                }
+            } else {
+                submitBtn.style.display = 'none';
+            }
+        }
+        
+        const completeBtn = document.getElementById('checkout-complete-btn');
+        if (completeBtn) {
+            if (isAdmin) {
+                completeBtn.style.display = 'inline-block';
+                completeBtn.disabled = false;
+                completeBtn.innerHTML = '<i class="fas fa-check"></i> Complete';
+            } else {
+                completeBtn.style.display = 'none';
+            }
+        }
+    }
+
     // ===== OPEN CHECKOUT =====
     window.openCheckout = function() {
         console.log('🛒 Opening checkout...');
@@ -324,8 +348,7 @@
             return;
         }
 
-        const userRole = getUserRole();
-        const isAdmin = userRole === 'admin';
+        const isAdmin = getUserRole() === 'admin';
         
         const items = window.cart.getItems();
         const total = window.cart.getTotal();
@@ -334,11 +357,13 @@
         checkoutState.totalDue = total;
         checkoutState.remaining = total;
         checkoutState.paymentEntries = [];
-        checkoutState.cashAmount = 0;
-        checkoutState.giftCardAmount = 0;
-        checkoutState.isPOS = false;
+        checkoutState.cachedDeviceId = null;
         checkoutState.posCheckoutId = null;
         checkoutState.paymentProcessing = false;
+        checkoutState.cardSubmitted = false;
+        checkoutState.posSubmitted = false;
+        checkoutState.cardConfirmed = false;
+        checkoutState.posConfirmed = false;
 
         // Show order summary
         let summaryHtml = '';
@@ -360,7 +385,6 @@
         const remaining = document.getElementById('checkout-remaining');
         const modal = document.getElementById('checkout-modal');
         
-        // Get all payment elements
         const cardPanel = document.getElementById('payment-card');
         const cashPanel = document.getElementById('payment-cash');
         const giftPanel = document.getElementById('payment-giftcard');
@@ -370,7 +394,6 @@
         if (totalDue) totalDue.textContent = '$' + total.toFixed(2);
         if (remaining) remaining.textContent = '$' + total.toFixed(2);
 
-        // Reset inputs
         document.getElementById('card-amount').value = '';
         document.getElementById('cash-amount').value = '';
         document.getElementById('giftcard-code').value = '';
@@ -381,16 +404,39 @@
         document.getElementById('giftcard-apply-section').style.display = 'none';
         document.getElementById('checkout-status').style.display = 'none';
         document.getElementById('payment-summary').style.display = 'none';
+        document.getElementById('card-status').style.display = 'none';
+        document.getElementById('pos-status').style.display = 'none';
 
-        // ===== VISIBILITY LOGIC =====
         if (cardPanel) cardPanel.style.display = 'block';
         if (cashPanel) cashPanel.style.display = isAdmin ? 'block' : 'none';
-        if (giftPanel) giftPanel.style.display = 'block';
+        if (giftPanel) giftPanel.style.display = isAdmin ? 'block' : 'none';
         if (posPanel) posPanel.style.display = isAdmin ? 'block' : 'none';
+
+        const submitBtn = document.getElementById('submit-btn');
+        if (submitBtn) {
+            if (isAdmin) {
+                submitBtn.style.display = 'inline-block';
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit';
+            } else {
+                submitBtn.style.display = 'none';
+            }
+        }
+
+        const completeBtn = document.getElementById('checkout-complete-btn');
+        if (completeBtn) {
+            if (isAdmin) {
+                completeBtn.style.display = 'inline-block';
+                completeBtn.disabled = false;
+                completeBtn.innerHTML = '<i class="fas fa-check"></i> Complete';
+            } else {
+                completeBtn.style.display = 'none';
+            }
+        }
 
         if (modal) {
             modal.style.display = 'flex';
-            updatePaymentSummary();
+            updateRemaining();
         }
     };
 
@@ -546,7 +592,6 @@
                 }
                 
                 if (checkoutState.remaining <= 0.01) {
-                    document.getElementById('checkout-complete-btn').disabled = false;
                     showToast('✅ Gift card covers the full amount!', 'success');
                 } else {
                     showToast('✅ Applied $' + amount.toFixed(2) + ' from gift card. Remaining: $' + checkoutState.remaining.toFixed(2), 'success');
@@ -561,80 +606,104 @@
         }
     };
 
-    // ===== Process Checkout =====
-    window.processCheckout = async function() {
-        if (checkoutState.remaining > 0.01) {
-            showToast('Please cover the full amount with payment methods', 'warning');
-            return;
-        }
-
+    // ===== SUBMIT PAYMENT =====
+    window.submitPayment = async function() {
         if (checkoutState.paymentProcessing) {
             showToast('⏳ Payment already in progress...', 'warning');
             return;
         }
 
+        const isAdmin = getUserRole() === 'admin';
+        
+        if (!isAdmin) {
+            showToast('❌ Online checkout uses automatic card payment', 'warning');
+            return;
+        }
+
         const cardAmount = parseFloat(document.getElementById('card-amount').value) || 0;
+        const posAmount = parseFloat(document.getElementById('pos-amount').value) || 0;
         const cashAmount = parseFloat(document.getElementById('cash-amount').value) || 0;
         const giftAmount = parseFloat(document.getElementById('giftcard-amount').value) || 0;
-        const posAmount = parseFloat(document.getElementById('pos-amount').value) || 0;
-        
+
+        if (cardAmount === 0 && posAmount === 0) {
+            showToast('Enter a Card or POS amount to submit', 'warning');
+            return;
+        }
+
         const paymentEntries = [];
-        let hasCard = false;
-        let hasPOS = false;
-        let hasCash = false;
-        let hasGift = false;
-        
+        if (cardAmount > 0) paymentEntries.push({ method: 'Card (Square)', amount: cardAmount });
+        if (cashAmount > 0) paymentEntries.push({ method: 'Cash', amount: cashAmount });
+        if (giftAmount > 0) paymentEntries.push({ method: 'Gift Card', amount: giftAmount });
+        if (posAmount > 0) paymentEntries.push({ method: 'POS Request', amount: posAmount });
+
+        checkoutState.paymentProcessing = true;
+        const submitBtn = document.getElementById('submit-btn');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '⏳ Submitting...';
+        }
+
+        let cardSent = false;
+        let posSent = false;
+
+        // ===== SEND CARD TO SQUARE (Payment Link) =====
         if (cardAmount > 0) {
-            paymentEntries.push({ method: 'Card (Square)', amount: cardAmount });
-            hasCard = true;
-        }
-        if (cashAmount > 0) {
-            paymentEntries.push({ method: 'Cash', amount: cashAmount });
-            hasCash = true;
-        }
-        if (giftAmount > 0) {
-            paymentEntries.push({ method: 'Gift Card', amount: giftAmount });
-            hasGift = true;
-        }
-        if (posAmount > 0) {
-            paymentEntries.push({ method: 'POS Request', amount: posAmount });
-            hasPOS = true;
-        }
-
-        if (paymentEntries.length === 0) {
-            showToast('Please enter at least one payment method', 'warning');
-            return;
-        }
-
-        // ===== CASH ONLY - Complete immediately =====
-        if (hasCash && !hasCard && !hasPOS && !hasGift) {
-            // Cash only - complete immediately
-            completeOrder(paymentEntries);
-            return;
-        }
-
-        // ===== GIFT CARD ONLY - Complete immediately =====
-        if (hasGift && !hasCard && !hasPOS && !hasCash) {
-            completeOrder(paymentEntries);
-            return;
-        }
-
-        // ===== CASH + GIFT CARD (no POS, no Card) =====
-        if ((hasCash || hasGift) && !hasCard && !hasPOS) {
-            completeOrder(paymentEntries);
-            return;
-        }
-
-        // ===== POS TERMINAL REQUEST =====
-        if (hasPOS) {
-            // Set processing flag - DISABLE button
-            checkoutState.paymentProcessing = true;
-            const completeBtn = document.getElementById('checkout-complete-btn');
-            if (completeBtn) {
-                completeBtn.disabled = true;
-                completeBtn.innerHTML = '⏳ Waiting...';
-            }
+            cardSent = true;
+            showToast('💳 Opening Square payment link...', 'info');
             
+            const payload = {
+                items: window.cart.getCheckoutPayload(),
+                subtotal: checkoutState.totalDue,
+                total: checkoutState.totalDue,
+                tax: 0,
+                shipping: { method: 'pickup', amount: 0 },
+                customer_name: 'Walk-in Customer',
+                customer_email: '',
+                notes: 'Checkout from cart',
+                payment_entries: paymentEntries
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/api/checkout/process`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+
+                if (data.status === 'success' && data.checkout_url) {
+                    checkoutState.cardSubmitted = true;
+                    document.getElementById('card-status').style.display = 'block';
+                    document.getElementById('card-status').textContent = '⏳ Waiting for payment...';
+                    document.getElementById('card-status').style.color = '#17a2b8';
+                    
+                    window.open(data.checkout_url, '_blank');
+                    
+                    pollSquarePayment(data.order_id || data.square_order_id);
+                } else {
+                    showToast('❌ Card payment failed: ' + (data.error || 'Unknown error'), 'error');
+                    checkoutState.paymentProcessing = false;
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit';
+                    }
+                }
+            } catch (err) {
+                console.error('Card payment error:', err);
+                showToast('❌ Error: ' + err.message, 'error');
+                checkoutState.paymentProcessing = false;
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit';
+                }
+            }
+        }
+
+        // ===== SEND POS TO TERMINAL =====
+        if (posAmount > 0) {
+            posSent = true;
             showToast('📟 Sending to POS terminal...', 'info');
             
             try {
@@ -652,9 +721,9 @@
                     if (terminalsData.status !== 'success' || !terminalsData.terminals || terminalsData.terminals.length === 0) {
                         showToast('❌ No Square terminals available', 'error');
                         checkoutState.paymentProcessing = false;
-                        if (completeBtn) {
-                            completeBtn.disabled = false;
-                            completeBtn.innerHTML = 'Complete Payment';
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit';
                         }
                         return;
                     }
@@ -699,91 +768,39 @@
                 if (data.status === 'success') {
                     const checkoutId = data.checkout?.id || 'unknown';
                     checkoutState.posCheckoutId = checkoutId;
+                    checkoutState.posSubmitted = true;
+                    
+                    document.getElementById('pos-status').style.display = 'block';
+                    document.getElementById('pos-status').textContent = '⏳ Waiting for terminal...';
+                    document.getElementById('pos-status').style.color = '#6f42c1';
+                    
                     showToast('✅ POS request sent! Waiting for payment on terminal...', 'success');
                     
-                    // Poll for status - this will clear cart when payment completes
                     pollPOSStatus(checkoutId);
                 } else {
                     const errorMsg = data.message || data.error || data.details || 'Unknown error';
                     showToast('❌ POS request failed: ' + errorMsg, 'error');
                     checkoutState.paymentProcessing = false;
-                    if (completeBtn) {
-                        completeBtn.disabled = false;
-                        completeBtn.innerHTML = 'Complete Payment';
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit';
                     }
                 }
             } catch (err) {
                 console.error('POS payment error:', err);
                 showToast('❌ Error sending POS request: ' + err.message, 'error');
                 checkoutState.paymentProcessing = false;
-                if (completeBtn) {
-                    completeBtn.disabled = false;
-                    completeBtn.innerHTML = 'Complete Payment';
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit';
                 }
-            }
-            return;
-        }
-
-        // ===== SQUARE PAYMENT LINK (Online Card) =====
-        if (hasCard) {
-            // Set processing flag
-            checkoutState.paymentProcessing = true;
-            const completeBtn = document.getElementById('checkout-complete-btn');
-            if (completeBtn) {
-                completeBtn.disabled = true;
-                completeBtn.innerHTML = '⏳ Redirecting...';
-            }
-            
-            const payload = {
-                items: window.cart.getCheckoutPayload(),
-                subtotal: checkoutState.totalDue,
-                total: checkoutState.totalDue,
-                tax: 0,
-                shipping: { method: 'pickup', amount: 0 },
-                customer_name: 'Walk-in Customer',
-                customer_email: '',
-                notes: 'Checkout from cart',
-                payment_entries: paymentEntries
-            };
-
-            try {
-                const response = await fetch(`${API_BASE}/api/checkout/process`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify(payload)
-                });
-                
-                const data = await response.json();
-
-                if (data.status === 'success' && data.checkout_url) {
-                    window.cart.clear();
-                    window.renderCart();
-                    window.location.href = data.checkout_url;
-                    return;
-                } else {
-                    showToast('❌ Payment failed: ' + (data.error || 'Unknown error'), 'error');
-                    checkoutState.paymentProcessing = false;
-                    if (completeBtn) {
-                        completeBtn.disabled = false;
-                        completeBtn.innerHTML = 'Complete Payment';
-                    }
-                    return;
-                }
-            } catch (err) {
-                console.error('Card payment error:', err);
-                showToast('❌ Error processing payment: ' + err.message, 'error');
-                checkoutState.paymentProcessing = false;
-                if (completeBtn) {
-                    completeBtn.disabled = false;
-                    completeBtn.innerHTML = 'Complete Payment';
-                }
-                return;
             }
         }
 
-        // Fallback - complete order
-        completeOrder(paymentEntries);
+        if (submitBtn && (cardSent || posSent)) {
+            submitBtn.innerHTML = '<i class="fas fa-check"></i> Submitted';
+            submitBtn.disabled = true;
+        }
     };
 
     // ===== Poll POS Status =====
@@ -814,44 +831,31 @@
                     if (status === 'COMPLETED') {
                         clearInterval(checkStatus);
                         completed = true;
-                        showToast('✅ POS payment completed!', 'success');
-                        
-                        // NOW clear the cart
-                        window.cart.clear();
-                        window.renderCart();
-                        
-                        if (statusDiv) {
-                            statusDiv.textContent = '✅ Payment completed!';
-                            statusDiv.className = 'status-message status-success';
-                        }
+                        checkoutState.posConfirmed = true;
+                        document.getElementById('pos-status').textContent = '✅ Payment confirmed!';
+                        document.getElementById('pos-status').style.color = '#28a745';
+                        showToast('✅ POS payment completed! Press Complete to finish.', 'success');
                         
                         checkoutState.paymentProcessing = false;
-                        const completeBtn = document.getElementById('checkout-complete-btn');
-                        if (completeBtn) {
-                            completeBtn.disabled = false;
-                            completeBtn.innerHTML = 'Complete Payment';
+                        
+                        if (statusDiv) {
+                            statusDiv.textContent = '✅ Payment confirmed! Press Complete to finish.';
+                            statusDiv.className = 'status-message status-success';
                         }
-                        
-                        setTimeout(() => {
-                            closeCheckoutModal();
-                        }, 1500);
-                        
+                        updateButtons();
                     } else if (status === 'CANCELED') {
                         clearInterval(checkStatus);
                         completed = true;
+                        document.getElementById('pos-status').textContent = '❌ Payment cancelled';
+                        document.getElementById('pos-status').style.color = '#dc3545';
                         showToast('❌ POS payment cancelled', 'error');
                         checkoutState.paymentProcessing = false;
-                        
-                        if (statusDiv) {
-                            statusDiv.textContent = '❌ Payment cancelled';
-                            statusDiv.className = 'status-message status-error';
+                        const submitBtn = document.getElementById('submit-btn');
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit';
                         }
-                        
-                        const completeBtn = document.getElementById('checkout-complete-btn');
-                        if (completeBtn) {
-                            completeBtn.disabled = false;
-                            completeBtn.innerHTML = 'Complete Payment';
-                        }
+                        updateButtons();
                     } else if (status === 'PENDING') {
                         if (statusDiv) {
                             const dots = '.'.repeat((attempts % 4));
@@ -865,17 +869,12 @@
                     clearInterval(checkStatus);
                     showToast('⏳ POS payment still pending - check terminal', 'warning');
                     checkoutState.paymentProcessing = false;
-                    
-                    const completeBtn = document.getElementById('checkout-complete-btn');
-                    if (completeBtn) {
-                        completeBtn.disabled = false;
-                        completeBtn.innerHTML = 'Complete Payment';
+                    const submitBtn = document.getElementById('submit-btn');
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit';
                     }
-                    
-                    if (statusDiv) {
-                        statusDiv.textContent = '⏳ Payment pending - check terminal';
-                        statusDiv.className = 'status-message status-warning';
-                    }
+                    updateButtons();
                 }
             })
             .catch(err => {
@@ -884,67 +883,172 @@
         }, 3000);
     }
 
-    // ===== Complete Order =====
-    function completeOrder(paymentEntries) {
+    // ===== Poll Square Payment =====
+    function pollSquarePayment(orderId) {
+        let attempts = 0;
+        const maxAttempts = 60;
+        let completed = false;
+        
         const statusDiv = document.getElementById('checkout-status');
-        statusDiv.style.display = 'block';
-        statusDiv.textContent = '⏳ Processing your order...';
-        statusDiv.className = 'status-message status-info';
+        if (statusDiv) {
+            statusDiv.style.display = 'block';
+            statusDiv.textContent = '⏳ Waiting for Square payment...';
+            statusDiv.className = 'status-message status-info';
+        }
+        
+        const checkStatus = setInterval(() => {
+            attempts++;
+            
+            fetch(`${API_BASE}/api/checkout/status/${orderId}`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success' && data.payment_status === 'paid') {
+                    clearInterval(checkStatus);
+                    completed = true;
+                    checkoutState.cardConfirmed = true;
+                    document.getElementById('card-status').textContent = '✅ Payment confirmed!';
+                    document.getElementById('card-status').style.color = '#28a745';
+                    showToast('✅ Square payment completed! Press Complete to finish.', 'success');
+                    
+                    checkoutState.paymentProcessing = false;
+                    
+                    if (statusDiv) {
+                        statusDiv.textContent = '✅ Payment confirmed! Press Complete to finish.';
+                        statusDiv.className = 'status-message status-success';
+                    }
+                    updateButtons();
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(checkStatus);
+                    showToast('⏳ Square payment still pending - check your browser', 'warning');
+                    checkoutState.paymentProcessing = false;
+                    const submitBtn = document.getElementById('submit-btn');
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit';
+                    }
+                    updateButtons();
+                }
+            })
+            .catch(err => {
+                console.error('Error checking Square status:', err);
+            });
+        }, 5000);
+    }
 
-        const payload = {
-            items: window.cart.getCheckoutPayload(),
-            subtotal: checkoutState.totalDue,
-            total: checkoutState.totalDue,
-            tax: 0,
-            shipping: { method: 'pickup', amount: 0 },
-            customer_name: 'Walk-in Customer',
-            customer_email: '',
-            notes: 'Checkout from cart',
-            payment_entries: paymentEntries
-        };
+    // ===== COMPLETE ORDER =====
+    window.completeOrder = async function() {
+        const isAdmin = getUserRole() === 'admin';
+        
+        // Non-admin cannot manually complete
+        if (!isAdmin) {
+            showToast('❌ Order will auto-complete when payment is confirmed', 'warning');
+            return;
+        }
 
-        fetch(`${API_BASE}/api/checkout/process`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(payload)
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success' && data.checkout_url) {
-                window.location.href = data.checkout_url;
+        // Check if remaining is 0
+        if (checkoutState.remaining > 0.01) {
+            showToast('Please cover the full amount with payment methods', 'warning');
+            return;
+        }
+
+        // Collect payment entries
+        const cardAmount = parseFloat(document.getElementById('card-amount').value) || 0;
+        const cashAmount = parseFloat(document.getElementById('cash-amount').value) || 0;
+        const giftAmount = parseFloat(document.getElementById('giftcard-amount').value) || 0;
+        const posAmount = parseFloat(document.getElementById('pos-amount').value) || 0;
+        
+        const paymentEntries = [];
+        if (cardAmount > 0) paymentEntries.push({ method: 'Card (Square)', amount: cardAmount });
+        if (cashAmount > 0) paymentEntries.push({ method: 'Cash', amount: cashAmount });
+        if (giftAmount > 0) paymentEntries.push({ method: 'Gift Card', amount: giftAmount });
+        if (posAmount > 0) paymentEntries.push({ method: 'POS Request', amount: posAmount });
+
+        if (paymentEntries.length === 0) {
+            showToast('Please enter at least one payment method', 'warning');
+            return;
+        }
+
+        // If card submitted but not confirmed, warn admin
+        if (checkoutState.cardSubmitted && !checkoutState.cardConfirmed) {
+            if (!confirm('⚠️ Card payment has not been confirmed. Complete anyway?')) {
                 return;
             }
+        }
+        
+        if (checkoutState.posSubmitted && !checkoutState.posConfirmed) {
+            if (!confirm('⚠️ POS payment has not been confirmed. Complete anyway?')) {
+                return;
+            }
+        }
 
-            if (data.status === 'success') {
-                window.cart.clear();
-                window.renderCart();
-                
-                statusDiv.textContent = '✅ Order placed!';
-                statusDiv.className = 'status-message status-success';
-                
-                setTimeout(() => {
-                    closeCheckoutModal();
-                }, 1500);
-            } else {
-                statusDiv.textContent = '❌ Checkout failed: ' + (data.error || 'Unknown error');
-                statusDiv.className = 'status-message status-error';
+        // ===== MARK RECORDS AS SOLD =====
+        // Get the cart items - only records should be marked as sold
+        const cartItems = window.cart.getItems();
+        const recordIds = cartItems
+            .filter(item => item.type === 'record' && item.id)
+            .map(item => item.id);
+
+        if (recordIds.length === 0) {
+            showToast('No records in cart to mark as sold', 'warning');
+            return;
+        }
+
+        // Show processing status
+        const statusDiv = document.getElementById('checkout-status');
+        statusDiv.style.display = 'block';
+        statusDiv.textContent = '⏳ Marking records as sold...';
+        statusDiv.className = 'status-message status-info';
+
+        // Update each record to status_id = 3 (in-store sold)
+        let soldCount = 0;
+        let failedCount = 0;
+
+        for (const recordId of recordIds) {
+            try {
+                const response = await fetch(`${API_BASE}/records/${recordId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        status_id: 3,
+                        date_sold: new Date().toISOString().split('T')[0]
+                    })
+                });
+
+                if (response.ok) {
+                    soldCount++;
+                } else {
+                    failedCount++;
+                    console.error(`Failed to update record ${recordId}`);
+                }
+            } catch (err) {
+                failedCount++;
+                console.error(`Error updating record ${recordId}:`, err);
             }
-        })
-        .catch(err => {
-            console.error('Checkout error:', err);
-            statusDiv.textContent = '❌ Error: ' + err.message;
+        }
+
+        if (soldCount > 0) {
+            window.cart.clear();
+            window.renderCart();
+            
+            statusDiv.textContent = `✅ ${soldCount} record(s) marked as sold! ${failedCount > 0 ? `(${failedCount} failed)` : ''}`;
+            statusDiv.className = 'status-message status-success';
+            
+            showToast(`✅ ${soldCount} record(s) sold!`, 'success');
+            
+            setTimeout(() => {
+                closeCheckoutModal();
+            }, 2000);
+        } else {
+            statusDiv.textContent = '❌ Failed to mark records as sold. Please try again.';
             statusDiv.className = 'status-message status-error';
-        })
-        .finally(() => {
-            checkoutState.paymentProcessing = false;
-            const completeBtn = document.getElementById('checkout-complete-btn');
-            if (completeBtn) {
-                completeBtn.disabled = false;
-                completeBtn.innerHTML = 'Complete Payment';
-            }
-        });
-    }
+            showToast('❌ Failed to complete order', 'error');
+        }
+    };
 
     // ===== Toast Helper =====
     function showToast(message, type = 'success') {
