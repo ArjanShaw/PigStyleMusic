@@ -350,13 +350,22 @@
             this.renderPage();
             this.updatePagination();
         }
-
         async loadRecords() {
             const container = document.getElementById(this.config.containerId);
             if (!container) {
-                console.error('Container not found:', this.config.containerId);
+                console.error('❌ Container not found:', this.config.containerId);
                 return;
             }
+
+            console.log('📀 ========== LOADING RECORDS ==========');
+            console.log('📀 Component:', this.config.title);
+            console.log('📀 Container ID:', this.config.containerId);
+            console.log('📀 Status Filter:', this.config.statusId || 'None');
+            console.log('📀 Location Filter:', this.config.locationId || 'None');
+            console.log('📀 Cutoff Date:', this.cutoffDate || 'None (showing all)');
+            console.log('📀 Page Size:', this.config.pageSize);
+            console.log('📀 Show Condition:', this.config.showCondition);
+            console.log('📀 Show Location:', this.config.showLocation);
 
             container.innerHTML = `
                 <div style="text-align: center; padding: 40px; color: #888;">
@@ -372,51 +381,125 @@
                 
                 if (this.config.locationId) {
                     params.append('location_id', this.config.locationId);
+                    console.log('📀 Adding location_id filter:', this.config.locationId);
                 }
                 if (this.config.statusId) {
                     params.append('status_ids', this.config.statusId);
+                    console.log('📀 Adding status_ids filter:', this.config.statusId);
+                }
+                if (this.cutoffDate) {
+                    params.append('last_seen_after', this.cutoffDate);
+                    console.log('📀 Adding last_seen_after filter:', this.cutoffDate);
                 }
 
                 const url = `${API_BASE}/records?${params.toString()}`;
-                console.log(`📡 Fetching records from: ${url}`);
+                console.log('📡 📡 📡 FETCHING RECORDS FROM:');
+                console.log('📡 URL:', url);
+                console.log('📡 Full URL with decode:', decodeURIComponent(url));
+                console.log('📡 Parameters:');
+                console.log('📡   - limit:', params.get('limit'));
+                console.log('📡   - status_ids:', params.get('status_ids') || 'None');
+                console.log('📡   - location_id:', params.get('location_id') || 'None');
+                console.log('📡   - last_seen_after:', params.get('last_seen_after') || 'None');
 
                 const response = await fetch(url, {
                     credentials: 'include',
                     headers: { 'Content-Type': 'application/json' }
                 });
 
+                console.log('📡 Response Status:', response.status);
+                console.log('📡 Response OK:', response.ok);
+
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }
                 
                 const data = await response.json();
+                
+                console.log('📡 ===== RESPONSE DATA =====');
+                console.log('📡 Status:', data.status);
+                console.log('📡 Total records from API:', data.total);
+                console.log('📡 Count in this response:', data.count);
+                console.log('📡 Records array length:', data.records ? data.records.length : 0);
+                
+                // Log first few records to see what's coming back
+                if (data.records && data.records.length > 0) {
+                    console.log('📡 First record sample:', data.records[0]);
+                    console.log('📡 Sample fields:');
+                    console.log('  - id:', data.records[0].id);
+                    console.log('  - artist:', data.records[0].artist);
+                    console.log('  - title:', data.records[0].title);
+                    console.log('  - status_id:', data.records[0].status_id);
+                    console.log('  - last_seen:', data.records[0].last_seen);
+                    console.log('  - location_id:', data.records[0].location_id);
+                    console.log('  - location_name:', data.records[0].location_name);
+                    console.log('  - consignor_id:', data.records[0].consignor_id);
+                    console.log('  - image_url:', data.records[0].image_url ? 'Has image' : 'No image');
+                }
 
                 if (data.status === 'success' && data.records) {
                     let records = data.records || [];
                     
+                    console.log('📀 Before cutoff filter:', records.length);
+                    
+                    // Apply cutoff date filter (client-side fallback)
                     if (this.cutoffDate) {
                         const cutoffStr = this.cutoffDate;
+                        const beforeFilter = records.length;
                         records = records.filter(record => isRecordVisible(record, cutoffStr));
-                        console.log(`📅 Filtered ${data.records.length} records to ${records.length} based on cutoff date`);
+                        console.log(`📅 Client-side cutoff filter: ${beforeFilter} → ${records.length} records`);
                     }
+                    
+                    // Check status distribution
+                    const statusCounts = {};
+                    records.forEach(r => {
+                        const status = r.status_id || 'unknown';
+                        statusCounts[status] = (statusCounts[status] || 0) + 1;
+                    });
+                    console.log('📀 Status distribution in returned records:', statusCounts);
+                    
+                    // Check location distribution
+                    const locationCounts = {};
+                    records.forEach(r => {
+                        const loc = r.location_name || r.location_id || 'none';
+                        locationCounts[loc] = (locationCounts[loc] || 0) + 1;
+                    });
+                    console.log('📀 Location distribution in returned records:', locationCounts);
+                    
+                    // Check if records have last_seen
+                    const withLastSeen = records.filter(r => r.last_seen).length;
+                    const withoutLastSeen = records.length - withLastSeen;
+                    console.log('📀 Records with last_seen:', withLastSeen);
+                    console.log('📀 Records without last_seen:', withoutLastSeen);
                     
                     this.allData = records;
                     this.filteredData = [...this.allData];
                     this.totalRecords = this.filteredData.length;
                     this.totalPages = Math.ceil(this.totalRecords / this.config.pageSize) || 1;
                     this.currentPage = 1;
+                    
+                    console.log('📀 Final data counts:');
+                    console.log('  - allData:', this.allData.length);
+                    console.log('  - filteredData:', this.filteredData.length);
+                    console.log('  - totalRecords:', this.totalRecords);
+                    console.log('  - totalPages:', this.totalPages);
+                    console.log('📀 ========================================');
+                    
                     this.renderPage();
                     this.updatePagination();
                 } else {
+                    console.warn('⚠️ No records returned or status not success');
                     container.innerHTML = `
                         <div style="text-align: center; padding: 40px; color: #888;">
                             <div style="margin-bottom: 10px;">📀</div>
                             <p>No ${this.config.title.toLowerCase()} found</p>
+                            <p style="font-size: 12px; color: #999;">Total returned: ${data.total || 0}</p>
                         </div>
                     `;
                 }
             } catch (err) {
-                console.error('Failed to load records:', err);
+                console.error('❌ Failed to load records:', err);
+                console.error('❌ Error stack:', err.stack);
                 container.innerHTML = `
                     <div style="text-align: center; padding: 40px; color: #dc3545;">
                         <div style="margin-bottom: 10px;">❌</div>
@@ -428,7 +511,7 @@
                 `;
             }
         }
-
+         
         renderPage() {
             const container = document.getElementById(this.config.containerId);
             if (!container) return;
