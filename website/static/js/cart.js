@@ -15,6 +15,7 @@
 
     // ===== TAX RATE =====
     const TAX_RATE = 0.07; // 7% sales tax
+    const SHIPPING_COST = 5.70; // Flat shipping rate
 
     // ===== CALCULATE TAX =====
     function calculateTax(subtotal) {
@@ -249,13 +250,28 @@
     // ============================================================
 
     let publicCheckoutItems = [];
-    let publicCheckoutTotal = 0;
+    let publicCheckoutSubtotal = 0;
     let publicCheckoutTax = 0;
+    let publicCheckoutShipping = 0;
+    let publicCheckoutTotal = 0;
     let publicCheckoutRemaining = 0;
     let publicCheckoutPaymentEntries = [];
     let publicSquareAvailable = false;
     let publicCheckoutId = null;
     let publicPollInterval = null;
+    let publicCheckoutData = {
+        customerName: '',
+        customerEmail: '',
+        shippingMethod: 'pickup', // 'pickup' or 'shipping'
+        address: {
+            line1: '',
+            line2: '',
+            city: '',
+            state: '',
+            zip: '',
+            country: 'USA'
+        }
+    };
 
     // ===== OPEN PUBLIC CHECKOUT =====
     window.openPublicCheckout = function() {
@@ -265,6 +281,22 @@
             window.showToast('Your cart is empty!', 'warning');
             return;
         }
+
+        // Reset checkout data
+        publicCheckoutData = {
+            customerName: '',
+            customerEmail: '',
+            shippingMethod: 'pickup',
+            address: {
+                line1: '',
+                line2: '',
+                city: '',
+                state: '',
+                zip: '',
+                country: 'USA'
+            }
+        };
+        publicCheckoutPaymentEntries = [];
 
         checkPublicSquareAvailability().then(() => {
             showPublicCheckoutModal();
@@ -302,14 +334,13 @@
         
         const items = window.cart.getItems();
         const subtotal = window.cart.getTotal();
-        const taxAmount = calculateTax(subtotal);
-        const totalWithTax = subtotal + taxAmount;
         
         publicCheckoutItems = items;
-        publicCheckoutTotal = totalWithTax;
-        publicCheckoutTax = taxAmount;
-        publicCheckoutRemaining = totalWithTax;
-        publicCheckoutPaymentEntries = [];
+        publicCheckoutSubtotal = subtotal;
+        publicCheckoutShipping = 0;
+        publicCheckoutTax = calculateTax(subtotal);
+        publicCheckoutTotal = subtotal + publicCheckoutTax;
+        publicCheckoutRemaining = publicCheckoutTotal;
 
         // Remove existing modal
         const existing = document.getElementById('public-checkout-modal');
@@ -329,6 +360,7 @@
             align-items: center;
             justify-content: center;
             animation: fadeIn 0.3s ease;
+            overflow-y: auto;
         `;
 
         let itemsHtml = '';
@@ -349,34 +381,103 @@
         });
 
         modal.innerHTML = `
-            <div style="background: white; border-radius: 16px; max-width: 500px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 0; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
-                <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 20px; border-radius: 16px 16px 0 0; display: flex; justify-content: space-between; align-items: center;">
+            <div style="background: white; border-radius: 16px; max-width: 550px; width: 95%; max-height: 95vh; overflow-y: auto; padding: 0; box-shadow: 0 20px 60px rgba(0,0,0,0.3); margin: 20px auto;">
+                <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 20px; border-radius: 16px 16px 0 0; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 1;">
                     <h3 style="margin: 0; color: white;"><i class="fas fa-credit-card"></i> Checkout</h3>
                     <button onclick="closePublicCheckoutModal()" style="background: none; border: none; color: white; font-size: 28px; cursor: pointer;">&times;</button>
                 </div>
                 
                 <div style="padding: 20px;">
                     <!-- Order Summary -->
-                    <div style="margin-bottom: 15px; max-height: 150px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 8px;">
+                    <div style="margin-bottom: 15px; max-height: 120px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 8px;">
                         <div style="font-weight: 600; margin-bottom: 5px; color: #333;">Order Summary (${items.length} items)</div>
                         <div style="font-size: 13px; color: #666;">${itemsHtml}</div>
                     </div>
-                    
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 8px 10px; background: #f8f9fa; border-radius: 6px;">
-                        <div style="color: #666; font-size: 13px;">Subtotal:</div>
-                        <div style="color: #333; font-weight: 500;">$${subtotal.toFixed(2)}</div>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 8px 10px; background: #f8f9fa; border-radius: 6px; border-bottom: 1px solid #e9ecef;">
-                        <div style="color: #666; font-size: 13px;">Tax (7%):</div>
-                        <div style="color: #333; font-weight: 500;">$${taxAmount.toFixed(2)}</div>
+
+                    <!-- Customer Information -->
+                    <div style="margin-bottom: 15px; padding: 12px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+                        <div style="font-weight: 600; color: #333; font-size: 14px; margin-bottom: 8px;"><i class="fas fa-user"></i> Contact Information</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div style="grid-column: 1 / -1;">
+                                <label style="display: block; font-weight: 600; color: #555; font-size: 12px; margin-bottom: 3px;">Full Name *</label>
+                                <input type="text" id="public-customer-name" placeholder="Your name" style="width: 100%; padding: 8px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+                            </div>
+                            <div style="grid-column: 1 / -1;">
+                                <label style="display: block; font-weight: 600; color: #555; font-size: 12px; margin-bottom: 3px;">Email (for confirmation)</label>
+                                <input type="email" id="public-customer-email" placeholder="your@email.com" style="width: 100%; padding: 8px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+                            </div>
+                        </div>
                     </div>
 
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 10px; background: #e8f5e9; border-radius: 8px;">
-                        <span style="font-weight: 600; color: #333;">Total Due:</span>
-                        <span id="public-total-due" style="font-size: 24px; font-weight: bold; color: #28a745;">$${totalWithTax.toFixed(2)}</span>
+                    <!-- Shipping Method -->
+                    <div style="margin-bottom: 15px; padding: 12px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+                        <div style="font-weight: 600; color: #333; font-size: 14px; margin-bottom: 8px;"><i class="fas fa-truck"></i> Delivery Method</div>
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 8px 14px; background: white; border-radius: 6px; border: 2px solid #28a745; flex: 1; min-width: 120px;">
+                                <input type="radio" name="shipping-method" value="pickup" checked onchange="updatePublicShipping()">
+                                <span style="font-weight: 500;">📦 Pick up in store</span>
+                                <span style="color: #28a745; font-size: 12px; font-weight: 600;">Free</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 8px 14px; background: white; border-radius: 6px; border: 2px solid #ddd; flex: 1; min-width: 120px;" id="shipping-label">
+                                <input type="radio" name="shipping-method" value="shipping" onchange="updatePublicShipping()">
+                                <span style="font-weight: 500;">🚚 Ship to me</span>
+                                <span style="color: #fd7e14; font-size: 12px; font-weight: 600;">+ $${SHIPPING_COST.toFixed(2)}</span>
+                            </label>
+                        </div>
                     </div>
 
-                    <!-- Payment Methods -->
+                    <!-- Shipping Address (hidden by default) -->
+                    <div id="public-shipping-address" style="display: none; margin-bottom: 15px; padding: 12px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+                        <div style="font-weight: 600; color: #333; font-size: 14px; margin-bottom: 8px;"><i class="fas fa-map-pin"></i> Shipping Address</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div style="grid-column: 1 / -1;">
+                                <label style="display: block; font-weight: 600; color: #555; font-size: 12px; margin-bottom: 3px;">Street Address *</label>
+                                <input type="text" id="public-address-line1" placeholder="123 Main St" style="width: 100%; padding: 8px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+                            </div>
+                            <div style="grid-column: 1 / -1;">
+                                <label style="display: block; font-weight: 600; color: #555; font-size: 12px; margin-bottom: 3px;">Apartment / Suite</label>
+                                <input type="text" id="public-address-line2" placeholder="Apt 4B" style="width: 100%; padding: 8px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display: block; font-weight: 600; color: #555; font-size: 12px; margin-bottom: 3px;">City *</label>
+                                <input type="text" id="public-address-city" placeholder="Loveland" style="width: 100%; padding: 8px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display: block; font-weight: 600; color: #555; font-size: 12px; margin-bottom: 3px;">State *</label>
+                                <input type="text" id="public-address-state" placeholder="CO" style="width: 100%; padding: 8px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display: block; font-weight: 600; color: #555; font-size: 12px; margin-bottom: 3px;">ZIP Code *</label>
+                                <input type="text" id="public-address-zip" placeholder="80538" style="width: 100%; padding: 8px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+                            </div>
+                            <div>
+                                <label style="display: block; font-weight: 600; color: #555; font-size: 12px; margin-bottom: 3px;">Country</label>
+                                <input type="text" id="public-address-country" value="USA" style="width: 100%; padding: 8px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Order Totals -->
+                    <div style="margin-bottom: 15px; padding: 12px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+                        <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                            <span style="color: #666;">Subtotal:</span>
+                            <span id="public-display-subtotal" style="font-weight: 500;">$${publicCheckoutSubtotal.toFixed(2)}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                            <span style="color: #666;">Shipping:</span>
+                            <span id="public-display-shipping" style="font-weight: 500;">$0.00</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #e9ecef; padding-bottom: 8px; margin-bottom: 8px;">
+                            <span style="color: #666;">Tax (7%):</span>
+                            <span id="public-display-tax" style="font-weight: 500;">$${publicCheckoutTax.toFixed(2)}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 600; color: #333; font-size: 16px;">Total:</span>
+                            <span id="public-display-total" style="font-weight: bold; color: #28a745; font-size: 22px;">$${publicCheckoutTotal.toFixed(2)}</span>
+                        </div>
+                    </div>
+
+                    <!-- Payment Method -->
                     <div style="margin-bottom: 15px;">
                         <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 8px;">Payment</label>
                         
@@ -388,7 +489,7 @@
                             </div>
                             <div style="margin-top: 8px; display: flex; gap: 8px;">
                                 <span style="color: #666; font-size: 13px;">Amount to charge:</span>
-                                <span style="font-weight: bold; color: #28a745; font-size: 15px;">$${publicCheckoutRemaining.toFixed(2)}</span>
+                                <span id="public-charge-amount" style="font-weight: bold; color: #28a745; font-size: 15px;">$${publicCheckoutRemaining.toFixed(2)}</span>
                             </div>
                             <button onclick="addPublicCardPayment()" id="public-card-pay-btn" style="width: 100%; margin-top: 8px; padding: 10px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px;">
                                 <i class="fas fa-credit-card"></i> Pay $${publicCheckoutRemaining.toFixed(2)} with Card
@@ -428,6 +529,34 @@
         updatePublicCheckoutUI();
     }
 
+    // ===== UPDATE SHIPPING =====
+    window.updatePublicShipping = function() {
+        const shippingRadios = document.querySelectorAll('input[name="shipping-method"]');
+        let selectedMethod = 'pickup';
+        shippingRadios.forEach(r => {
+            if (r.checked) selectedMethod = r.value;
+        });
+
+        const addressDiv = document.getElementById('public-shipping-address');
+        const shippingLabel = document.getElementById('shipping-label');
+
+        if (selectedMethod === 'shipping') {
+            addressDiv.style.display = 'block';
+            if (shippingLabel) shippingLabel.style.borderColor = '#fd7e14';
+            publicCheckoutShipping = SHIPPING_COST;
+        } else {
+            addressDiv.style.display = 'none';
+            if (shippingLabel) shippingLabel.style.borderColor = '#ddd';
+            publicCheckoutShipping = 0;
+        }
+
+        publicCheckoutData.shippingMethod = selectedMethod;
+        publicCheckoutTotal = publicCheckoutSubtotal + publicCheckoutTax + publicCheckoutShipping;
+        publicCheckoutRemaining = publicCheckoutTotal;
+
+        updatePublicCheckoutUI();
+    };
+
     // ===== CLOSE PUBLIC CHECKOUT MODAL =====
     window.closePublicCheckoutModal = function() {
         const modal = document.getElementById('public-checkout-modal');
@@ -440,12 +569,21 @@
 
     // ===== UPDATE PUBLIC CHECKOUT UI =====
     function updatePublicCheckoutUI() {
+        // Update totals display
+        const subtotalEl = document.getElementById('public-display-subtotal');
+        const shippingEl = document.getElementById('public-display-shipping');
+        const taxEl = document.getElementById('public-display-tax');
+        const totalEl = document.getElementById('public-display-total');
+        const chargeEl = document.getElementById('public-charge-amount');
         const remainingEl = document.getElementById('public-remaining');
-        if (remainingEl) remainingEl.textContent = '$' + publicCheckoutRemaining.toFixed(2);
-        
-        const totalEl = document.getElementById('public-total-due');
+
+        if (subtotalEl) subtotalEl.textContent = '$' + publicCheckoutSubtotal.toFixed(2);
+        if (shippingEl) shippingEl.textContent = '$' + publicCheckoutShipping.toFixed(2);
+        if (taxEl) taxEl.textContent = '$' + publicCheckoutTax.toFixed(2);
         if (totalEl) totalEl.textContent = '$' + publicCheckoutTotal.toFixed(2);
-        
+        if (chargeEl) chargeEl.textContent = '$' + publicCheckoutRemaining.toFixed(2);
+        if (remainingEl) remainingEl.textContent = '$' + publicCheckoutRemaining.toFixed(2);
+
         const completeBtn = document.getElementById('public-checkout-complete-btn');
         if (completeBtn) {
             completeBtn.disabled = publicCheckoutRemaining > 0.01;
@@ -555,10 +693,62 @@
             return;
         }
 
+        // Gather customer info
+        const nameInput = document.getElementById('public-customer-name');
+        const emailInput = document.getElementById('public-customer-email');
+        const name = nameInput ? nameInput.value.trim() : '';
+        const email = emailInput ? emailInput.value.trim() : '';
+
+        // Validate name
+        if (!name) {
+            showPublicCheckoutStatus('⚠️ Please enter your name.', 'warning');
+            nameInput?.focus();
+            return;
+        }
+
+        // Validate address if shipping
+        if (publicCheckoutData.shippingMethod === 'shipping') {
+            const line1 = document.getElementById('public-address-line1');
+            const city = document.getElementById('public-address-city');
+            const state = document.getElementById('public-address-state');
+            const zip = document.getElementById('public-address-zip');
+
+            if (!line1 || !line1.value.trim()) {
+                showPublicCheckoutStatus('⚠️ Please enter your street address.', 'warning');
+                line1?.focus();
+                return;
+            }
+            if (!city || !city.value.trim()) {
+                showPublicCheckoutStatus('⚠️ Please enter your city.', 'warning');
+                city?.focus();
+                return;
+            }
+            if (!state || !state.value.trim()) {
+                showPublicCheckoutStatus('⚠️ Please enter your state.', 'warning');
+                state?.focus();
+                return;
+            }
+            if (!zip || !zip.value.trim()) {
+                showPublicCheckoutStatus('⚠️ Please enter your ZIP code.', 'warning');
+                zip?.focus();
+                return;
+            }
+
+            publicCheckoutData.address.line1 = line1.value.trim();
+            publicCheckoutData.address.line2 = document.getElementById('public-address-line2')?.value.trim() || '';
+            publicCheckoutData.address.city = city.value.trim();
+            publicCheckoutData.address.state = state.value.trim();
+            publicCheckoutData.address.zip = zip.value.trim();
+            publicCheckoutData.address.country = document.getElementById('public-address-country')?.value.trim() || 'USA';
+        }
+
+        publicCheckoutData.customerName = name;
+        publicCheckoutData.customerEmail = email;
+
         const items = window.cart.getItems();
         const subtotal = window.cart.getTotal();
         const taxAmount = calculateTax(subtotal);
-        const totalWithTax = subtotal + taxAmount;
+        const totalWithTaxAndShipping = subtotal + taxAmount + publicCheckoutShipping;
 
         // Disable complete button
         const completeBtn = document.getElementById('public-checkout-complete-btn');
@@ -571,14 +761,22 @@
             items: window.cart.getCheckoutPayload(),
             subtotal: subtotal,
             tax: taxAmount,
-            total: totalWithTax,
-            shipping: { method: 'pickup', amount: 0 },
-            customer_name: 'Customer',
-            customer_email: '',
-            notes: 'Public checkout (Tax: $' + taxAmount.toFixed(2) + ')',
+            total: totalWithTaxAndShipping,
+            shipping: {
+                method: publicCheckoutData.shippingMethod,
+                amount: publicCheckoutShipping
+            },
+            customer_name: publicCheckoutData.customerName,
+            customer_email: publicCheckoutData.customerEmail,
+            address: publicCheckoutData.shippingMethod === 'shipping' ? publicCheckoutData.address : null,
+            notes: publicCheckoutData.shippingMethod === 'shipping' ? 
+                'Shipped to: ' + publicCheckoutData.address.line1 + ', ' + publicCheckoutData.address.city + ', ' + publicCheckoutData.address.state + ' ' + publicCheckoutData.address.zip : 
+                'Pickup in store',
             payment_entries: publicCheckoutPaymentEntries,
             source: 'public_checkout'
         };
+
+        console.log('📦 Order data:', orderData);
 
         showPublicCheckoutStatus('⏳ Processing order...', 'info');
 
@@ -680,6 +878,7 @@
     window.clearCart = window.clearCart;
     window.openPublicCheckout = window.openPublicCheckout;
     window.closePublicCheckoutModal = window.closePublicCheckoutModal;
+    window.updatePublicShipping = window.updatePublicShipping;
 
     // ===== AUTO-INIT ON LOAD =====
     console.log('🛒 Cart module loaded');
