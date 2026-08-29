@@ -496,6 +496,28 @@
                 recordSearchResults = data.records || [];
                 renderSearchResults(recordSearchResults);
                 if (countEl) countEl.textContent = `${recordSearchResults.length} found`;
+                
+                // AUTO-ADD: If only 1 result, add it directly to cart
+                if (recordSearchResults.length === 1) {
+                    console.log('🎯 Single result found - auto-adding to cart');
+                    const record = recordSearchResults[0];
+                    const price = parseFloat(record.store_price) || 0;
+                    if (price > 0) {
+                        // Check if record is already in cart by original_id or barcode
+                        const isDuplicate = checkDuplicateInCart(record);
+                        if (isDuplicate) {
+                            showToast(`⚠️ "${record.artist} - ${record.title}" is already in the cart.`, 'warning');
+                        } else {
+                            addRecordToCart(record.id);
+                            // Clear search after auto-add
+                            setTimeout(() => {
+                                clearRecordSearch();
+                            }, 500);
+                        }
+                    } else {
+                        showToast('⚠️ This record has no price set.', 'warning');
+                    }
+                }
             } else {
                 resultsContainer.innerHTML = `<div style="color: #dc3545; text-align: center; padding: 10px; font-size: 13px;">Error: ${data.error || 'Search failed'}</div>`;
             }
@@ -507,6 +529,28 @@
             if (loadingEl) loadingEl.style.display = 'none';
         }
     };
+
+    // ===== CHECK DUPLICATE IN CART =====
+    function checkDuplicateInCart(record) {
+        const items = window.cart ? window.cart.getItems() : [];
+        // Check by original_id (record ID) or by barcode
+        return items.some(item => {
+            if (item.type === 'record') {
+                // Check by original_id if available, otherwise by barcode
+                if (item.original_id === record.id) {
+                    return true;
+                }
+                if (item.barcode && record.barcode && item.barcode === record.barcode) {
+                    return true;
+                }
+                // Also check by title + artist combination to catch duplicates
+                if (item.artist === record.artist && item.title === record.title) {
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
 
     // ========== RENDER SEARCH RESULTS ==========
     function renderSearchResults(records) {
@@ -523,6 +567,8 @@
             const price = record.store_price ? '$' + parseFloat(record.store_price).toFixed(2) : '—';
             const condition = record.sleeve_condition_name || record.condition || 'Unknown';
             const status = record.status_name || 'Unknown';
+            // Check if record is already in cart
+            const inCart = checkDuplicateInCart(record);
             
             html += `
                 <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid #eee; ${index % 2 === 0 ? 'background: #fafafa;' : ''}"
@@ -532,6 +578,7 @@
                     <div style="flex: 1; min-width: 0;">
                         <div style="font-weight: 600; color: #333; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                             ${record.artist || 'Unknown'} - ${record.title || 'Unknown'}
+                            ${inCart ? `<span style="color: #ff6b6b; font-size: 11px; margin-left: 6px;">(in cart)</span>` : ''}
                         </div>
                         <div style="display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: #666; margin-top: 2px;">
                             <span><strong>ID:</strong> ${record.id}</span>
@@ -546,21 +593,25 @@
                     <!-- Price & Add Button -->
                     <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
                         <span style="font-weight: bold; color: #28a745; font-size: 14px;">${price}</span>
-                        <button onclick="addRecordToCartFromSearch(${record.id})" 
-                                style="padding: 4px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap;"
-                                onmouseover="this.style.background='#218838'" onmouseout="this.style.background='#28a745'">
-                            <i class="fas fa-cart-plus"></i> Add
-                        </button>
-                        <button onclick="addRecordToCartFromSearch(${record.id}, 2)" 
-                                style="padding: 4px 8px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap;"
-                                onmouseover="this.style.background='#138496'" onmouseout="this.style.background='#17a2b8'">
-                            +2
-                        </button>
-                        <button onclick="addRecordToCartFromSearch(${record.id}, 5)" 
-                                style="padding: 4px 8px; background: #6f42c1; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap;"
-                                onmouseover="this.style.background='#5a32a3'" onmouseout="this.style.background='#6f42c1'">
-                            +5
-                        </button>
+                        ${inCart ? `
+                            <span style="color: #ff6b6b; font-size: 12px; font-weight: 600;">Already in cart</span>
+                        ` : `
+                            <button onclick="addRecordToCart(${record.id})" 
+                                    style="padding: 4px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap;"
+                                    onmouseover="this.style.background='#218838'" onmouseout="this.style.background='#28a745'">
+                                <i class="fas fa-cart-plus"></i> Add
+                            </button>
+                            <button onclick="addRecordToCart(${record.id}, 2)" 
+                                    style="padding: 4px 8px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap;"
+                                    onmouseover="this.style.background='#138496'" onmouseout="this.style.background='#17a2b8'">
+                                +2
+                            </button>
+                            <button onclick="addRecordToCart(${record.id}, 5)" 
+                                    style="padding: 4px 8px; background: #6f42c1; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap;"
+                                    onmouseover="this.style.background='#5a32a3'" onmouseout="this.style.background='#6f42c1'">
+                                +5
+                            </button>
+                        `}
                     </div>
                 </div>
             `;
@@ -585,8 +636,8 @@
         recordSearchResults = [];
     };
 
-    // ========== ADD RECORD TO CART FROM SEARCH ==========
-    window.addRecordToCartFromSearch = function(recordId, quantity = 1) {
+    // ========== ADD RECORD TO CART ==========
+    window.addRecordToCart = function(recordId, quantity = 1) {
         // Security check
         if (!isAdmin()) {
             showToast('🔒 Admin access required.', 'error');
@@ -608,6 +659,12 @@
         const price = parseFloat(record.store_price) || 0;
         if (price <= 0) {
             showToast('⚠️ This record has no price set.', 'warning');
+            return;
+        }
+
+        // Check for duplicate before adding
+        if (checkDuplicateInCart(record)) {
+            showToast(`⚠️ "${record.artist} - ${record.title}" is already in the cart.`, 'warning');
             return;
         }
 
