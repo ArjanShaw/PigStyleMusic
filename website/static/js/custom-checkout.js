@@ -1696,6 +1696,39 @@
         }, 4000);
     }
 
+    // ===== MARK RECORDS AS SOLD =====
+    async function markRecordsAsSold(recordIds, orderId) {
+        if (!recordIds || recordIds.length === 0) {
+            console.log('No records to mark as sold');
+            return;
+        }
+
+        console.log(`📀 Marking ${recordIds.length} records as sold...`);
+
+        try {
+            const response = await fetch(`${API_BASE}/api/order/complete`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    order_id: orderId,
+                    transaction_id: 'admin_checkout_' + Date.now()
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log('📀 Records marked as sold:', data);
+            return data;
+        } catch (err) {
+            console.error('❌ Error marking records as sold:', err);
+            showCheckoutStatus('⚠️ Order created but records may not be marked as sold. Please check manually.', 'warning');
+        }
+    }
+
     // ===== COMPLETE ADMIN CHECKOUT =====
     window.completeAdminCheckout = function() {
         console.log('🛒 Completing admin checkout...');
@@ -1731,6 +1764,13 @@
             }
         }
 
+        // Get record IDs from cart items
+        const recordIds = items
+            .filter(item => item.type === 'record' && item.original_id)
+            .map(item => item.original_id);
+
+        console.log('📀 Records to mark as sold:', recordIds);
+
         const orderData = {
             items: window.cart.getCheckoutPayload(),
             subtotal: subtotal,
@@ -1741,12 +1781,20 @@
             customer_email: '',
             notes: 'Admin checkout - ' + currentUserName + ' (Tax: $' + taxAmount.toFixed(2) + ')',
             payment_entries: checkoutPaymentEntries,
-            source: 'admin_checkout'
+            source: 'admin_checkout',
+            record_ids: recordIds  // Pass record IDs to mark as sold
         };
 
         console.log('📦 Order data:', orderData);
 
         showCheckoutStatus('⏳ Processing order...', 'info');
+
+        // Disable the complete button to prevent double submission
+        const completeBtn = document.getElementById('checkout-complete-btn');
+        if (completeBtn) {
+            completeBtn.disabled = true;
+            completeBtn.textContent = '⏳ Processing...';
+        }
 
         fetch(`${API_BASE}/api/checkout/process`, {
             method: 'POST',
@@ -1759,28 +1807,37 @@
             console.log('📥 Order response:', data);
             
             if (data.status === 'success') {
-                window.cart.clear();
-                updateCartPreview();
-                updateCartCount();
-                updateTabCartCount();
-                
-                if (currentTab === 'checkout') {
-                    renderCheckoutTab();
-                }
-                
-                showCheckoutStatus('✅ Order completed successfully!', 'success');
-                
-                setTimeout(() => {
-                    closeAdminCheckoutModal();
-                    showToast('🎉 Order complete! Thank you!', 'success');
-                }, 1500);
+                // Mark records as sold
+                return markRecordsAsSold(recordIds, data.order_id);
             } else {
-                showCheckoutStatus('❌ Order failed: ' + (data.error || 'Unknown error'), 'error');
+                throw new Error(data.error || 'Order creation failed');
             }
+        })
+        .then(() => {
+            // Clear cart and update UI
+            window.cart.clear();
+            updateCartPreview();
+            updateCartCount();
+            updateTabCartCount();
+            
+            if (currentTab === 'checkout') {
+                renderCheckoutTab();
+            }
+            
+            showCheckoutStatus('✅ Order completed successfully!', 'success');
+            
+            setTimeout(() => {
+                closeAdminCheckoutModal();
+                showToast('🎉 Order complete! Thank you!', 'success');
+            }, 1500);
         })
         .catch(err => {
             console.error('❌ Checkout error:', err);
             showCheckoutStatus('❌ Error: ' + err.message, 'error');
+            if (completeBtn) {
+                completeBtn.disabled = false;
+                completeBtn.textContent = '✅ Complete Order';
+            }
         });
     };
 
