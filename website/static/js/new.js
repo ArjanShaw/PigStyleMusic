@@ -16,7 +16,7 @@ function initNew() {
             statusId: 1,
             searchInputId: 'newSearchInput',
             showCondition: true,
-            showLocation: true
+            showLocation: true  
         });
         window.newComponent.init();
     } else {
