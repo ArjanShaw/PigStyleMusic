@@ -1,6 +1,8 @@
 // Config Keys page
 (function() {
-    const API_BASE = '';
+    const API_BASE = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5000' 
+        : 'https://www.pigstylemusic.com';
 
     function getHeaders() {
         const headers = { 'Content-Type': 'application/json' };
