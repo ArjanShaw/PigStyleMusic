@@ -1,9 +1,14 @@
 // Post to Discogs page
 (function() {
+    'use strict';
+
+    // ===== API BASE URL =====
+    const API_BASE = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5000' 
+        : 'https://www.pigstylemusic.com';
+
     let records = [];
     let locations = [];
-
-    const API_BASE = '';
 
     function getHeaders() {
         const headers = { 'Content-Type': 'application/json' };
@@ -20,6 +25,7 @@
         try {
             const response = await fetch(`${API_BASE}/api/locations`, {
                 credentials: 'include',
+                mode: 'cors',
                 headers: getHeaders()
             });
             const data = await response.json();
@@ -64,6 +70,7 @@
             
             const response = await fetch(url, {
                 credentials: 'include',
+                mode: 'cors',
                 headers: getHeaders()
             });
             const data = await response.json();
@@ -205,6 +212,7 @@
             await fetch(`${API_BASE}/records/${recordId}`, {
                 method: 'PUT',
                 credentials: 'include',
+                mode: 'cors',
                 headers: getHeaders(),
                 body: JSON.stringify({ location: location })
             });
@@ -227,6 +235,7 @@
             const listingResult = await fetch(`${API_BASE}/api/discogs/create-listing-single`, {
                 method: 'POST',
                 credentials: 'include',
+                mode: 'cors',
                 headers: getHeaders(),
                 body: JSON.stringify(listingData)
             });
@@ -313,6 +322,7 @@
                 await fetch(`${API_BASE}/records/${id}`, {
                     method: 'PUT',
                     credentials: 'include',
+                    mode: 'cors',
                     headers: getHeaders(),
                     body: JSON.stringify({ location: location })
                 });
@@ -335,6 +345,7 @@
                 const listingResult = await fetch(`${API_BASE}/api/discogs/create-listing-single`, {
                     method: 'POST',
                     credentials: 'include',
+                    mode: 'cors',
                     headers: getHeaders(),
                     body: JSON.stringify(listingData)
                 });
