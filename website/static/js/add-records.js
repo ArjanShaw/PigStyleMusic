@@ -324,6 +324,9 @@
             return;
         }
         
+        // Get current date for last_seen
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        
         const data = {
             artist: record.artist || 'Unknown',
             title: record.title || 'Unknown',
@@ -336,7 +339,8 @@
             consignor_id: consignorId,
             format_id: formatId,
             batch_id: parseInt(purchaseId),
-            status_id: 1
+            status_id: 1,
+            last_seen: today  // <-- ADD THIS: Set last_seen to current date
         };
         
         try {
