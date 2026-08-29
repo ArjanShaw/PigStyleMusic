@@ -6,6 +6,7 @@
     let recentlyScanned = [];
     const MAX_RECENT = 10;
     const STORAGE_KEY = 'pigstyle_recent_scans';
+    let currentLocationIndex = -1; // Index in the locations array
 
     // ===== API BASE URL =====
     const API_BASE = window.location.hostname === 'localhost' 
@@ -157,6 +158,83 @@
         if (counter) counter.textContent = recentlyScanned.length;
     }
 
+    // ===== GET LOCATION ORDER =====
+    function getLocationOrder() {
+        // Sort locations by name to get consistent order
+        // Names like "Bin 1 LT", "Bin 1 RT", "Bin 2 LT", etc.
+        return [...locations].sort((a, b) => {
+            return a.name.localeCompare(b.name, undefined, { numeric: true });
+        });
+    }
+
+    // ===== FIND LOCATION INDEX =====
+    function findLocationIndex(locationId) {
+        const sorted = getLocationOrder();
+        return sorted.findIndex(l => l.id === locationId);
+    }
+
+    // ===== NAVIGATE TO NEXT/PREVIOUS LOCATION =====
+    window.scanNav = function(direction) {
+        const select = document.getElementById('scan-location-select');
+        if (!select) return;
+
+        const currentId = parseInt(select.value);
+        if (!currentId) {
+            // If no location selected, select the first one
+            const sorted = getLocationOrder();
+            if (sorted.length > 0) {
+                select.value = sorted[0].id;
+                updateLocationPreview();
+                updateNavButtons();
+            }
+            return;
+        }
+
+        const sorted = getLocationOrder();
+        const currentIdx = sorted.findIndex(l => l.id === currentId);
+        
+        if (currentIdx === -1) return;
+
+        let newIdx;
+        if (direction === 'next') {
+            newIdx = currentIdx + 1;
+        } else {
+            newIdx = currentIdx - 1;
+        }
+
+        // Check if new index is valid
+        if (newIdx >= 0 && newIdx < sorted.length) {
+            select.value = sorted[newIdx].id;
+            updateLocationPreview();
+            updateNavButtons();
+        }
+    };
+
+    // ===== UPDATE NAV BUTTONS =====
+    function updateNavButtons() {
+        const select = document.getElementById('scan-location-select');
+        const prevBtn = document.getElementById('scan-prev-btn');
+        const nextBtn = document.getElementById('scan-next-btn');
+        
+        if (!select || !prevBtn || !nextBtn) return;
+
+        const currentId = parseInt(select.value);
+        if (!currentId) {
+            prevBtn.disabled = true;
+            nextBtn.disabled = true;
+            return;
+        }
+
+        const sorted = getLocationOrder();
+        const currentIdx = sorted.findIndex(l => l.id === currentId);
+
+        // Disable Previous if at first location or no location selected
+        prevBtn.disabled = (currentIdx <= 0);
+        
+        // Disable Next if at last location
+        nextBtn.disabled = (currentIdx === -1 || currentIdx >= sorted.length - 1);
+    }
+
     // ===== LOAD LOCATIONS =====
     async function loadLocations() {
         const select = document.getElementById('scan-location-select');
@@ -170,6 +248,12 @@
             const data = await response.json();
             if (data.status === 'success') {
                 locations = data.locations || [];
+                
+                // Sort locations by name with numeric sorting
+                locations.sort((a, b) => {
+                    return a.name.localeCompare(b.name, undefined, { numeric: true });
+                });
+                
                 select.innerHTML = '<option value="">-- Select Location --</option>';
                 locations.forEach(loc => {
                     const opt = document.createElement('option');
@@ -177,12 +261,14 @@
                     opt.textContent = loc.name;
                     select.appendChild(opt);
                 });
+                
                 // Try to restore last selected location
                 const savedLocation = localStorage.getItem('pigstyle_scan_location');
                 if (savedLocation && locations.some(l => l.id == savedLocation)) {
                     select.value = savedLocation;
                 }
                 updateLocationPreview();
+                updateNavButtons();
             }
         } catch (err) {
             console.error('Error loading locations:', err);
@@ -214,6 +300,9 @@
             input.disabled = true;
             btn.disabled = true;
         }
+        
+        // Update nav buttons
+        updateNavButtons();
     }
 
     // ===== PERFORM SCAN =====
@@ -420,9 +509,27 @@
         const locationSelect = document.getElementById('scan-location-select');
         const submitBtn = document.getElementById('scan-submit-btn');
         const scanInput = document.getElementById('scan-input');
+        const prevBtn = document.getElementById('scan-prev-btn');
+        const nextBtn = document.getElementById('scan-next-btn');
 
         if (locationSelect) {
-            locationSelect.addEventListener('change', updateLocationPreview);
+            locationSelect.addEventListener('change', function() {
+                updateLocationPreview();
+                updateNavButtons();
+            });
+        }
+
+        // Bind nav buttons
+        if (prevBtn) {
+            prevBtn.addEventListener('click', function() {
+                window.scanNav('prev');
+            });
+        }
+
+        if (nextBtn) {
+            nextBtn.addEventListener('click', function() {
+                window.scanNav('next');
+            });
         }
 
         if (submitBtn) {
@@ -442,6 +549,9 @@
             // Focus the input after a short delay
             setTimeout(() => scanInput.focus(), 300);
         }
+
+        // Initial nav button state
+        updateNavButtons();
 
         // Add refresh and clear buttons safely
         const actionsDiv = document.querySelector('.scan-actions');
