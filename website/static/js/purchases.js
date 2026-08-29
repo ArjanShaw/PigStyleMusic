@@ -1,11 +1,16 @@
 // Purchases page - Inventory Purchase Management
 (function() {
+    'use strict';
+
+    // ===== API BASE URL =====
+    const API_BASE = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5000' 
+        : 'https://www.pigstylemusic.com';
+
     let selectedPurchaseId = null;
     let purchases = [];
     let purchaseRecords = [];
     let dependenciesLoaded = false;
-
-    const API_BASE = '';
 
     // ===== CHECK DEPENDENCIES FOR LABEL PRINTING =====
     function checkDependencies() {
@@ -69,6 +74,7 @@
             var url = API_BASE + '/records?batch_id=' + purchaseId + '&limit=1000';
             var response = await fetch(url, {
                 credentials: 'include',
+                mode: 'cors',
                 headers: { 'Accept': 'application/json' }
             });
 
@@ -165,6 +171,7 @@
         try {
             const response = await fetch(`${API_BASE}/api/inventory-purchases`, {
                 credentials: 'include',
+                mode: 'cors',
                 headers: { 'Content-Type': 'application/json' }
             });
             
@@ -318,6 +325,7 @@
         try {
             const response = await fetch(`${API_BASE}/records?batch_id=${purchaseId}&limit=500`, {
                 credentials: 'include',
+                mode: 'cors',
                 headers: { 'Content-Type': 'application/json' }
             });
             
@@ -396,6 +404,7 @@
             const response = await fetch(`${API_BASE}/api/purchases`, {
                 method: 'POST',
                 credentials: 'include',
+                mode: 'cors',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ seller_name: sellerName, seller_contact: contact, description: description })
             });
@@ -445,6 +454,7 @@
         try {
             const response = await fetch(`${API_BASE}/records?batch_id=${selectedPurchaseId}&limit=500`, {
                 credentials: 'include',
+                mode: 'cors',
                 headers: { 'Content-Type': 'application/json' }
             });
             
@@ -465,6 +475,7 @@
             const result = await fetch(`${API_BASE}/api/purchases/${selectedPurchaseId}`, {
                 method: 'PUT',
                 credentials: 'include',
+                mode: 'cors',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     offer_amount: offerAmount,
@@ -515,6 +526,7 @@
             const response = await fetch(`${API_BASE}/api/purchases/${selectedPurchaseId}`, {
                 method: 'DELETE',
                 credentials: 'include',
+                mode: 'cors',
                 headers: { 'Content-Type': 'application/json' }
             });
             
