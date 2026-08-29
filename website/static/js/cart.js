@@ -503,10 +503,6 @@
                     </div>
 
                     <div id="public-checkout-status" style="margin-top: 10px; display: none; padding: 10px; border-radius: 8px; font-size: 13px;"></div>
-
-                    <button onclick="completePublicCheckout()" id="public-checkout-complete-btn" style="width: 100%; margin-top: 15px; padding: 14px; background: #28a745; color: white; border: none; border-radius: 30px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
-                        <i class="fas fa-check"></i> Complete Order
-                    </button>
                 </div>
             </div>
         `;
@@ -586,16 +582,6 @@
         if (totalEl) totalEl.textContent = '$' + publicCheckoutTotal.toFixed(2);
         if (chargeEl) chargeEl.textContent = '$' + publicCheckoutRemaining.toFixed(2);
 
-        const completeBtn = document.getElementById('public-checkout-complete-btn');
-        if (completeBtn) {
-            completeBtn.disabled = publicCheckoutRemaining > 0.01;
-            completeBtn.style.opacity = publicCheckoutRemaining > 0.01 ? '0.5' : '1';
-            completeBtn.textContent = publicCheckoutRemaining > 0.01 ? 
-                'Remaining: $' + publicCheckoutRemaining.toFixed(2) : 
-                '✅ Complete Order';
-        }
-
-        // Update card pay button
         const cardPayBtn = document.getElementById('public-card-pay-btn');
         if (cardPayBtn) {
             cardPayBtn.textContent = `Pay $${publicCheckoutRemaining.toFixed(2)} with Card`;
@@ -789,15 +775,6 @@
         }, 4000);
     }
 
-    // ===== COMPLETE PUBLIC CHECKOUT =====
-    window.completePublicCheckout = function() {
-        // This is now handled by the Square redirect
-        // The user is redirected to Square, and after payment they come back
-        // The order completion is handled by the /api/order/complete endpoint
-        console.log('🛒 Checkout should be completed via Square redirect');
-        showPublicCheckoutStatus('Please complete payment on the Square page.', 'info');
-    };
-
     // ===== CHECK FOR SQUARE RETURN =====
     function checkSquareReturn() {
         const urlParams = new URLSearchParams(window.location.search);
@@ -808,7 +785,15 @@
         if (status === 'completed' && orderId) {
             console.log('✅ Square payment completed for order:', orderId);
             
-            // Call order complete endpoint
+            // Show status
+            const statusDiv = document.getElementById('public-checkout-status');
+            if (statusDiv) {
+                statusDiv.style.display = 'block';
+                statusDiv.textContent = '⏳ Confirming your order...';
+                statusDiv.className = 'status-message status-info';
+            }
+            
+            // Call order complete endpoint to mark records as sold
             fetch(`${API_BASE}/api/order/complete`, {
                 method: 'POST',
                 credentials: 'include',
@@ -821,14 +806,32 @@
             .then(res => res.json())
             .then(data => {
                 console.log('📥 Order complete response:', data);
+                
+                // Clear cart and update UI
                 window.cart.clear();
                 window.renderCart();
+                
+                // Show success message
+                if (statusDiv) {
+                    statusDiv.textContent = '✅ Order complete! Thank you for your purchase!';
+                    statusDiv.style.background = '#d4edda';
+                    statusDiv.style.color = '#155724';
+                    statusDiv.style.border = '1px solid #c3e6cb';
+                }
+                
                 window.showToast('🎉 Order complete! Thank you!', 'success');
-                // Clean URL
+                
+                // Clean URL (remove query params)
                 window.history.replaceState({}, document.title, window.location.pathname);
             })
             .catch(err => {
                 console.error('❌ Order complete error:', err);
+                if (statusDiv) {
+                    statusDiv.textContent = '⚠️ Payment completed but order confirmation failed. Please contact support.';
+                    statusDiv.style.background = '#fff3cd';
+                    statusDiv.style.color = '#856404';
+                    statusDiv.style.border = '1px solid #ffeeba';
+                }
                 window.showToast('⚠️ Payment completed but order confirmation failed. Please contact support.', 'error');
             });
         }
