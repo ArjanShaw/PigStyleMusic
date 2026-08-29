@@ -16,15 +16,21 @@ function initShop() {
             showLocation: true,
             onAddToCart: function(record) {
                 if (window.cart) {
-                    window.cart.addItem({
+                    const price = parseFloat(record.store_price) || 0;
+                    const item = {
                         id: record.id,
                         type: 'record',
                         title: record.artist + ' - ' + record.title,
-                        price: parseFloat(record.store_price) || 0,
+                        price: price,
                         quantity: 1,
                         artist: record.artist,
-                        condition: record.condition || 'Unknown'
-                    });
+                        condition: record.condition || 'Unknown',
+                        barcode: record.barcode || '',
+                        catalog_number: record.catalog_number || '',
+                        original_id: record.id
+                    };
+                    window.cart.addItem(item);
+                    
                     if (typeof updateCartUI === 'function') {
                         updateCartUI();
                     }

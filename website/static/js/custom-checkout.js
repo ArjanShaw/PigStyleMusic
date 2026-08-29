@@ -546,17 +546,17 @@
                     <!-- Price & Add Button -->
                     <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
                         <span style="font-weight: bold; color: #28a745; font-size: 14px;">${price}</span>
-                        <button onclick="addRecordToCart(${record.id})" 
+                        <button onclick="addRecordToCartFromSearch(${record.id})" 
                                 style="padding: 4px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap;"
                                 onmouseover="this.style.background='#218838'" onmouseout="this.style.background='#28a745'">
                             <i class="fas fa-cart-plus"></i> Add
                         </button>
-                        <button onclick="addRecordToCart(${record.id}, 2)" 
+                        <button onclick="addRecordToCartFromSearch(${record.id}, 2)" 
                                 style="padding: 4px 8px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap;"
                                 onmouseover="this.style.background='#138496'" onmouseout="this.style.background='#17a2b8'">
                             +2
                         </button>
-                        <button onclick="addRecordToCart(${record.id}, 5)" 
+                        <button onclick="addRecordToCartFromSearch(${record.id}, 5)" 
                                 style="padding: 4px 8px; background: #6f42c1; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap;"
                                 onmouseover="this.style.background='#5a32a3'" onmouseout="this.style.background='#6f42c1'">
                             +5
@@ -585,8 +585,8 @@
         recordSearchResults = [];
     };
 
-    // ========== ADD RECORD TO CART ==========
-    window.addRecordToCart = function(recordId, quantity = 1) {
+    // ========== ADD RECORD TO CART FROM SEARCH ==========
+    window.addRecordToCartFromSearch = function(recordId, quantity = 1) {
         // Security check
         if (!isAdmin()) {
             showToast('🔒 Admin access required.', 'error');
