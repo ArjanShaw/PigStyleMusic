@@ -153,20 +153,7 @@
             description: 'Manage system configuration keys',
             color: 'success'
         },
-        { 
-            page: 'cache-management', 
-            icon: 'fa-trash', 
-            label: 'Cache Management', 
-            description: 'Clear and manage system cache',
-            color: 'warning'
-        },
-        { 
-            page: 'system-info', 
-            icon: 'fa-info-circle', 
-            label: 'System Info', 
-            description: 'View system information and status',
-            color: 'info'
-        },
+         
         { 
             page: 'db-query', 
             icon: 'fa-database', 
