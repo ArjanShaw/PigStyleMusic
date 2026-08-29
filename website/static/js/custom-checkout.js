@@ -1,6 +1,7 @@
 // ============================================================
 // CUSTOM CHECKOUT - Add custom items to the global cart
 // Integrates with the cart.js singleton
+// ADMIN ONLY - Restricted to admin/manager roles
 // ============================================================
 
 (function() {
@@ -191,6 +192,13 @@
 
     // ========== ADD CUSTOM ITEM ==========
     window.addCustomItem = function() {
+        // Security check - only admins can add custom items
+        if (!isAdmin()) {
+            const statusEl = document.getElementById('custom-checkout-status');
+            showStatus(statusEl, '🔒 Admin access required to add custom items.', 'error');
+            return;
+        }
+
         const nameInput = document.getElementById('custom-item-name');
         const priceInput = document.getElementById('custom-item-price');
         const qtyInput = document.getElementById('custom-item-qty');
@@ -254,6 +262,12 @@
 
     // ========== ADD BERNIE ITEM ==========
     window.addBernieItem = function() {
+        // Security check - only admins can add Bernie items
+        if (!isAdmin()) {
+            showToast('🔒 Admin access required to add Bernie donations.');
+            return;
+        }
+
         if (typeof window.cart === 'undefined' || !window.cart.addItem) {
             const statusEl = document.getElementById('custom-checkout-status');
             showStatus(statusEl, '❌ Cart system not available.', 'error');
@@ -283,6 +297,12 @@
 
     // ========== ADD PRESET ITEM ==========
     window.addPresetItem = function(name, price) {
+        // Security check - only admins can add preset items
+        if (!isAdmin()) {
+            showToast('🔒 Admin access required to add items.');
+            return;
+        }
+
         if (typeof window.cart === 'undefined' || !window.cart.addItem) {
             const statusEl = document.getElementById('custom-checkout-status');
             showStatus(statusEl, '❌ Cart system not available.', 'error');
@@ -312,6 +332,11 @@
 
     // ========== GIFT CARD ==========
     window.showGiftCardModal = function() {
+        // Security check - only admins can add gift cards
+        if (!isAdmin()) {
+            showToast('🔒 Admin access required to add gift cards.');
+            return;
+        }
         document.getElementById('giftcard-modal').style.display = 'flex';
         document.getElementById('giftcard-modal-amount').focus();
     };
@@ -321,6 +346,13 @@
     };
 
     window.addGiftCardItem = function() {
+        // Security check - only admins can add gift cards
+        if (!isAdmin()) {
+            showToast('🔒 Admin access required to add gift cards.');
+            closeGiftCardModal();
+            return;
+        }
+
         const amountInput = document.getElementById('giftcard-modal-amount');
         const recipientInput = document.getElementById('giftcard-modal-recipient');
         const statusEl = document.getElementById('giftcard-modal-status');

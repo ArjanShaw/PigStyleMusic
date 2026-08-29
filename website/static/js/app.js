@@ -98,7 +98,6 @@ function updateMenu() {
     const existingDbQuery = nav.querySelector('[data-page="db-query"]');
     if (existingDbQuery) existingDbQuery.remove();
     
-    // NEW: Remove existing custom-checkout button if present
     const existingCustomCheckout = nav.querySelector('[data-page="custom-checkout"]');
     if (existingCustomCheckout) existingCustomCheckout.remove();
     
@@ -127,6 +126,7 @@ function updateMenu() {
                 { page: 'edit-records', icon: 'fa-edit', label: 'Edit Records' },
                 { page: 'accessories', icon: 'fa-tshirt', label: 'Accessories' },
                 { page: 'custom-labels', icon: 'fa-tag', label: 'Custom Labels' },
+                { page: 'custom-checkout', icon: 'fa-plus-circle', label: 'Custom Checkout' },
                 { page: 'email-subscriptions', icon: 'fa-envelope', label: 'Email Subscriptions' },
                 { page: 'record-orders', icon: 'fa-shopping-cart', label: 'Record Orders' },
                 { page: 'feedback', icon: 'fa-comment', label: 'Feedback' },
@@ -151,14 +151,6 @@ function updateMenu() {
                 btn.onclick = function() { window.showPage(b.page, this); };
                 nav.insertBefore(btn, loginBtn);
             });
-            
-            // ===== NEW: Custom Checkout button for admin =====
-            const customCheckoutBtn = document.createElement('button');
-            customCheckoutBtn.setAttribute('data-page', 'custom-checkout');
-            customCheckoutBtn.innerHTML = '<i class="fas fa-plus-circle"></i>';
-            customCheckoutBtn.title = 'Custom Checkout';
-            customCheckoutBtn.onclick = function() { window.showPage('custom-checkout', this); };
-            nav.insertBefore(customCheckoutBtn, loginBtn);
         }
         
         // Change login to logout
@@ -264,6 +256,7 @@ async function showPage(page, btnElement) {
             'edit-records': 'initEditRecords',
             'accessories': 'initAccessories',
             'custom-labels': 'initCustomLabels',
+            'custom-checkout': 'initCustomCheckout',
             'email-subscriptions': 'initEmailSubscriptions',
             'record-orders': 'initRecordOrders',
             'feedback': 'initFeedback',
@@ -277,8 +270,7 @@ async function showPage(page, btnElement) {
             'config-keys': 'initConfigKeys',
             'cache-management': 'initCacheManagement',
             'system-info': 'initSystemInfo',
-            'db-query': 'initDbQuery',
-            'custom-checkout': 'initCustomCheckout'
+            'db-query': 'initDbQuery'
         };
         
         const initFn = initMap[page];
