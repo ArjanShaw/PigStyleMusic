@@ -304,8 +304,7 @@
 
             try {
                 const params = new URLSearchParams({
-                    page: 1,
-                    limit: 500  // Load all records for client-side filtering
+                    page: 1
                 });
                 
                 if (this.config.locationId) {
