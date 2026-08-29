@@ -60,18 +60,26 @@
 
     // ===== CHECK IF RECORD SHOULD BE VISIBLE =====
     function isRecordVisible(record, cutoffDate) {
+        // If no cutoff date is set, show all records
         if (!cutoffDate) {
             return true;
         }
+        
+        // If last_seen is null, do NOT show the record
         if (!record.last_seen) {
-            return true;
+            return false;
         }
+        
+        // Compare last_seen with cutoff date
         let lastSeenDate = record.last_seen;
         if (typeof lastSeenDate === 'string' && lastSeenDate.includes('T')) {
             lastSeenDate = lastSeenDate.split('T')[0];
         }
+        
+        // Record is visible only if last_seen >= cutoff date
         return lastSeenDate >= cutoffDate;
     }
+
 
     // ===== GET CONDITION DISPLAY NAME =====
     function getConditionDisplay(record) {
