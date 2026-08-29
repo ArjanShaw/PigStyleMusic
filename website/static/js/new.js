@@ -24,4 +24,4 @@ function initNew() {
     }
 }
 
-window.initNew = initNew;
+window.initNew = initNew;  
