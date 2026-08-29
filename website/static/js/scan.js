@@ -77,7 +77,6 @@
             const data = await response.json();
 
             if (data.status === 'success' && data.records && data.records.length > 0) {
-                // Store in recentlyScanned
                 recentlyScanned = data.records.map(r => ({
                     id: r.id,
                     artist: r.artist || 'Unknown',
@@ -444,7 +443,8 @@
             setTimeout(() => scanInput.focus(), 300);
         }
 
-        // Add refresh button if it doesn't exist        const actionsDiv = document.querySelector('.scan-actions');
+        // Add refresh and clear buttons safely
+        const actionsDiv = document.querySelector('.scan-actions');
         if (actionsDiv) {
             const refreshBtn = document.createElement('button');
             refreshBtn.innerHTML = '<i class="fas fa-sync"></i> Refresh';
