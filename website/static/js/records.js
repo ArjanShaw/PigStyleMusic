@@ -33,18 +33,67 @@
     const API_BASE = getApiBase();
     console.log('🔧 Records API_BASE:', API_BASE || '(same origin)');
 
-    let currentPage = 1;
-    const pageSize = 24;
-    let totalRecords = 0;
-    let allRecords = [];
-    let currentFilter = {};
-    let searchTerm = '';
+    // ===== FETCH LAST_SEEN_CUTOFF_DATE FROM CONFIG =====
+    async function fetchLastSeenCutoff() {
+        try {
+            const response = await fetch(`${API_BASE}/config/LAST_SEEN_CUTOFF_DATE`, {
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (!response.ok) {
+                console.warn('Could not fetch LAST_SEEN_CUTOFF_DATE, using default');
+                return null;
+            }
+            
+            const data = await response.json();
+            if (data.status === 'success' && data.config_value) {
+                console.log('📅 LAST_SEEN_CUTOFF_DATE:', data.config_value);
+                return data.config_value;
+            }
+            return null;
+        } catch (err) {
+            console.warn('Error fetching LAST_SEEN_CUTOFF_DATE:', err);
+            return null;
+        }
+    }
+
+    // ===== CHECK IF RECORD SHOULD BE VISIBLE =====
+    function isRecordVisible(record, cutoffDate) {
+        if (!cutoffDate) {
+            return true;
+        }
+        if (!record.last_seen) {
+            return true;
+        }
+        let lastSeenDate = record.last_seen;
+        if (typeof lastSeenDate === 'string' && lastSeenDate.includes('T')) {
+            lastSeenDate = lastSeenDate.split('T')[0];
+        }
+        return lastSeenDate >= cutoffDate;
+    }
+
+    // ===== GET CONDITION DISPLAY NAME =====
+    function getConditionDisplay(record) {
+        if (record.sleeve_condition_name) {
+            return record.sleeve_condition_name;
+        }
+        if (record.condition) {
+            return record.condition;
+        }
+        if (record.sleeve_display) {
+            return record.sleeve_display;
+        }
+        return 'Unknown';
+    }
 
     // Modal functions
     window.openRecordModal = function(record) {
         const price = parseFloat(record.store_price) || 0;
         const inStock = record.status_id === 2 || record.status_id === 1;
         const imageUrl = record.image_url || '';
+        const condition = getConditionDisplay(record);
+        const location = record.location_name || '';
         
         const modal = document.createElement('div');
         modal.id = 'recordModal';
@@ -80,8 +129,10 @@
                     </div>
                     <div style="flex: 1;">
                         <div style="font-size: 18px; font-weight: bold; color: #333;">${record.title || 'Untitled'}</div>
-                        <div style="color: #666; margin: 4px 0;">${record.condition || 'Unknown Condition'}</div>
+                        <div style="color: #666; margin: 4px 0;">${condition}</div>
                         <div style="color: #666; font-size: 14px;">${record.format_name || 'Unknown Format'}</div>
+                        ${location ? `<div style="color: #888; font-size: 12px; margin-top: 4px;">📍 ${location}</div>` : ''}
+                        ${record.last_seen ? `<div style="color: #888; font-size: 11px; margin-top: 2px;">Last seen: ${record.last_seen}</div>` : ''}
                     </div>
                 </div>
                 
@@ -183,13 +234,16 @@
                 buttonTextColor: config.buttonTextColor || 'white',
                 onAddToCart: config.onAddToCart || null,
                 idPrefix: config.idPrefix || 'records',
-                searchInputId: config.searchInputId || null
+                searchInputId: config.searchInputId || null,
+                showCondition: config.showCondition || false,
+                showLocation: config.showLocation || false
             };
             
             this.isInitialized = false;
             this.allData = [];
             this.filteredData = [];
             this.searchTerm = '';
+            this.cutoffDate = null;
         }
 
         init() {
@@ -197,7 +251,13 @@
             this.isInitialized = true;
             
             console.log(`📀 ${this.config.title} component initializing...`);
-            this.loadRecords();
+            
+            fetchLastSeenCutoff().then(date => {
+                this.cutoffDate = date;
+                console.log(`📅 ${this.config.title} using cutoff date:`, this.cutoffDate || 'None (showing all)');
+                this.loadRecords();
+            });
+            
             this.bindEvents();
             this.bindSearchEvents();
         }
@@ -257,23 +317,18 @@
                 this.filteredData = [...this.allData];
             } else {
                 const term = this.searchTerm.toLowerCase().trim();
-                // Check if term is a number (for ID or barcode exact match)
                 const isNumeric = /^\d+$/.test(term);
                 
                 this.filteredData = this.allData.filter(record => {
-                    // Exact match for ID if numeric
                     if (isNumeric && record.id && record.id.toString() === term) {
                         return true;
                     }
-                    // Exact match for barcode
                     if (record.barcode && record.barcode.toLowerCase() === term) {
                         return true;
                     }
-                    // Partial match for artist
                     if (record.artist && record.artist.toLowerCase().includes(term)) {
                         return true;
                     }
-                    // Partial match for title
                     if (record.title && record.title.toLowerCase().includes(term)) {
                         return true;
                     }
@@ -304,7 +359,7 @@
 
             try {
                 const params = new URLSearchParams({
-                    page: 1
+                    limit: 1000
                 });
                 
                 if (this.config.locationId) {
@@ -314,7 +369,6 @@
                     params.append('status_ids', this.config.statusId);
                 }
 
-                // Use API_BASE for the fetch URL
                 const url = `${API_BASE}/records?${params.toString()}`;
                 console.log(`📡 Fetching records from: ${url}`);
 
@@ -330,7 +384,15 @@
                 const data = await response.json();
 
                 if (data.status === 'success' && data.records) {
-                    this.allData = data.records || [];
+                    let records = data.records || [];
+                    
+                    if (this.cutoffDate) {
+                        const cutoffStr = this.cutoffDate;
+                        records = records.filter(record => isRecordVisible(record, cutoffStr));
+                        console.log(`📅 Filtered ${data.records.length} records to ${records.length} based on cutoff date`);
+                    }
+                    
+                    this.allData = records;
                     this.filteredData = [...this.allData];
                     this.totalRecords = this.filteredData.length;
                     this.totalPages = Math.ceil(this.totalRecords / this.config.pageSize) || 1;
@@ -351,7 +413,7 @@
                     <div style="text-align: center; padding: 40px; color: #dc3545;">
                         <div style="margin-bottom: 10px;">❌</div>
                         <p>Failed to load: ${err.message}</p>
-                        <button onclick="recordsComponent.loadRecords()" style="margin-top: 10px; padding: 8px 20px; border: none; border-radius: 4px; background: ${this.config.borderColor}; color: ${this.config.buttonTextColor}; cursor: pointer;">
+                        <button onclick="this.closest('.records-component').loadRecords()" style="margin-top: 10px; padding: 8px 20px; border: none; border-radius: 4px; background: ${this.config.borderColor}; color: ${this.config.buttonTextColor}; cursor: pointer;">
                             Retry
                         </button>
                     </div>
@@ -373,6 +435,7 @@
                         <div style="margin-bottom: 10px;">🔍</div>
                         <p>No ${this.config.title.toLowerCase()} found</p>
                         ${this.searchTerm ? `<p style="font-size: 12px; color: #999;">Try adjusting your search</p>` : ''}
+                        ${this.cutoffDate ? `<p style="font-size: 11px; color: #999;">Showing records seen after ${this.cutoffDate}</p>` : ''}
                     </div>
                 `;
                 return;
@@ -384,6 +447,8 @@
                 const inStock = record.status_id === 2 || record.status_id === 1;
                 const imageUrl = record.image_url || '';
                 const recordData = JSON.stringify(record).replace(/"/g, '&quot;');
+                const condition = getConditionDisplay(record);
+                const location = record.location_name || '';
                 
                 html += `
                     <div style="background: #f8f8f8; border-radius: 8px; overflow: hidden; border: 2px solid ${this.config.borderColor}; padding: 12px; cursor: pointer; transition: all 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.08);" 
@@ -401,8 +466,9 @@
                         </div>
                         <div style="font-weight: bold; color: #333; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${record.artist || 'Unknown Artist'}</div>
                         <div style="color: #666; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${record.title || 'Untitled'}</div>
+                        ${this.config.showCondition ? `<div style="color: #555; font-size: 10px; margin-top: 2px;">📦 ${condition}</div>` : ''}
+                        ${this.config.showLocation && location ? `<div style="color: #888; font-size: 10px; margin-top: 1px;">📍 ${location}</div>` : ''}
                         <div style="color: #ff6b6b; font-size: 16px; font-weight: bold; margin-top: 4px;">$${price.toFixed(2)}</div>
-                        ${this.config.locationId ? '<div style="font-size: 9px; color: #999; margin-top: 2px;">📍 Loveland</div>' : ''}
                         ${record.barcode ? `<div style="font-size: 8px; color: #999; margin-top: 2px; font-family: monospace;">${record.barcode}</div>` : ''}
                     </div>
                 `;
@@ -461,9 +527,11 @@
             }
         }
 
-        // Reload records (for when data changes)
         reload() {
-            this.loadRecords();
+            fetchLastSeenCutoff().then(date => {
+                this.cutoffDate = date;
+                this.loadRecords();
+            });
         }
     };
 

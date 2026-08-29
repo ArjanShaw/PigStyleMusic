@@ -11,7 +11,9 @@ function initShop() {
             buttonColor: '#ff6b6b',
             buttonTextColor: 'white',
             searchInputId: 'shopSearchInput',
-                statusId: 2,   // <-- ADD THIS LINE
+            statusId: 2,
+            showCondition: true,
+            showLocation: true,
             onAddToCart: function(record) {
                 if (window.cart) {
                     window.cart.addItem({

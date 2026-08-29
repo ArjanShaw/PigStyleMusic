@@ -13,8 +13,10 @@ function initNew() {
             buttonColor: '#ffd93d',
             buttonTextColor: '#333',
             locationId: 150,
-            statusId: 2,
-            searchInputId: 'newSearchInput'
+            statusId: 1,
+            searchInputId: 'newSearchInput',
+            showCondition: true,
+            showLocation: true
         });
         window.newComponent.init();
     } else {
