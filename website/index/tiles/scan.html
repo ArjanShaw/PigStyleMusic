@@ -1,19 +1,28 @@
 <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
     <h2 style="color: #333; margin: 0 0 5px 0;">📍 Scan / Locate</h2>
+    <p style="color: #666; margin: 0 0 5px 0; font-size: 13px;">Scan barcodes to locate and update records</p>
     
-    <!-- Location Selection -->
-    <div style="display: flex; gap: 10px; width: 100%; align-items: center; flex-wrap: wrap;">
-        <label style="font-weight: 600; color: #555;">Location:</label>
-        <select id="scan-location-select" style="flex: 1; min-width: 200px; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+    <!-- Status Message -->
+    <div id="scan-status" style="display: none; width: 100%; padding: 10px; border-radius: 8px; font-size: 13px; box-sizing: border-box;"></div>
+    
+    <!-- Location Selection with Prev/Next -->
+    <div style="display: flex; gap: 8px; width: 100%; align-items: center; flex-wrap: wrap; background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; box-sizing: border-box;">
+        <button id="scan-prev-btn" style="padding: 8px 14px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 14px; min-width: 40px;">
+            <i class="fas fa-chevron-left"></i>
+        </button>
+        <select id="scan-location-select" style="flex: 1; min-width: 150px; padding: 8px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box;">
             <option value="">-- Select Location --</option>
         </select>
-        <span id="scan-location-display" style="color: #666; font-size: 13px;">No location selected</span>
+        <button id="scan-next-btn" style="padding: 8px 14px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 14px; min-width: 40px;">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+        <span id="scan-location-display" style="font-weight: 600; font-size: 13px; min-width: 80px; color: #666;">No location</span>
     </div>
     
     <!-- Scan Input -->
     <div style="display: flex; gap: 10px; width: 100%;">
-        <input type="text" id="scan-input" placeholder="Scan barcode or enter ID..." style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;" disabled>
-        <button id="scan-submit-btn" disabled style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer;">
+        <input type="text" id="scan-input" placeholder="Scan barcode or enter ID..." style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box;" disabled>
+        <button id="scan-submit-btn" disabled style="padding: 10px 24px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
             <i class="fas fa-search"></i> Scan
         </button>
     </div>
@@ -21,30 +30,36 @@
     <!-- Scan Stats -->
     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; width: 100%;">
         <div style="background: #f8f9fa; border-radius: 6px; padding: 8px; text-align: center; border: 1px solid #eee;">
-            <div style="font-size: 18px; color: #007bff;" id="scan-counter-display">0</div>
+            <div style="font-size: 20px; font-weight: bold; color: #007bff;" id="scan-counter-display">0</div>
             <div style="font-size: 10px; color: #666;">Scanned</div>
         </div>
         <div style="background: #f8f9fa; border-radius: 6px; padding: 8px; text-align: center; border: 1px solid #eee;">
-            <div style="font-size: 18px; color: #28a745;" id="scan-index-display">📍 Index: 0</div>
+            <div style="font-size: 14px; font-weight: bold; color: #28a745;" id="scan-index-display">📍 0</div>
             <div style="font-size: 10px; color: #666;">Current Index</div>
         </div>
     </div>
     
-    <!-- Recent Scans -->
-    <div style="width: 100%; flex: 0.3; overflow-y: auto; border-top: 1px solid #eee; padding-top: 8px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h4 style="color: #333; margin: 0;">Recent Scans</h4>
-            <span id="last-scan-display" style="color: #666; font-size: 12px;">Last: --</span>
-        </div>
-        <div id="recent-scans-list" style="color: #666; font-size: 13px;">
-            <div style="text-align: center; padding: 10px; color: #999;">No recent scans</div>
-        </div>
+    <!-- Actions -->
+    <div class="scan-actions" style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap;">
+        <!-- Refresh and Clear buttons will be added by JS -->
     </div>
     
     <!-- Scanned Records List -->
-    <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+    <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px; min-height: 100px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-bottom: 1px solid #eee;">
+            <span style="font-weight: 600; color: #333; font-size: 13px;">📋 Scanned Records</span>
+            <span id="last-scan-display" style="color: #666; font-size: 11px;">Last: --</span>
+        </div>
         <div id="scan-records-list" style="width: 100%;">
-            <div style="text-align: center; padding: 20px; color: #999;">Scan records to build the list</div>
+            <div style="text-align: center; padding: 20px; color: #999; font-size: 13px;">Scan records to build the list</div>
+        </div>
+    </div>
+    
+    <!-- Recent Scans -->
+    <div style="width: 100%; max-height: 80px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px; background: #fafafa; flex-shrink: 0;">
+        <div style="font-weight: 600; color: #333; font-size: 12px; margin-bottom: 2px; padding: 0 4px;">Recent Scans</div>
+        <div id="recent-scans-list" style="width: 100%; font-size: 12px;">
+            <div style="text-align: center; padding: 8px; color: #999;">No recent scans</div>
         </div>
     </div>
 </div>
