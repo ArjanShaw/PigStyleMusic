@@ -324,8 +324,8 @@
             return;
         }
         
-        // Get current date for last_seen
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        // Get current datetime for last_seen (with time)
+        const now = new Date().toISOString(); // YYYY-MM-DDTHH:MM:SS.MMMZ
         
         const data = {
             artist: record.artist || 'Unknown',
@@ -340,7 +340,7 @@
             format_id: formatId,
             batch_id: parseInt(purchaseId),
             status_id: 1,
-            last_seen: today  // <-- ADD THIS: Set last_seen to current date
+            last_seen: now  // Full timestamp with time
         };
         
         try {
@@ -450,6 +450,6 @@
         loadConditions();
         loadFormats();
         loadConsignors();
-        bindDefaultEvents(); // <-- Bind events to default fields
+        bindDefaultEvents();
     };
 })();

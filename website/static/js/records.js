@@ -7,26 +7,20 @@
         const hostname = window.location.hostname;
         const port = window.location.port;
         
-        // Production: pigstylemusic.com
         if (hostname === 'www.pigstylemusic.com' || hostname === 'pigstylemusic.com') {
             return '';
         }
         
-        // Local development
         if (hostname === 'localhost' || hostname === '127.0.0.1') {
-            // If we're on port 8000 (static server), Flask is likely on 5000
             if (port === '8000') {
                 return 'http://localhost:5000';
             }
-            // If we're on port 5000, Flask is serving everything
             if (port === '5000' || port === '5001') {
                 return '';
             }
-            // Default to 5000 for local development
             return 'http://localhost:5000';
         }
         
-        // Fallback: use relative URLs (same origin)
         return '';
     }
 
@@ -71,15 +65,18 @@
         }
         
         // Compare last_seen with cutoff date
+        // last_seen is now a full timestamp, so we need to compare just the date part
         let lastSeenDate = record.last_seen;
-        if (typeof lastSeenDate === 'string' && lastSeenDate.includes('T')) {
-            lastSeenDate = lastSeenDate.split('T')[0];
+        if (typeof lastSeenDate === 'string') {
+            // Extract just the date part (YYYY-MM-DD) from the timestamp
+            if (lastSeenDate.includes('T')) {
+                lastSeenDate = lastSeenDate.split('T')[0];
+            }
         }
         
-        // Record is visible only if last_seen >= cutoff date
+        // Record is visible only if last_seen date >= cutoff date
         return lastSeenDate >= cutoffDate;
     }
-
 
     // ===== GET CONDITION DISPLAY NAME =====
     function getConditionDisplay(record) {
@@ -102,6 +99,13 @@
         const imageUrl = record.image_url || '';
         const condition = getConditionDisplay(record);
         const location = record.location_name || '';
+        const lastSeen = record.last_seen ? new Date(record.last_seen).toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        }) : 'Never';
         
         const modal = document.createElement('div');
         modal.id = 'recordModal';
@@ -140,7 +144,7 @@
                         <div style="color: #666; margin: 4px 0;">${condition}</div>
                         <div style="color: #666; font-size: 14px;">${record.format_name || 'Unknown Format'}</div>
                         ${location ? `<div style="color: #888; font-size: 12px; margin-top: 4px;">📍 ${location}</div>` : ''}
-                        ${record.last_seen ? `<div style="color: #888; font-size: 11px; margin-top: 2px;">Last seen: ${record.last_seen}</div>` : ''}
+                        ${record.last_seen ? `<div style="color: #888; font-size: 11px; margin-top: 2px;">Last seen: ${lastSeen}</div>` : ''}
                     </div>
                 </div>
                 
@@ -350,6 +354,7 @@
             this.renderPage();
             this.updatePagination();
         }
+
         async loadRecords() {
             const container = document.getElementById(this.config.containerId);
             if (!container) {
@@ -364,8 +369,6 @@
             console.log('📀 Location Filter:', this.config.locationId || 'None');
             console.log('📀 Cutoff Date:', this.cutoffDate || 'None (showing all)');
             console.log('📀 Page Size:', this.config.pageSize);
-            console.log('📀 Show Condition:', this.config.showCondition);
-            console.log('📀 Show Location:', this.config.showLocation);
 
             container.innerHTML = `
                 <div style="text-align: center; padding: 40px; color: #888;">
@@ -381,96 +384,41 @@
                 
                 if (this.config.locationId) {
                     params.append('location_id', this.config.locationId);
-                    console.log('📀 Adding location_id filter:', this.config.locationId);
                 }
                 if (this.config.statusId) {
                     params.append('status_ids', this.config.statusId);
-                    console.log('📀 Adding status_ids filter:', this.config.statusId);
                 }
                 if (this.cutoffDate) {
+                    // For timestamp comparison, we need to compare date part
+                    // The API expects YYYY-MM-DD format for last_seen_after
                     params.append('last_seen_after', this.cutoffDate);
                     console.log('📀 Adding last_seen_after filter:', this.cutoffDate);
                 }
 
                 const url = `${API_BASE}/records?${params.toString()}`;
-                console.log('📡 📡 📡 FETCHING RECORDS FROM:');
-                console.log('📡 URL:', url);
-                console.log('📡 Full URL with decode:', decodeURIComponent(url));
-                console.log('📡 Parameters:');
-                console.log('📡   - limit:', params.get('limit'));
-                console.log('📡   - status_ids:', params.get('status_ids') || 'None');
-                console.log('📡   - location_id:', params.get('location_id') || 'None');
-                console.log('📡   - last_seen_after:', params.get('last_seen_after') || 'None');
+                console.log('📡 📡 📡 FETCHING RECORDS FROM:', url);
 
                 const response = await fetch(url, {
                     credentials: 'include',
                     headers: { 'Content-Type': 'application/json' }
                 });
 
-                console.log('📡 Response Status:', response.status);
-                console.log('📡 Response OK:', response.ok);
-
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }
                 
                 const data = await response.json();
-                
-                console.log('📡 ===== RESPONSE DATA =====');
-                console.log('📡 Status:', data.status);
-                console.log('📡 Total records from API:', data.total);
-                console.log('📡 Count in this response:', data.count);
-                console.log('📡 Records array length:', data.records ? data.records.length : 0);
-                
-                // Log first few records to see what's coming back
-                if (data.records && data.records.length > 0) {
-                    console.log('📡 First record sample:', data.records[0]);
-                    console.log('📡 Sample fields:');
-                    console.log('  - id:', data.records[0].id);
-                    console.log('  - artist:', data.records[0].artist);
-                    console.log('  - title:', data.records[0].title);
-                    console.log('  - status_id:', data.records[0].status_id);
-                    console.log('  - last_seen:', data.records[0].last_seen);
-                    console.log('  - location_id:', data.records[0].location_id);
-                    console.log('  - location_name:', data.records[0].location_name);
-                    console.log('  - consignor_id:', data.records[0].consignor_id);
-                    console.log('  - image_url:', data.records[0].image_url ? 'Has image' : 'No image');
-                }
 
                 if (data.status === 'success' && data.records) {
                     let records = data.records || [];
                     
-                    console.log('📀 Before cutoff filter:', records.length);
-                    
-                    // Apply cutoff date filter (client-side fallback)
+                    // Apply cutoff date filter (client-side fallback for timestamps)
                     if (this.cutoffDate) {
                         const cutoffStr = this.cutoffDate;
                         const beforeFilter = records.length;
                         records = records.filter(record => isRecordVisible(record, cutoffStr));
                         console.log(`📅 Client-side cutoff filter: ${beforeFilter} → ${records.length} records`);
                     }
-                    
-                    // Check status distribution
-                    const statusCounts = {};
-                    records.forEach(r => {
-                        const status = r.status_id || 'unknown';
-                        statusCounts[status] = (statusCounts[status] || 0) + 1;
-                    });
-                    console.log('📀 Status distribution in returned records:', statusCounts);
-                    
-                    // Check location distribution
-                    const locationCounts = {};
-                    records.forEach(r => {
-                        const loc = r.location_name || r.location_id || 'none';
-                        locationCounts[loc] = (locationCounts[loc] || 0) + 1;
-                    });
-                    console.log('📀 Location distribution in returned records:', locationCounts);
-                    
-                    // Check if records have last_seen
-                    const withLastSeen = records.filter(r => r.last_seen).length;
-                    const withoutLastSeen = records.length - withLastSeen;
-                    console.log('📀 Records with last_seen:', withLastSeen);
-                    console.log('📀 Records without last_seen:', withoutLastSeen);
                     
                     this.allData = records;
                     this.filteredData = [...this.allData];
@@ -499,7 +447,6 @@
                 }
             } catch (err) {
                 console.error('❌ Failed to load records:', err);
-                console.error('❌ Error stack:', err.stack);
                 container.innerHTML = `
                     <div style="text-align: center; padding: 40px; color: #dc3545;">
                         <div style="margin-bottom: 10px;">❌</div>
@@ -511,7 +458,7 @@
                 `;
             }
         }
-         
+
         renderPage() {
             const container = document.getElementById(this.config.containerId);
             if (!container) return;

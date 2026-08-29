@@ -44,6 +44,23 @@
         }
     }
 
+    // ===== FORMAT TIMESTAMP =====
+    function formatTimestamp(timestamp) {
+        if (!timestamp) return '—';
+        try {
+            const date = new Date(timestamp);
+            return date.toLocaleString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        } catch (e) {
+            return timestamp;
+        }
+    }
+
     // ===== LOAD LAST 10 RECORDS BY LAST_SEEN =====
     async function loadLastSeenRecords() {
         const list = document.getElementById('scan-records-list');
@@ -112,7 +129,7 @@
 
         recentlyScanned.forEach((r, i) => {
             const locationName = r.location_name || '—';
-            const lastSeen = r.last_seen ? new Date(r.last_seen).toLocaleDateString() : '—';
+            const lastSeen = formatTimestamp(r.last_seen);
             html += `
                 <tr style="border-bottom: 1px solid #f0f0f0; ${i % 2 === 0 ? 'background: #fafafa;' : ''}">
                     <td style="padding: 6px 8px; color: #999; font-size: 12px;">${i + 1}</td>
@@ -253,7 +270,8 @@
     // ===== PROCESS SCANNED RECORD =====
     async function processScannedRecord(record, locationId) {
         const statusDiv = document.getElementById('scan-status');
-        const today = new Date().toISOString().split('T')[0];
+        // Get current datetime with time
+        const now = new Date().toISOString(); // YYYY-MM-DDTHH:MM:SS.MMMZ
 
         try {
             // Get current max location_index for this location
@@ -280,7 +298,7 @@
                 body: JSON.stringify({
                     location_id: locationId,
                     location_index: newIndex,
-                    last_seen: today
+                    last_seen: now  // Full timestamp with time
                 })
             });
             const data = await response.json();
@@ -295,7 +313,7 @@
                     id: record.id,
                     artist: record.artist || 'Unknown',
                     title: record.title || 'Unknown',
-                    last_seen: today,
+                    last_seen: now,
                     location_name: locationName,
                     location_id: locationId
                 };
@@ -312,8 +330,14 @@
                 renderRecords();
                 updateCounter();
 
+                // Format time for display
+                const timeStr = new Date(now).toLocaleString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+
                 if (statusDiv) {
-                    statusDiv.textContent = `✅ #${record.id}: ${record.artist} - ${record.title} → ${locationName} (Index: ${newIndex})`;
+                    statusDiv.textContent = `✅ #${record.id}: ${record.artist} - ${record.title} → ${locationName} (Index: ${newIndex}) at ${timeStr}`;
                     statusDiv.className = 'status-message status-success';
                 }
                 playSound('success');
@@ -420,8 +444,7 @@
             setTimeout(() => scanInput.focus(), 300);
         }
 
-        // Add refresh button if it doesn't exist
-        const actionsDiv = document.querySelector('.scan-actions');
+        // Add refresh button if it doesn't exist        const actionsDiv = document.querySelector('.scan-actions');
         if (actionsDiv) {
             const refreshBtn = document.createElement('button');
             refreshBtn.innerHTML = '<i class="fas fa-sync"></i> Refresh';
