@@ -9,6 +9,7 @@
 </head>
 <body>
     <nav id="menu">
+        <!-- Guest/Public buttons - always visible -->
         <button onclick="showPage('home', this)" title="Home"><i class="fas fa-home"></i></button>
         <button onclick="showPage('shop', this)" title="Shop"><i class="fas fa-record-vinyl"></i></button>
         <button onclick="showPage('new', this)" title="New"><i class="fas fa-star"></i></button>
@@ -18,10 +19,15 @@
         <button onclick="showPage('alerts', this)" title="Alerts"><i class="fas fa-bell"></i></button>
         <button onclick="showPage('order', this)" title="Order"><i class="fas fa-box"></i></button>
         <button onclick="showPage('email', this)" title="Email"><i class="fas fa-paper-plane"></i></button>
+        
+        <!-- Cart button - always visible -->
         <button onclick="showPage('cart', this)" title="Cart">
             <i class="fas fa-shopping-cart"></i>
             <span class="badge" id="cartBadge">0</span>
         </button>
+        
+        <!-- Admin toggle button - only visible when logged in as admin (dynamically added) -->
+        <!-- Login/Logout button - always visible -->
         <button onclick="showPage('login', this)" class="login-btn" title="Login"><i class="fas fa-sign-in-alt"></i></button>
     </nav>
     <div id="content">
@@ -69,8 +75,8 @@
     <script src="/static/js/notification-bell.js"></script>
     <script src="/static/js/shop.js"></script>
     <script src="/static/js/new.js"></script>
-    <!-- Custom Checkout JS -->
     <script src="/static/js/custom-checkout.js"></script>
+    <script src="/static/js/admin-dashboard.js"></script>
     <script src="/static/js/app.js"></script>
 </body>
 </html>
