@@ -13,6 +13,14 @@
         ? 'http://localhost:5000' 
         : 'https://www.pigstylemusic.com';
 
+    // ===== TAX RATE =====
+    const TAX_RATE = 0.07; // 7% sales tax
+
+    // ===== CALCULATE TAX =====
+    function calculateTax(subtotal) {
+        return Math.round(subtotal * TAX_RATE * 100) / 100;
+    }
+
     // ===== STORAGE KEY =====
     const STORAGE_KEY = 'pigstyle_cart';
 
@@ -204,10 +212,22 @@
             `;
         });
         
+        // Calculate tax
+        const taxAmount = calculateTax(total);
+        const totalWithTax = total + taxAmount;
+        
         html += `
             <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 2px solid #ddd; margin-top: 5px;">
-                <span style="font-size: 16px; font-weight: bold; color: #333;">Total:</span>
-                <span style="font-size: 24px; font-weight: bold; color: #ff6b6b;">$${total.toFixed(2)}</span>
+                <span style="font-size: 16px; font-weight: bold; color: #333;">Subtotal:</span>
+                <span style="font-size: 20px; font-weight: bold; color: #333;">$${total.toFixed(2)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid #e9ecef; padding-bottom: 8px;">
+                <span style="font-size: 14px; color: #666;">Tax (7%):</span>
+                <span style="font-size: 14px; color: #666;">$${taxAmount.toFixed(2)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 5px;">
+                <span style="font-size: 18px; font-weight: bold; color: #333;">Total:</span>
+                <span style="font-size: 28px; font-weight: bold; color: #28a745;">$${totalWithTax.toFixed(2)}</span>
             </div>
             <div style="display: flex; gap: 10px; margin-top: 10px;">
                 <button onclick="window.clearCart()" style="flex: 1; padding: 10px; background: #dc3545; color: white; border: none; border-radius: 30px; font-size: 14px; font-weight: 600; cursor: pointer;">
@@ -225,11 +245,12 @@
     };
 
     // ============================================================
-    // PUBLIC CHECKOUT - Simplified for customers
+    // PUBLIC CHECKOUT - Simplified for customers (Card only)
     // ============================================================
 
     let publicCheckoutItems = [];
     let publicCheckoutTotal = 0;
+    let publicCheckoutTax = 0;
     let publicCheckoutRemaining = 0;
     let publicCheckoutPaymentEntries = [];
     let publicSquareAvailable = false;
@@ -280,11 +301,14 @@
         console.log('🛒 Showing public checkout modal...');
         
         const items = window.cart.getItems();
-        const total = window.cart.getTotal();
+        const subtotal = window.cart.getTotal();
+        const taxAmount = calculateTax(subtotal);
+        const totalWithTax = subtotal + taxAmount;
         
         publicCheckoutItems = items;
-        publicCheckoutTotal = total;
-        publicCheckoutRemaining = total;
+        publicCheckoutTotal = totalWithTax;
+        publicCheckoutTax = taxAmount;
+        publicCheckoutRemaining = totalWithTax;
         publicCheckoutPaymentEntries = [];
 
         // Remove existing modal
@@ -338,58 +362,39 @@
                         <div style="font-size: 13px; color: #666;">${itemsHtml}</div>
                     </div>
                     
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 10px; background: #e8f5e9; border-radius: 8px;">
-                        <span style="font-weight: 600; color: #333;">Total Due:</span>
-                        <span id="public-total-due" style="font-size: 24px; font-weight: bold; color: #28a745;">$${total.toFixed(2)}</span>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 8px 10px; background: #f8f9fa; border-radius: 6px;">
+                        <div style="color: #666; font-size: 13px;">Subtotal:</div>
+                        <div style="color: #333; font-weight: 500;">$${subtotal.toFixed(2)}</div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 8px 10px; background: #f8f9fa; border-radius: 6px; border-bottom: 1px solid #e9ecef;">
+                        <div style="color: #666; font-size: 13px;">Tax (7%):</div>
+                        <div style="color: #333; font-weight: 500;">$${taxAmount.toFixed(2)}</div>
                     </div>
 
-                    <!-- Remaining Balance -->
-                    <div style="margin-bottom: 15px; padding: 10px; background: #e9ecef; border-radius: 8px; display: flex; justify-content: space-between;">
-                        <span style="font-weight: 600; color: #333;">Remaining:</span>
-                        <span id="public-remaining" style="font-weight: bold; color: #dc3545;">$${total.toFixed(2)}</span>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 10px; background: #e8f5e9; border-radius: 8px;">
+                        <span style="font-weight: 600; color: #333;">Total Due:</span>
+                        <span id="public-total-due" style="font-size: 24px; font-weight: bold; color: #28a745;">$${totalWithTax.toFixed(2)}</span>
                     </div>
 
                     <!-- Payment Methods -->
                     <div style="margin-bottom: 15px;">
                         <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 8px;">Payment</label>
                         
-                        <!-- Card Payment (Square) -->
-                        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 8px; border: 2px solid #28a745;">
+                        <!-- Card Payment (Square) - Only payment method -->
+                        <div style="background: #f8f9fa; border-radius: 8px; padding: 12px; border: 2px solid #28a745;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <span style="font-weight: 600; color: #333;"><i class="fas fa-credit-card" style="color: #17a2b8;"></i> Credit Card</span>
                                 <span style="font-size: 12px; color: #6c757d;">Secure payment via Square</span>
                             </div>
-                            <div style="display: flex; gap: 8px; margin-top: 5px;">
-                                <input type="number" id="public-card-amount" placeholder="0.00" min="0" step="0.01" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
-                                <button onclick="setPublicMaxCard()" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">MAX</button>
-                                <button onclick="addPublicCardPayment()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Pay</button>
+                            <div style="margin-top: 8px; display: flex; gap: 8px;">
+                                <span style="color: #666; font-size: 13px;">Amount to charge:</span>
+                                <span style="font-weight: bold; color: #28a745; font-size: 15px;">$${publicCheckoutRemaining.toFixed(2)}</span>
                             </div>
+                            <button onclick="addPublicCardPayment()" id="public-card-pay-btn" style="width: 100%; margin-top: 8px; padding: 10px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px;">
+                                <i class="fas fa-credit-card"></i> Pay $${publicCheckoutRemaining.toFixed(2)} with Card
+                            </button>
                             <div id="public-card-status" style="margin-top: 5px; font-size: 12px; color: #6c757d; display: none;"></div>
                         </div>
-
-                        ${publicSquareAvailable ? `
-                            <!-- POS Terminal Payment (in-store customers) -->
-                            <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 8px; border: 1px solid #ddd;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="font-weight: 600; color: #333;"><i class="fas fa-cash-register" style="color: #6f42c1;"></i> In-Store POS</span>
-                                    <span style="font-size: 12px; color: #6c757d;">Pay at the register</span>
-                                </div>
-                                <div style="display: flex; gap: 8px; margin-top: 5px;">
-                                    <input type="number" id="public-pos-amount" placeholder="0.00" min="0" step="0.01" style="flex: 1; min-width: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
-                                    <button onclick="setPublicMaxPos()" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">MAX</button>
-                                    <button onclick="addPublicPosPayment()" style="padding: 8px 16px; background: #6f42c1; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
-                                        <i class="fas fa-cash-register"></i> Send to POS
-                                    </button>
-                                </div>
-                                <div id="public-pos-status" style="margin-top: 5px; font-size: 12px; color: #6c757d; display: none;"></div>
-                            </div>
-                        ` : ''}
-                    </div>
-
-                    <!-- Payment Summary -->
-                    <div id="public-payment-summary" style="margin-top: 10px; display: none; border-top: 1px solid #eee; padding-top: 10px;">
-                        <div style="font-weight: 600; color: #333; font-size: 13px; margin-bottom: 5px;">Payment Summary:</div>
-                        <div id="public-payment-entries-list" style="font-size: 12px; color: #666;"></div>
                     </div>
 
                     <div id="public-checkout-status" style="margin-top: 10px; display: none; padding: 10px; border-radius: 8px; font-size: 13px;"></div>
@@ -450,92 +455,61 @@
                 '✅ Complete Order';
         }
 
-        updatePublicPaymentSummary();
-    }
-
-    // ===== UPDATE PUBLIC PAYMENT SUMMARY =====
-    function updatePublicPaymentSummary() {
-        const container = document.getElementById('public-payment-entries-list');
-        const summary = document.getElementById('public-payment-summary');
-        
-        if (!container) return;
-
-        if (publicCheckoutPaymentEntries.length === 0) {
-            if (summary) summary.style.display = 'none';
-            return;
+        // Update card pay button
+        const cardPayBtn = document.getElementById('public-card-pay-btn');
+        if (cardPayBtn) {
+            cardPayBtn.textContent = `Pay $${publicCheckoutRemaining.toFixed(2)} with Card`;
+            cardPayBtn.disabled = publicCheckoutRemaining <= 0.01;
         }
-
-        if (summary) summary.style.display = 'block';
-        let html = '';
-        publicCheckoutPaymentEntries.forEach((entry, idx) => {
-            html += `
-                <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #eee;">
-                    <span>${entry.method}</span>
-                    <span>$${entry.amount.toFixed(2)}</span>
-                    <button onclick="removePublicPaymentEntry(${idx})" style="background: none; border: none; color: #dc3545; cursor: pointer; font-size: 12px;">×</button>
-                </div>
-            `;
-        });
-        container.innerHTML = html;
     }
-
-    // ===== REMOVE PUBLIC PAYMENT ENTRY =====
-    window.removePublicPaymentEntry = function(index) {
-        if (index >= 0 && index < publicCheckoutPaymentEntries.length) {
-            const entry = publicCheckoutPaymentEntries[index];
-            publicCheckoutRemaining += entry.amount;
-            publicCheckoutPaymentEntries.splice(index, 1);
-            updatePublicCheckoutUI();
-        }
-    };
 
     // ===== ADD PUBLIC CARD PAYMENT =====
     window.addPublicCardPayment = function() {
-        const input = document.getElementById('public-card-amount');
-        const amount = parseFloat(input.value);
-        
-        let payAmount = amount;
-        if (!amount || amount <= 0) {
-            payAmount = publicCheckoutRemaining;
-        }
+        const payAmount = publicCheckoutRemaining;
         
         if (payAmount <= 0) {
             showPublicCheckoutStatus('No remaining balance to pay.', 'warning');
             return;
         }
 
-        if (payAmount > publicCheckoutRemaining) {
-            payAmount = publicCheckoutRemaining;
-        }
-
-        addPublicPaymentEntry('Credit Card', payAmount);
-        document.getElementById('public-card-amount').value = '';
-        showPublicCheckoutStatus('💳 Added $' + payAmount.toFixed(2) + ' via Card', 'success');
-    };
-
-    // ===== ADD PUBLIC POS PAYMENT =====
-    window.addPublicPosPayment = async function() {
-        const input = document.getElementById('public-pos-amount');
-        const amount = parseFloat(input.value);
-        
-        let payAmount = amount;
-        if (!amount || amount <= 0) {
-            payAmount = publicCheckoutRemaining;
-        }
-        
-        if (payAmount <= 0) {
-            showPublicCheckoutStatus('No remaining balance to pay.', 'warning');
+        if (!publicSquareAvailable) {
+            showPublicCheckoutStatus('Square payment is not available. Please try again later.', 'error');
             return;
         }
 
-        if (payAmount > publicCheckoutRemaining) {
-            payAmount = publicCheckoutRemaining;
+        // Disable the button to prevent double click
+        const btn = document.getElementById('public-card-pay-btn');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = '⏳ Processing...';
         }
 
-        // Just add as a payment entry - POS is just a payment method
-        addPublicPaymentEntry('In-Store POS', payAmount);
-        document.getElementById('public-pos-amount').value = '';
-        showPublicCheckoutStatus('🏪 Added $' + payAmount.toFixed(2) + ' via In-Store POS', 'success');
+        const statusEl = document.getElementById('public-card-status');
+        if (statusEl) {
+            statusEl.style.display = 'block';
+            statusEl.textContent = '⏳ Processing payment...';
+            statusEl.style.color = '#17a2b8';
+        }
+
+        // Simulate card payment processing
+        setTimeout(() => {
+            addPublicPaymentEntry('Credit Card', payAmount);
+            if (statusEl) {
+                statusEl.textContent = '✅ Payment successful!';
+                statusEl.style.color = '#28a745';
+            }
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = `Pay $${publicCheckoutRemaining.toFixed(2)} with Card`;
+            }
+            updatePublicCheckoutUI();
+            
+            if (publicCheckoutRemaining <= 0.01) {
+                setTimeout(() => {
+                    completePublicCheckout();
+                }, 500);
+            }
+        }, 1500);
     };
 
     // ===== ADD PUBLIC PAYMENT ENTRY =====
@@ -544,15 +518,6 @@
         publicCheckoutRemaining -= amount;
         updatePublicCheckoutUI();
     }
-
-    // ===== SET MAX AMOUNTS =====
-    window.setPublicMaxCard = function() {
-        document.getElementById('public-card-amount').value = publicCheckoutRemaining.toFixed(2);
-    };
-
-    window.setPublicMaxPos = function() {
-        document.getElementById('public-pos-amount').value = publicCheckoutRemaining.toFixed(2);
-    };
 
     // ===== SHOW PUBLIC CHECKOUT STATUS =====
     function showPublicCheckoutStatus(message, type = 'info') {
@@ -591,17 +556,26 @@
         }
 
         const items = window.cart.getItems();
-        const total = window.cart.getTotal();
+        const subtotal = window.cart.getTotal();
+        const taxAmount = calculateTax(subtotal);
+        const totalWithTax = subtotal + taxAmount;
+
+        // Disable complete button
+        const completeBtn = document.getElementById('public-checkout-complete-btn');
+        if (completeBtn) {
+            completeBtn.disabled = true;
+            completeBtn.textContent = '⏳ Processing...';
+        }
 
         const orderData = {
             items: window.cart.getCheckoutPayload(),
-            subtotal: total,
-            total: total,
-            tax: 0,
+            subtotal: subtotal,
+            tax: taxAmount,
+            total: totalWithTax,
             shipping: { method: 'pickup', amount: 0 },
             customer_name: 'Customer',
             customer_email: '',
-            notes: 'Public checkout',
+            notes: 'Public checkout (Tax: $' + taxAmount.toFixed(2) + ')',
             payment_entries: publicCheckoutPaymentEntries,
             source: 'public_checkout'
         };
@@ -628,11 +602,19 @@
                 }, 1500);
             } else {
                 showPublicCheckoutStatus('❌ Order failed: ' + (data.error || 'Unknown error'), 'error');
+                if (completeBtn) {
+                    completeBtn.disabled = false;
+                    completeBtn.textContent = '✅ Complete Order';
+                }
             }
         })
         .catch(err => {
             console.error('❌ Checkout error:', err);
             showPublicCheckoutStatus('❌ Error: ' + err.message, 'error');
+            if (completeBtn) {
+                completeBtn.disabled = false;
+                completeBtn.textContent = '✅ Complete Order';
+            }
         });
     };
 
