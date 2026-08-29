@@ -1,5 +1,12 @@
 // Accounting page
 (function() {
+    'use strict';
+
+    // ===== API BASE URL =====
+    const API_BASE = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5000' 
+        : 'https://www.pigstylemusic.com';
+
     let currentTab = 'transactions';
     let accounts = [];
     let journalPage = 1;
@@ -41,7 +48,7 @@
         const search = document.getElementById('acc-search').value.trim();
         
         try {
-            let url = '/api/accounting/bank-transactions-full';
+            let url = `${API_BASE}/api/accounting/bank-transactions-full`;
             const params = new URLSearchParams();
             if (filter === 'unposted') params.append('filter', 'unposted');
             else if (filter === 'posted') params.append('filter', 'posted');
@@ -51,7 +58,15 @@
             const query = params.toString();
             if (query) url += '?' + query;
             
-            const response = await fetch(url, { credentials: 'include' });
+            const response = await fetch(url, { 
+                credentials: 'include',
+                mode: 'cors'
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
             const data = await response.json();
             
             if (data.status === 'success') {
@@ -86,6 +101,7 @@
                     <div style="flex: 1;">
                         <div style="font-weight: 600; color: #333; font-size: 13px;">${tx.description || 'No description'}</div>
                         <div style="color: #666; font-size: 12px;">${tx.transaction_date || ''} • ID: ${tx.id}</div>
+                        ${tx.post_to_account_name ? `<div style="color: #888; font-size: 11px;">Posted to: ${tx.post_to_account_name}</div>` : ''}
                     </div>
                     <div style="text-align: right; margin-right: 15px;">
                         <div style="font-weight: bold; color: ${isDebit ? '#dc3545' : '#28a745'}; font-size: 14px;">${formattedAmount}</div>
@@ -116,7 +132,10 @@
         list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading...</div>';
         
         try {
-            const response = await fetch('/api/accounting/accounts', { credentials: 'include' });
+            const response = await fetch(`${API_BASE}/api/accounting/accounts`, { 
+                credentials: 'include',
+                mode: 'cors'
+            });
             const data = await response.json();
             
             if (data.status === 'success') {
@@ -186,9 +205,10 @@
         }
         
         try {
-            const response = await fetch('/api/accounting/accounts', {
+            const response = await fetch(`${API_BASE}/api/accounting/accounts`, {
                 method: 'POST',
                 credentials: 'include',
+                mode: 'cors',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ code, name, type, description: '' })
             });
@@ -220,7 +240,10 @@
             params.append('per_page', journalPageSize);
             if (search) params.append('search', search);
             
-            const response = await fetch(`/api/accounting/journal?${params.toString()}`, { credentials: 'include' });
+            const response = await fetch(`${API_BASE}/api/accounting/journal?${params.toString()}`, { 
+                credentials: 'include',
+                mode: 'cors'
+            });
             const data = await response.json();
             
             if (data.status === 'success') {
@@ -285,7 +308,10 @@
         list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading...</div>';
         
         try {
-            const response = await fetch('/api/accounting/balances', { credentials: 'include' });
+            const response = await fetch(`${API_BASE}/api/accounting/balances`, { 
+                credentials: 'include',
+                mode: 'cors'
+            });
             const data = await response.json();
             
             if (data.status === 'success') {
@@ -350,7 +376,10 @@
         list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading...</div>';
         
         try {
-            const response = await fetch('/api/accounting/monthly-pl', { credentials: 'include' });
+            const response = await fetch(`${API_BASE}/api/accounting/monthly-pl`, { 
+                credentials: 'include',
+                mode: 'cors'
+            });
             const data = await response.json();
             
             if (data.status === 'success') {
