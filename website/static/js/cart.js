@@ -262,7 +262,7 @@
     let publicCheckoutData = {
         customerName: '',
         customerEmail: '',
-        shippingMethod: 'pickup', // 'pickup' or 'shipping'
+        shippingMethod: 'pickup',
         address: {
             line1: '',
             line2: '',
@@ -272,6 +272,8 @@
             country: 'USA'
         }
     };
+    let publicOrderId = null;
+    let publicSquareCheckoutUrl = null;
 
     // ===== OPEN PUBLIC CHECKOUT =====
     window.openPublicCheckout = function() {
@@ -297,6 +299,8 @@
             }
         };
         publicCheckoutPaymentEntries = [];
+        publicOrderId = null;
+        publicSquareCheckoutUrl = null;
 
         checkPublicSquareAvailability().then(() => {
             showPublicCheckoutModal();
@@ -575,14 +579,12 @@
         const taxEl = document.getElementById('public-display-tax');
         const totalEl = document.getElementById('public-display-total');
         const chargeEl = document.getElementById('public-charge-amount');
-        const remainingEl = document.getElementById('public-remaining');
 
         if (subtotalEl) subtotalEl.textContent = '$' + publicCheckoutSubtotal.toFixed(2);
         if (shippingEl) shippingEl.textContent = '$' + publicCheckoutShipping.toFixed(2);
         if (taxEl) taxEl.textContent = '$' + publicCheckoutTax.toFixed(2);
         if (totalEl) totalEl.textContent = '$' + publicCheckoutTotal.toFixed(2);
         if (chargeEl) chargeEl.textContent = '$' + publicCheckoutRemaining.toFixed(2);
-        if (remainingEl) remainingEl.textContent = '$' + publicCheckoutRemaining.toFixed(2);
 
         const completeBtn = document.getElementById('public-checkout-complete-btn');
         if (completeBtn) {
@@ -615,93 +617,14 @@
             return;
         }
 
-        // Disable the button to prevent double click
-        const btn = document.getElementById('public-card-pay-btn');
-        if (btn) {
-            btn.disabled = true;
-            btn.textContent = '⏳ Processing...';
-        }
-
-        const statusEl = document.getElementById('public-card-status');
-        if (statusEl) {
-            statusEl.style.display = 'block';
-            statusEl.textContent = '⏳ Processing payment...';
-            statusEl.style.color = '#17a2b8';
-        }
-
-        // Simulate card payment processing
-        setTimeout(() => {
-            addPublicPaymentEntry('Credit Card', payAmount);
-            if (statusEl) {
-                statusEl.textContent = '✅ Payment successful!';
-                statusEl.style.color = '#28a745';
-            }
-            if (btn) {
-                btn.disabled = false;
-                btn.textContent = `Pay $${publicCheckoutRemaining.toFixed(2)} with Card`;
-            }
-            updatePublicCheckoutUI();
-            
-            if (publicCheckoutRemaining <= 0.01) {
-                setTimeout(() => {
-                    completePublicCheckout();
-                }, 500);
-            }
-        }, 1500);
-    };
-
-    // ===== ADD PUBLIC PAYMENT ENTRY =====
-    function addPublicPaymentEntry(method, amount) {
-        publicCheckoutPaymentEntries.push({ method, amount });
-        publicCheckoutRemaining -= amount;
-        updatePublicCheckoutUI();
-    }
-
-    // ===== SHOW PUBLIC CHECKOUT STATUS =====
-    function showPublicCheckoutStatus(message, type = 'info') {
-        const el = document.getElementById('public-checkout-status');
-        if (!el) return;
-        el.style.display = 'block';
-        el.textContent = message;
-        const colors = {
-            success: '#d4edda; color: #155724; border: 1px solid #c3e6cb;',
-            error: '#f8d7da; color: #721c24; border: 1px solid #f5c6cb;',
-            warning: '#fff3cd; color: #856404; border: 1px solid #ffeeba;',
-            info: '#cce5ff; color: #004085; border: 1px solid #b8daff;'
-        };
-        el.style.background = colors[type] || colors.info;
-        el.style.border = '1px solid';
-        el.style.padding = '10px';
-        el.style.borderRadius = '8px';
-        clearTimeout(el._timeout);
-        el._timeout = setTimeout(() => {
-            el.style.display = 'none';
-        }, 4000);
-    }
-
-    // ===== COMPLETE PUBLIC CHECKOUT =====
-    window.completePublicCheckout = function() {
-        console.log('🛒 Completing public checkout...');
-
-        if (publicCheckoutRemaining > 0.01) {
-            showPublicCheckoutStatus('⚠️ Please pay the remaining balance.', 'warning');
-            return;
-        }
-
-        if (publicCheckoutPaymentEntries.length === 0) {
-            showPublicCheckoutStatus('⚠️ No payments added.', 'warning');
-            return;
-        }
-
-        // Gather customer info
+        // Gather customer info first
         const nameInput = document.getElementById('public-customer-name');
         const emailInput = document.getElementById('public-customer-email');
         const name = nameInput ? nameInput.value.trim() : '';
         const email = emailInput ? emailInput.value.trim() : '';
 
-        // Validate name
         if (!name) {
-            showPublicCheckoutStatus('⚠️ Please enter your name.', 'warning');
+            showPublicCheckoutStatus('⚠️ Please enter your name before paying.', 'warning');
             nameInput?.focus();
             return;
         }
@@ -745,17 +668,25 @@
         publicCheckoutData.customerName = name;
         publicCheckoutData.customerEmail = email;
 
+        // Disable the button to prevent double click
+        const btn = document.getElementById('public-card-pay-btn');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = '⏳ Creating payment...';
+        }
+
+        const statusEl = document.getElementById('public-card-status');
+        if (statusEl) {
+            statusEl.style.display = 'block';
+            statusEl.textContent = '⏳ Creating payment link...';
+            statusEl.style.color = '#17a2b8';
+        }
+
+        // Create order and get Square payment link
         const items = window.cart.getItems();
         const subtotal = window.cart.getTotal();
         const taxAmount = calculateTax(subtotal);
         const totalWithTaxAndShipping = subtotal + taxAmount + publicCheckoutShipping;
-
-        // Disable complete button
-        const completeBtn = document.getElementById('public-checkout-complete-btn');
-        if (completeBtn) {
-            completeBtn.disabled = true;
-            completeBtn.textContent = '⏳ Processing...';
-        }
 
         const orderData = {
             items: window.cart.getCheckoutPayload(),
@@ -772,13 +703,10 @@
             notes: publicCheckoutData.shippingMethod === 'shipping' ? 
                 'Shipped to: ' + publicCheckoutData.address.line1 + ', ' + publicCheckoutData.address.city + ', ' + publicCheckoutData.address.state + ' ' + publicCheckoutData.address.zip : 
                 'Pickup in store',
-            payment_entries: publicCheckoutPaymentEntries,
             source: 'public_checkout'
         };
 
-        console.log('📦 Order data:', orderData);
-
-        showPublicCheckoutStatus('⏳ Processing order...', 'info');
+        console.log('📦 Creating order with Square payment:', orderData);
 
         fetch(`${API_BASE}/api/checkout/process`, {
             method: 'POST',
@@ -789,32 +717,122 @@
         .then(res => res.json())
         .then(data => {
             if (data.status === 'success') {
-                window.cart.clear();
-                window.renderCart();
+                // Store order info for later
+                publicOrderId = data.order_id;
+                publicSquareCheckoutUrl = data.checkout_url;
                 
-                showPublicCheckoutStatus('✅ Order completed successfully!', 'success');
+                // Add payment entry (will be confirmed after Square redirect)
+                addPublicPaymentEntry('Credit Card', payAmount);
                 
+                if (statusEl) {
+                    statusEl.textContent = '✅ Payment link created! Redirecting to Square...';
+                    statusEl.style.color = '#28a745';
+                }
+                
+                // Redirect to Square checkout
                 setTimeout(() => {
-                    closePublicCheckoutModal();
-                    window.showToast('🎉 Order complete! Thank you!', 'success');
-                }, 1500);
+                    window.location.href = data.checkout_url;
+                }, 1000);
+                
             } else {
-                showPublicCheckoutStatus('❌ Order failed: ' + (data.error || 'Unknown error'), 'error');
-                if (completeBtn) {
-                    completeBtn.disabled = false;
-                    completeBtn.textContent = '✅ Complete Order';
+                showPublicCheckoutStatus('❌ Failed to create payment: ' + (data.error || 'Unknown error'), 'error');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = `Pay $${publicCheckoutRemaining.toFixed(2)} with Card`;
+                }
+                if (statusEl) {
+                    statusEl.textContent = '❌ Failed to create payment link';
+                    statusEl.style.color = '#dc3545';
                 }
             }
         })
         .catch(err => {
-            console.error('❌ Checkout error:', err);
+            console.error('❌ Payment creation error:', err);
             showPublicCheckoutStatus('❌ Error: ' + err.message, 'error');
-            if (completeBtn) {
-                completeBtn.disabled = false;
-                completeBtn.textContent = '✅ Complete Order';
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = `Pay $${publicCheckoutRemaining.toFixed(2)} with Card`;
+            }
+            if (statusEl) {
+                statusEl.textContent = '❌ Error creating payment';
+                statusEl.style.color = '#dc3545';
             }
         });
     };
+
+    // ===== ADD PUBLIC PAYMENT ENTRY =====
+    function addPublicPaymentEntry(method, amount) {
+        publicCheckoutPaymentEntries.push({ method, amount });
+        publicCheckoutRemaining -= amount;
+        updatePublicCheckoutUI();
+    }
+
+    // ===== SHOW PUBLIC CHECKOUT STATUS =====
+    function showPublicCheckoutStatus(message, type = 'info') {
+        const el = document.getElementById('public-checkout-status');
+        if (!el) return;
+        el.style.display = 'block';
+        el.textContent = message;
+        const colors = {
+            success: '#d4edda; color: #155724; border: 1px solid #c3e6cb;',
+            error: '#f8d7da; color: #721c24; border: 1px solid #f5c6cb;',
+            warning: '#fff3cd; color: #856404; border: 1px solid #ffeeba;',
+            info: '#cce5ff; color: #004085; border: 1px solid #b8daff;'
+        };
+        el.style.background = colors[type] || colors.info;
+        el.style.border = '1px solid';
+        el.style.padding = '10px';
+        el.style.borderRadius = '8px';
+        clearTimeout(el._timeout);
+        el._timeout = setTimeout(() => {
+            el.style.display = 'none';
+        }, 4000);
+    }
+
+    // ===== COMPLETE PUBLIC CHECKOUT =====
+    window.completePublicCheckout = function() {
+        // This is now handled by the Square redirect
+        // The user is redirected to Square, and after payment they come back
+        // The order completion is handled by the /api/order/complete endpoint
+        console.log('🛒 Checkout should be completed via Square redirect');
+        showPublicCheckoutStatus('Please complete payment on the Square page.', 'info');
+    };
+
+    // ===== CHECK FOR SQUARE RETURN =====
+    function checkSquareReturn() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const status = urlParams.get('status');
+        const orderId = urlParams.get('order_id');
+        const paymentId = urlParams.get('payment_id');
+
+        if (status === 'completed' && orderId) {
+            console.log('✅ Square payment completed for order:', orderId);
+            
+            // Call order complete endpoint
+            fetch(`${API_BASE}/api/order/complete`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    order_id: orderId,
+                    transaction_id: paymentId || 'square_' + Date.now()
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                console.log('📥 Order complete response:', data);
+                window.cart.clear();
+                window.renderCart();
+                window.showToast('🎉 Order complete! Thank you!', 'success');
+                // Clean URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+            })
+            .catch(err => {
+                console.error('❌ Order complete error:', err);
+                window.showToast('⚠️ Payment completed but order confirmation failed. Please contact support.', 'error');
+            });
+        }
+    }
 
     // ===== TOAST =====
     window.showToast = function(message, type = 'success') {
@@ -868,6 +886,8 @@
         console.log('🛒 Cart initialized with', window.cart.getItemCount(), 'items');
         updateBadge();
         window.renderCart();
+        // Check if returning from Square
+        checkSquareReturn();
     };
 
     // ===== EXPOSE TO WINDOW =====
