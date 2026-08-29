@@ -14,6 +14,9 @@
         ? 'http://localhost:5000' 
         : 'https://www.pigstylemusic.com';
 
+    // ===== TAX RATE =====
+    const TAX_RATE = 0.07; // 7% sales tax
+
     // ===== CHECK ADMIN ACCESS =====
     function isAdmin() {
         try {
@@ -24,6 +27,11 @@
             }
         } catch {}
         return false;
+    }
+
+    // ===== CALCULATE TAX =====
+    function calculateTax(subtotal) {
+        return Math.round(subtotal * TAX_RATE * 100) / 100;
     }
 
     // ===== CHECKOUT STATE =====
@@ -258,7 +266,9 @@
     // ===== CHECKOUT TAB TEMPLATE =====
     function checkoutTabTemplate() {
         const items = window.cart ? window.cart.getItems() : [];
-        const total = window.cart ? window.cart.getTotal() : 0;
+        const subtotal = window.cart ? window.cart.getTotal() : 0;
+        const taxAmount = calculateTax(subtotal);
+        const totalWithTax = subtotal + taxAmount;
         
         if (!items || items.length === 0) {
             return `
@@ -298,6 +308,9 @@
             `;
         });
 
+        const taxDisplay = taxAmount > 0 ? taxAmount.toFixed(2) : '0.00';
+        const totalDisplay = totalWithTax > 0 ? totalWithTax.toFixed(2) : '0.00';
+
         return `
             <div style="background: white; border-radius: 12px; border: 2px solid #28a745; overflow: hidden;">
                 <div style="background: #28a745; color: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center;">
@@ -307,16 +320,24 @@
                 <div style="max-height: 300px; overflow-y: auto;">
                     ${itemsHtml}
                 </div>
-                <div style="padding: 16px 20px; border-top: 2px solid #eee; display: flex; justify-content: space-between; align-items: center; background: #f8f9fa;">
-                    <div>
-                        <span style="font-weight: 600; color: #333; font-size: 16px;">Total:</span>
-                        <span style="font-weight: bold; color: #28a745; font-size: 20px; margin-left: 12px;">$${total.toFixed(2)}</span>
+                <div style="padding: 16px 20px; border-top: 2px solid #eee; background: #f8f9fa;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0;">
+                        <span style="color: #666;">Subtotal:</span>
+                        <span style="font-weight: 500; color: #333;">$${subtotal.toFixed(2)}</span>
                     </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button onclick="clearCart()" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid #e9ecef; padding-bottom: 8px; margin-bottom: 8px;">
+                        <span style="color: #666;">Tax (7%):</span>
+                        <span style="font-weight: 500; color: #333;">$${taxDisplay}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 600; color: #333; font-size: 16px;">Total:</span>
+                        <span style="font-weight: bold; color: #28a745; font-size: 20px;">$${totalDisplay}</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-top: 12px;">
+                        <button onclick="clearCart()" style="flex: 1; padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
                             <i class="fas fa-trash"></i> Clear
                         </button>
-                        <button onclick="openAdminCheckout()" style="padding: 10px 24px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 15px;">
+                        <button onclick="openAdminCheckout()" style="flex: 2; padding: 10px 24px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 15px;">
                             <i class="fas fa-credit-card"></i> Checkout Now
                         </button>
                     </div>
@@ -377,13 +398,6 @@
         const count = window.cart ? window.cart.getItemCount() : 0;
         const el = document.getElementById('tab-cart-count');
         if (el) el.textContent = count;
-        
-        // Also update checkout button badge
-        const checkoutBtn = document.querySelector('[onclick*="switchTab"]');
-        if (checkoutBtn) {
-            const total = window.cart ? window.cart.getTotal() : 0;
-            const text = `Checkout (${count}) $${total.toFixed(2)}`;
-        }
     }
 
     // ========== INIT EVENTS ==========
@@ -968,11 +982,13 @@
         console.log('🛒 Showing admin checkout modal...');
         
         const items = window.cart.getItems();
-        const total = window.cart.getTotal();
+        const subtotal = window.cart.getTotal();
+        const taxAmount = calculateTax(subtotal);
+        const totalWithTax = subtotal + taxAmount;
         
         checkoutItems = items;
-        checkoutTotal = total;
-        checkoutRemaining = total;
+        checkoutTotal = totalWithTax;
+        checkoutRemaining = totalWithTax;
         checkoutPaymentEntries = [];
 
         const container = document.getElementById('admin-checkout-modal-container');
@@ -1015,14 +1031,29 @@
                         </div>
                         
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 10px; background: #e8f5e9; border-radius: 8px;">
-                            <span style="font-weight: 600; color: #333;">Total Due:</span>
-                            <span id="checkout-total-due" style="font-size: 24px; font-weight: bold; color: #28a745;">$${total.toFixed(2)}</span>
+                            <div>
+                                <span style="font-weight: 600; color: #333;">Total Due:</span>
+                                <span style="font-size: 13px; color: #666; margin-left: 8px;">(incl. tax)</span>
+                            </div>
+                            <span id="checkout-total-due" style="font-size: 24px; font-weight: bold; color: #28a745;">$${totalWithTax.toFixed(2)}</span>
+                        </div>
+
+                        <!-- Subtotal and Tax Breakdown -->
+                        <div style="margin-bottom: 10px; padding: 8px 10px; background: #f8f9fa; border-radius: 6px; font-size: 13px;">
+                            <div style="display: flex; justify-content: space-between; color: #666;">
+                                <span>Subtotal:</span>
+                                <span>$${subtotal.toFixed(2)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; color: #666;">
+                                <span>Tax (7%):</span>
+                                <span>$${taxAmount.toFixed(2)}</span>
+                            </div>
                         </div>
 
                         <!-- Remaining Balance -->
                         <div style="margin-bottom: 15px; padding: 10px; background: #e9ecef; border-radius: 8px; display: flex; justify-content: space-between;">
                             <span style="font-weight: 600; color: #333;">Remaining:</span>
-                            <span id="checkout-remaining" style="font-weight: bold; color: #dc3545;">$${total.toFixed(2)}</span>
+                            <span id="checkout-remaining" style="font-weight: bold; color: #dc3545;">$${totalWithTax.toFixed(2)}</span>
                         </div>
 
                         <!-- Debtor Lookup -->
@@ -1682,17 +1713,33 @@
         }
 
         const items = window.cart.getItems();
-        const total = window.cart.getTotal();
+        const subtotal = window.cart.getTotal();
+        const taxAmount = calculateTax(subtotal);
+        const totalWithTax = subtotal + taxAmount;
+
+        // Verify the paid amount matches total with tax
+        const totalPaid = checkoutPaymentEntries.reduce((sum, entry) => sum + entry.amount, 0);
+        if (Math.abs(totalPaid - totalWithTax) > 0.01) {
+            const missingTax = totalWithTax - totalPaid;
+            if (missingTax > 0.01) {
+                addAdminPaymentEntry('Tax (7%)', missingTax);
+                showCheckoutStatus(`⚠️ Added tax: $${missingTax.toFixed(2)}`, 'warning');
+                if (checkoutRemaining > 0.01) {
+                    showCheckoutStatus(`⚠️ Please pay remaining: $${checkoutRemaining.toFixed(2)}`, 'warning');
+                    return;
+                }
+            }
+        }
 
         const orderData = {
             items: window.cart.getCheckoutPayload(),
-            subtotal: total,
-            total: total,
-            tax: 0,
+            subtotal: subtotal,
+            tax: taxAmount,
+            total: totalWithTax,
             shipping: { method: 'pickup', amount: 0 },
             customer_name: currentUserName + ' (Admin)',
             customer_email: '',
-            notes: 'Admin checkout - ' + currentUserName,
+            notes: 'Admin checkout - ' + currentUserName + ' (Tax: $' + taxAmount.toFixed(2) + ')',
             payment_entries: checkoutPaymentEntries,
             source: 'admin_checkout'
         };
