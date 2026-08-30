@@ -165,10 +165,11 @@ nav button.admin-toggle.active {
     background-image: url('/images/pig_as_a_new_arrival.png') !important;
 }
 
-/* Flip Hint */
+
+/* Flip Hint - Center Top */
 .flip-hint {
     position: absolute;
-    bottom: 30px;
+    top: 30px;
     left: 50%;
     transform: translateX(-50%);
     font-size: 1rem;
@@ -186,8 +187,17 @@ nav button.admin-toggle.active {
     font-weight: bold;
 }
 
+/* Backside hint - also center top */
 .flip-card-back .flip-hint {
-    bottom: 20px;
+    top: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: auto;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
 }
 
 @keyframes pulse {
