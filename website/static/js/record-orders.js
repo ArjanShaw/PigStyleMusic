@@ -5,6 +5,7 @@
     let currentPage = 1;
     const pageSize = 50;
     let currentViewId = null;
+    let searchTimeout = null;
 
     const API_BASE = window.location.hostname === 'localhost' 
         ? 'http://localhost:5000' 
@@ -26,8 +27,6 @@
         
         try {
             const searchTerm = document.getElementById('ro-search')?.value || '';
-            const statusFilter = document.getElementById('ro-status-filter')?.value || 'all';
-            const readFilter = document.getElementById('ro-read-filter')?.value || 'all';
             
             let url = `${API_BASE}/api/record-orders?limit=500`;
             if (searchTerm) {
@@ -43,20 +42,10 @@
             if (data.status === 'success') {
                 orders = data.orders || [];
                 
-                // Apply filters
-                filteredOrders = orders.filter(order => {
-                    // Status filter
-                    if (statusFilter !== 'all' && order.status !== statusFilter) return false;
-                    
-                    // Read filter
-                    if (readFilter === 'unread' && order.is_read) return false;
-                    if (readFilter === 'read' && !order.is_read) return false;
-                    
-                    return true;
-                });
+                // Apply local search filter for instant updates
+                applyLocalFilters(searchTerm);
                 
                 renderOrders();
-                updateStats();
             } else {
                 list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'Failed to load'}</div>`;
             }
@@ -64,6 +53,27 @@
             console.error('Error loading orders:', err);
             list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${err.message}</div>`;
         }
+    }
+
+    // Apply local filters (instant search)
+    function applyLocalFilters(searchTerm) {
+        if (!searchTerm || searchTerm.trim() === '') {
+            filteredOrders = [...orders];
+            return;
+        }
+        
+        const term = searchTerm.toLowerCase().trim();
+        filteredOrders = orders.filter(order => {
+            const orderNumber = (order.order_number || '').toLowerCase();
+            const customerName = (order.customer_name || '').toLowerCase();
+            const email = (order.email || '').toLowerCase();
+            const phone = (order.phone || '').toLowerCase();
+            
+            return orderNumber.includes(term) || 
+                   customerName.includes(term) || 
+                   email.includes(term) || 
+                   phone.includes(term);
+        });
     }
 
     // Render orders
@@ -139,26 +149,49 @@
         updatePagination();
     }
 
-    // Update stats
-    function updateStats() {
-        const total = orders.length;
-        const pending = orders.filter(o => o.status === 'pending' || o.status === 'confirmed' || o.status === 'processing').length;
-        const completed = orders.filter(o => o.status === 'completed' || o.status === 'shipped' || o.status === 'delivered').length;
-        const cancelled = orders.filter(o => o.status === 'cancelled').length;
-        const unread = orders.filter(o => !o.is_read).length;
-        
-        document.getElementById('ro-total').textContent = total;
-        document.getElementById('ro-pending').textContent = pending;
-        document.getElementById('ro-completed').textContent = completed;
-        document.getElementById('ro-cancelled').textContent = cancelled;
-        document.getElementById('ro-unread').textContent = unread;
-    }
-
     // Update pagination
     function updatePagination() {
         const total = filteredOrders.length;
         const totalPages = Math.ceil(total / pageSize) || 1;
-        // Add pagination controls if needed
+        
+        const pageInfo = document.getElementById('ro-page-info');
+        const prevBtn = document.getElementById('ro-prev-page');
+        const nextBtn = document.getElementById('ro-next-page');
+        const totalRecords = document.getElementById('ro-total-records');
+        
+        if (pageInfo) {
+            pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+        }
+        if (prevBtn) {
+            prevBtn.disabled = currentPage <= 1;
+        }
+        if (nextBtn) {
+            nextBtn.disabled = currentPage >= totalPages;
+        }
+        if (totalRecords) {
+            totalRecords.textContent = filteredOrders.length;
+        }
+    }
+
+    // Handle instant search with debounce
+    function handleSearch() {
+        // Clear previous timeout
+        if (searchTimeout) {
+            clearTimeout(searchTimeout);
+        }
+        
+        // Debounce search to avoid too many API calls
+        searchTimeout = setTimeout(() => {
+            const searchTerm = document.getElementById('ro-search')?.value || '';
+            
+            // Apply local filter instantly
+            applyLocalFilters(searchTerm);
+            currentPage = 1;
+            renderOrders();
+            
+            // Also fetch from server with search term (debounced)
+            loadOrders();
+        }, 300);
     }
 
     // View order
@@ -182,7 +215,6 @@
                 await markOrderRead(id);
                 order.is_read = true;
                 renderOrders();
-                updateStats();
             }
             
             renderOrderDetails(order);
@@ -294,7 +326,6 @@
                 showModalStatus('✅ Order status updated!', 'success');
                 order.status = status;
                 renderOrders();
-                updateStats();
                 setTimeout(() => {
                     roCloseModal();
                 }, 1000);
@@ -342,7 +373,6 @@
                 showToast('✅ All orders marked as read');
                 orders.forEach(o => o.is_read = true);
                 renderOrders();
-                updateStats();
             } else {
                 alert(`Error: ${result.error || 'Failed to mark all as read'}`);
             }
@@ -375,23 +405,27 @@
         showToast('✅ CSV exported');
     };
 
-    // Apply filters
-    window.roApplyFilters = function() {
-        currentPage = 1;
-        loadOrders();
-    };
-
-    window.roClearFilters = function() {
+    // Clear search
+    window.roClearSearch = function() {
         document.getElementById('ro-search').value = '';
-        document.getElementById('ro-status-filter').value = 'all';
-        document.getElementById('ro-read-filter').value = 'all';
         currentPage = 1;
         loadOrders();
     };
 
-    // Refresh
-    window.roRefresh = function() {
-        loadOrders();
+    // Pagination
+    window.roPrevPage = function() {
+        if (currentPage > 1) {
+            currentPage--;
+            renderOrders();
+        }
+    };
+
+    window.roNextPage = function() {
+        const totalPages = Math.ceil(filteredOrders.length / pageSize) || 1;
+        if (currentPage < totalPages) {
+            currentPage++;
+            renderOrders();
+        }
     };
 
     // Close modal
@@ -448,13 +482,26 @@
         }, 3000);
     }
 
-    // Enter key search
+    // Initialize search with instant updates
     document.addEventListener('DOMContentLoaded', function() {
         const searchInput = document.getElementById('ro-search');
         if (searchInput) {
+            // Listen for input events (instant search)
+            searchInput.addEventListener('input', handleSearch);
+            
+            // Also handle enter key for immediate search
             searchInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
-                    roApplyFilters();
+                    // Clear timeout and search immediately
+                    if (searchTimeout) {
+                        clearTimeout(searchTimeout);
+                        searchTimeout = null;
+                    }
+                    const searchTerm = this.value || '';
+                    applyLocalFilters(searchTerm);
+                    currentPage = 1;
+                    renderOrders();
+                    loadOrders();
                 }
             });
         }
