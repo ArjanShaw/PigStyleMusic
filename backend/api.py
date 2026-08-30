@@ -13129,30 +13129,83 @@ def get_records_location_counts():
         app.logger.error(f"Error getting location counts: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
-
- 
- 
-
-# ---------- EVENTS CRUD ----------
- 
 @app.route('/api/events', methods=['GET'])
 def get_events():
-    """Get all upcoming events"""
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT id, title, description, event_date, image_url, rsvp_count,
-               created_at 
-        FROM events
-        WHERE event_date >= date('now')
-        ORDER BY event_date ASC
-    ''')
-    rows = cursor.fetchall()
-    conn.close()
-    events = [dict(row) for row in rows]
-    return jsonify({'status': 'success', 'events': events})
-
+    """Get all upcoming events - handles weekly recurring events"""
+    try:
+        from datetime import datetime, timedelta, date
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get all events - REMOVED updated_at column
+        cursor.execute('''
+            SELECT id, title, description, event_date, image_url, rsvp_count,
+                   repeat_type, created_at
+            FROM events
+            ORDER BY event_date ASC
+        ''')
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        today = date.today()
+        events = []
+        
+        for row in rows:
+            # Parse the event date - handle different formats
+            event_date_str = row['event_date']
+            if isinstance(event_date_str, str):
+                # Handle ISO format with T
+                if 'T' in event_date_str:
+                    event_date_str = event_date_str.split('T')[0]
+                try:
+                    event_date = datetime.strptime(event_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    # Try parsing as full datetime
+                    try:
+                        event_date = datetime.strptime(row['event_date'], '%Y-%m-%d %H:%M:%S').date()
+                    except:
+                        # Skip this event if date can't be parsed
+                        app.logger.error(f"Could not parse date: {row['event_date']}")
+                        continue
+            else:
+                event_date = event_date_str
+            
+            # For weekly events, calculate the next occurrence
+            repeat_type = row['repeat_type'] or 'none'
+            if repeat_type == 'weekly':
+                # Keep adding 7 days until the event is in the future
+                while event_date < today:
+                    event_date = event_date + timedelta(days=7)
+            
+            # Only include events that are today or in the future
+            if event_date >= today:
+                events.append({
+                    'id': row['id'],
+                    'title': row['title'] or 'Untitled Event',
+                    'description': row['description'] or '',
+                    'event_date': event_date.isoformat(),
+                    'image_url': row['image_url'] or '',
+                    'rsvp_count': row['rsvp_count'] or 0,
+                    'repeat_type': repeat_type,
+                    'created_at': row['created_at']
+                })
+        
+        # Sort by event_date ascending
+        events.sort(key=lambda x: x['event_date'])
+        
+        return jsonify({
+            'status': 'success',
+            'events': events,
+            'count': len(events)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting events: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+ 
 @app.route('/api/events/<int:event_id>', methods=['GET'])
 def get_event(event_id):
     """Get a single event by ID"""
