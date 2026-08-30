@@ -1000,6 +1000,7 @@
             if (data.status === 'success' && data.terminals && data.terminals.length > 0) {
                 squareAvailable = true;
                 availableTerminals = data.terminals;
+                console.log(`✅ ${availableTerminals.length} Square terminals available`);
                 return true;
             } else {
                 squareAvailable = false;
@@ -1229,7 +1230,7 @@
         // Check Square availability
         const available = await checkSquareAvailability();
         if (!available) {
-            throw new Error('No Square POS terminals available. Please use another payment method.');
+            throw new Error('No Square POS terminals available. Please check Square terminal connectivity.');
         }
         
         if (!availableTerminals || availableTerminals.length === 0) {
@@ -1242,14 +1243,9 @@
             throw new Error('No POS terminal ID found.');
         }
         
-        // Clean device ID
-        if (deviceId.startsWith('device:')) {
-            deviceId = deviceId.substring(7);
-        }
-        if (deviceId.includes(':')) {
-            const parts = deviceId.split(':');
-            deviceId = parts[parts.length - 1];
-        }
+        // Clean device ID - keep the full ID with 'device:' prefix
+        // The backend will handle the cleaning
+        console.log('📟 Using device ID:', deviceId);
         
         const recordIds = items
             .filter(item => item.type === 'record' && item.original_id)
@@ -1262,8 +1258,10 @@
             record_ids: recordIds.length > 0 ? recordIds : ['1'],
             record_titles: titles.length > 0 ? titles : ['Item'],
             reference_id: 'pos_' + Date.now(),
-            device_id: deviceId
+            device_id: deviceId  // Send full device ID with 'device:' prefix
         };
+        
+        console.log('📟 Sending POS payload:', payload);
         
         try {
             const response = await fetch(`${API_BASE}/api/square/terminal/checkout`, {
@@ -1319,7 +1317,7 @@
     }
 
     // ===== WAIT FOR POS COMPLETION =====
-    function waitForPosCompletion(checkoutId, timeout = 60000) {
+    function waitForPosCompletion(checkoutId, timeout = 120000) {
         return new Promise((resolve, reject) => {
             let attempts = 0;
             const maxAttempts = timeout / 2000; // Check every 2 seconds
