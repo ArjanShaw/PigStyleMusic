@@ -14015,6 +14015,57 @@ def delete_feedback(feedback_id):
         app.logger.error(f"Error deleting feedback: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/gift-card/<code>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def delete_gift_card(code):
+    """
+    Delete a gift card and all its accounting records.
+    This removes the journal entry and all journal lines for this gift card.
+    """
+    try:
+        code = code.upper().strip()
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if gift card exists
+        cursor.execute('SELECT id, source_id FROM journal_entries WHERE source_type = "gift_card" AND source_id = ?', (code,))
+        entry = cursor.fetchone()
+        
+        if not entry:
+            conn.close()
+            return jsonify({'status': 'error', 'error': f'Gift card {code} not found'}), 404
+        
+        entry_id = entry['id']
+        
+        # Check for any redemptions
+        cursor.execute('SELECT id FROM journal_entries WHERE source_type = "gift_card_redeem" AND source_id = ?', (code,))
+        redemptions = cursor.fetchall()
+        
+        if redemptions:
+            # Delete redemption journal lines and entries
+            for redemption in redemptions:
+                cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (redemption['id'],))
+                cursor.execute('DELETE FROM journal_entries WHERE id = ?', (redemption['id'],))
+        
+        # Delete the main gift card journal lines and entry
+        cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (entry_id,))
+        cursor.execute('DELETE FROM journal_entries WHERE id = ?', (entry_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"Gift card {code} deleted with all accounting records by {session.get('username', 'admin')}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Gift card {code} and all accounting records deleted successfully'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error deleting gift card {code}: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)

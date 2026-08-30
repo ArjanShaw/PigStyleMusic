@@ -26,13 +26,20 @@
                 credentials: 'include',
                 headers: getHeaders()
             });
+            
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                console.error('Non-JSON response:', text.substring(0, 200));
+                throw new Error('Server returned non-JSON response');
+            }
+            
             const data = await response.json();
             
             if (data.status === 'success') {
-                giftCards = data.cards || [];
+                giftCards = data.gift_cards || [];
                 filteredCards = [...giftCards];
                 renderGiftCards();
-                updateStats();
             } else {
                 list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'Failed to load'}</div>`;
             }
@@ -51,8 +58,8 @@
         let display = filteredCards;
         if (search) {
             display = filteredCards.filter(c => 
-                c.code?.toLowerCase().includes(search) ||
-                c.recipient_name?.toLowerCase().includes(search)
+                (c.code || '').toLowerCase().includes(search) ||
+                (c.recipient_name || '').toLowerCase().includes(search)
             );
         }
         
@@ -70,39 +77,35 @@
                     <th style="padding: 6px 8px; text-align: left; color: #333;">Recipient</th>
                     <th style="padding: 6px 8px; text-align: left; color: #333;">Created</th>
                     <th style="padding: 6px 8px; text-align: center; color: #333;">Status</th>
+                    <th style="padding: 6px 8px; text-align: center; color: #333;">Actions</th>
                 </tr>
             </thead>
             <tbody>`;
         
         display.forEach(card => {
-            const statusText = card.balance > 0 ? '✅ Active' : '⛔ Used';
-            const statusColor = card.balance > 0 ? '#28a745' : '#dc3545';
+            const balance = card.balance || 0;
+            const statusText = balance > 0 ? '✅ Active' : '⛔ Used';
+            const statusColor = balance > 0 ? '#28a745' : '#dc3545';
             
             html += `<tr>
                 <td style="padding: 6px 8px; border-bottom: 1px solid #eee; color: #333; font-family: monospace; font-size: 12px;">${card.code || '—'}</td>
                 <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right; color: #333;">$${(card.card_value || 0).toFixed(2)}</td>
-                <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right; color: ${statusColor}; font-weight: 600;">$${(card.balance || 0).toFixed(2)}</td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right; color: ${statusColor}; font-weight: 600;">$${(balance).toFixed(2)}</td>
                 <td style="padding: 6px 8px; border-bottom: 1px solid #eee; color: #333;">${card.recipient_name || '—'}</td>
                 <td style="padding: 6px 8px; border-bottom: 1px solid #eee; color: #666; font-size: 12px;">${card.created_at ? new Date(card.created_at).toLocaleDateString() : '—'}</td>
                 <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: center;">
                     <span style="color: ${statusColor};">${statusText}</span>
+                </td>
+                <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: center;">
+                    <button onclick="gcDelete('${card.code}')" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                        <i class="fas fa-trash"></i>
+                    </button>
                 </td>
             </tr>`;
         });
         
         html += '</tbody></table>';
         list.innerHTML = html;
-    }
-
-    // Update stats
-    function updateStats() {
-        const total = giftCards.length;
-        const active = giftCards.filter(c => c.balance > 0).length;
-        const totalValue = giftCards.reduce((sum, c) => sum + (c.card_value || 0), 0);
-        
-        document.getElementById('gc-total').textContent = total;
-        document.getElementById('gc-active').textContent = active;
-        document.getElementById('gc-total-value').textContent = `$${totalValue.toFixed(2)}`;
     }
 
     // Show create modal
@@ -134,6 +137,10 @@
             return;
         }
         
+        const timestamp = Date.now().toString(36).toUpperCase();
+        const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+        const code = `GIFT-${timestamp}-${random}`;
+        
         const btn = document.getElementById('gc-btn');
         const originalText = btn.innerHTML;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
@@ -145,17 +152,26 @@
                 credentials: 'include',
                 headers: getHeaders(),
                 body: JSON.stringify({
+                    code: code,
                     card_value: value,
+                    charge_amount: value,
                     recipient_name: recipient,
                     notes: notes || null,
                     payment_method: 'cash'
                 })
             });
+            
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                console.error('Non-JSON response:', text.substring(0, 200));
+                throw new Error('Server returned non-JSON response');
+            }
+            
             const data = await response.json();
             
             if (data.status === 'success') {
-                const code = data.code || 'GIFT-' + Date.now();
-                showStatus(`✅ Gift card created! Code: ${code}`, 'success');
+                showStatus(`✅ Gift card created! Code: ${data.code || code}`, 'success');
                 setTimeout(() => {
                     gcCloseModal();
                     loadGiftCards();
@@ -169,6 +185,54 @@
         } finally {
             btn.innerHTML = originalText;
             btn.disabled = false;
+        }
+    };
+
+    // Delete gift card - removes all accounting entries
+    window.gcDelete = async function(code) {
+        if (!code) return;
+        
+        const card = giftCards.find(c => c.code === code);
+        if (!card) {
+            showToast('Gift card not found', 'error');
+            return;
+        }
+        
+        const balance = card.balance || 0;
+        let confirmMsg = `Delete gift card ${code}?`;
+        if (balance > 0) {
+            confirmMsg += `\n\n⚠️ This card has $${balance.toFixed(2)} remaining balance.\nDeleting will remove all accounting records for this card.`;
+        } else {
+            confirmMsg += '\n\nThis will remove all accounting records for this card.';
+        }
+        
+        if (!confirm(confirmMsg)) return;
+        
+        try {
+            const response = await fetch(`${API_BASE}/api/gift-card/${encodeURIComponent(code)}`, {
+                method: 'DELETE',
+                credentials: 'include',
+                headers: getHeaders()
+            });
+            
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                console.error('Non-JSON response:', text.substring(0, 200));
+                throw new Error('Server returned non-JSON response');
+            }
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                showToast(`✅ Gift card ${code} deleted successfully`, 'success');
+                loadGiftCards();
+            } else {
+                showToast(`❌ Error: ${data.error || 'Failed to delete'}`, 'error');
+            }
+        } catch (err) {
+            console.error('Error deleting gift card:', err);
+            showToast(`❌ Error: ${err.message}`, 'error');
         }
     };
 
@@ -210,11 +274,49 @@
         setTimeout(() => { statusDiv.style.display = 'none'; }, 5000);
     }
 
+    // Toast notification
+    function showToast(message, type = 'success') {
+        const toast = document.createElement('div');
+        const bgColor = type === 'success' ? '#28a745' : type === 'error' ? '#dc3545' : type === 'info' ? '#17a2b8' : '#ffc107';
+        toast.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            background: ${bgColor};
+            color: white;
+            border-radius: 8px;
+            z-index: 10000;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            max-width: 400px;
+        `;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
     // Close modal on outside click
     document.addEventListener('click', function(e) {
         const modal = document.getElementById('gc-modal');
         if (modal && e.target === modal) {
             gcCloseModal();
+        }
+    });
+
+    // Enter key search
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchInput = document.getElementById('gc-search');
+        if (searchInput) {
+            searchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    gcSearch();
+                }
+            });
         }
     });
 

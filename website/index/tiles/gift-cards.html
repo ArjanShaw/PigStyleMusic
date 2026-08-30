@@ -2,22 +2,6 @@
     <h2 style="color: #333; margin: 0 0 5px 0;">🎁 Gift Cards</h2>
     <p style="color: #666; margin: 0 0 10px 0;">Create and manage gift cards</p>
     
-    <!-- Stats -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; width: 100%;">
-        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
-            <div style="font-size: 20px; color: #28a745;" id="gc-total">0</div>
-            <div style="font-size: 10px; color: #666;">Total Cards</div>
-        </div>
-        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
-            <div style="font-size: 20px; color: #007bff;" id="gc-active">0</div>
-            <div style="font-size: 10px; color: #666;">Active</div>
-        </div>
-        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
-            <div style="font-size: 20px; color: #ffc107;" id="gc-total-value">$0</div>
-            <div style="font-size: 10px; color: #666;">Total Value</div>
-        </div>
-    </div>
-    
     <!-- Actions -->
     <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap;">
         <button onclick="gcShowCreate()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
@@ -29,13 +13,13 @@
     </div>
     
     <!-- Search -->
-    <div style="display: flex; gap: 10px; width: 100%;">
-        <input type="text" id="gc-search" placeholder="Search by code or recipient..." style="flex: 1; padding: 8px; border: 2px solid #ddd; border-radius: 6px; font-size: 13px;">
-        <button onclick="gcSearch()" style="padding: 6px 14px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">
-            <i class="fas fa-search"></i>
+    <div style="display: flex; gap: 10px; width: 100%; flex-wrap: wrap;">
+        <input type="text" id="gc-search" placeholder="Search by code or recipient..." style="flex: 1; min-width: 150px; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+        <button onclick="gcSearch()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            <i class="fas fa-search"></i> Search
         </button>
-        <button onclick="gcClear()" style="padding: 6px 14px; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer;">
-            <i class="fas fa-times"></i>
+        <button onclick="gcClear()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            <i class="fas fa-times"></i> Clear
         </button>
     </div>
     
