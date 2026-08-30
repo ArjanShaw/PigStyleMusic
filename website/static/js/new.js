@@ -13,7 +13,7 @@ function initNew() {
             buttonColor: '#ffd93d',
             buttonTextColor: '#333',
             locationId: 150,
-            statusId: 1,
+            statusId: 2,
             searchInputId: 'newSearchInput',
             showCondition: true,
             showLocation: true  
