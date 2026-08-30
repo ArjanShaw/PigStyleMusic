@@ -1,107 +1,121 @@
+#!/usr/bin/env python3
+"""
+Create a window sign with 6-inch tall black text on transparent background.
+The image is cropped tightly to fit the text with padding.
+Usage: python create_window_signs.py "KIDS"
+"""
+
 from PIL import Image, ImageDraw, ImageFont
 import sys
+import os
 
-font_path = "/home/arjan-ubuntu/Documents/keep-on-truckin/KEEPT___.TTF"
+# Font path - change this to match your font location
+FONT_PATH = "/home/arjan-ubuntu/Documents/keep-on-truckin/KEEPT___.TTF"
 
 
 def inches_to_pixels(inches, dpi=300):
+    """Convert inches to pixels"""
     return int(inches * dpi)
 
 
-def fit_text(draw, text, font_path, max_width, max_height, start_size=500):
+def create_sign(text):
     """
-    Width-first scaling:
-    - maximize usage of horizontal space
-    - then adjust if height overflows
+    Create a sign with 6-inch tall black text on transparent background.
+    Image is cropped tightly to fit the text with padding.
+    
+    Args:
+        text: The text to display on the sign
     """
-
-    # Start large
-    font = ImageFont.truetype(font_path, start_size)
-    bbox = draw.textbbox((0, 0), text, font=font)
-    w = bbox[2] - bbox[0]
-    h = bbox[3] - bbox[1]
-
-    # Scale to fill width
-    scale = max_width / w
-    new_size = max(10, int(start_size * scale))
-
-    font = ImageFont.truetype(font_path, new_size)
-    bbox = draw.textbbox((0, 0), text, font=font)
-    w = bbox[2] - bbox[0]
-    h = bbox[3] - bbox[1]
-
-    # If height is too big, scale down
-    if h > max_height:
-        scale = max_height / h
-        new_size = max(10, int(new_size * scale))
-        font = ImageFont.truetype(font_path, new_size)
-
-        bbox = draw.textbbox((0, 0), text, font=font)
-        w = bbox[2] - bbox[0]
-        h = bbox[3] - bbox[1]
-
-    return font, w, h
-
-
-def create_designed_sign():
+    if not text:
+        print("❌ Error: Please provide text for the sign")
+        print("Usage: python create_window_signs.py \"YOUR TEXT\"")
+        sys.exit(1)
+    
     dpi = 300
-    page_w = inches_to_pixels(36, dpi)
-    page_h = inches_to_pixels(48, dpi)
-    margin = inches_to_pixels(1.5, dpi)
-
-    image = Image.new("RGB", (page_w, page_h), "white")
+    
+    # Target text height: 6 inches
+    text_height_px = inches_to_pixels(6, dpi)
+    
+    # Load the font
+    try:
+        font = ImageFont.truetype(FONT_PATH, text_height_px)
+        print(f"✅ Loaded font: {FONT_PATH}")
+    except Exception as e:
+        print(f"⚠️  Could not load font: {e}")
+        print("   Using default font instead")
+        font = ImageFont.load_default()
+        text_height_px = 60
+    
+    # Get the font metrics properly
+    # Create a temporary image to measure text
+    temp_image = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+    temp_draw = ImageDraw.Draw(temp_image)
+    
+    # Get the full bounding box including ascent/descent
+    # Using textbbox with anchor 'la' (left baseline) gives us the baseline position
+    bbox = temp_draw.textbbox((0, 0), text, font=font)
+    
+    # bbox = (left, top, right, bottom)
+    text_left = bbox[0]
+    text_top = bbox[1]  # This is the ascent (negative for most fonts)
+    text_right = bbox[2]
+    text_bottom = bbox[3]  # This is the descent
+    
+    # Calculate actual text dimensions
+    text_width = text_right - text_left
+    text_height = text_bottom - text_top
+    
+    print(f"📝 Text: '{text}'")
+    print(f"📏 Text dimensions: {text_width} x {text_height} pixels")
+    print(f"   Left: {text_left}, Top: {text_top}, Right: {text_right}, Bottom: {text_bottom}")
+    
+    # Add padding around the text (in inches)
+    padding_inches = 2
+    padding_px = inches_to_pixels(padding_inches, dpi)
+    
+    # Calculate final image size with padding
+    image_width = text_width + (padding_px * 2)
+    image_height = text_height + (padding_px * 2)
+    
+    # Create the actual image with transparent background
+    image = Image.new("RGBA", (image_width, image_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
-
-    usable_w = page_w - 2 * margin
-    usable_h = page_h - 2 * margin
-
-    # Layout zones
-    top_h = int(usable_h * 0.25)
-    middle_h = int(usable_h * 0.4)
-    bottom_h = int(usable_h * 0.25)
-
-    # --- TEXT ---
-    top_text = "STORE MADE"
-    middle_text = "FREE TOTES"
-    bottom_text = "WITH 5+ ITEMS"
-
-    # --- FIT TEXT (now width-maximizing) ---
-    top_font, top_w, top_h_actual = fit_text(draw, top_text, font_path, usable_w, top_h, 400)
-    mid_font, mid_w, mid_h_actual = fit_text(draw, middle_text, font_path, usable_w, middle_h, 700)
-    bot_font, bot_w, bot_h_actual = fit_text(draw, bottom_text, font_path, usable_w, bottom_h, 350)
-
-    # --- DRAW ---
-    y = margin
-
-    # Top
-    x = (page_w - top_w) // 2
-    draw.text((x, y), top_text, fill="black", font=top_font)
-    y += top_h
-
-    # Middle (hero)
-    x = (page_w - mid_w) // 2
-    draw.text((x, y), middle_text, fill="black", font=mid_font)
-    y += middle_h
-
-    # Bottom
-    x = (page_w - bot_w) // 2
-    draw.text((x, y), bottom_text, fill="black", font=bot_font)
-
-    # Border
-    border_thickness = 20
-    draw.rectangle(
-        [border_thickness, border_thickness,
-         page_w - border_thickness,
-         page_h - border_thickness],
-        outline="black",
-        width=border_thickness
-    )
-
-    filename = "/home/arjan-ubuntu/Documents/store_totes_poster.png"
-    image.save(filename, "PNG", dpi=(dpi, dpi))
-
-    print(f"Saved: {filename}")
+    
+    # Position the text with padding, offset by the top (ascent) value
+    # The top value is negative, so we add it to move the text down correctly
+    x = padding_px - text_left
+    y = padding_px - text_top
+    
+    # Draw the text in BLACK
+    draw.text((x, y), text, fill="black", font=font)
+    
+    # Generate output filename
+    output_file = f"{text.replace(' ', '_')}_sign.png"
+    
+    # Save the image
+    image.save(output_file, "PNG", dpi=(dpi, dpi))
+    
+    print(f"✅ Sign saved: {output_file}")
+    print(f"   Image size: {image_width} x {image_height} pixels")
+    print(f"   Image size: {image_width/dpi:.1f}\" x {image_height/dpi:.1f}\"")
+    print(f"   Padding: {padding_inches}\" on all sides")
+    print("   Background: Transparent")
+    print("   Text color: Black")
+    print(f"   File size: {os.path.getsize(output_file) / 1024:.1f} KB")
+    
+    return output_file
 
 
 if __name__ == "__main__":
-    create_designed_sign()
+    # Get text from command line argument
+    if len(sys.argv) < 2:
+        print("❌ Error: Please provide text for the sign")
+        print("Usage: python create_window_signs.py \"YOUR TEXT\"")
+        print("Examples:")
+        print("  python create_window_signs.py \"KIDS\"")
+        print("  python create_window_signs.py \"RECORDS\"")
+        print("  python create_window_signs.py \"SALE 50% OFF\"")
+        sys.exit(1)
+    
+    text = sys.argv[1]
+    create_sign(text)
