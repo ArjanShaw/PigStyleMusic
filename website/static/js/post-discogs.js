@@ -8,7 +8,7 @@
         : 'https://www.pigstylemusic.com';
 
     let records = [];
-    let locations = [];
+    let cutoffDate = null;
 
     function getHeaders() {
         const headers = { 'Content-Type': 'application/json' };
@@ -17,31 +17,52 @@
         return headers;
     }
 
-    // Load locations
-    async function loadLocations() {
-        const select = document.getElementById('post-discogs-location-filter');
-        if (!select) return;
-        
+    // ===== FETCH LAST_SEEN_CUTOFF_DATE FROM CONFIG (same as RecordsComponent) =====
+    async function fetchLastSeenCutoff() {
         try {
-            const response = await fetch(`${API_BASE}/api/locations`, {
+            const response = await fetch(`${API_BASE}/config/LAST_SEEN_CUTOFF_DATE`, {
                 credentials: 'include',
-                mode: 'cors',
-                headers: getHeaders()
+                headers: { 'Content-Type': 'application/json' }
             });
-            const data = await response.json();
-            if (data.status === 'success') {
-                locations = data.locations || [];
-                select.innerHTML = '<option value="all">-- All (no filter) --</option><option value="all_with_location">-- All with Location --</option>';
-                locations.forEach(loc => {
-                    const opt = document.createElement('option');
-                    opt.value = loc.id;
-                    opt.textContent = loc.name;
-                    select.appendChild(opt);
-                });
+            
+            if (!response.ok) {
+                console.warn('Could not fetch LAST_SEEN_CUTOFF_DATE, using default');
+                return null;
             }
+            
+            const data = await response.json();
+            if (data.status === 'success' && data.config_value) {
+                console.log('📅 Post Discogs - LAST_SEEN_CUTOFF_DATE:', data.config_value);
+                return data.config_value;
+            }
+            return null;
         } catch (err) {
-            console.error('Error loading locations:', err);
+            console.warn('Error fetching LAST_SEEN_CUTOFF_DATE:', err);
+            return null;
         }
+    }
+
+    // ===== CHECK IF RECORD SHOULD BE VISIBLE (same as RecordsComponent) =====
+    function isRecordVisible(record) {
+        // If no cutoff date is set, show all records
+        if (!cutoffDate) {
+            return true;
+        }
+        
+        // If last_seen is null, do NOT show the record
+        if (!record.last_seen) {
+            return false;
+        }
+        
+        // Compare last_seen with cutoff date
+        let lastSeenDate = record.last_seen;
+        if (typeof lastSeenDate === 'string') {
+            if (lastSeenDate.includes('T')) {
+                lastSeenDate = lastSeenDate.split('T')[0];
+            }
+        }
+        
+        return lastSeenDate >= cutoffDate;
     }
 
     // Load records
@@ -51,21 +72,14 @@
         
         list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading...</div>';
         
-        const locationFilter = document.getElementById('post-discogs-location-filter');
-        const lastSeen = document.getElementById('post-last-seen-cutoff');
-        
-        const locationValue = locationFilter ? locationFilter.value : 'all';
-        const lastSeenValue = lastSeen ? lastSeen.value : '';
-        
         try {
+            // Build URL with status filter and last_seen_after if cutoff exists
             let url = `${API_BASE}/records?status_ids=2&limit=500`;
-            if (locationValue === 'all_with_location') {
-                url += '&require_location=true';
-            } else if (locationValue !== 'all') {
-                url += `&location_id=${locationValue}`;
-            }
-            if (lastSeenValue) {
-                url += `&last_seen_after=${lastSeenValue}`;
+            
+            // Add last_seen_after filter if cutoff date exists (same as RecordsComponent)
+            if (cutoffDate) {
+                url += `&last_seen_after=${cutoffDate}`;
+                console.log('📅 Post Discogs - Adding last_seen_after filter:', cutoffDate);
             }
             
             const response = await fetch(url, {
@@ -76,7 +90,16 @@
             const data = await response.json();
             
             if (data.status === 'success') {
-                records = data.records || [];
+                let fetchedRecords = data.records || [];
+                
+                // Apply client-side cutoff filter (same as RecordsComponent)
+                if (cutoffDate) {
+                    const beforeFilter = fetchedRecords.length;
+                    fetchedRecords = fetchedRecords.filter(record => isRecordVisible(record));
+                    console.log(`📅 Post Discogs - Client-side cutoff filter: ${beforeFilter} → ${fetchedRecords.length} records`);
+                }
+                
+                records = fetchedRecords;
                 renderRecords();
                 showStatus(`Loaded ${records.length} records`, 'info');
             } else {
@@ -94,7 +117,9 @@
         if (!list) return;
         
         if (records.length === 0) {
-            list.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">No records found</div>';
+            list.innerHTML = `<div style="text-align: center; padding: 20px; color: #999;">
+                No records found${cutoffDate ? ` (seen after ${cutoffDate})` : ''}
+            </div>`;
             return;
         }
 
@@ -375,22 +400,6 @@
         loadRecords();
     };
 
-    // Refresh
-    window.postDiscogsRefresh = function() {
-        loadRecords();
-    };
-
-    // Apply last seen filter
-    window.postApplyLastSeen = function() {
-        loadRecords();
-    };
-
-    window.postClearLastSeen = function() {
-        const input = document.getElementById('post-last-seen-cutoff');
-        if (input) input.value = '';
-        loadRecords();
-    };
-
     // Show status
     function showStatus(message, type) {
         const statusDiv = document.getElementById('post-discogs-status');
@@ -403,20 +412,13 @@
 
     // Init
     window.initPostDiscogs = function() {
-        console.log('Post to Discogs initialized');
+        console.log('📀 Post to Discogs initialized - using same filter as Shop');
         
-        // Check if elements exist before adding listeners
-        const locationFilter = document.getElementById('post-discogs-location-filter');
-        if (locationFilter) {
-            locationFilter.addEventListener('change', loadRecords);
-        }
-        
-        const lastSeenInput = document.getElementById('post-last-seen-cutoff');
-        if (lastSeenInput) {
-            lastSeenInput.addEventListener('change', loadRecords);
-        }
-        
-        loadLocations();
-        loadRecords();
+        // Fetch cutoff date first, then load records (same as RecordsComponent)
+        fetchLastSeenCutoff().then(date => {
+            cutoffDate = date;
+            console.log('📅 Post Discogs using cutoff date:', cutoffDate || 'None (showing all)');
+            loadRecords();
+        });
     };
 })();
