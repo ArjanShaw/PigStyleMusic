@@ -54,41 +54,21 @@
 
     // ===== CHECK IF RECORD SHOULD BE VISIBLE =====
     function isRecordVisible(record, cutoffDate) {
-        // If no cutoff date is set, show all records
-        if (!cutoffDate) {
-            return true;
-        }
+        if (!cutoffDate) return true;
+        if (!record.last_seen) return false;
         
-        // If last_seen is null, do NOT show the record
-        if (!record.last_seen) {
-            return false;
-        }
-        
-        // Compare last_seen with cutoff date
-        // last_seen is now a full timestamp, so we need to compare just the date part
         let lastSeenDate = record.last_seen;
-        if (typeof lastSeenDate === 'string') {
-            // Extract just the date part (YYYY-MM-DD) from the timestamp
-            if (lastSeenDate.includes('T')) {
-                lastSeenDate = lastSeenDate.split('T')[0];
-            }
+        if (typeof lastSeenDate === 'string' && lastSeenDate.includes('T')) {
+            lastSeenDate = lastSeenDate.split('T')[0];
         }
-        
-        // Record is visible only if last_seen date >= cutoff date
         return lastSeenDate >= cutoffDate;
     }
 
     // ===== GET CONDITION DISPLAY NAME =====
     function getConditionDisplay(record) {
-        if (record.sleeve_condition_name) {
-            return record.sleeve_condition_name;
-        }
-        if (record.condition) {
-            return record.condition;
-        }
-        if (record.sleeve_display) {
-            return record.sleeve_display;
-        }
+        if (record.sleeve_condition_name) return record.sleeve_condition_name;
+        if (record.condition) return record.condition;
+        if (record.sleeve_display) return record.sleeve_display;
         return 'Unknown';
     }
 
@@ -248,7 +228,8 @@
                 idPrefix: config.idPrefix || 'records',
                 searchInputId: config.searchInputId || null,
                 showCondition: config.showCondition || false,
-                showLocation: config.showLocation || false
+                showLocation: config.showLocation || false,
+                showEmptyCard: config.showEmptyCard || false
             };
             
             this.isInitialized = false;
@@ -389,8 +370,6 @@
                     params.append('status_ids', this.config.statusId);
                 }
                 if (this.cutoffDate) {
-                    // For timestamp comparison, we need to compare date part
-                    // The API expects YYYY-MM-DD format for last_seen_after
                     params.append('last_seen_after', this.cutoffDate);
                     console.log('📀 Adding last_seen_after filter:', this.cutoffDate);
                 }
@@ -412,7 +391,6 @@
                 if (data.status === 'success' && data.records) {
                     let records = data.records || [];
                     
-                    // Apply cutoff date filter (client-side fallback for timestamps)
                     if (this.cutoffDate) {
                         const cutoffStr = this.cutoffDate;
                         const beforeFilter = records.length;
@@ -467,50 +445,52 @@
             const end = Math.min(start + this.config.pageSize, this.filteredData.length);
             const pageData = this.filteredData.slice(start, end);
             
-            if (!pageData || pageData.length === 0) {
-                container.innerHTML = `
-                    <div style="text-align: center; padding: 40px; color: #888;">
-                        <div style="margin-bottom: 10px;">🔍</div>
-                        <p>No ${this.config.title.toLowerCase()} found</p>
-                        ${this.searchTerm ? `<p style="font-size: 12px; color: #999;">Try adjusting your search</p>` : ''}
-                        ${this.cutoffDate ? `<p style="font-size: 11px; color: #999;">Showing records seen after ${this.cutoffDate}</p>` : ''}
-                    </div>
-                `;
-                return;
-            }
-
             let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; padding: 10px 0;">';
-            pageData.forEach(record => {
-                const price = parseFloat(record.store_price) || 0;
-                const inStock = record.status_id === 2 || record.status_id === 1;
-                const imageUrl = record.image_url || '';
-                const recordData = JSON.stringify(record).replace(/"/g, '&quot;');
-                const condition = getConditionDisplay(record);
-                const location = record.location_name || '';
-                
-                html += `
-                    <div style="background: #f8f8f8; border-radius: 8px; overflow: hidden; border: 2px solid ${this.config.borderColor}; padding: 12px; cursor: pointer; transition: all 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.08);" 
-                         onclick="openRecordModal(${recordData})">
-                        <div style="height: 120px; display: flex; align-items: center; justify-content: center; background: #e0e0e0; border-radius: 4px; margin-bottom: 8px; position: relative; overflow: hidden;">
-                            ${imageUrl ? 
-                                `<img src="${imageUrl}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\\'font-size: 40px; color: #bbb;\\'>🎵</span>';">` : 
-                                `<span style="font-size: 40px; color: #bbb;">🎵</span>`
-                            }
-                            ${this.config.badgeText ? `
-                                <div style="position: absolute; top: 8px; right: 8px; background: ${this.config.badgeColor}; color: #333; padding: 2px 10px; border-radius: 12px; font-size: 10px; font-weight: bold;">
-                                    ${this.config.badgeText}
-                                </div>
-                            ` : ''}
+            
+            if (!pageData || pageData.length === 0) {
+                html += `<div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #888;">No ${this.config.title.toLowerCase()} found</div>`;
+            } else {
+                pageData.forEach(record => {
+                    const price = parseFloat(record.store_price) || 0;
+                    const imageUrl = record.image_url || '';
+                    const recordData = JSON.stringify(record).replace(/"/g, '&quot;');
+                    const condition = getConditionDisplay(record);
+                    const location = record.location_name || '';
+                    
+                    html += `
+                        <div style="background: #f8f8f8; border-radius: 8px; overflow: hidden; border: 2px solid ${this.config.borderColor}; padding: 12px; cursor: pointer; transition: all 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.08);" 
+                             onclick="openRecordModal(${recordData})">
+                            <div style="height: 120px; display: flex; align-items: center; justify-content: center; background: #e0e0e0; border-radius: 4px; margin-bottom: 8px; position: relative; overflow: hidden;">
+                                ${imageUrl ? 
+                                    `<img src="${imageUrl}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\\'font-size: 40px; color: #bbb;\\'>🎵</span>';">` : 
+                                    `<span style="font-size: 40px; color: #bbb;">🎵</span>`
+                                }
+                                ${this.config.badgeText ? `
+                                    <div style="position: absolute; top: 8px; right: 8px; background: ${this.config.badgeColor}; color: #333; padding: 2px 10px; border-radius: 12px; font-size: 10px; font-weight: bold;">
+                                        ${this.config.badgeText}
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div style="font-weight: bold; color: #333; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${record.artist || 'Unknown Artist'}</div>
+                            <div style="color: #666; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${record.title || 'Untitled'}</div>
+                            ${this.config.showCondition ? `<div style="color: #555; font-size: 10px; margin-top: 2px;">📦 ${condition}</div>` : ''}
+                            ${this.config.showLocation && location ? `<div style="color: #888; font-size: 10px; margin-top: 1px;">📍 ${location}</div>` : ''}
+                            <div style="color: #ff6b6b; font-size: 16px; font-weight: bold; margin-top: 4px;">$${price.toFixed(2)}</div>
+                            ${record.barcode ? `<div style="font-size: 8px; color: #999; margin-top: 2px; font-family: monospace;">${record.barcode}</div>` : ''}
                         </div>
-                        <div style="font-weight: bold; color: #333; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${record.artist || 'Unknown Artist'}</div>
-                        <div style="color: #666; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${record.title || 'Untitled'}</div>
-                        ${this.config.showCondition ? `<div style="color: #555; font-size: 10px; margin-top: 2px;">📦 ${condition}</div>` : ''}
-                        ${this.config.showLocation && location ? `<div style="color: #888; font-size: 10px; margin-top: 1px;">📍 ${location}</div>` : ''}
-                        <div style="color: #ff6b6b; font-size: 16px; font-weight: bold; margin-top: 4px;">$${price.toFixed(2)}</div>
-                        ${record.barcode ? `<div style="font-size: 8px; color: #999; margin-top: 2px; font-family: monospace;">${record.barcode}</div>` : ''}
+                    `;
+                });
+            }
+            
+            // ===== ADD EMPTY CARD WITH PIG IMAGE =====
+            if (this.config.showEmptyCard) {
+                html += `
+                    <div onclick="showRandomModal()" style="background: #f8f8f8; border-radius: 8px; overflow: hidden; border: 2px solid ${this.config.borderColor}; padding: 12px; cursor: pointer; transition: all 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 200px;">
+                        <img src="/images/pig_delivering_order.png" alt="Request a Record" style="width: 100%; height: 100%; object-fit: contain;" onerror="this.style.display='none'">
                     </div>
                 `;
-            });
+            }
+            
             html += '</div>';
             container.innerHTML = html;
         }
