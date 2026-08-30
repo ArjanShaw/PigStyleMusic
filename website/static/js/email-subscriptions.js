@@ -490,4 +490,4 @@
         console.log('Email Subscriptions initialized');
         loadSubscriptions();
     };
-})();  
+})();

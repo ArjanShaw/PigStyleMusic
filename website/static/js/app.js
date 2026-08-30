@@ -41,7 +41,7 @@ function updateMenu() {
         'record-orders', 'feedback', 'sticky-notes', 'stats', 
         'creditors', 'users', 'print-settings', 'store-settings', 
         'gift-cards', 'config-keys', 'cache-management', 'system-info', 
-        'db-query'
+        'db-query', 'email-list'
     ];
     
     adminPages.forEach(page => {
@@ -104,7 +104,8 @@ async function showPage(page, btnElement) {
         'custom-labels', 'email-subscriptions', 'record-orders', 'feedback', 
         'sticky-notes', 'stats', 'creditors', 'users', 'print-settings', 
         'store-settings', 'gift-cards', 'config-keys', 'cache-management', 
-        'system-info', 'db-query', 'custom-checkout', 'admin-dashboard'
+        'system-info', 'db-query', 'custom-checkout', 'admin-dashboard',
+        'email-list'
     ];
     
     if (restrictedPages.includes(page)) {
@@ -119,7 +120,7 @@ async function showPage(page, btnElement) {
             'email-subscriptions', 'record-orders', 'feedback', 'sticky-notes', 
             'stats', 'creditors', 'users', 'print-settings', 'store-settings', 
             'gift-cards', 'config-keys', 'cache-management', 'system-info', 
-            'db-query', 'custom-checkout', 'admin-dashboard'
+            'db-query', 'custom-checkout', 'admin-dashboard', 'email-list'
         ];
         if (adminOnly.includes(page) && user.role !== 'admin') {
             showPage('home');
@@ -207,7 +208,8 @@ async function showPage(page, btnElement) {
             'config-keys': 'initConfigKeys',
             'cache-management': 'initCacheManagement',
             'system-info': 'initSystemInfo',
-            'db-query': 'initDbQuery'
+            'db-query': 'initDbQuery',
+            'email-list': 'initEmailList'
         };
         
         const initFn = initMap[page];

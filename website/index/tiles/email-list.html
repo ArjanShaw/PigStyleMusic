@@ -1,0 +1,51 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">📋 Email List</h2>
+    <p style="color: #666; margin: 0 0 10px 0;">Manage newsletter subscribers</p>
+    
+    <!-- Actions -->
+    <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap;">
+        <button onclick="elRefresh()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-sync"></i> Refresh
+        </button>
+        <button onclick="elExportCSV()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-file-csv"></i> Export CSV
+        </button>
+    </div>
+    
+    <!-- Search -->
+    <div style="display: flex; gap: 10px; width: 100%; flex-wrap: wrap;">
+        <input type="text" id="el-search" placeholder="Search by email..." style="flex: 1; min-width: 200px; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+        <button onclick="elSearch()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            <i class="fas fa-search"></i> Search
+        </button>
+        <button onclick="elClearSearch()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            <i class="fas fa-times"></i> Clear
+        </button>
+    </div>
+    
+    <!-- Subscribers Table -->
+    <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+        <div id="el-list" style="width: 100%;">
+            <div style="text-align: center; padding: 40px; color: #999;">Loading subscribers...</div>
+        </div>
+    </div>
+    
+    <!-- Pagination Controls -->
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 10px 5px; flex-wrap: wrap; gap: 10px; border-top: 1px solid #eee;">
+        <div style="display: flex; gap: 8px;">
+            <button id="el-prev-page" onclick="elPrevPage()" style="padding: 6px 14px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                <i class="fas fa-chevron-left"></i> Previous
+            </button>
+            <button id="el-next-page" onclick="elNextPage()" style="padding: 6px 14px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                Next <i class="fas fa-chevron-right"></i>
+            </button>
+        </div>
+        <div>
+            <span id="el-page-info" style="color: #666; font-size: 14px; font-weight: 500;">Page 1 of 1</span>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <span style="color: #666; font-size: 13px;">Total:</span>
+            <span id="el-total-records" style="color: #333; font-weight: 600; font-size: 14px;">0</span>
+        </div>
+    </div>
+</div>

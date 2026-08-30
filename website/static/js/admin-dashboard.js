@@ -12,7 +12,7 @@
             label: 'Add Records', 
             description: 'Add new vinyl records to inventory',
             color: 'primary',
-            notification: null  // No notification badge
+            notification: null
         },
         { 
             page: 'accounting', 
@@ -90,7 +90,7 @@
             page: 'email-subscriptions', 
             icon: 'fa-envelope', 
             label: 'Email Subscriptions', 
-            description: 'Manage email newsletter subscribers',
+            description: 'Manage record alert subscriptions',
             color: 'purple',
             notification: {
                 endpoint: '/api/subscriptions/notifications/count',
@@ -120,6 +120,18 @@
                 endpoint: '/api/feedback/unread-count',
                 key: 'count',
                 label: 'New Feedback'
+            }
+        },
+        { 
+            page: 'email-list', 
+            icon: 'fa-mail-bulk', 
+            label: 'Email List', 
+            description: 'Manage newsletter subscribers',
+            color: 'info',
+            notification: {
+                endpoint: '/api/admin/email-list/count',
+                key: 'count',
+                label: 'Subscribers'
             }
         },
         { 
@@ -200,7 +212,8 @@
     let notificationCounts = {
         'email-subscriptions': 0,
         'record-orders': 0,
-        'feedback': 0
+        'feedback': 0,
+        'email-list': 0
     };
 
     let pollInterval = null;
@@ -248,11 +261,12 @@
         const results = {
             'email-subscriptions': 0,
             'record-orders': 0,
-            'feedback': 0
+            'feedback': 0,
+            'email-list': 0
         };
 
         try {
-            const [subs, orders, feedback] = await Promise.all([
+            const [subs, orders, feedback, emailList] = await Promise.all([
                 fetch(`${API_BASE}/api/subscriptions/notifications/count`, {
                     credentials: 'include',
                     headers: getHeaders()
@@ -264,12 +278,17 @@
                 fetch(`${API_BASE}/api/feedback/unread-count`, {
                     credentials: 'include',
                     headers: getHeaders()
+                }).then(r => r.ok ? r.json() : { count: 0 }),
+                fetch(`${API_BASE}/api/admin/email-list/count`, {
+                    credentials: 'include',
+                    headers: getHeaders()
                 }).then(r => r.ok ? r.json() : { count: 0 })
             ]);
 
             results['email-subscriptions'] = subs.count || 0;
             results['record-orders'] = orders.count || 0;
             results['feedback'] = feedback.count || 0;
+            results['email-list'] = emailList.count || 0;
 
         } catch (error) {
             console.debug('🔔 Notification count fetch error:', error.message);
@@ -366,13 +385,16 @@
                     </span>
                     <div style="display: flex; gap: 16px; flex-wrap: wrap;" id="notification-summary-items">
                         <span style="font-size: 13px; color: #555;">
-                            📧 Subscriptions: <strong id="summary-subs">0</strong>
+                            📧 Alerts: <strong id="summary-subs">0</strong>
                         </span>
                         <span style="font-size: 13px; color: #555;">
                             📦 Orders: <strong id="summary-orders">0</strong>
                         </span>
                         <span style="font-size: 13px; color: #555;">
                             💬 Feedback: <strong id="summary-feedback">0</strong>
+                        </span>
+                        <span style="font-size: 13px; color: #555;">
+                            📋 Subscribers: <strong id="summary-email-list">0</strong>
                         </span>
                         <span style="font-size: 13px; color: #555; font-weight: 600;">
                             🔔 Total: <strong id="summary-total" style="color: #dc3545;">0</strong>
@@ -492,16 +514,18 @@
         const counts = await fetchNotificationCounts();
         
         // Update summary bar
-        const total = counts['email-subscriptions'] + counts['record-orders'] + counts['feedback'];
+        const total = counts['email-subscriptions'] + counts['record-orders'] + counts['feedback'] + counts['email-list'];
         
         const summarySubs = document.getElementById('summary-subs');
         const summaryOrders = document.getElementById('summary-orders');
         const summaryFeedback = document.getElementById('summary-feedback');
+        const summaryEmailList = document.getElementById('summary-email-list');
         const summaryTotal = document.getElementById('summary-total');
         
         if (summarySubs) summarySubs.textContent = counts['email-subscriptions'];
         if (summaryOrders) summaryOrders.textContent = counts['record-orders'];
         if (summaryFeedback) summaryFeedback.textContent = counts['feedback'];
+        if (summaryEmailList) summaryEmailList.textContent = counts['email-list'];
         if (summaryTotal) {
             summaryTotal.textContent = total;
             summaryTotal.style.color = total > 0 ? '#dc3545' : '#28a745';

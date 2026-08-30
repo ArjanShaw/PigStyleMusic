@@ -1671,9 +1671,7 @@ def login2():
         response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
         response.headers.add('Access-Control-Allow-Credentials', 'true')
         return response, 500
-
-@app.route('/api/email-list/subscribe', methods=['POST'])
-def email_list_subscribe():
+ 
     """
     Subscribe an email to the email_list table.
     Expects: {"email": "user@example.com"}
@@ -1729,8 +1727,7 @@ def email_list_subscribe():
         }), 200
     except Exception as e:
         app.logger.error(f"Email list subscription error: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
+        return jsonify({'status': 'error', 'error': str(e)}), 50
 @app.route('/api/login', methods=['POST', 'OPTIONS'])
 def login():
     """Authenticate user and return user data with session"""
@@ -14066,6 +14063,224 @@ def delete_gift_card(code):
     except Exception as e:
         app.logger.error(f"Error deleting gift card {code}: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+# ==================== EMAIL LIST MANAGEMENT (ADMIN) ====================
+
+@app.route('/api/admin/email-list', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def admin_get_email_list():
+    """Get all email list subscribers with pagination and search"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        search = request.args.get('search', '').strip()
+        
+        offset = (page - 1) * per_page
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Using rowid as id since there's no id column
+        query = '''
+            SELECT rowid as id, email, datetime('now') as created_at
+            FROM email_list
+            WHERE 1=1
+        '''
+        params = []
+        
+        if search:
+            query += ' AND email LIKE ?'
+            params.append(f'%{search}%')
+        
+        # Get total count
+        count_query = query.replace(
+            'SELECT rowid as id, email, datetime(\'now\') as created_at',
+            'SELECT COUNT(*) as total'
+        )
+        cursor.execute(count_query, params)
+        total = cursor.fetchone()['total']
+        
+        query += ' ORDER BY rowid DESC LIMIT ? OFFSET ?'
+        params.extend([per_page, offset])
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        subscribers = []
+        for row in rows:
+            subscribers.append({
+                'id': row['id'],
+                'email': row['email'],
+                'created_at': row['created_at']
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'subscribers': subscribers,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total + per_page - 1) // per_page if total > 0 else 1
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting email list: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/admin/email-list/<int:subscriber_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def admin_delete_email_subscriber(subscriber_id):
+    """Delete a subscriber from the email list"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get the email before deleting (using rowid)
+        cursor.execute('SELECT rowid, email FROM email_list WHERE rowid = ?', (subscriber_id,))
+        subscriber = cursor.fetchone()
+        
+        if not subscriber:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Subscriber not found'}), 404
+        
+        cursor.execute('DELETE FROM email_list WHERE rowid = ?', (subscriber_id,))
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"Email subscriber {subscriber['email']} (ID: {subscriber_id}) removed by admin")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Subscriber {subscriber["email"]} removed successfully'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error deleting email subscriber: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/admin/email-list/export', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def admin_export_email_list():
+    """Export email list as CSV"""
+    try:
+        from flask import Response
+        import csv
+        import io
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT email FROM email_list ORDER BY rowid DESC')
+        rows = cursor.fetchall()
+        conn.close()
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['Email'])
+        
+        for row in rows:
+            writer.writerow([row['email']])
+        
+        output.seek(0)
+        
+        response = Response(output.getvalue(), mimetype='text/csv')
+        response.headers.set('Content-Disposition', 'attachment', filename=f'email_list_{datetime.now().strftime("%Y-%m-%d")}.csv')
+        return response
+        
+    except Exception as e:
+        app.logger.error(f"Error exporting email list: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/admin/email-list/count', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def admin_email_list_count():
+    """Get total count of email subscribers"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) as count FROM email_list')
+        result = cursor.fetchone()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'count': result['count'] if result else 0
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting email list count: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+# ==================== PUBLIC EMAIL LIST SUBSCRIBE ====================
+
+@app.route('/api/email-list/subscribe', methods=['POST'])
+def email_list_subscribe():
+    """
+    Subscribe an email to the email_list table.
+    Expects: {"email": "user@example.com"}
+    Returns: success or error message
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+        
+        email = data.get('email', '').strip().lower()
+        
+        if not email:
+            return jsonify({'status': 'error', 'error': 'Email is required'}), 400
+        
+        # Validate email format
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+            return jsonify({'status': 'error', 'error': 'Invalid email address'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if already subscribed
+        cursor.execute('SELECT email FROM email_list WHERE email = ?', (email,))
+        if cursor.fetchone():
+            conn.close()
+            return jsonify({
+                'status': 'success',
+                'message': 'Email already subscribed',
+                'already_subscribed': True
+            }), 200
+        
+        # Insert new email
+        cursor.execute('INSERT INTO email_list (email) VALUES (?)', (email,))
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"New email list subscription: {email}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'You are subscribed!',
+            'already_subscribed': False
+        }), 201
+        
+    except sqlite3.IntegrityError:
+        # Duplicate email (shouldn't happen since we check above, but just in case)
+        return jsonify({
+            'status': 'success',
+            'message': 'Email already subscribed',
+            'already_subscribed': True
+        }), 200
+    except Exception as e:
+        app.logger.error(f"Email list subscription error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
