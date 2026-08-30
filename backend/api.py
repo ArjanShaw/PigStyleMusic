@@ -13981,5 +13981,40 @@ def apply_all_unprocessed():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/feedback/<int:feedback_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def delete_feedback(feedback_id):
+    """Delete a feedback item (admin only)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if feedback exists
+        cursor.execute('SELECT id, contact_info FROM feedback WHERE id = ?', (feedback_id,))
+        feedback = cursor.fetchone()
+        
+        if not feedback:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Feedback not found'}), 404
+        
+        # Delete the feedback
+        cursor.execute('DELETE FROM feedback WHERE id = ?', (feedback_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"Feedback #{feedback_id} deleted by {session.get('username', 'admin')}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Feedback #{feedback_id} deleted successfully'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error deleting feedback: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)

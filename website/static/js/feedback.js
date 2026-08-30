@@ -5,6 +5,7 @@
     let currentPage = 1;
     const pageSize = 50;
     let currentViewId = null;
+    let searchTimeout = null;
 
     const API_BASE = window.location.hostname === 'localhost' 
         ? 'http://localhost:5000' 
@@ -26,8 +27,6 @@
         
         try {
             const searchTerm = document.getElementById('fb-search')?.value || '';
-            const statusFilter = document.getElementById('fb-status-filter')?.value || 'all';
-            const typeFilter = document.getElementById('fb-type-filter')?.value || 'all';
             
             let url = `${API_BASE}/api/feedback?limit=500`;
             if (searchTerm) {
@@ -43,19 +42,10 @@
             if (data.status === 'success') {
                 feedbackItems = data.feedback || [];
                 
-                // Apply filters
-                filteredItems = feedbackItems.filter(item => {
-                    // Status filter
-                    if (statusFilter !== 'all' && item.status !== statusFilter) return false;
-                    
-                    // Type filter
-                    if (typeFilter !== 'all' && item.type_of_feedback !== typeFilter) return false;
-                    
-                    return true;
-                });
+                // Apply local search filter for instant updates
+                applyLocalFilters(searchTerm);
                 
                 renderFeedback();
-                updateStats();
             } else {
                 list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'Failed to load'}</div>`;
             }
@@ -63,6 +53,27 @@
             console.error('Error loading feedback:', err);
             list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${err.message}</div>`;
         }
+    }
+
+    // Apply local filters (instant search)
+    function applyLocalFilters(searchTerm) {
+        if (!searchTerm || searchTerm.trim() === '') {
+            filteredItems = [...feedbackItems];
+            return;
+        }
+        
+        const term = searchTerm.toLowerCase().trim();
+        filteredItems = feedbackItems.filter(item => {
+            const content = (item.content || '').toLowerCase();
+            const contact = (item.contact_info || '').toLowerCase();
+            const type = (item.type_of_feedback || '').toLowerCase();
+            const event = (item.event_name || '').toLowerCase();
+            
+            return content.includes(term) || 
+                   contact.includes(term) || 
+                   type.includes(term) || 
+                   event.includes(term);
+        });
     }
 
     // Render feedback
@@ -130,26 +141,49 @@
         updatePagination();
     }
 
-    // Update stats
-    function updateStats() {
-        const total = feedbackItems.length;
-        const newItems = feedbackItems.filter(f => f.status === 'new').length;
-        const read = feedbackItems.filter(f => f.status === 'read').length;
-        const responded = feedbackItems.filter(f => f.status === 'responded').length;
-        const archived = feedbackItems.filter(f => f.status === 'archived').length;
-        
-        document.getElementById('fb-total').textContent = total;
-        document.getElementById('fb-new').textContent = newItems;
-        document.getElementById('fb-read').textContent = read;
-        document.getElementById('fb-responded').textContent = responded;
-        document.getElementById('fb-archived').textContent = archived;
-    }
-
     // Update pagination
     function updatePagination() {
         const total = filteredItems.length;
         const totalPages = Math.ceil(total / pageSize) || 1;
-        // Add pagination controls if needed
+        
+        const pageInfo = document.getElementById('fb-page-info');
+        const prevBtn = document.getElementById('fb-prev-page');
+        const nextBtn = document.getElementById('fb-next-page');
+        const totalRecords = document.getElementById('fb-total-records');
+        
+        if (pageInfo) {
+            pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+        }
+        if (prevBtn) {
+            prevBtn.disabled = currentPage <= 1;
+        }
+        if (nextBtn) {
+            nextBtn.disabled = currentPage >= totalPages;
+        }
+        if (totalRecords) {
+            totalRecords.textContent = filteredItems.length;
+        }
+    }
+
+    // Handle instant search with debounce
+    function handleSearch() {
+        // Clear previous timeout
+        if (searchTimeout) {
+            clearTimeout(searchTimeout);
+        }
+        
+        // Debounce search to avoid too many API calls
+        searchTimeout = setTimeout(() => {
+            const searchTerm = document.getElementById('fb-search')?.value || '';
+            
+            // Apply local filter instantly
+            applyLocalFilters(searchTerm);
+            currentPage = 1;
+            renderFeedback();
+            
+            // Also fetch from server with search term (debounced)
+            loadFeedback();
+        }, 300);
     }
 
     // View feedback
@@ -173,7 +207,6 @@
                 await markFeedbackRead(id);
                 item.status = 'read';
                 renderFeedback();
-                updateStats();
             }
             
             renderFeedbackDetails(item);
@@ -260,7 +293,6 @@
                 showModalStatus('✅ Feedback status updated!', 'success');
                 item.status = status;
                 renderFeedback();
-                updateStats();
                 setTimeout(() => {
                     fbCloseModal();
                 }, 1000);
@@ -308,7 +340,6 @@
                 showToast('✅ All feedback marked as read');
                 feedbackItems.forEach(f => { if (f.status === 'new') f.status = 'read'; });
                 renderFeedback();
-                updateStats();
             } else {
                 alert(`Error: ${result.error || 'Failed to mark all as read'}`);
             }
@@ -338,7 +369,6 @@
                 feedbackItems = feedbackItems.filter(f => f.id !== id);
                 filteredItems = filteredItems.filter(f => f.id !== id);
                 renderFeedback();
-                updateStats();
                 if (currentViewId == id) {
                     fbCloseModal();
                 }
@@ -373,23 +403,27 @@
         showToast('✅ CSV exported');
     };
 
-    // Apply filters
-    window.fbApplyFilters = function() {
-        currentPage = 1;
-        loadFeedback();
-    };
-
-    window.fbClearFilters = function() {
+    // Clear search
+    window.fbClearSearch = function() {
         document.getElementById('fb-search').value = '';
-        document.getElementById('fb-status-filter').value = 'all';
-        document.getElementById('fb-type-filter').value = 'all';
         currentPage = 1;
         loadFeedback();
     };
 
-    // Refresh
-    window.fbRefresh = function() {
-        loadFeedback();
+    // Pagination
+    window.fbPrevPage = function() {
+        if (currentPage > 1) {
+            currentPage--;
+            renderFeedback();
+        }
+    };
+
+    window.fbNextPage = function() {
+        const totalPages = Math.ceil(filteredItems.length / pageSize) || 1;
+        if (currentPage < totalPages) {
+            currentPage++;
+            renderFeedback();
+        }
     };
 
     // Close modal
@@ -446,13 +480,26 @@
         }, 3000);
     }
 
-    // Enter key search
+    // Initialize search with instant updates
     document.addEventListener('DOMContentLoaded', function() {
         const searchInput = document.getElementById('fb-search');
         if (searchInput) {
+            // Listen for input events (instant search)
+            searchInput.addEventListener('input', handleSearch);
+            
+            // Also handle enter key for immediate search
             searchInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
-                    fbApplyFilters();
+                    // Clear timeout and search immediately
+                    if (searchTimeout) {
+                        clearTimeout(searchTimeout);
+                        searchTimeout = null;
+                    }
+                    const searchTerm = this.value || '';
+                    applyLocalFilters(searchTerm);
+                    currentPage = 1;
+                    renderFeedback();
+                    loadFeedback();
                 }
             });
         }
