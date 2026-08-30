@@ -5,6 +5,7 @@
     let currentPage = 1;
     const pageSize = 50;
     let filteredSubscriptions = [];
+    let searchTimeout = null;
 
     const API_BASE = window.location.hostname === 'localhost' 
         ? 'http://localhost:5000' 
@@ -26,8 +27,6 @@
         
         try {
             const searchTerm = document.getElementById('es-search')?.value || '';
-            const statusFilter = document.getElementById('es-status-filter')?.value || 'all';
-            const readFilter = document.getElementById('es-read-filter')?.value || 'all';
             
             let url = `${API_BASE}/api/subscriptions?limit=500`;
             if (searchTerm) {
@@ -43,21 +42,10 @@
             if (data.status === 'success') {
                 subscriptions = data.subscriptions || [];
                 
-                // Apply filters
-                filteredSubscriptions = subscriptions.filter(sub => {
-                    // Status filter
-                    if (statusFilter === 'active' && !sub.is_active) return false;
-                    if (statusFilter === 'inactive' && sub.is_active) return false;
-                    
-                    // Read filter
-                    if (readFilter === 'unread' && sub.is_read) return false;
-                    if (readFilter === 'read' && !sub.is_read) return false;
-                    
-                    return true;
-                });
+                // Apply search filter locally for instant updates
+                applyLocalFilters(searchTerm);
                 
                 renderSubscriptions();
-                updateStats();
             } else {
                 list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'Failed to load'}</div>`;
             }
@@ -65,6 +53,27 @@
             console.error('Error loading subscriptions:', err);
             list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${err.message}</div>`;
         }
+    }
+
+    // Apply local filters (instant search)
+    function applyLocalFilters(searchTerm) {
+        if (!searchTerm || searchTerm.trim() === '') {
+            filteredSubscriptions = [...subscriptions];
+            return;
+        }
+        
+        const term = searchTerm.toLowerCase().trim();
+        filteredSubscriptions = subscriptions.filter(sub => {
+            const email = (sub.email || '').toLowerCase();
+            const artist = (sub.artist || '').toLowerCase();
+            const title = (sub.title || '').toLowerCase();
+            const catalog = (sub.catalog_number || '').toLowerCase();
+            
+            return email.includes(term) || 
+                   artist.includes(term) || 
+                   title.includes(term) || 
+                   catalog.includes(term);
+        });
     }
 
     // Render subscriptions
@@ -136,26 +145,49 @@
         updatePagination();
     }
 
-    // Update stats
-    function updateStats() {
-        const total = subscriptions.length;
-        const active = subscriptions.filter(s => s.is_active).length;
-        const inactive = subscriptions.filter(s => !s.is_active).length;
-        const unread = subscriptions.filter(s => !s.is_read).length;
-        
-        document.getElementById('es-total').textContent = total;
-        document.getElementById('es-active').textContent = active;
-        document.getElementById('es-inactive').textContent = inactive;
-        document.getElementById('es-unread').textContent = unread;
-    }
-
     // Update pagination
     function updatePagination() {
         const total = filteredSubscriptions.length;
         const totalPages = Math.ceil(total / pageSize) || 1;
-        document.getElementById('es-page-info').textContent = `Page ${currentPage} of ${totalPages}`;
-        document.getElementById('es-prev-page').disabled = currentPage <= 1;
-        document.getElementById('es-next-page').disabled = currentPage >= totalPages;
+        
+        const pageInfo = document.getElementById('es-page-info');
+        const prevBtn = document.getElementById('es-prev-page');
+        const nextBtn = document.getElementById('es-next-page');
+        const totalRecords = document.getElementById('es-total-records');
+        
+        if (pageInfo) {
+            pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+        }
+        if (prevBtn) {
+            prevBtn.disabled = currentPage <= 1;
+        }
+        if (nextBtn) {
+            nextBtn.disabled = currentPage >= totalPages;
+        }
+        if (totalRecords) {
+            totalRecords.textContent = filteredSubscriptions.length;
+        }
+    }
+
+    // Handle instant search with debounce
+    function handleSearch() {
+        // Clear previous timeout
+        if (searchTimeout) {
+            clearTimeout(searchTimeout);
+        }
+        
+        // Debounce search to avoid too many API calls
+        searchTimeout = setTimeout(() => {
+            const searchTerm = document.getElementById('es-search')?.value || '';
+            
+            // Apply local filter instantly
+            applyLocalFilters(searchTerm);
+            currentPage = 1;
+            renderSubscriptions();
+            
+            // Also fetch from server with search term (debounced)
+            loadSubscriptions();
+        }, 300);
     }
 
     // Show add modal
@@ -349,52 +381,10 @@
         }
     };
 
-    // Deactivate all
-    window.esDeactivateAll = async function() {
-        const activeCount = subscriptions.filter(s => s.is_active).length;
-        if (activeCount === 0) {
-            showToast('No active subscriptions to deactivate', 'warning');
-            return;
-        }
-        
-        if (!confirm(`Deactivate all ${activeCount} active subscriptions?`)) return;
-        
-        try {
-            const response = await fetch(`${API_BASE}/api/subscriptions/deactivate-all`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: getHeaders()
-            });
-            const result = await response.json();
-            
-            if (result.status === 'success') {
-                showToast(`✅ ${result.count || activeCount} subscriptions deactivated`);
-                loadSubscriptions();
-            } else {
-                alert(`Error: ${result.error || 'Failed to deactivate'}`);
-            }
-        } catch (err) {
-            console.error('Error deactivating all:', err);
-            alert(`Error: ${err.message}`);
-        }
-    };
-
-    // Apply filters
-    window.esApplyFilters = function() {
-        currentPage = 1;
-        loadSubscriptions();
-    };
-
+    // Clear filters
     window.esClearFilters = function() {
         document.getElementById('es-search').value = '';
-        document.getElementById('es-status-filter').value = 'all';
-        document.getElementById('es-read-filter').value = 'all';
         currentPage = 1;
-        loadSubscriptions();
-    };
-
-    // Refresh
-    window.esRefresh = function() {
         loadSubscriptions();
     };
 
@@ -462,13 +452,26 @@
         }, 3000);
     }
 
-    // Enter key search
+    // Initialize search with instant updates
     document.addEventListener('DOMContentLoaded', function() {
         const searchInput = document.getElementById('es-search');
         if (searchInput) {
+            // Listen for input events (instant search)
+            searchInput.addEventListener('input', handleSearch);
+            
+            // Also handle enter key for immediate search
             searchInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
-                    esApplyFilters();
+                    // Clear timeout and search immediately
+                    if (searchTimeout) {
+                        clearTimeout(searchTimeout);
+                        searchTimeout = null;
+                    }
+                    const searchTerm = this.value || '';
+                    applyLocalFilters(searchTerm);
+                    currentPage = 1;
+                    renderSubscriptions();
+                    loadSubscriptions();
                 }
             });
         }

@@ -2,58 +2,19 @@
     <h2 style="color: #333; margin: 0 0 5px 0;">📧 Email Subscriptions</h2>
     <p style="color: #666; margin: 0 0 10px 0;">Manage users who want to be notified when specific records become available</p>
     
-    <!-- Stats -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; width: 100%;">
-        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
-            <div style="font-size: 20px; color: #007bff;" id="es-total">0</div>
-            <div style="font-size: 10px; color: #666;">Total</div>
-        </div>
-        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
-            <div style="font-size: 20px; color: #28a745;" id="es-active">0</div>
-            <div style="font-size: 10px; color: #666;">Active</div>
-        </div>
-        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
-            <div style="font-size: 20px; color: #dc3545;" id="es-inactive">0</div>
-            <div style="font-size: 10px; color: #666;">Inactive</div>
-        </div>
-        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
-            <div style="font-size: 20px; color: #ffc107;" id="es-unread">0</div>
-            <div style="font-size: 10px; color: #666;">Unread</div>
-        </div>
-    </div>
-    
     <!-- Actions -->
     <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap;">
         <button onclick="esShowAdd()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
             <i class="fas fa-plus"></i> Add Subscription
         </button>
-        <button onclick="esRefresh()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
-            <i class="fas fa-sync"></i> Refresh
-        </button>
         <button onclick="esMarkAllRead()" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
             <i class="fas fa-check-double"></i> Mark All Read
         </button>
-        <button onclick="esDeactivateAll()" style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
-            <i class="fas fa-ban"></i> Deactivate All
-        </button>
     </div>
     
-    <!-- Search/Filter -->
+    <!-- Search -->
     <div style="display: flex; gap: 10px; width: 100%; flex-wrap: wrap;">
-        <input type="text" id="es-search" placeholder="Search by email, artist, title..." style="flex: 1; min-width: 150px; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
-        <select id="es-status-filter" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px;">
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-        </select>
-        <select id="es-read-filter" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px;">
-            <option value="all">All Read Status</option>
-            <option value="unread">Unread</option>
-            <option value="read">Read</option>
-        </select>
-        <button onclick="esApplyFilters()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;">
-            <i class="fas fa-search"></i> Apply
-        </button>
+        <input type="text" id="es-search" placeholder="Search by email, artist, title, or catalog..." style="flex: 1; min-width: 200px; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
         <button onclick="esClearFilters()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer;">
             <i class="fas fa-times"></i> Clear
         </button>
@@ -63,6 +24,25 @@
     <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
         <div id="es-list" style="width: 100%;">
             <div style="text-align: center; padding: 40px; color: #999;">Loading subscriptions...</div>
+        </div>
+    </div>
+    
+    <!-- Pagination Controls -->
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 10px 5px; flex-wrap: wrap; gap: 10px; border-top: 1px solid #eee;">
+        <div style="display: flex; gap: 8px;">
+            <button id="es-prev-page" onclick="esPrevPage()" style="padding: 6px 14px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                <i class="fas fa-chevron-left"></i> Previous
+            </button>
+            <button id="es-next-page" onclick="esNextPage()" style="padding: 6px 14px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                Next <i class="fas fa-chevron-right"></i>
+            </button>
+        </div>
+        <div>
+            <span id="es-page-info" style="color: #666; font-size: 14px; font-weight: 500;">Page 1 of 1</span>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <span style="color: #666; font-size: 13px;">Total:</span>
+            <span id="es-total-records" style="color: #333; font-weight: 600; font-size: 14px;">0</span>
         </div>
     </div>
 </div>
