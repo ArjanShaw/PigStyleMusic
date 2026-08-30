@@ -42,7 +42,9 @@
             if (data.status === 'success') {
                 orders = data.orders || [];
                 
-                // Apply local search filter for instant updates
+                // Mark all as read when loading the page
+                await markAllOrdersRead();
+                
                 applyLocalFilters(searchTerm);
                 
                 renderOrders();
@@ -52,6 +54,23 @@
         } catch (err) {
             console.error('Error loading orders:', err);
             list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${err.message}</div>`;
+        }
+    }
+
+    // Mark all orders as read
+    async function markAllOrdersRead() {
+        try {
+            const response = await fetch(`${API_BASE}/api/record-orders/mark-all-read`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: getHeaders()
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                console.log('✅ All record orders marked as read');
+            }
+        } catch (err) {
+            console.error('Error marking all orders as read:', err);
         }
     }
 
@@ -175,21 +194,15 @@
 
     // Handle instant search with debounce
     function handleSearch() {
-        // Clear previous timeout
         if (searchTimeout) {
             clearTimeout(searchTimeout);
         }
         
-        // Debounce search to avoid too many API calls
         searchTimeout = setTimeout(() => {
             const searchTerm = document.getElementById('ro-search')?.value || '';
-            
-            // Apply local filter instantly
             applyLocalFilters(searchTerm);
             currentPage = 1;
             renderOrders();
-            
-            // Also fetch from server with search term (debounced)
             loadOrders();
         }, 300);
     }
@@ -351,60 +364,6 @@
         }
     }
 
-    // Mark all as read
-    window.roMarkAllRead = async function() {
-        const unreadCount = orders.filter(o => !o.is_read).length;
-        if (unreadCount === 0) {
-            showToast('No unread orders to mark', 'info');
-            return;
-        }
-        
-        if (!confirm(`Mark all ${unreadCount} orders as read?`)) return;
-        
-        try {
-            const response = await fetch(`${API_BASE}/api/record-orders/mark-all-read`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: getHeaders()
-            });
-            const result = await response.json();
-            
-            if (result.status === 'success') {
-                showToast('✅ All orders marked as read');
-                orders.forEach(o => o.is_read = true);
-                renderOrders();
-            } else {
-                alert(`Error: ${result.error || 'Failed to mark all as read'}`);
-            }
-        } catch (err) {
-            console.error('Error marking all as read:', err);
-            alert(`Error: ${err.message}`);
-        }
-    };
-
-    // Export CSV
-    window.roExportCSV = function() {
-        if (orders.length === 0) {
-            showToast('No orders to export', 'info');
-            return;
-        }
-        
-        let csv = 'Order #,Customer,Email,Phone,Items,Total,Status,Created\n';
-        orders.forEach(o => {
-            const items = o.items ? o.items.map(i => `${i.artist || ''} - ${i.title || ''}`).join('; ') : '';
-            csv += `${o.order_number || o.id},"${o.customer_name || ''}","${o.email || ''}","${o.phone || ''}","${items}",${parseFloat(o.total || 0).toFixed(2)},${o.status || ''},${o.created_at || ''}\n`;
-        });
-        
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `record_orders_${new Date().toISOString().slice(0,10)}.csv`;
-        a.click();
-        window.URL.revokeObjectURL(url);
-        showToast('✅ CSV exported');
-    };
-
     // Clear search
     window.roClearSearch = function() {
         document.getElementById('ro-search').value = '';
@@ -486,13 +445,9 @@
     document.addEventListener('DOMContentLoaded', function() {
         const searchInput = document.getElementById('ro-search');
         if (searchInput) {
-            // Listen for input events (instant search)
             searchInput.addEventListener('input', handleSearch);
-            
-            // Also handle enter key for immediate search
             searchInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
-                    // Clear timeout and search immediately
                     if (searchTimeout) {
                         clearTimeout(searchTimeout);
                         searchTimeout = null;

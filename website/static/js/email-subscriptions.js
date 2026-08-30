@@ -42,7 +42,9 @@
             if (data.status === 'success') {
                 subscriptions = data.subscriptions || [];
                 
-                // Apply search filter locally for instant updates
+                // Mark all as read when loading the page
+                await markAllSubscriptionsRead();
+                
                 applyLocalFilters(searchTerm);
                 
                 renderSubscriptions();
@@ -52,6 +54,23 @@
         } catch (err) {
             console.error('Error loading subscriptions:', err);
             list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${err.message}</div>`;
+        }
+    }
+
+    // Mark all subscriptions as read
+    async function markAllSubscriptionsRead() {
+        try {
+            const response = await fetch(`${API_BASE}/api/subscriptions/mark-all-read`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: getHeaders()
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                console.log('✅ All subscriptions marked as read');
+            }
+        } catch (err) {
+            console.error('Error marking all subscriptions as read:', err);
         }
     }
 
@@ -171,21 +190,15 @@
 
     // Handle instant search with debounce
     function handleSearch() {
-        // Clear previous timeout
         if (searchTimeout) {
             clearTimeout(searchTimeout);
         }
         
-        // Debounce search to avoid too many API calls
         searchTimeout = setTimeout(() => {
             const searchTerm = document.getElementById('es-search')?.value || '';
-            
-            // Apply local filter instantly
             applyLocalFilters(searchTerm);
             currentPage = 1;
             renderSubscriptions();
-            
-            // Also fetch from server with search term (debounced)
             loadSubscriptions();
         }, 300);
     }
@@ -357,30 +370,6 @@
         }
     };
 
-    // Mark all as read
-    window.esMarkAllRead = async function() {
-        if (!confirm('Mark all subscriptions as read?')) return;
-        
-        try {
-            const response = await fetch(`${API_BASE}/api/subscriptions/mark-all-read`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: getHeaders()
-            });
-            const result = await response.json();
-            
-            if (result.status === 'success') {
-                showToast('✅ All marked as read');
-                loadSubscriptions();
-            } else {
-                alert(`Error: ${result.error || 'Failed to mark all as read'}`);
-            }
-        } catch (err) {
-            console.error('Error marking all as read:', err);
-            alert(`Error: ${err.message}`);
-        }
-    };
-
     // Clear filters
     window.esClearFilters = function() {
         document.getElementById('es-search').value = '';
@@ -456,13 +445,9 @@
     document.addEventListener('DOMContentLoaded', function() {
         const searchInput = document.getElementById('es-search');
         if (searchInput) {
-            // Listen for input events (instant search)
             searchInput.addEventListener('input', handleSearch);
-            
-            // Also handle enter key for immediate search
             searchInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
-                    // Clear timeout and search immediately
                     if (searchTimeout) {
                         clearTimeout(searchTimeout);
                         searchTimeout = null;

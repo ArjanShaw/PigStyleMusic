@@ -16,10 +16,43 @@
         return headers;
     }
 
+    // Mark all as read
+    async function markAllAsRead() {
+        console.log('📋 Marking all email subscribers as read...');
+        try {
+            const response = await fetch(`${API_BASE}/api/admin/email-list/mark-all-read`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: getHeaders()
+            });
+            
+            const result = await response.json();
+            console.log('📋 Mark all read response:', result);
+            
+            if (result.status === 'success') {
+                console.log(`✅ ${result.message}`);
+                // Update the notified status locally
+                subscribers.forEach(sub => {
+                    sub.notified = true;
+                });
+                return true;
+            } else {
+                console.error('❌ Failed to mark all as read:', result.error);
+                return false;
+            }
+        } catch (err) {
+            console.error('❌ Error marking all as read:', err);
+            return false;
+        }
+    }
+
     // Load subscribers
     async function loadSubscribers() {
         const list = document.getElementById('el-list');
-        if (!list) return;
+        if (!list) {
+            console.error('❌ el-list element not found');
+            return;
+        }
         
         list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading...</div>';
         
@@ -40,7 +73,10 @@
             
             console.log('📋 Response status:', response.status);
             
-            // Check if response is JSON
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
             const contentType = response.headers.get('content-type');
             if (!contentType || !contentType.includes('application/json')) {
                 const text = await response.text();
@@ -55,11 +91,22 @@
                 subscribers = data.subscribers || [];
                 filteredSubscribers = [...subscribers];
                 renderSubscribers();
+                
+                // Mark all as read when viewing the page
+                await markAllAsRead();
+                
+                // Refresh the admin dashboard notification count
+                // This will update the badge on the dashboard tile
+                if (window.refreshNotificationCounts) {
+                    setTimeout(() => {
+                        window.refreshNotificationCounts();
+                    }, 500);
+                }
             } else {
                 list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'Failed to load'}</div>`;
             }
         } catch (err) {
-            console.error('Error loading subscribers:', err);
+            console.error('❌ Error loading subscribers:', err);
             list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${err.message}</div>`;
         }
     }
@@ -93,16 +140,22 @@
                     <th style="padding: 8px 10px; text-align: left; color: #333;">ID</th>
                     <th style="padding: 8px 10px; text-align: left; color: #333;">Email</th>
                     <th style="padding: 8px 10px; text-align: left; color: #333;">Subscribed Date</th>
+                    <th style="padding: 8px 10px; text-align: left; color: #333;">Status</th>
                     <th style="padding: 8px 10px; text-align: center; color: #333;">Actions</th>
                 </tr>
             </thead>
             <tbody>`;
         
-        pageData.forEach((sub, idx) => {
+        pageData.forEach((sub) => {
+            const isNew = sub.notified === false || sub.notified === 0;
+            const statusText = isNew ? '🔔 New' : 'Read';
+            const statusColor = isNew ? '#ff6b6b' : '#28a745';
+            
             html += `<tr>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333; font-weight: 600;">${sub.id}</td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333;">${sub.email || '—'}</td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #666; font-size: 12px;">${sub.created_at ? new Date(sub.created_at).toLocaleString() : '—'}</td>
+                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: ${statusColor}; font-weight: 600;">${statusText}</td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">
                     <button onclick="elDelete(${sub.id})" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
                         <i class="fas fa-trash"></i>
@@ -149,11 +202,6 @@
         document.getElementById('el-search').value = '';
         currentPage = 1;
         renderSubscribers();
-    };
-
-    // Refresh
-    window.elRefresh = function() {
-        loadSubscribers();
     };
 
     // Pagination
@@ -211,24 +259,6 @@
         }
     };
 
-    // Export CSV
-    window.elExportCSV = function() {
-        if (subscribers.length === 0) {
-            showToast('No subscribers to export', 'info');
-            return;
-        }
-        
-        try {
-            // Use window.open to trigger download directly
-            const url = `${API_BASE}/api/admin/email-list/export`;
-            window.open(url, '_blank');
-            showToast('✅ CSV export started');
-        } catch (err) {
-            console.error('Error exporting CSV:', err);
-            showToast(`❌ Error: ${err.message}`, 'error');
-        }
-    };
-
     // Toast notification
     function showToast(message, type = 'success') {
         const toast = document.createElement('div');
@@ -267,9 +297,28 @@
         }
     });
 
+    // Listen for page navigation to re-initialize
+    document.addEventListener('pageLoaded', function(event) {
+        if (event.detail && event.detail.page === 'email-list') {
+            console.log('📋 Page loaded event received for email-list');
+            loadSubscribers();
+        }
+    });
+
     // Init
     window.initEmailList = function() {
         console.log('📋 Email List initialized with API_BASE:', API_BASE);
         loadSubscribers();
     };
+
+    // Auto-initialize if page is already loaded
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        const pageContent = document.getElementById('page-content');
+        if (pageContent && pageContent.querySelector('#el-list')) {
+            console.log('📋 Auto-initializing Email List');
+            window.initEmailList();
+        }
+    }
+
+    console.log('📋 Email List script loaded');
 })();

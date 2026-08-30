@@ -42,7 +42,9 @@
             if (data.status === 'success') {
                 feedbackItems = data.feedback || [];
                 
-                // Apply local search filter for instant updates
+                // Mark all as read when loading the page
+                await markAllFeedbackRead();
+                
                 applyLocalFilters(searchTerm);
                 
                 renderFeedback();
@@ -52,6 +54,23 @@
         } catch (err) {
             console.error('Error loading feedback:', err);
             list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${err.message}</div>`;
+        }
+    }
+
+    // Mark all feedback as read
+    async function markAllFeedbackRead() {
+        try {
+            const response = await fetch(`${API_BASE}/api/feedback/mark-all-read`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: getHeaders()
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                console.log('✅ All feedback marked as read');
+            }
+        } catch (err) {
+            console.error('Error marking all feedback as read:', err);
         }
     }
 
@@ -167,21 +186,15 @@
 
     // Handle instant search with debounce
     function handleSearch() {
-        // Clear previous timeout
         if (searchTimeout) {
             clearTimeout(searchTimeout);
         }
         
-        // Debounce search to avoid too many API calls
         searchTimeout = setTimeout(() => {
             const searchTerm = document.getElementById('fb-search')?.value || '';
-            
-            // Apply local filter instantly
             applyLocalFilters(searchTerm);
             currentPage = 1;
             renderFeedback();
-            
-            // Also fetch from server with search term (debounced)
             loadFeedback();
         }, 300);
     }
@@ -318,37 +331,6 @@
         }
     }
 
-    // Mark all as read
-    window.fbMarkAllRead = async function() {
-        const newCount = feedbackItems.filter(f => f.status === 'new').length;
-        if (newCount === 0) {
-            showToast('No new feedback to mark', 'info');
-            return;
-        }
-        
-        if (!confirm(`Mark all ${newCount} feedback items as read?`)) return;
-        
-        try {
-            const response = await fetch(`${API_BASE}/api/feedback/mark-all-read`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: getHeaders()
-            });
-            const result = await response.json();
-            
-            if (result.status === 'success') {
-                showToast('✅ All feedback marked as read');
-                feedbackItems.forEach(f => { if (f.status === 'new') f.status = 'read'; });
-                renderFeedback();
-            } else {
-                alert(`Error: ${result.error || 'Failed to mark all as read'}`);
-            }
-        } catch (err) {
-            console.error('Error marking all as read:', err);
-            alert(`Error: ${err.message}`);
-        }
-    };
-
     // Delete feedback
     window.fbDelete = async function(id) {
         const item = feedbackItems.find(f => f.id === id);
@@ -379,28 +361,6 @@
             console.error('Error deleting feedback:', err);
             alert(`Error: ${err.message}`);
         }
-    };
-
-    // Export CSV
-    window.fbExportCSV = function() {
-        if (feedbackItems.length === 0) {
-            showToast('No feedback to export', 'info');
-            return;
-        }
-        
-        let csv = 'ID,Type,Content,Contact,Status,Created,Event\n';
-        feedbackItems.forEach(f => {
-            csv += `${f.id},${f.type_of_feedback || ''},"${(f.content || '').replace(/"/g,'""')}","${f.contact_info || ''}",${f.status || ''},${f.created_at || ''},${f.event_name || ''}\n`;
-        });
-        
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `feedback_${new Date().toISOString().slice(0,10)}.csv`;
-        a.click();
-        window.URL.revokeObjectURL(url);
-        showToast('✅ CSV exported');
     };
 
     // Clear search
@@ -484,13 +444,9 @@
     document.addEventListener('DOMContentLoaded', function() {
         const searchInput = document.getElementById('fb-search');
         if (searchInput) {
-            // Listen for input events (instant search)
             searchInput.addEventListener('input', handleSearch);
-            
-            // Also handle enter key for immediate search
             searchInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
-                    // Clear timeout and search immediately
                     if (searchTimeout) {
                         clearTimeout(searchTimeout);
                         searchTimeout = null;

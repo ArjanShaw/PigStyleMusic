@@ -129,9 +129,9 @@
             description: 'Manage newsletter subscribers',
             color: 'info',
             notification: {
-                endpoint: '/api/admin/email-list/count',
+                endpoint: '/api/admin/email-list/unread-count',
                 key: 'count',
-                label: 'Subscribers'
+                label: 'New Subscribers'
             }
         },
         { 
@@ -279,7 +279,7 @@
                     credentials: 'include',
                     headers: getHeaders()
                 }).then(r => r.ok ? r.json() : { count: 0 }),
-                fetch(`${API_BASE}/api/admin/email-list/count`, {
+                fetch(`${API_BASE}/api/admin/email-list/unread-count`, {
                     credentials: 'include',
                     headers: getHeaders()
                 }).then(r => r.ok ? r.json() : { count: 0 })
@@ -394,7 +394,7 @@
                             💬 Feedback: <strong id="summary-feedback">0</strong>
                         </span>
                         <span style="font-size: 13px; color: #555;">
-                            📋 Subscribers: <strong id="summary-email-list">0</strong>
+                            📋 New Subs: <strong id="summary-email-list">0</strong>
                         </span>
                         <span style="font-size: 13px; color: #555; font-weight: 600;">
                             🔔 Total: <strong id="summary-total" style="color: #dc3545;">0</strong>
@@ -580,7 +580,8 @@
         const endpoints = [
             { url: '/api/subscriptions/mark-all-read', name: 'Subscriptions' },
             { url: '/api/record-orders/mark-all-read', name: 'Orders' },
-            { url: '/api/feedback/mark-all-read', name: 'Feedback' }
+            { url: '/api/feedback/mark-all-read', name: 'Feedback' },
+            { url: '/api/admin/email-list/mark-all-read', name: 'Email List' }
         ];
         
         let success = 0;

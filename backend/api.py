@@ -14065,6 +14065,7 @@ def delete_gift_card(code):
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 # ==================== EMAIL LIST MANAGEMENT (ADMIN) ====================
+# ==================== EMAIL LIST MANAGEMENT (ADMIN) ====================
 
 @app.route('/api/admin/email-list', methods=['GET'])
 @login_required
@@ -14083,7 +14084,7 @@ def admin_get_email_list():
         
         # Using rowid as id since there's no id column
         query = '''
-            SELECT rowid as id, email, datetime('now') as created_at
+            SELECT rowid as id, email, datetime('now') as created_at, notified
             FROM email_list
             WHERE 1=1
         '''
@@ -14095,7 +14096,7 @@ def admin_get_email_list():
         
         # Get total count
         count_query = query.replace(
-            'SELECT rowid as id, email, datetime(\'now\') as created_at',
+            'SELECT rowid as id, email, datetime(\'now\') as created_at, notified',
             'SELECT COUNT(*) as total'
         )
         cursor.execute(count_query, params)
@@ -14113,7 +14114,8 @@ def admin_get_email_list():
             subscribers.append({
                 'id': row['id'],
                 'email': row['email'],
-                'created_at': row['created_at']
+                'created_at': row['created_at'],
+                'notified': bool(row['notified']) if row['notified'] is not None else False
             })
         
         return jsonify({
@@ -14220,7 +14222,57 @@ def admin_email_list_count():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
+@app.route('/api/admin/email-list/unread-count', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def admin_email_list_unread_count():
+    """Get count of unread email subscribers (notified = 0)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) as count FROM email_list WHERE notified = 0 OR notified IS NULL')
+        result = cursor.fetchone()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'count': result['count'] if result else 0
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting email list unread count: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/admin/email-list/mark-all-read', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def admin_email_list_mark_all_read():
+    """Mark all email subscribers as read (set notified = 1)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('UPDATE email_list SET notified = 1 WHERE notified = 0 OR notified IS NULL')
+        updated = cursor.rowcount
+        
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f"Marked {updated} email subscribers as read")
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Marked {updated} subscribers as read',
+            'updated': updated
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error marking email list as read: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 # ==================== PUBLIC EMAIL LIST SUBSCRIBE ====================
+
 
 @app.route('/api/email-list/subscribe', methods=['POST'])
 def email_list_subscribe():
@@ -14248,8 +14300,10 @@ def email_list_subscribe():
         cursor = conn.cursor()
         
         # Check if already subscribed
-        cursor.execute('SELECT email FROM email_list WHERE email = ?', (email,))
-        if cursor.fetchone():
+        cursor.execute('SELECT email, notified FROM email_list WHERE email = ?', (email,))
+        existing = cursor.fetchone()
+        if existing:
+            # If already subscribed but marked as read, keep it
             conn.close()
             return jsonify({
                 'status': 'success',
@@ -14257,8 +14311,8 @@ def email_list_subscribe():
                 'already_subscribed': True
             }), 200
         
-        # Insert new email
-        cursor.execute('INSERT INTO email_list (email) VALUES (?)', (email,))
+        # Insert new email with notified = 0 (unread)
+        cursor.execute('INSERT INTO email_list (email, notified) VALUES (?, 0)', (email,))
         conn.commit()
         conn.close()
         
@@ -14271,7 +14325,6 @@ def email_list_subscribe():
         }), 201
         
     except sqlite3.IntegrityError:
-        # Duplicate email (shouldn't happen since we check above, but just in case)
         return jsonify({
             'status': 'success',
             'message': 'Email already subscribed',
@@ -14280,7 +14333,6 @@ def email_list_subscribe():
     except Exception as e:
         app.logger.error(f"Email list subscription error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
