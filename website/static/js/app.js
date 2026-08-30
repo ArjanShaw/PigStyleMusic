@@ -224,6 +224,145 @@ async function showPage(page, btnElement) {
     }
 }
 
+// ==================== NAVIGATION HELPERS ====================
+
+// Navigate menu left/right
+function navigateMenu(direction) {
+    console.log('🔄 Navigating:', direction);
+    
+    const nav = document.getElementById('menu');
+    if (!nav) {
+        console.error('❌ Menu not found');
+        return;
+    }
+    
+    // Get all page buttons (exclude nav arrows, admin toggle, login)
+    const allButtons = nav.querySelectorAll('button');
+    const pageButtons = [];
+    
+    allButtons.forEach(btn => {
+        // Skip nav arrows
+        if (btn.id === 'nav-prev' || btn.id === 'nav-next') return;
+        // Skip admin toggle
+        if (btn.classList.contains('admin-toggle')) return;
+        // Skip login button
+        if (btn.classList.contains('login-btn')) return;
+        // Skip cart button (it's handled separately below)
+        if (btn.title === 'Cart') return;
+        
+        // Check if it has an onclick that calls showPage
+        const onclick = btn.getAttribute('onclick');
+        if (onclick && onclick.includes('showPage')) {
+            pageButtons.push(btn);
+        }
+    });
+    
+    // Add cart button separately if it exists and isn't already included
+    const cartBtn = nav.querySelector('[title="Cart"]');
+    if (cartBtn && !pageButtons.includes(cartBtn)) {
+        pageButtons.push(cartBtn);
+    }
+    
+    console.log('📋 Found', pageButtons.length, 'page buttons');
+    
+    if (pageButtons.length === 0) return;
+    
+    // Find currently active button
+    let activeIndex = 0;
+    pageButtons.forEach((btn, idx) => {
+        if (btn.classList.contains('active')) {
+            activeIndex = idx;
+        }
+    });
+    
+    // Calculate new index
+    if (direction === 'next') {
+        activeIndex = (activeIndex + 1) % pageButtons.length;
+    } else if (direction === 'prev') {
+        activeIndex = (activeIndex - 1 + pageButtons.length) % pageButtons.length;
+    }
+    
+    console.log('👉 Clicking button at index:', activeIndex, 'Page:', pageButtons[activeIndex]?.getAttribute('onclick'));
+    
+    // Click the button at the new index
+    if (pageButtons[activeIndex]) {
+        pageButtons[activeIndex].click();
+    }
+}
+
+// Keyboard shortcuts for navigation
+document.addEventListener('keydown', function(e) {
+    // Left arrow: navigate previous
+    if (e.key === 'ArrowLeft' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const activeElement = document.activeElement;
+        // Don't interfere with input fields
+        if (activeElement && (activeElement.tagName === 'INPUT' || 
+            activeElement.tagName === 'TEXTAREA' || 
+            activeElement.tagName === 'SELECT')) {
+            return;
+        }
+        e.preventDefault();
+        navigateMenu('prev');
+    }
+    // Right arrow: navigate next
+    else if (e.key === 'ArrowRight' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const activeElement = document.activeElement;
+        // Don't interfere with input fields
+        if (activeElement && (activeElement.tagName === 'INPUT' || 
+            activeElement.tagName === 'TEXTAREA' || 
+            activeElement.tagName === 'SELECT')) {
+            return;
+        }
+        e.preventDefault();
+        navigateMenu('next');
+    }
+});
+
+// Style the navigation arrows (inject once)
+(function initNavStyles() {
+    const styleId = 'nav-arrow-styles';
+    if (document.getElementById(styleId)) return;
+    
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+        #nav-prev, #nav-next {
+            background: rgba(255,255,255,0.15) !important;
+            border: 1px solid rgba(255,255,255,0.25) !important;
+            border-radius: 50% !important;
+            color: white !important;
+            width: 36px !important;
+            height: 36px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex-shrink: 0 !important;
+            cursor: pointer !important;
+            transition: all 0.3s ease !important;
+            margin: 0 2px !important;
+        }
+        #nav-prev:hover, #nav-next:hover {
+            background: rgba(255,255,255,0.3) !important;
+            border-color: rgba(255,255,255,0.5) !important;
+            transform: scale(1.05) !important;
+        }
+        #nav-prev:active, #nav-next:active {
+            transform: scale(0.9) !important;
+        }
+        @media (max-width: 768px) {
+            #nav-prev, #nav-next {
+                width: 30px !important;
+                height: 30px !important;
+                font-size: 12px !important;
+            }
+        }
+    `;
+    document.head.appendChild(style);
+})();
+
+// Make navigateMenu globally available
+window.navigateMenu = navigateMenu;
+
 document.addEventListener('DOMContentLoaded', function() {
     var homeBtn = document.querySelector('nav button:first-child');
     if (homeBtn) {
