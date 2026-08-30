@@ -176,6 +176,7 @@ async function showPage(page, btnElement) {
         const initMap = {
             'shop': 'initShop',
             'new': 'initNew',
+            'new-arrivals': 'initNewArrivals',  // <-- ADDED THIS LINE
             'merch': 'initMerch',
             'events': 'initEvents',
             'connect': 'initConnect',
@@ -216,6 +217,8 @@ async function showPage(page, btnElement) {
         if (initFn && typeof window[initFn] === 'function') {
             console.log('🔧 Initializing:', page);
             window[initFn]();
+        } else {
+            console.log('ℹ️ No init function for:', page);
         }
         
     } catch(err) {

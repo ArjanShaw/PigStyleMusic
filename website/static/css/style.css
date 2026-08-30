@@ -141,7 +141,7 @@ nav button.admin-toggle.active {
 
 .flip-card-front {
     transform: rotateY(0deg);
-    background-size: contain !important; /* CHANGE FROM cover TO contain */
+    background-size: contain !important;
     background-position: center !important;
     background-repeat: no-repeat !important;
     background-color: rgba(0,0,0,0.2);
@@ -162,9 +162,45 @@ nav button.admin-toggle.active {
     background-image: url('/images/pig_shopping.png') !important;
 }
 .flip-card-front.new-front {
+    background: linear-gradient(135deg, #28a745, #1e7e34) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 2.5rem !important;
+    color: white !important;
+    font-weight: bold !important;
+}
+.flip-card-front.new-front::after {
+    content: "💿 SEALED" !important;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.3) !important;
+}
+.flip-card-front.new-arrivals-front {
     background-image: url('/images/pig_as_a_new_arrival.png') !important;
 }
-
+.flip-card-front.merch-front {
+    background-image: url('/images/pig_with_merch.png') !important;
+}
+.flip-card-front.events-front {
+    background-image: url('/images/pig_in_a_band.png') !important;
+}
+.flip-card-front.connect-front {
+    background-image: url('/images/pig_on_classroom_table.png') !important;
+}
+.flip-card-front.alerts-front {
+    background-image: url('/images/pig_giving_record_alert.png') !important;
+}
+.flip-card-front.order-front {
+    background-image: url('/images/pig_delivering_order.png') !important;
+}
+.flip-card-front.cart-front {
+    background-image: url('/images/pig_head.png') !important;
+}
+.flip-card-front.email-front {
+    background-image: url('/images/pig_shooting_from_cannon.png') !important;
+}
+.flip-card-front.login-front {
+    background-image: url('/images/pig_head.png') !important;
+}
 
 /* Flip Hint - Center Top */
 .flip-hint {
@@ -193,11 +229,6 @@ nav button.admin-toggle.active {
     left: 50%;
     transform: translateX(-50%);
     bottom: auto;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 0.7; }
-    50% { opacity: 1; }
 }
 
 @keyframes pulse {
@@ -437,46 +468,6 @@ nav button.admin-toggle.active {
     font-size: 2.5rem;
     display: block;
     margin-bottom: 10px;
-}
-
-/* Merch Front Image */
-.flip-card-front.merch-front {
-    background-image: url('/images/pig_with_merch.png') !important;
-}
-
-/* Events Front Image */
-.flip-card-front.events-front {
-    background-image: url('/images/pig_in_a_band.png') !important;
-}
-
-/* Connect Front Image */
-.flip-card-front.connect-front {
-    background-image: url('/images/pig_on_classroom_table.png') !important;
-}
-
-/* Alerts Front Image */
-.flip-card-front.alerts-front {
-    background-image: url('/images/pig_giving_record_alert.png') !important;
-}
-
-/* Order Front Image */
-.flip-card-front.order-front {
-    background-image: url('/images/pig_delivering_order.png') !important;
-}
-
-/* Cart Front Image */
-.flip-card-front.cart-front {
-    background-image: url('/images/pig_head.png') !important;
-}
-
-/* Email Front Image */
-.flip-card-front.email-front {
-    background-image: url('/images/pig_shooting_from_cannon.png') !important;
-}
-
-/* Login Front Image */
-.flip-card-front.login-front {
-    background-image: url('/images/pig_head.png') !important;
 }
 
 /* ===== CHECKOUT MODAL STYLES ===== */

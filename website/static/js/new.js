@@ -1,22 +1,22 @@
-// New Arrivals component
+// New Sealed Records component - Bin 36 and Wall Display West /2
 function initNew() {
-    console.log('⭐ New arrivals initialized');
+    console.log('⭐ New Sealed Records initialized');
     
     if (typeof window.RecordsComponent !== 'undefined') {
         window.newComponent = new window.RecordsComponent({
             containerId: 'newCatalogContainer',
-            title: 'New Arrivals',
+            title: 'New Sealed Records',
             idPrefix: 'new',
-            borderColor: '#ffd93d',
-            badgeText: 'NEW',
-            badgeColor: '#ffd93d',
-            buttonColor: '#ffd93d',
-            buttonTextColor: '#333',
-            locationId: 150,
-            statusId: 2,
+            borderColor: '#28a745',  // Green for sealed/new
+            badgeText: 'SEALED',
+            badgeColor: '#28a745',
+            buttonColor: '#28a745',
+            buttonTextColor: 'white',
+            locationIds: [154, 155, 156, 157],  // Bin 36/1, 36/2, 36/3, Wall Display West /2
+            statusId: 2,  // ACTIVE status
             searchInputId: 'newSearchInput',
             showCondition: true,
-            showLocation: true  
+            showLocation: true
         });
         window.newComponent.init();
     } else {
@@ -24,4 +24,17 @@ function initNew() {
     }
 }
 
-window.initNew = initNew;  
+// Global search functions for new sealed records
+window.newSearch = function() {
+    if (window.newComponent) {
+        window.newComponent.performSearch();
+    }
+};
+
+window.newClearSearch = function() {
+    if (window.newComponent) {
+        window.newComponent.clearSearch();
+    }
+};
+
+window.initNew = initNew;
