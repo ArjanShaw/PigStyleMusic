@@ -47,6 +47,7 @@
     let recordSearchResults = [];
     let recordSearchTimeout = null;
     let currentTab = 'records';
+    let recordSearchLoading = false;  // FIXED: Added missing variable
 
     // ===== GET USER =====
     function getUser() {
@@ -1243,8 +1244,6 @@
             throw new Error('No POS terminal ID found.');
         }
         
-        // Clean device ID - keep the full ID with 'device:' prefix
-        // The backend will handle the cleaning
         console.log('📟 Using device ID:', deviceId);
         
         const recordIds = items
@@ -1258,7 +1257,7 @@
             record_ids: recordIds.length > 0 ? recordIds : ['1'],
             record_titles: titles.length > 0 ? titles : ['Item'],
             reference_id: 'pos_' + Date.now(),
-            device_id: deviceId  // Send full device ID with 'device:' prefix
+            device_id: deviceId
         };
         
         console.log('📟 Sending POS payload:', payload);
@@ -1320,7 +1319,8 @@
     function waitForPosCompletion(checkoutId, timeout = 120000) {
         return new Promise((resolve, reject) => {
             let attempts = 0;
-            const maxAttempts = timeout / 2000; // Check every 2 seconds
+            const maxAttempts = timeout / 2000;
+            let lastStatus = '';
             
             const interval = setInterval(async () => {
                 attempts++;
@@ -1332,7 +1332,6 @@
                     });
                     
                     if (!response.ok) {
-                        // Don't fail on first error, just log it
                         console.warn('POS status check failed:', response.status);
                         return;
                     }
@@ -1344,22 +1343,34 @@
                     }
                     
                     const status = data.checkout.status;
-                    console.log(`📟 POS status: ${status} (attempt ${attempts}/${maxAttempts})`);
+                    
+                    // Only log status changes
+                    if (status !== lastStatus) {
+                        console.log(`📟 POS status: ${status} (attempt ${attempts}/${maxAttempts})`);
+                        lastStatus = status;
+                    }
                     
                     if (status === 'COMPLETED') {
                         clearInterval(interval);
                         resolve(true);
-                    } else if (status === 'CANCELED' || status === 'FAILED') {
+                    } else if (status === 'CANCELED') {
                         clearInterval(interval);
-                        reject(new Error(`POS payment ${status.toLowerCase()}.`));
+                        reject(new Error('POS payment was canceled on the terminal.'));
+                    } else if (status === 'FAILED') {
+                        clearInterval(interval);
+                        reject(new Error('POS payment failed on the terminal.'));
                     }
                     
                     if (attempts >= maxAttempts) {
                         clearInterval(interval);
-                        reject(new Error('POS payment timed out.'));
+                        reject(new Error('POS payment timed out. Please check the terminal.'));
                     }
                 } catch (err) {
                     console.warn('POS polling error:', err.message);
+                    // Don't reject immediately - network errors might be temporary
+                    if (attempts > 5) {
+                        console.error('POS polling failed repeatedly:', err);
+                    }
                 }
             }, 2000);
         });
