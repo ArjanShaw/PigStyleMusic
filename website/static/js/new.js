@@ -13,7 +13,7 @@ function initNew() {
             buttonColor: '#28a745',
             buttonTextColor: 'white',
             // FIXED: Use locationIds (plural) with all 5 locations
-            locationIds: '150,151,152,153,157',  // Bin 35 LT, Bin 35 RT, Bin 35 LB, Bin 35 RB, Wall Display West /2
+            locationIds: '154,155,156,157',  // Bin 35 LT, Bin 35 RT, Bin 35 LB, Bin 35 RB, Wall Display West /2
             statusId: 2,
             searchInputId: 'newSearchInput',
             showCondition: true,
