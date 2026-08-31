@@ -12,7 +12,8 @@ function initNew() {
             badgeColor: '#28a745',
             buttonColor: '#28a745',
             buttonTextColor: 'white',
-            locationId: 154,
+            // FIXED: Use locationIds (plural) with all 5 locations
+            locationIds: '150,151,152,153,157',  // Bin 35 LT, Bin 35 RT, Bin 35 LB, Bin 35 RB, Wall Display West /2
             statusId: 2,
             searchInputId: 'newSearchInput',
             showCondition: true,

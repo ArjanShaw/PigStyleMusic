@@ -217,7 +217,7 @@
                 currentPage: 1,
                 totalRecords: 0,
                 totalPages: 0,
-                locationId: config.locationId || null,
+                locationIds: config.locationIds || null,  // CHANGED: plural, comma-separated
                 statusId: config.statusId || null,
                 borderColor: config.borderColor || '#ff6b6b',
                 badgeText: config.badgeText || null,
@@ -347,7 +347,7 @@
             console.log('📀 Component:', this.config.title);
             console.log('📀 Container ID:', this.config.containerId);
             console.log('📀 Status Filter:', this.config.statusId || 'None');
-            console.log('📀 Location Filter:', this.config.locationId || 'None');
+            console.log('📀 Location Filter:', this.config.locationIds || 'None');  // CHANGED
             console.log('📀 Cutoff Date:', this.cutoffDate || 'None (showing all)');
             console.log('📀 Page Size:', this.config.pageSize);
 
@@ -363,8 +363,9 @@
                     limit: 1000
                 });
                 
-                if (this.config.locationId) {
-                    params.append('location_id', this.config.locationId);
+                // CHANGED: Use locationIds (plural, comma-separated)
+                if (this.config.locationIds) {
+                    params.append('location_ids', this.config.locationIds);
                 }
                 if (this.config.statusId) {
                     params.append('status_ids', this.config.statusId);

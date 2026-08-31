@@ -2316,6 +2316,7 @@ def create_record():
         conn.close()
         return jsonify({'status': 'error', 'error': f"Database error: {str(e)}"}), 500
 
+
 @app.route('/records', methods=['GET'])
 def get_records():
     """Get records with filtering, pagination, and a generic search."""
@@ -2325,14 +2326,13 @@ def get_records():
         cursor = conn.cursor()
 
         # ---------- Base query (all joins) ----------
-        # ADDED: LEFT JOIN locations to get genre_id
         base_query = """
             SELECT 
                 r.*,
                 f.name AS format_name,
                 s.status_name AS status_name,
                 l.name AS location_name,
-                l.genre_id,                     -- <-- ADD THIS LINE
+                l.genre_id,
                 cd.condition_name AS disc_condition_name,
                 cd.abbreviation AS disc_abbr,
                 cd.quality_index AS disc_quality,
@@ -2349,7 +2349,7 @@ def get_records():
             FROM records r
             LEFT JOIN formats f ON r.format_id = f.id
             LEFT JOIN d_status s ON r.status_id = s.id
-            LEFT JOIN locations l ON r.location_id = l.id       -- <-- ADD THIS JOIN
+            LEFT JOIN locations l ON r.location_id = l.id
             LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
             WHERE 1=1
@@ -2410,11 +2410,17 @@ def get_records():
             )
             params.extend([search_like, search_like, search_like, search_like, search_like])
 
-        # --- Location (exact) ---
-        location_id = request.args.get('location_id')
-        if location_id:
-            where_clauses.append("r.location_id = ?")
-            params.append(int(location_id))
+        # --- Location (multiple, comma-separated) --- FIXED: supports multiple IDs
+        location_ids = request.args.get('location_ids')  # Changed from 'location_id'
+        if location_ids:
+            ids = [int(x.strip()) for x in location_ids.split(',') if x.strip()]
+            if ids:
+                placeholders = ','.join(['?'] * len(ids))
+                where_clauses.append(f"r.location_id IN ({placeholders})")
+                params.extend(ids)
+            else:
+                # If location_ids parameter exists but is empty or invalid, return no records
+                where_clauses.append("1=0")
 
         # --- Formats (comma-separated) ---
         format_ids = request.args.get('format_ids')
@@ -2425,13 +2431,12 @@ def get_records():
                 where_clauses.append(f"r.format_id IN ({placeholders})")
                 params.extend(ids)
 
-        # ---------- NEW: genre_ids filter (numeric IDs) ----------
+        # --- genre_ids filter (numeric IDs) ---
         genre_ids_param = request.args.get('genre_ids')
         if genre_ids_param:
             ids = [int(x.strip()) for x in genre_ids_param.split(',') if x.strip()]
             if ids:
                 placeholders = ','.join(['?'] * len(ids))
-                # Filter by locations.genre_id (joined table)
                 where_clauses.append(f"l.genre_id IN ({placeholders})")
                 params.extend(ids)
 
@@ -2531,7 +2536,6 @@ def get_records():
             'status': 'error',
             'error': str(e)
         }), 500
-
 
 @app.route('/api/stats/last-seen-distribution', methods=['GET'])
 def get_last_seen_distribution_stats():
