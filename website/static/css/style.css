@@ -34,6 +34,7 @@ nav {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    z-index: 100;
 }
 nav button {
     width: 48px;
@@ -102,15 +103,20 @@ nav button.admin-toggle.active {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     flex: 1;
     padding: 20px;
+    overflow: hidden;
+    height: calc(100vh - 80px);
+    min-height: 0;
 }
 #page-content {
     width: 100%;
     max-width: 1200px;
     flex: 1;
     min-height: 0;
+    overflow: hidden;
+    height: 100%;
 }
 
 /* ===== FLIP CARD ===== */
@@ -628,29 +634,47 @@ nav button.admin-toggle.active {
     border: 1px solid #ffeeba;
 }
 
-/* ===== ADMIN DASHBOARD STYLES ===== */
+/* ===== ADMIN DASHBOARD STYLES - FIXED ===== */
 .admin-dashboard {
     background: rgba(255,255,255,0.95);
     border-radius: 16px;
-    padding: 30px;
+    padding: 25px 25px 10px 25px;
     width: 100%;
     height: 100%;
     overflow-y: auto;
     color: #333;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Custom scrollbar for admin dashboard */
+.admin-dashboard::-webkit-scrollbar {
+    width: 6px;
+}
+
+.admin-dashboard::-webkit-scrollbar-track {
+    background: rgba(0,0,0,0.05);
+    border-radius: 10px;
+}
+
+.admin-dashboard::-webkit-scrollbar-thumb {
+    background: #ff6b6b;
+    border-radius: 10px;
 }
 
 .admin-dashboard-header {
-    margin-bottom: 25px;
-    padding-bottom: 15px;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
     border-bottom: 2px solid #eee;
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
+    flex-shrink: 0;
 }
 
 .admin-dashboard-header h1 {
-    font-size: 28px;
+    font-size: 24px;
     color: #333;
     margin: 0;
 }
@@ -662,7 +686,7 @@ nav button.admin-toggle.active {
 
 .admin-dashboard-header .admin-user-info {
     color: #666;
-    font-size: 14px;
+    font-size: 13px;
 }
 
 .admin-dashboard-header .admin-user-info i {
@@ -670,52 +694,65 @@ nav button.admin-toggle.active {
     margin-right: 5px;
 }
 
+/* Notification Summary Bar */
+.notification-summary {
+    flex-shrink: 0;
+    margin-bottom: 15px;
+}
+
+/* Admin Dashboard Grid - FIXED */
 .admin-dashboard-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 16px;
-    margin-top: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 12px;
+    margin-top: 5px;
+    padding-bottom: 30px;
+    flex: 1;
+    align-content: flex-start;
 }
 
 .admin-dashboard-card {
     background: white;
     border: 2px solid #e9ecef;
     border-radius: 12px;
-    padding: 20px 16px;
+    padding: 14px 12px;
     cursor: pointer;
     transition: all 0.3s ease;
     text-align: center;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     text-decoration: none;
     color: #333;
+    min-height: 90px;
+    position: relative;
 }
 
 .admin-dashboard-card:hover {
-    transform: translateY(-4px);
+    transform: translateY(-3px);
     box-shadow: 0 8px 25px rgba(0,0,0,0.1);
     border-color: #ff6b6b;
 }
 
 .admin-dashboard-card i {
-    font-size: 32px;
+    font-size: 26px;
     color: #ff6b6b;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
 }
 
 .admin-dashboard-card .card-label {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     color: #333;
-    line-height: 1.3;
+    line-height: 1.2;
 }
 
 .admin-dashboard-card .card-description {
-    font-size: 11px;
+    font-size: 10px;
     color: #999;
     font-weight: 400;
+    display: none; /* Hide descriptions to save space */
 }
 
 .admin-dashboard-card.card-disabled {
@@ -810,24 +847,233 @@ nav button.admin-toggle.active {
     border-color: #fd7e14;
 }
 
-@media (max-width: 768px) {
-    .admin-dashboard {
-        padding: 16px;
+/* Notification dot and badge positioning */
+.admin-dashboard-card .notification-dot {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 10px;
+    height: 10px;
+    background: #dc3545;
+    border-radius: 50%;
+    border: 2px solid white;
+    display: none;
+    animation: pulse-dot 2s infinite;
+}
+
+.admin-dashboard-card .notification-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background: #dc3545;
+    color: white;
+    border-radius: 50%;
+    padding: 1px 5px;
+    font-size: 9px;
+    font-weight: 700;
+    min-width: 18px;
+    text-align: center;
+    display: none;
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.4);
+    border: 2px solid white;
+    z-index: 5;
+    line-height: 1.4;
+}
+
+@keyframes pulse-dot {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.5); opacity: 0.5; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.admin-dashboard-card .notification-badge {
+    animation: pulse-dot 2s infinite;
+}
+
+/* Admin dashboard footer */
+.admin-dashboard-footer {
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid #eee;
+    text-align: center;
+    color: #999;
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
+/* ===== RESPONSIVE ADMIN DASHBOARD ===== */
+@media (max-width: 1024px) {
+    .admin-dashboard-grid {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 10px;
     }
-    .admin-dashboard-header h1 {
+    
+    .admin-dashboard-card {
+        padding: 12px 10px;
+        min-height: 80px;
+    }
+    
+    .admin-dashboard-card i {
         font-size: 22px;
     }
-    .admin-dashboard-grid {
-        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-        gap: 12px;
-    }
-    .admin-dashboard-card {
-        padding: 14px 12px;
-    }
-    .admin-dashboard-card i {
-        font-size: 24px;
-    }
+    
     .admin-dashboard-card .card-label {
         font-size: 12px;
+    }
+}
+
+@media (max-width: 768px) {
+    #content {
+        padding: 10px;
+        height: calc(100vh - 70px);
+    }
+    
+    .admin-dashboard {
+        padding: 16px 16px 8px 16px;
+    }
+    
+    .admin-dashboard-header h1 {
+        font-size: 20px;
+    }
+    
+    .admin-dashboard-header .admin-user-info {
+        font-size: 12px;
+    }
+    
+    .admin-dashboard-grid {
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+        gap: 8px;
+        padding-bottom: 20px;
+    }
+    
+    .admin-dashboard-card {
+        padding: 10px 8px;
+        min-height: 70px;
+        border-radius: 8px;
+    }
+    
+    .admin-dashboard-card i {
+        font-size: 20px;
+    }
+    
+    .admin-dashboard-card .card-label {
+        font-size: 11px;
+    }
+    
+    .admin-dashboard-card .card-description {
+        display: none;
+    }
+    
+    .admin-dashboard-card .notification-dot {
+        width: 8px;
+        height: 8px;
+        top: 5px;
+        right: 5px;
+    }
+    
+    .admin-dashboard-card .notification-badge {
+        font-size: 8px;
+        min-width: 16px;
+        padding: 1px 4px;
+        top: -3px;
+        right: -3px;
+    }
+    
+    .notification-summary {
+        font-size: 12px;
+        padding: 8px 12px !important;
+        gap: 10px !important;
+    }
+    
+    .notification-summary span {
+        font-size: 11px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    #content {
+        padding: 5px;
+        height: calc(100vh - 60px);
+    }
+    
+    .admin-dashboard {
+        padding: 12px 12px 6px 12px;
+        border-radius: 10px;
+    }
+    
+    .admin-dashboard-header {
+        margin-bottom: 10px;
+        padding-bottom: 8px;
+    }
+    
+    .admin-dashboard-header h1 {
+        font-size: 17px;
+    }
+    
+    .admin-dashboard-header .admin-user-info {
+        font-size: 10px;
+    }
+    
+    .admin-dashboard-grid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 6px;
+        padding-bottom: 15px;
+    }
+    
+    .admin-dashboard-card {
+        padding: 8px 6px;
+        min-height: 60px;
+        border-width: 1.5px;
+    }
+    
+    .admin-dashboard-card i {
+        font-size: 16px;
+        margin-bottom: 1px;
+    }
+    
+    .admin-dashboard-card .card-label {
+        font-size: 9px;
+    }
+    
+    .admin-dashboard-card .card-description {
+        display: none;
+    }
+    
+    .admin-dashboard-card .notification-dot {
+        width: 6px;
+        height: 6px;
+        top: 4px;
+        right: 4px;
+        border-width: 1px;
+    }
+    
+    .admin-dashboard-card .notification-badge {
+        font-size: 7px;
+        min-width: 14px;
+        padding: 0 3px;
+        top: -2px;
+        right: -2px;
+        border-width: 1.5px;
+    }
+    
+    .notification-summary {
+        font-size: 10px;
+        padding: 6px 10px !important;
+        gap: 6px !important;
+        border-radius: 8px !important;
+    }
+    
+    .notification-summary span {
+        font-size: 10px !important;
+    }
+    
+    .notification-summary button {
+        font-size: 9px !important;
+        padding: 2px 10px !important;
+    }
+    
+    .admin-dashboard-footer {
+        font-size: 9px;
+        padding-top: 8px;
     }
 }
