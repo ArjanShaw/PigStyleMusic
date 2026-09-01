@@ -466,24 +466,6 @@ async function loadMonthlyPLBarChart() {
         return;
     }
 
-    // Check if Chart.js is loaded
-    if (typeof Chart === 'undefined') {
-        console.warn('[MONTHLY-PL] Chart.js not loaded, loading dynamically...');
-        container.innerHTML = '<div style="text-align: center; font-size: 14px; color: #666; padding: 40px;">Loading Chart.js...</div>';
-        
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
-        script.onload = function() {
-            console.log('[MONTHLY-PL] Chart.js loaded dynamically');
-            loadMonthlyPLBarChart(); // Retry
-        };
-        script.onerror = function() {
-            container.innerHTML = '<div style="text-align: center; font-size: 14px; color: #dc3545; padding: 40px;">Failed to load Chart.js. Please check your internet connection.</div>';
-        };
-        document.head.appendChild(script);
-        return;
-    }
-
     container.innerHTML = '<div style="text-align: center; font-size: 14px; color: #666; padding: 40px;">Loading charts...</div>';
 
     try {
@@ -666,12 +648,6 @@ function renderMonthlyPLChartsPage() {
             const canvas = document.getElementById(canvasId);
             if (!canvas) return;
 
-            // Check if Chart is defined (should be, but double-check)
-            if (typeof Chart === 'undefined') {
-                console.error('[MONTHLY-PL] Chart.js still not loaded!');
-                return;
-            }
-
             const ctx = canvas.getContext('2d');
             
             const chart = new Chart(ctx, {
@@ -842,7 +818,7 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     if (!body) return;
     
     if (!transactions || transactions.length === 0) {
-        body.innerHTML = '<p>No transactions found for this period.</p>';
+        body.innerHTML = '<p style="color: #000;">No transactions found for this period.</p>';
         return;
     }
 
@@ -855,7 +831,7 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     }
 
     if (!filteredTransactions || filteredTransactions.length === 0) {
-        body.innerHTML = '<p>No transactions found for this account.</p>';
+        body.innerHTML = '<p style="color: #000;">No transactions found for this account.</p>';
         return;
     }
 
@@ -872,22 +848,22 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
     let displayTotal = isRevenueAccount ? -total : total;
 
     let html = `
-        <div style="background: #f8f9fa; padding: 12px 16px; border-radius: 4px; margin-bottom: 15px; display: flex; gap: 20px; flex-wrap: wrap; align-items: center;">
-            <div><strong>Account:</strong> ${accountName || 'All Accounts'}</div>
-            <div><strong>Period:</strong> ${dateRange}</div>
-            <div><strong>Transactions:</strong> ${filteredTransactions.length}</div>
-            <div><strong>Total:</strong> <span style="font-weight:bold;color:${displayTotal >= 0 ? '#28a745' : '#dc3545'};">${displayTotal >= 0 ? '+' : ''}$${displayTotal.toFixed(2)}</span></div>
+        <div style="background: #f8f9fa; padding: 12px 16px; border-radius: 4px; margin-bottom: 15px; display: flex; gap: 20px; flex-wrap: wrap; align-items: center; color: #000;">
+            <div style="color: #000;"><strong style="color: #000;">Account:</strong> ${accountName || 'All Accounts'}</div>
+            <div style="color: #000;"><strong style="color: #000;">Period:</strong> ${dateRange}</div>
+            <div style="color: #000;"><strong style="color: #000;">Transactions:</strong> ${filteredTransactions.length}</div>
+            <div style="color: #000;"><strong style="color: #000;">Total:</strong> <span style="font-weight:bold;color:${displayTotal >= 0 ? '#28a745' : '#dc3545'};">${displayTotal >= 0 ? '+' : ''}$${displayTotal.toFixed(2)}</span></div>
         </div>
         <table style="width:100%; border-collapse:collapse; font-size:14px; color:#000; background:#fff;">
             <thead>
-                <tr style="background:#f8f9fa;">
-                    <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd;">Date</th>
-                    <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd;">Description</th>
-                    <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd;">Account</th>
-                    <th style="padding:8px 12px; text-align:right; border-bottom:2px solid #ddd;">Amount</th>
+                <tr style="background:#f8f9fa; color:#000;">
+                    <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd; color:#000;">Date</th>
+                    <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd; color:#000;">Description</th>
+                    <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd; color:#000;">Account</th>
+                    <th style="padding:8px 12px; text-align:right; border-bottom:2px solid #ddd; color:#000;">Amount</th>
                 </tr>
             </thead>
-            <tbody>`;
+            <tbody style="color: #000;">`;
 
     filteredTransactions.forEach(tx => {
         let displayAmount = tx.amount || 0;
@@ -895,20 +871,19 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
             displayAmount = -tx.amount || 0;
         }
         const isPositive = displayAmount > 0;
-        const amountClass = isPositive ? 'debit' : (displayAmount < 0 ? 'credit' : '');
         const sign = displayAmount > 0 ? '+' : (displayAmount < 0 ? '-' : '');
         const displayAmountStr = displayAmount !== 0 ? '$' + Math.abs(displayAmount).toFixed(2) : '';
 
-        html += `<tr style="border-bottom:1px solid #eee;">
-            <td style="padding:8px 12px; white-space:nowrap;">${tx.transaction_date}</td>
-            <td style="padding:8px 12px;">${tx.description || ''}</td>
-            <td style="padding:8px 12px;">${tx.account_name || ''}</td>
-            <td style="padding:8px 12px; text-align:right; font-weight:600;" class="${amountClass}">${sign}${displayAmountStr}</td>
+        html += `<tr style="border-bottom:1px solid #eee; color:#000;">
+            <td style="padding:8px 12px; white-space:nowrap; color:#000;">${tx.transaction_date}</td>
+            <td style="padding:8px 12px; color:#000;">${tx.description || ''}</td>
+            <td style="padding:8px 12px; color:#000;">${tx.account_name || ''}</td>
+            <td style="padding:8px 12px; text-align:right; font-weight:600; color: ${isPositive ? '#28a745' : '#dc3545'};">${sign}${displayAmountStr}</td>
         </tr>`;
     });
 
-    html += `<tr class="total-row" style="font-weight:bold; background:#f0f0f0;">
-        <td colspan="3" style="padding:8px 12px;"><strong>Total</strong></td>
+    html += `<tr class="total-row" style="font-weight:bold; background:#f0f0f0; color:#000;">
+        <td colspan="3" style="padding:8px 12px; color:#000;"><strong style="color:#000;">Total</strong></td>
         <td style="padding:8px 12px; text-align:right; color:${displayTotal >= 0 ? '#28a745' : '#dc3545'};">${displayTotal >= 0 ? '+' : ''}${displayTotal !== 0 ? '$' + displayTotal.toFixed(2) : ''}</td>
     </tr>`;
     html += '</tbody></table>';
