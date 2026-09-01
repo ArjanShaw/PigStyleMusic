@@ -144,7 +144,6 @@ async function showPage(page, btnElement) {
                 window.renderAdminDashboard();
             } else {
                 content.innerHTML = '<div class="simple-page"><h1>Loading Admin Dashboard...</h1></div>';
-                // Try to initialize admin dashboard
                 if (typeof window.initAdminDashboard === 'function') {
                     window.initAdminDashboard();
                 }
@@ -176,7 +175,7 @@ async function showPage(page, btnElement) {
         const initMap = {
             'shop': 'initShop',
             'new': 'initNew',
-            'new-arrivals': 'initNewArrivals',  // <-- ADDED THIS LINE
+            'new-arrivals': 'initNewArrivals',
             'merch': 'initMerch',
             'events': 'initEvents',
             'connect': 'initConnect',
