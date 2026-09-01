@@ -34,11 +34,28 @@
                 <i class="fas fa-sync"></i>
             </button>
             <select id="unposted-filter" style="padding: 8px; border: 2px solid #ddd; border-radius: 8px; color: #000; background: #fff;">
+                <option value="all">All Transactions</option>
                 <option value="unposted">Unposted Only</option>
                 <option value="posted">Posted Only</option>
-                <option value="all">All Transactions</option>
             </select>
         </div>
+        
+        <!-- Bulk Assign Section -->
+        <div id="bulk-assign-section" style="display: none; background: #f8f9fa; padding: 10px 15px; border-radius: 8px; margin-bottom: 10px; align-items: center; gap: 10px; flex-wrap: wrap; border: 1px solid #dee2e6;">
+            <span style="font-weight: 600; color: #333; font-size: 13px;">
+                <i class="fas fa-check-double"></i> Bulk Assign: <span id="bulk-count">0</span> unposted transactions
+            </span>
+            <select id="bulk-account-select" style="padding: 8px 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 13px; color: #000; background: #fff; min-width: 200px;">
+                <option value="">Select Account</option>
+            </select>
+            <button id="bulk-assign-btn" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                <i class="fas fa-check"></i> Apply to All
+            </button>
+            <button id="bulk-cancel-btn" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                <i class="fas fa-times"></i> Cancel
+            </button>
+        </div>
+        
         <div id="transactions-list" style="flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
             <div style="text-align: center; padding: 40px; color: #999;">Loading transactions...</div>
         </div>

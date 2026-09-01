@@ -14,6 +14,8 @@ let bankAccounts = [];
 let journalCurrentPage = 1;
 const journalPageSize = 20;
 let journalTotalEntries = 0;
+let currentSearchTerm = '';
+let currentFilter = 'all';
 
 // Monthly P&L charts
 let monthlyPLMonths = [];
@@ -81,6 +83,7 @@ async function loadAccounts() {
         if (data.status === 'success') {
             bankAccounts = data.accounts || [];
             console.log('[ACCOUNTS] Loaded', bankAccounts.length, 'accounts');
+            populateBulkAccountSelect();
             return bankAccounts;
         }
         return [];
@@ -88,6 +91,19 @@ async function loadAccounts() {
         console.error('[ACCOUNTS] Error:', err);
         return [];
     }
+}
+
+function populateBulkAccountSelect() {
+    const select = document.getElementById('bulk-account-select');
+    if (!select) return;
+    
+    const currentValue = select.value;
+    select.innerHTML = '<option value="">Select Account</option>';
+    
+    bankAccounts.forEach(acc => {
+        const selected = acc.id == currentValue ? 'selected' : '';
+        select.innerHTML += `<option value="${acc.id}" ${selected}>${acc.code} - ${acc.name}</option>`;
+    });
 }
 
 // ============================================================
@@ -106,6 +122,8 @@ async function loadTransactions() {
     
     const filter = document.getElementById('unposted-filter')?.value || 'all';
     const search = document.getElementById('transaction-search')?.value.trim() || '';
+    currentFilter = filter;
+    currentSearchTerm = search;
     
     try {
         let url = `${API_BASE}/api/accounting/bank-transactions-full`;
@@ -128,6 +146,7 @@ async function loadTransactions() {
         
         if (data.status === 'success') {
             renderTransactions(data.transactions || []);
+            updateBulkAssignSection(data.transactions || []);
         } else {
             list.innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Error loading transactions</div>';
         }
@@ -146,6 +165,12 @@ function renderTransactions(transactions) {
         return;
     }
     
+    // Build account dropdown options
+    let accountOptions = '<option value="">Select Account</option>';
+    bankAccounts.forEach(acc => {
+        accountOptions += `<option value="${acc.id}">${acc.code} - ${acc.name}</option>`;
+    });
+    
     let html = '';
     transactions.forEach(tx => {
         const amount = parseFloat(tx.amount) || 0;
@@ -157,19 +182,169 @@ function renderTransactions(transactions) {
         
         html += `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; ${isProcessed ? 'background: #f0fff4;' : 'background: #fff5f5;'}">
-                <div style="flex: 1;">
+                <div style="flex: 1; min-width: 150px;">
                     <div style="font-weight: 600; color: #333; font-size: 13px;">${tx.description || 'No description'}</div>
                     <div style="color: #666; font-size: 12px;">${tx.transaction_date || ''} • ID: ${tx.id}</div>
                     ${tx.post_to_account_name ? `<div style="color: #888; font-size: 11px;">Posted to: ${tx.post_to_account_name}</div>` : ''}
                 </div>
-                <div style="text-align: right; margin-right: 15px;">
+                <div style="text-align: right; margin-right: 10px; min-width: 100px;">
                     <div style="font-weight: bold; color: ${isDebit ? '#dc3545' : '#28a745'}; font-size: 14px;">${formattedAmount}</div>
                     <div style="font-size: 11px; color: ${statusColor};">${statusText}</div>
+                </div>
+                <div style="min-width: 180px; margin-left: 10px;">
+                    <select class="post-to-select" data-transaction-id="${tx.id}" ${isProcessed ? 'disabled' : ''} style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; color: #000; background: #fff; width: 100%;">
+                        ${accountOptions}
+                    </select>
+                    ${!isProcessed ? `<button class="assign-btn" data-transaction-id="${tx.id}" style="margin-top: 2px; padding: 2px 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; width: 100%;">Assign</button>` : ''}
                 </div>
             </div>
         `;
     });
     list.innerHTML = html;
+    
+    // Add event listeners for individual assignment buttons
+    document.querySelectorAll('.assign-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const transactionId = this.dataset.transactionId;
+            const select = document.querySelector(`.post-to-select[data-transaction-id="${transactionId}"]`);
+            if (select && select.value) {
+                assignSingleTransaction(transactionId, select.value);
+            } else {
+                showToast('Please select an account first.', 'warning');
+            }
+        });
+    });
+    
+    // Allow Enter key on select dropdowns
+    document.querySelectorAll('.post-to-select').forEach(select => {
+        select.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && this.value) {
+                const transactionId = this.dataset.transactionId;
+                assignSingleTransaction(transactionId, this.value);
+            }
+        });
+    });
+}
+
+function updateBulkAssignSection(transactions) {
+    const section = document.getElementById('bulk-assign-section');
+    const countSpan = document.getElementById('bulk-count');
+    if (!section || !countSpan) return;
+    
+    const unposted = transactions.filter(tx => tx.post_to === null || tx.post_to === undefined);
+    
+    if (unposted.length > 0 && currentSearchTerm) {
+        section.style.display = 'flex';
+        countSpan.textContent = unposted.length;
+    } else {
+        section.style.display = 'none';
+    }
+}
+
+// ============================================================
+// ASSIGN FUNCTIONS
+// ============================================================
+
+async function assignSingleTransaction(transactionId, accountId) {
+    if (!accountId) {
+        showToast('Please select an account.', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/accounting/bank/assign-single`, {
+            method: 'POST',
+            credentials: 'include',
+            mode: 'cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                transaction_id: parseInt(transactionId), 
+                post_to: parseInt(accountId) 
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            showToast(`✅ Transaction assigned to ${result.account_name || 'account'}`, 'success');
+            loadTransactions();
+        } else {
+            showToast('Error: ' + (result.error || 'Failed to assign'), 'error');
+        }
+    } catch (err) {
+        console.error('[ASSIGN] Error:', err);
+        showToast('Error: ' + err.message, 'error');
+    }
+}
+
+async function bulkAssignAccount() {
+    const select = document.getElementById('bulk-account-select');
+    const accountId = select?.value;
+    
+    if (!accountId) {
+        showToast('Please select an account to assign.', 'warning');
+        return;
+    }
+    
+    if (!currentSearchTerm) {
+        showToast('Please enter a search term first.', 'warning');
+        return;
+    }
+    
+    const accountName = select.options[select.selectedIndex]?.text || 'selected account';
+    if (!confirm(`Assign all unposted transactions matching "${currentSearchTerm}" to ${accountName}?`)) {
+        return;
+    }
+    
+    try {
+        const url = `${API_BASE}/api/accounting/bank-transactions-full?search=${encodeURIComponent(currentSearchTerm)}&filter=unposted`;
+        const response = await fetch(url, { credentials: 'include', mode: 'cors' });
+        const data = await response.json();
+        
+        if (data.status !== 'success' || !data.transactions || data.transactions.length === 0) {
+            showToast('No unposted transactions found to assign.', 'warning');
+            return;
+        }
+        
+        const unpostedTransactions = data.transactions.filter(tx => tx.post_to === null || tx.post_to === undefined);
+        
+        if (unpostedTransactions.length === 0) {
+            showToast('No unposted transactions found to assign.', 'warning');
+            return;
+        }
+        
+        const updates = unpostedTransactions.map(tx => ({
+            transaction_id: tx.id,
+            post_to: parseInt(accountId)
+        }));
+        
+        const updateResponse = await fetch(`${API_BASE}/api/accounting/bank/bulk-assign`, {
+            method: 'POST',
+            credentials: 'include',
+            mode: 'cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ updates })
+        });
+        
+        const result = await updateResponse.json();
+        
+        if (result.status === 'success') {
+            showToast(`✅ ${result.processed} transactions assigned successfully`, 'success');
+            loadTransactions();
+            document.getElementById('bulk-assign-section').style.display = 'none';
+            select.value = '';
+        } else {
+            showToast('Error: ' + (result.error || 'Failed to assign'), 'error');
+        }
+    } catch (err) {
+        console.error('[BULK] Error:', err);
+        showToast('Error: ' + err.message, 'error');
+    }
+}
+
+function cancelBulkAssign() {
+    document.getElementById('bulk-assign-section').style.display = 'none';
+    document.getElementById('bulk-account-select').value = '';
 }
 
 // ============================================================
@@ -554,6 +729,7 @@ function renderMonthlyPLChartsPage() {
     visibleMonths.forEach((month, index) => {
         const items = monthlyPLAllData[month] || [];
         
+        // Use balance sign to determine revenue vs expense
         const revenueItems = items.filter(i => i.balance > 0);
         const expenseItems = items.filter(i => i.balance < 0);
         
@@ -616,6 +792,7 @@ function renderMonthlyPLChartsPage() {
         visibleMonths.forEach((month, index) => {
             const items = monthlyPLAllData[month] || [];
             
+            // Use balance sign to determine revenue vs expense
             const revenueItems = items.filter(i => i.balance > 0);
             const expenseItems = items.filter(i => i.balance < 0);
             
@@ -891,7 +1068,7 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
 }
 
 // ============================================================
-// INITIALIZATION - Called by app.js after page loads
+// INITIALIZATION
 // ============================================================
 
 function initAccounting() {
@@ -949,6 +1126,7 @@ function initAccounting() {
     
     document.getElementById('clear-search-btn')?.addEventListener('click', function() {
         document.getElementById('transaction-search').value = '';
+        document.getElementById('bulk-assign-section').style.display = 'none';
         loadTransactions();
     });
 
@@ -958,6 +1136,15 @@ function initAccounting() {
 
     document.getElementById('unposted-filter')?.addEventListener('change', function() {
         loadTransactions();
+    });
+
+    // Bulk Assign
+    document.getElementById('bulk-assign-btn')?.addEventListener('click', function() {
+        bulkAssignAccount();
+    });
+    
+    document.getElementById('bulk-cancel-btn')?.addEventListener('click', function() {
+        cancelBulkAssign();
     });
 
     // Add Account modal

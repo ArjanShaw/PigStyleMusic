@@ -6531,6 +6531,111 @@ def monthly_pl():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
+# ===== SINGLE TRANSACTION ASSIGN =====
+
+@app.route('/api/accounting/bank/assign-single', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def bank_assign_single():
+    try:
+        data = request.json
+        transaction_id = data.get('transaction_id')
+        post_to = data.get('post_to')
+        
+        if not transaction_id or not post_to:
+            return jsonify({'status': 'error', 'error': 'transaction_id and post_to required'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if transaction exists and is unposted
+        cursor.execute('SELECT id, post_to FROM bank_transactions WHERE id = ?', (transaction_id,))
+        tx = cursor.fetchone()
+        if not tx:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Transaction not found'}), 404
+        
+        if tx['post_to'] is not None:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Transaction already posted'}), 400
+        
+        # Get account name for response
+        cursor.execute('SELECT name FROM accounts WHERE id = ?', (post_to,))
+        account = cursor.fetchone()
+        account_name = account['name'] if account else None
+        
+        # Update the transaction
+        cursor.execute('UPDATE bank_transactions SET post_to = ? WHERE id = ?', (post_to, transaction_id))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Transaction assigned successfully',
+            'account_name': account_name
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error in bank_assign_single: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+# ===== BULK ASSIGN =====
+
+@app.route('/api/accounting/bank/bulk-assign', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def bank_bulk_assign():
+    try:
+        data = request.json
+        updates = data.get('updates', [])
+        
+        if not updates:
+            return jsonify({'status': 'error', 'error': 'No updates provided'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        processed = 0
+        errors = []
+        
+        for update in updates:
+            transaction_id = update.get('transaction_id')
+            post_to = update.get('post_to')
+            
+            if not transaction_id or not post_to:
+                errors.append(f"Missing data for transaction {transaction_id}")
+                continue
+            
+            # Check if transaction exists and is unposted
+            cursor.execute('SELECT post_to FROM bank_transactions WHERE id = ?', (transaction_id,))
+            tx = cursor.fetchone()
+            if not tx:
+                errors.append(f"Transaction {transaction_id} not found")
+                continue
+            
+            if tx['post_to'] is not None:
+                errors.append(f"Transaction {transaction_id} already posted")
+                continue
+            
+            cursor.execute('UPDATE bank_transactions SET post_to = ? WHERE id = ?', (post_to, transaction_id))
+            if cursor.rowcount > 0:
+                processed += 1
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'processed': processed,
+            'errors': errors,
+            'message': f'Assigned {processed} transactions'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error in bank_bulk_assign: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 def get_plaid_client():
     """Initialize Plaid client using environment credentials."""
     client_id = os.environ.get('PLAID_CLIENT_ID')
