@@ -6494,31 +6494,92 @@ def monthly_pl():
         conn = get_db()
         cursor = conn.cursor()
         
+        # Include ALL transactions - both posted AND unposted
+        # For unposted transactions, we use the account type based on the description
+        # For posted transactions, we use the account from post_to
         cursor.execute('''
             SELECT 
                 strftime('%Y-%m', bt.transaction_date) AS month,
-                a.type,
-                a.code,
-                a.name,
+                CASE 
+                    WHEN bt.post_to IS NOT NULL THEN a.type
+                    ELSE 
+                        CASE 
+                            WHEN bt.amount > 0 THEN 'revenue'
+                            ELSE 'expense'
+                        END
+                END AS type,
+                CASE 
+                    WHEN bt.post_to IS NOT NULL THEN a.code
+                    ELSE 
+                        CASE 
+                            WHEN bt.amount > 0 THEN 'UNPOSTED_REV'
+                            ELSE 'UNPOSTED_EXP'
+                        END
+                END AS code,
+                CASE 
+                    WHEN bt.post_to IS NOT NULL THEN a.name
+                    ELSE 
+                        CASE 
+                            WHEN bt.amount > 0 THEN 'Unposted Revenue'
+                            ELSE 'Unposted Expenses'
+                        END
+                END AS name,
                 SUM(bt.amount) AS balance
             FROM bank_transactions bt
-            JOIN accounts a ON bt.post_to = a.id
-            WHERE a.type IN ('revenue', 'expense')
-            GROUP BY strftime('%Y-%m', bt.transaction_date), a.id, a.code, a.name, a.type
-            ORDER BY month, a.type DESC, a.code
+            LEFT JOIN accounts a ON bt.post_to = a.id
+            GROUP BY strftime('%Y-%m', bt.transaction_date), 
+                     CASE 
+                        WHEN bt.post_to IS NOT NULL THEN a.type
+                        ELSE 
+                            CASE 
+                                WHEN bt.amount > 0 THEN 'revenue'
+                                ELSE 'expense'
+                            END
+                     END,
+                     CASE 
+                        WHEN bt.post_to IS NOT NULL THEN a.code
+                        ELSE 
+                            CASE 
+                                WHEN bt.amount > 0 THEN 'UNPOSTED_REV'
+                                ELSE 'UNPOSTED_EXP'
+                            END
+                     END,
+                     CASE 
+                        WHEN bt.post_to IS NOT NULL THEN a.name
+                        ELSE 
+                            CASE 
+                                WHEN bt.amount > 0 THEN 'Unposted Revenue'
+                                ELSE 'Unposted Expenses'
+                            END
+                     END
+            ORDER BY month, type DESC, code
         ''')
         
         rows = cursor.fetchall()
         conn.close()
         
+        # Filter out rows with zero balance and format the response
+        data = []
+        for row in rows:
+            if row['balance'] != 0:
+                data.append({
+                    'month': row['month'],
+                    'type': row['type'],
+                    'code': row['code'],
+                    'name': row['name'],
+                    'balance': row['balance']
+                })
+        
         return jsonify({
             'status': 'success',
-            'data': [dict(row) for row in rows]
+            'data': data
         })
         
     except Exception as e:
         app.logger.error(f"Error in monthly_pl: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 def get_plaid_client():
     """Initialize Plaid client using environment credentials."""
