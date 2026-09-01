@@ -6494,85 +6494,35 @@ def monthly_pl():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Include ALL transactions - both posted AND unposted
-        # For unposted transactions, we use the account type based on the description
-        # For posted transactions, we use the account from post_to
         cursor.execute('''
             SELECT 
                 strftime('%Y-%m', bt.transaction_date) AS month,
                 CASE 
                     WHEN bt.post_to IS NOT NULL THEN a.type
-                    ELSE 
-                        CASE 
-                            WHEN bt.amount > 0 THEN 'revenue'
-                            ELSE 'expense'
-                        END
+                    ELSE 'unposted'
                 END AS type,
                 CASE 
                     WHEN bt.post_to IS NOT NULL THEN a.code
-                    ELSE 
-                        CASE 
-                            WHEN bt.amount > 0 THEN 'UNPOSTED_REV'
-                            ELSE 'UNPOSTED_EXP'
-                        END
+                    ELSE 'UNPOSTED'
                 END AS code,
                 CASE 
                     WHEN bt.post_to IS NOT NULL THEN a.name
-                    ELSE 
-                        CASE 
-                            WHEN bt.amount > 0 THEN 'Unposted Revenue'
-                            ELSE 'Unposted Expenses'
-                        END
+                    ELSE 'Unposted'
                 END AS name,
                 SUM(bt.amount) AS balance
             FROM bank_transactions bt
             LEFT JOIN accounts a ON bt.post_to = a.id
-            GROUP BY strftime('%Y-%m', bt.transaction_date), 
-                     CASE 
-                        WHEN bt.post_to IS NOT NULL THEN a.type
-                        ELSE 
-                            CASE 
-                                WHEN bt.amount > 0 THEN 'revenue'
-                                ELSE 'expense'
-                            END
-                     END,
-                     CASE 
-                        WHEN bt.post_to IS NOT NULL THEN a.code
-                        ELSE 
-                            CASE 
-                                WHEN bt.amount > 0 THEN 'UNPOSTED_REV'
-                                ELSE 'UNPOSTED_EXP'
-                            END
-                     END,
-                     CASE 
-                        WHEN bt.post_to IS NOT NULL THEN a.name
-                        ELSE 
-                            CASE 
-                                WHEN bt.amount > 0 THEN 'Unposted Revenue'
-                                ELSE 'Unposted Expenses'
-                            END
-                     END
+            GROUP BY strftime('%Y-%m', bt.transaction_date), bt.post_to
+            HAVING SUM(bt.amount) != 0
             ORDER BY month, type DESC, code
         ''')
         
         rows = cursor.fetchall()
         conn.close()
         
-        # Filter out rows with zero balance and format the response
-        data = []
-        for row in rows:
-            if row['balance'] != 0:
-                data.append({
-                    'month': row['month'],
-                    'type': row['type'],
-                    'code': row['code'],
-                    'name': row['name'],
-                    'balance': row['balance']
-                })
-        
         return jsonify({
             'status': 'success',
-            'data': data
+            'data': [dict(row) for row in rows]
         })
         
     except Exception as e:

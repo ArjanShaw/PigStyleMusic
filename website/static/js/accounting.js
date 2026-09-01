@@ -554,8 +554,8 @@ function renderMonthlyPLChartsPage() {
     visibleMonths.forEach((month, index) => {
         const items = monthlyPLAllData[month] || [];
         
-        const revenueItems = items.filter(i => i.type === 'revenue');
-        const expenseItems = items.filter(i => i.type === 'expense');
+        const revenueItems = items.filter(i => i.balance > 0);
+        const expenseItems = items.filter(i => i.balance < 0);
         
         const totalRevenue = revenueItems.reduce((sum, i) => sum + i.balance, 0);
         const totalExpenses = expenseItems.reduce((sum, i) => sum + i.balance, 0);
@@ -616,8 +616,8 @@ function renderMonthlyPLChartsPage() {
         visibleMonths.forEach((month, index) => {
             const items = monthlyPLAllData[month] || [];
             
-            const revenueItems = items.filter(i => i.type === 'revenue');
-            const expenseItems = items.filter(i => i.type === 'expense');
+            const revenueItems = items.filter(i => i.balance > 0);
+            const expenseItems = items.filter(i => i.balance < 0);
             
             const totalRevenue = revenueItems.reduce((sum, i) => sum + i.balance, 0);
             const totalExpenses = expenseItems.reduce((sum, i) => sum + i.balance, 0);
