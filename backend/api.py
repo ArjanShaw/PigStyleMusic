@@ -6440,6 +6440,8 @@ def accounting_reports():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
+
 @app.route('/api/accounting/balances', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -6450,41 +6452,35 @@ def get_balances():
         
         cursor.execute('''
             SELECT 
-                a.id,
                 a.code,
                 a.name,
-                a.type,
-                COALESCE(SUM(
-                    CASE 
-                        WHEN bt.post_to = a.id THEN bt.amount
-                        WHEN bt.post_from = a.id THEN -bt.amount
-                        ELSE 0
-                    END
-                ), 0) AS balance
-            FROM accounts a
-            LEFT JOIN bank_transactions bt ON bt.post_to = a.id OR bt.post_from = a.id
-            GROUP BY a.id, a.code, a.name, a.type
-            HAVING ABS(COALESCE(SUM(
-                CASE 
-                    WHEN bt.post_to = a.id THEN bt.amount
-                    WHEN bt.post_from = a.id THEN -bt.amount
-                    ELSE 0
-                END
-            ), 0)) > 0.01
-            ORDER BY a.type, a.code
+                COALESCE(SUM(bt.amount), 0) AS balance
+            FROM bank_transactions bt
+            INNER JOIN accounts a ON a.id = bt.post_from
+            WHERE bt.post_from IN (1, 21)
+            GROUP BY a.id, a.code, a.name
         ''')
         
         rows = cursor.fetchall()
         conn.close()
         
+        balances = []
+        for row in rows:
+            balances.append({
+                'code': row['code'],
+                'name': row['name'],
+                'balance': row['balance']
+            })
+        
         return jsonify({
             'status': 'success',
-            'balances': [dict(row) for row in rows]
+            'balances': balances
         })
         
     except Exception as e:
         app.logger.error(f"Error in get_balances: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/api/accounting/monthly-pl', methods=['GET'])
 @login_required
