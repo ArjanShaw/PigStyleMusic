@@ -6570,6 +6570,8 @@ def monthly_pl():
               AND NOT (f.type = 'asset' AND a.type = 'asset')
               AND bt.post_from != {private_id}
               AND bt.post_to != {private_id}
+              -- EXCLUDE Prepaid Rent (account ID 52)
+              AND bt.post_to != 52
             GROUP BY strftime('%Y-%m', bt.transaction_date), a.id
             
             UNION ALL
@@ -6593,6 +6595,8 @@ def monthly_pl():
             FROM journal_entries_simple je
             JOIN accounts a ON a.id = je.post_from OR a.id = je.post_to
             WHERE je.source_type = 'manual'
+              -- EXCLUDE Prepaid Rent (account ID 52)
+              AND a.id != 52
             GROUP BY strftime('%Y-%m', je.transaction_date), a.id
         '''
         
@@ -6635,7 +6639,7 @@ def monthly_pl():
         app.logger.error(f"Error in monthly_pl: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
+     
 # ===== SINGLE TRANSACTION ASSIGN =====
 
 @app.route('/api/accounting/bank/assign-single', methods=['POST'])
