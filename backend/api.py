@@ -6441,7 +6441,6 @@ def accounting_reports():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
-
 @app.route('/api/accounting/balances', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -6450,6 +6449,7 @@ def get_balances():
         conn = get_db()
         cursor = conn.cursor()
         
+        # Get Bluevine (1) and FNBO (21) balances
         cursor.execute('''
             SELECT 
                 a.code,
@@ -6462,8 +6462,6 @@ def get_balances():
         ''')
         
         rows = cursor.fetchall()
-        conn.close()
-        
         balances = []
         for row in rows:
             balances.append({
@@ -6471,6 +6469,26 @@ def get_balances():
                 'name': row['name'],
                 'balance': row['balance']
             })
+        conn.close()
+        
+        # Add Private Account balance (account 53)
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT 
+                SUM(-1 * bt.amount) AS private_account_balance
+            FROM bank_transactions bt
+            WHERE bt.post_to = 53
+        ''')
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        balances.append({
+            'code': '1016',
+            'name': 'Private Account - Owner',
+            'balance': row['private_account_balance'] if row and row['private_account_balance'] is not None else 0
+        })
         
         return jsonify({
             'status': 'success',
@@ -6479,6 +6497,7 @@ def get_balances():
         
     except Exception as e:
         app.logger.error(f"Error in get_balances: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
