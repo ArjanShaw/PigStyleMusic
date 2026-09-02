@@ -6440,6 +6440,7 @@ def accounting_reports():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
 @app.route('/api/accounting/balances', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -6493,6 +6494,32 @@ def get_balances():
             'balance': row['private_account_balance'] if row and row['private_account_balance'] is not None else 0
         })
         
+        # ============================================================
+        # ADD PREPAID RENT BALANCE
+        # ============================================================
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Prepaid Rent balance = Bank payments (post_to = 52) - Amortization (post_from = 51, post_to = 52)
+        cursor.execute('''
+            SELECT 
+                (
+                    COALESCE((SELECT SUM(ABS(amount)) FROM bank_transactions WHERE post_to = 52 AND amount < 0), 0) -
+                    COALESCE((SELECT SUM(amount) FROM journal_entries_simple WHERE post_from = 51 AND post_to = 52 AND source_type = 'manual'), 0)
+                ) AS prepaid_rent_balance
+        ''')
+        
+        prepaid_row = cursor.fetchone()
+        conn.close()
+        
+        prepaid_balance = prepaid_row['prepaid_rent_balance'] if prepaid_row else 0
+        
+        balances.append({
+            'code': '1055',
+            'name': 'Prepaid Rent',
+            'balance': prepaid_balance
+        })
+        
         return jsonify({
             'status': 'success',
             'balances': balances
@@ -6502,7 +6529,6 @@ def get_balances():
         app.logger.error(f"Error in get_balances: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
- 
 
 @app.route('/api/accounting/monthly-pl', methods=['GET'])
 @login_required
