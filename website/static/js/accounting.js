@@ -634,10 +634,13 @@ function renderBalances(balances) {
 // ============================================================
 
 async function loadMonthlyPLBarChart() {
-    console.log('[MONTHLY-PL] Loading bar charts...');
+    console.log('========================================');
+    console.log('[MONTHLY-PL] 🔄 Starting loadMonthlyPLBarChart');
+    console.log('========================================');
+    
     const container = document.getElementById('monthly-pl-bar-chart-container');
     if (!container) {
-        console.error('[MONTHLY-PL] Container not found');
+        console.error('[MONTHLY-PL] ❌ Container not found!');
         return;
     }
 
@@ -645,17 +648,37 @@ async function loadMonthlyPLBarChart() {
 
     try {
         const url = `${API_BASE}/api/accounting/monthly-pl`;
-        console.log('[MONTHLY-PL] Fetching:', url);
+        console.log(`[MONTHLY-PL] 📡 Fetching URL: ${url}`);
         
         const response = await fetch(url, {
             credentials: 'include',
             mode: 'cors'
         });
 
-        if (!response.ok) throw new Error('Failed to load monthly P&L');
+        console.log(`[MONTHLY-PL] 📡 Response status: ${response.status}`);
+        
+        if (!response.ok) {
+            console.error(`[MONTHLY-PL] ❌ HTTP Error: ${response.status}`);
+            throw new Error(`Failed to load monthly P&L: ${response.status}`);
+        }
         
         const data = await response.json();
-        console.log('[MONTHLY-PL] Data received:', data);
+        console.log('[MONTHLY-PL] 📊 Raw data received:', data);
+        console.log(`[MONTHLY-PL] 📊 Total entries: ${data.data ? data.data.length : 0}`);
+        
+        // ============================================================
+        // CHECK FOR RENT ENTRIES IN RAW DATA
+        // ============================================================
+        const rentEntries = data.data.filter(item => 
+            item.name && (item.name.includes('Rent') || item.name.includes('rent'))
+        );
+        console.log(`[MONTHLY-PL] 🏠 Rent entries found in raw data: ${rentEntries.length}`);
+        if (rentEntries.length > 0) {
+            console.log('[MONTHLY-PL] 🏠 Rent entries:', rentEntries);
+        } else {
+            console.warn('[MONTHLY-PL] ⚠️ NO RENT ENTRIES FOUND IN RAW DATA!');
+            console.log('[MONTHLY-PL] 🔍 First 5 items:', data.data.slice(0, 5));
+        }
 
         if (data.status === 'success') {
             const groupedByMonth = {};
@@ -666,20 +689,38 @@ async function loadMonthlyPLBarChart() {
                 groupedByMonth[item.month].push(item);
             });
 
+            console.log('[MONTHLY-PL] 📅 Months found:', Object.keys(groupedByMonth).sort());
+
+            // Check each month for rent entries
+            Object.keys(groupedByMonth).forEach(month => {
+                const items = groupedByMonth[month];
+                const rentInMonth = items.filter(i => 
+                    i.name && (i.name.includes('Rent') || i.name.includes('rent'))
+                );
+                if (rentInMonth.length > 0) {
+                    console.log(`[MONTHLY-PL] 🏠 Rent entries in ${month}:`, rentInMonth);
+                }
+            });
+
             monthlyPLMonths = Object.keys(groupedByMonth).sort().reverse();
             monthlyPLAllData = groupedByMonth;
             monthlyPLCurrentPage = 0;
             
+            console.log('[MONTHLY-PL] 📊 monthlyPLMonths:', monthlyPLMonths);
+            console.log('[MONTHLY-PL] 📊 monthlyPLAllData keys:', Object.keys(monthlyPLAllData));
+            
             renderMonthlyPLChartsPage();
         } else {
+            console.error('[MONTHLY-PL] ❌ API returned error status:', data.status);
             container.innerHTML = `<p style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error loading data'}</p>`;
         }
         
     } catch (err) {
-        console.error('[MONTHLY-PL] Error:', err);
+        console.error('[MONTHLY-PL] ❌ Error:', err);
         container.innerHTML = `<p style="text-align:center; padding:40px; color:#dc3545;">Error: ${err.message}</p>`;
     }
 }
+
 
 function renderMonthlyPLChartsPage() {
     console.log('[MONTHLY-PL] Rendering page', monthlyPLCurrentPage);
@@ -923,12 +964,308 @@ function renderMonthlyPLChartsPage() {
     }, 100);
 }
 
-// ============================================================
-// MONTHLY TRANSACTIONS MODAL
-// ============================================================
 
-function closeMonthlyModal() {
-    document.getElementById('monthly-tx-modal').style.display = 'none';
+function renderMonthlyPLChartsPage() {
+    console.log('========================================');
+    console.log('[MONTHLY-PL] 📊 Rendering charts - Page', monthlyPLCurrentPage);
+    console.log('========================================');
+    
+    const container = document.getElementById('monthly-pl-bar-chart-container');
+    
+    if (!container) {
+        console.error('[MONTHLY-PL] ❌ Container not found!');
+        return;
+    }
+    
+    if (!monthlyPLMonths || monthlyPLMonths.length === 0) {
+        console.warn('[MONTHLY-PL] ⚠️ No months data available');
+        container.innerHTML = '<p style="text-align:center; padding:40px; color:#666;">No data available.</p>';
+        return;
+    }
+
+    console.log(`[MONTHLY-PL] 📅 Available months: ${monthlyPLMonths.join(', ')}`);
+
+    const startIndex = monthlyPLCurrentPage * 6;
+    const endIndex = Math.min(startIndex + 6, monthlyPLMonths.length);
+    const visibleMonths = monthlyPLMonths.slice(startIndex, endIndex);
+
+    console.log(`[MONTHLY-PL] 📅 Showing months ${startIndex + 1}-${endIndex} of ${monthlyPLMonths.length}: ${visibleMonths.join(', ')}`);
+
+    if (visibleMonths.length === 0) {
+        if (monthlyPLCurrentPage > 0) {
+            monthlyPLCurrentPage--;
+            renderMonthlyPLChartsPage();
+        }
+        return;
+    }
+
+    const totalPages = Math.ceil(monthlyPLMonths.length / 6);
+    const isFirstPage = monthlyPLCurrentPage === 0;
+    const isLastPage = monthlyPLCurrentPage >= totalPages - 1;
+
+    let html = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 10px 15px; background: #f8f9fa; border-radius: 8px;">
+            <div>
+                <span style="font-weight: 600; color: #000;">Monthly P&L</span>
+                <span style="color: #666; margin-left: 10px; font-size: 13px;">Showing ${startIndex + 1}-${Math.min(endIndex, monthlyPLMonths.length)} of ${monthlyPLMonths.length} months</span>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button id="monthly-pl-prev" ${isFirstPage ? 'disabled' : ''} style="padding: 6px 16px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: ${isFirstPage ? 'not-allowed' : 'pointer'}; color: ${isFirstPage ? '#999' : '#000'};">
+                    <i class="fas fa-chevron-left"></i> Newer
+                </button>
+                <button id="monthly-pl-next" ${isLastPage ? 'disabled' : ''} style="padding: 6px 16px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: ${isLastPage ? 'not-allowed' : 'pointer'}; color: ${isLastPage ? '#999' : '#000'};">
+                    Older <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; margin-bottom: 20px;">
+    `;
+
+    visibleMonths.forEach((month, index) => {
+        const items = monthlyPLAllData[month] || [];
+        
+        console.log(`[MONTHLY-PL] 📊 Month ${month}: ${items.length} items`);
+        
+        // Log rent items for this month
+        const rentItems = items.filter(i => 
+            i.name && (i.name.includes('Rent') || i.name.includes('rent'))
+        );
+        if (rentItems.length > 0) {
+            console.log(`[MONTHLY-PL] 🏠 Rent items in ${month}:`, rentItems);
+        }
+        
+        // ============================================================
+        // FIXED: Exclude Prepaid Rent (code: 1055) from net income
+        // ============================================================
+        // For chart display: show all items including Prepaid Rent
+        const displayRevenue = items.filter(i => i.balance > 0);
+        const displayExpense = items.filter(i => i.balance < 0);
+        
+        // For net income calculation: EXCLUDE Prepaid Rent (asset account 1055)
+        const revenueForNet = items.filter(i => i.balance > 0 && i.code !== '1055');
+        const expenseForNet = items.filter(i => i.balance < 0);
+        
+        const totalRevenue = revenueForNet.reduce((sum, i) => sum + i.balance, 0);
+        const totalExpenses = expenseForNet.reduce((sum, i) => sum + i.balance, 0);
+        const netIncome = totalRevenue + totalExpenses;
+        
+        console.log(`[MONTHLY-PL] 📊 ${month} - Revenue (for net): ${totalRevenue.toFixed(2)}, Expenses: ${totalExpenses.toFixed(2)}, Net Income: ${netIncome.toFixed(2)}`);
+        
+        // Build chart labels with display data (includes Prepaid Rent for visual)
+        const labels = [];
+        const values = [];
+        const colors = [];
+
+        displayRevenue.forEach(item => {
+            let label = item.name;
+            if (label.length > 15) {
+                label = label.substring(0, 13) + '...';
+            }
+            labels.push(label);
+            values.push(item.balance);
+            colors.push('rgba(40, 167, 69, 0.85)');
+        });
+
+        displayExpense.forEach(item => {
+            let label = item.name;
+            if (label.length > 15) {
+                label = label.substring(0, 13) + '...';
+            }
+            labels.push(label);
+            values.push(item.balance);
+            colors.push('rgba(220, 53, 69, 0.75)');
+        });
+
+        // Add Net Income bar with CORRECTED value
+        labels.push('Net Income');
+        values.push(netIncome);
+        colors.push(netIncome >= 0 ? 'rgba(40, 167, 69, 0.95)' : 'rgba(220, 53, 69, 0.95)');
+
+        const chartIndex = startIndex + index;
+
+        html += `
+            <div style="background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; position: relative; min-height: 420px;">
+                <div style="text-align: center; font-weight: 600; font-size: 16px; color: #000; margin-bottom: 10px;">${month}</div>
+                <div style="text-align: center; font-size: 12px; color: #666; margin-bottom: 10px;">
+                    Revenue: <span style="color:#28a745;font-weight:bold;">$${totalRevenue.toFixed(2)}</span> | 
+                    Expenses: <span style="color:#dc3545;font-weight:bold;">$${Math.abs(totalExpenses).toFixed(2)}</span> | 
+                    Net: <span style="font-weight: bold; color: ${netIncome >= 0 ? '#28a745' : '#dc3545'};">${netIncome >= 0 ? '+' : ''}$${netIncome.toFixed(2)}</span>
+                    ${rentItems.length > 0 ? `| Rent: <span style="color:#dc3545;font-weight:bold;">$${Math.abs(rentItems.find(i => i.code === '6025')?.balance || 0).toFixed(2)}</span>` : ''}
+                </div>
+                <div style="position: relative; height: 300px;">
+                    <canvas id="monthly-pl-chart-${chartIndex}"></canvas>
+                </div>
+                <div style="text-align: center; font-size: 11px; color: #999; margin-top: 5px;">
+                    Click bar for details
+                </div>
+            </div>
+        `;
+    });
+
+    html += '</div>';
+    container.innerHTML = html;
+
+    // Destroy old chart instances
+    Object.keys(monthlyPLChartInstances).forEach(key => {
+        if (monthlyPLChartInstances[key]) {
+            monthlyPLChartInstances[key].destroy();
+            delete monthlyPLChartInstances[key];
+        }
+    });
+
+    setTimeout(() => {
+        visibleMonths.forEach((month, index) => {
+            const items = monthlyPLAllData[month] || [];
+            
+            // For display: show all items
+            const displayRevenue = items.filter(i => i.balance > 0);
+            const displayExpense = items.filter(i => i.balance < 0);
+            
+            // For net income: EXCLUDE Prepaid Rent (code: 1055)
+            const revenueForNet = items.filter(i => i.balance > 0 && i.code !== '1055');
+            const expenseForNet = items.filter(i => i.balance < 0);
+            
+            const totalRevenue = revenueForNet.reduce((sum, i) => sum + i.balance, 0);
+            const totalExpenses = expenseForNet.reduce((sum, i) => sum + i.balance, 0);
+            const netIncome = totalRevenue + totalExpenses;
+
+            const labels = [];
+            const values = [];
+            const colors = [];
+
+            displayRevenue.forEach(item => {
+                let label = item.name;
+                if (label.length > 15) {
+                    label = label.substring(0, 13) + '...';
+                }
+                labels.push(label);
+                values.push(item.balance);
+                colors.push('rgba(40, 167, 69, 0.85)');
+            });
+
+            displayExpense.forEach(item => {
+                let label = item.name;
+                if (label.length > 15) {
+                    label = label.substring(0, 13) + '...';
+                }
+                labels.push(label);
+                values.push(item.balance);
+                colors.push('rgba(220, 53, 69, 0.75)');
+            });
+
+            labels.push('Net Income');
+            values.push(netIncome);
+            colors.push(netIncome >= 0 ? 'rgba(40, 167, 69, 0.95)' : 'rgba(220, 53, 69, 0.95)');
+
+            const chartIndex = startIndex + index;
+            const canvasId = `monthly-pl-chart-${chartIndex}`;
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) {
+                console.warn(`[MONTHLY-PL] ⚠️ Canvas ${canvasId} not found`);
+                return;
+            }
+
+            console.log(`[MONTHLY-PL] 📊 Creating chart for ${month} with ${labels.length} bars`);
+            console.log(`[MONTHLY-PL] 📊 Labels:`, labels);
+            console.log(`[MONTHLY-PL] 📊 Values:`, values);
+
+            const ctx = canvas.getContext('2d');
+            
+            const chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Amount',
+                        data: values,
+                        backgroundColor: colors,
+                        borderColor: colors.map(c => c.replace('0.85', '1').replace('0.75', '1').replace('0.95', '1')),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const val = context.raw;
+                                    return (val >= 0 ? '+' : '') + '$' + Math.abs(val).toFixed(2);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value;
+                                },
+                                font: { size: 9 }
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                maxRotation: 30,
+                                minRotation: 30,
+                                font: { size: 7 }
+                            }
+                        }
+                    },
+                    onClick: function(e, elements) {
+                        if (elements.length === 0) return;
+                        const element = elements[0];
+                        const idx = element.index;
+                        const label = this.data.labels[idx];
+                        
+                        console.log('[MONTHLY-PL] Bar clicked:', label, 'Month:', month);
+                        
+                        if (label === 'Net Income') {
+                            showMonthlyTransactions(month, null, 'All Transactions', true);
+                            return;
+                        }
+                        
+                        const foundAccount = bankAccounts.find(a => a.name === label);
+                        if (foundAccount) {
+                            showMonthlyTransactions(month, foundAccount.id, label, true);
+                        } else {
+                            showMonthlyTransactions(month, null, label, true);
+                        }
+                    }
+                }
+            });
+
+            monthlyPLChartInstances[chartIndex] = chart;
+            console.log(`[MONTHLY-PL] ✅ Chart created for ${month}`);
+        });
+
+        // Pagination button event listeners
+        const prevBtn = document.getElementById('monthly-pl-prev');
+        const nextBtn = document.getElementById('monthly-pl-next');
+        
+        if (prevBtn) {
+            prevBtn.addEventListener('click', function() {
+                if (monthlyPLCurrentPage > 0) {
+                    monthlyPLCurrentPage--;
+                    renderMonthlyPLChartsPage();
+                }
+            });
+        }
+
+        if (nextBtn) {
+            nextBtn.addEventListener('click', function() {
+                const totalPages = Math.ceil(monthlyPLMonths.length / 6);
+                if (monthlyPLCurrentPage < totalPages - 1) {
+                    monthlyPLCurrentPage++;
+                    renderMonthlyPLChartsPage();
+                }
+            });
+        }
+
+    }, 100);
 }
 
 function showMonthlyTransactions(month, accountId, accountName, excludeOrders = false) {

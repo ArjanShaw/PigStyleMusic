@@ -6508,52 +6508,108 @@ def get_balances():
 @login_required
 @role_required(['admin'])
 def monthly_pl():
+    """
+    Get monthly P&L data from BOTH bank_transactions AND journal_entries_simple (manual only).
+    NOTE: post_from and post_to in journal_entries_simple store account CODES (e.g., '6025', '1055')
+    """
     try:
         conn = get_db()
         cursor = conn.cursor()
         
-        # Modified query to EXCLUDE asset-to-asset transfers
-        cursor.execute('''
+        # Get asset account IDs for exclusion from bank transactions
+        cursor.execute('SELECT id FROM accounts WHERE type = "asset"')
+        asset_rows = cursor.fetchall()
+        asset_ids = [str(row['id']) for row in asset_rows]
+        asset_ids_str = ','.join(asset_ids) if asset_ids else '0'
+        
+        # Get Private Account ID for exclusion
+        cursor.execute('SELECT id FROM accounts WHERE code = "1016"')
+        private_row = cursor.fetchone()
+        private_id = str(private_row['id']) if private_row else '0'
+        
+        query = f'''
+            -- ============================================================
+            -- PART 1: Bank Transactions (excluding asset-to-asset)
+            -- ============================================================
             SELECT 
                 strftime('%Y-%m', bt.transaction_date) AS month,
-                CASE 
-                    WHEN bt.post_to IS NOT NULL THEN a.type
-                    ELSE 'unposted'
-                END AS type,
-                CASE 
-                    WHEN bt.post_to IS NOT NULL THEN a.code
-                    ELSE 'UNPOSTED'
-                END AS code,
-                CASE 
-                    WHEN bt.post_to IS NOT NULL THEN a.name
-                    ELSE 'Unposted'
-                END AS name,
+                a.type,
+                a.code,
+                a.name,
                 SUM(bt.amount) AS balance
             FROM bank_transactions bt
             LEFT JOIN accounts a ON a.id = bt.post_to
             LEFT JOIN accounts f ON f.id = bt.post_from
             WHERE bt.post_to IS NOT NULL
-              -- EXCLUDE asset-to-asset transfers
               AND NOT (f.type = 'asset' AND a.type = 'asset')
-              -- EXCLUDE transfers to/from Private Account (owner)
-              AND NOT (f.code = '1016' OR a.code = '1016')
-            GROUP BY strftime('%Y-%m', bt.transaction_date), bt.post_to
-            HAVING SUM(bt.amount) != 0
-            ORDER BY month, type DESC, code
-        ''')
+              AND bt.post_from != {private_id}
+              AND bt.post_to != {private_id}
+            GROUP BY strftime('%Y-%m', bt.transaction_date), a.id
+            
+            UNION ALL
+            
+            -- ============================================================
+            -- PART 2: Manual Journal Entries (source_type = 'manual')
+            -- FIXED: Joining on a.code = je.post_from (since post_from stores account codes)
+            -- ============================================================
+            SELECT 
+                strftime('%Y-%m', je.transaction_date) AS month,
+                a.type,
+                a.code,
+                a.name,
+                SUM(
+                    CASE 
+                        WHEN je.post_from = a.code THEN -je.amount / 100.0
+                        WHEN je.post_to = a.code THEN je.amount / 100.0
+                        ELSE 0
+                    END
+                ) AS balance
+            FROM journal_entries_simple je
+            JOIN accounts a ON a.code = je.post_from OR a.code = je.post_to
+            WHERE je.source_type = 'manual'
+            GROUP BY strftime('%Y-%m', je.transaction_date), a.id
+        '''
         
+        cursor.execute(query)
         rows = cursor.fetchall()
         conn.close()
         
+        # Aggregate by month and account (combine same accounts from different sources)
+        from collections import defaultdict
+        aggregated = defaultdict(lambda: defaultdict(float))
+        
+        for row in rows:
+            month = row['month']
+            if not month:
+                continue
+            key = f"{row['code']}_{row['name']}"
+            aggregated[month][key] += float(row['balance'] or 0)
+        
+        # Build result
+        result = []
+        for month, accounts in sorted(aggregated.items()):
+            for key, balance in accounts.items():
+                parts = key.split('_', 1)
+                code = parts[0] if len(parts) > 0 else ''
+                name = parts[1] if len(parts) > 1 else ''
+                result.append({
+                    'month': month,
+                    'code': code,
+                    'name': name,
+                    'balance': balance
+                })
+        
         return jsonify({
             'status': 'success',
-            'data': [dict(row) for row in rows]
+            'data': result,
+            'count': len(result)
         })
         
     except Exception as e:
         app.logger.error(f"Error in monthly_pl: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 # ===== SINGLE TRANSACTION ASSIGN =====
 
