@@ -6503,6 +6503,7 @@ def get_balances():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
  
+
 @app.route('/api/accounting/monthly-pl', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -6511,6 +6512,7 @@ def monthly_pl():
         conn = get_db()
         cursor = conn.cursor()
         
+        # Modified query to EXCLUDE asset-to-asset transfers
         cursor.execute('''
             SELECT 
                 strftime('%Y-%m', bt.transaction_date) AS month,
@@ -6528,7 +6530,13 @@ def monthly_pl():
                 END AS name,
                 SUM(bt.amount) AS balance
             FROM bank_transactions bt
-            LEFT JOIN accounts a ON bt.post_to = a.id
+            LEFT JOIN accounts a ON a.id = bt.post_to
+            LEFT JOIN accounts f ON f.id = bt.post_from
+            WHERE bt.post_to IS NOT NULL
+              -- EXCLUDE asset-to-asset transfers
+              AND NOT (f.type = 'asset' AND a.type = 'asset')
+              -- EXCLUDE transfers to/from Private Account (owner)
+              AND NOT (f.code = '1016' OR a.code = '1016')
             GROUP BY strftime('%Y-%m', bt.transaction_date), bt.post_to
             HAVING SUM(bt.amount) != 0
             ORDER BY month, type DESC, code
@@ -6546,7 +6554,6 @@ def monthly_pl():
         app.logger.error(f"Error in monthly_pl: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 # ===== SINGLE TRANSACTION ASSIGN =====
 
@@ -13614,149 +13621,7 @@ def plaid_exchange():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
-
-@app.route('/api/accounting/bank/apply-multiple', methods=['POST'])
-@login_required
-@role_required(['admin'])
-def apply_multiple_transactions():
-    """
-    Apply (or update) journal entries for multiple bank transactions.
-    Expects JSON: {
-        "updates": [
-            {
-                "transaction_id": "...",
-                "source_type": "plaid|historic|square|paypal",
-                "target_account_id": 123,
-                "is_update": false,
-                "amount": 12.34,
-                "date": "2026-08-18",
-                "description": "optional"
-            }
-        ]
-    }
-    """
-    try:
-        data = request.get_json()
-        if not data or 'updates' not in data:
-            return jsonify({'status': 'error', 'error': 'Missing updates list'}), 400
-
-        updates = data['updates']
-        results = {'processed': 0, 'created': 0, 'updated': 0, 'errors': []}
-
-        conn = get_db()
-        cursor = conn.cursor()
-
-        for update in updates:
-            tx_id = update.get('transaction_id')
-            source_type = update.get('source_type')
-            target_account_id = update.get('target_account_id')
-            is_update = update.get('is_update', False)
-
-            # Read amount and date from the update payload
-            amount_dollars = update.get('amount')
-            tx_date = update.get('date')
-            description = update.get('description', f"{source_type} tx {tx_id}")
-
-            # Validate required fields
-            if not all([tx_id, source_type, target_account_id]):
-                results['errors'].append(f"Missing fields for tx {tx_id}")
-                continue
-
-            # If amount or date are missing, fallback to historic lookup
-            if amount_dollars is None or not tx_date:
-                if source_type == 'historic':
-                    cursor.execute(
-                        'SELECT transaction_date, amount, description FROM bank_transactions WHERE id = ?',
-                        (tx_id,)
-                    )
-                    row = cursor.fetchone()
-                    if row:
-                        amount_dollars = row['amount'] / 100.0
-                        tx_date = row['transaction_date']
-                        description = row['description'] or description
-                    else:
-                        results['errors'].append(f"Bank transaction {tx_id} not found")
-                        continue
-                else:
-                    results['errors'].append(f"Missing amount/date for {source_type} tx {tx_id}")
-                    continue
-
-            amount_cents = int(round(amount_dollars * 100))
-
-            # If it's an update, delete the old journal entry
-            if is_update:
-                cursor.execute(
-                    'SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?',
-                    (source_type, str(tx_id))
-                )
-                entry = cursor.fetchone()
-                if entry:
-                    cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (entry['id'],))
-                    cursor.execute('DELETE FROM journal_entries WHERE id = ?', (entry['id'],))
-                    results['updated'] += 1
-                else:
-                    results['errors'].append(f"Entry not found for tx {tx_id}, cannot update")
-                    continue
-
-            # Get the correct cash account for this source type
-            cash_id = get_cash_account_id(source_type)
-            if not cash_id:
-                results['errors'].append(f"Cash account not found for source {source_type}")
-                continue
-
-            # Create the new journal entry
-            cursor.execute('''
-                INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
-                VALUES (?, ?, ?, ?)
-            ''', (tx_date, description, source_type, str(tx_id)))
-            entry_id = cursor.lastrowid
-
-            # Debit/Credit based on sign
-            if amount_cents > 0:
-                # Positive = revenue/inflow: debit cash, credit target (revenue account)
-                cursor.execute('''
-                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                    VALUES (?, ?, ?, ?)
-                ''', (entry_id, cash_id, amount_cents, 0))
-                cursor.execute('''
-                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                    VALUES (?, ?, ?, ?)
-                ''', (entry_id, target_account_id, 0, amount_cents))
-            else:
-                # Negative = expense/outflow: debit target (expense account), credit cash
-                abs_amount = abs(amount_cents)
-                cursor.execute('''
-                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                    VALUES (?, ?, ?, ?)
-                ''', (entry_id, target_account_id, abs_amount, 0))
-                cursor.execute('''
-                    INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
-                    VALUES (?, ?, ?, ?)
-                ''', (entry_id, cash_id, 0, abs_amount))
-
-            # If historic, mark the bank transaction as processed
-            if source_type == 'historic':
-                cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (tx_id,))
-
-            results['processed'] += 1
-            results['created'] += 1
-
-        conn.commit()
-        conn.close()
-
-        return jsonify({
-            'status': 'success',
-            'processed': results['processed'],
-            'created': results['created'],
-            'updated': results['updated'],
-            'errors': results['errors']
-        })
-
-    except Exception as e:
-        app.logger.error(f"Error in apply_multiple_transactions: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
+ 
 # ==================== ACCOUNTING: UNBALANCED ACCOUNTS ====================
 
 @app.route('/api/accounting/unbalanced-accounts', methods=['GET'])
@@ -14069,10 +13934,6 @@ def bank_transactions_full():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
-@app.route('/api/accounting/bank/apply-all-unprocessed', methods=['POST'])
-@login_required
-@role_required(['admin'])
-def apply_all_unprocessed():
     try:
         data = request.get_json()
         if not data or 'updates' not in data:
