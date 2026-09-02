@@ -6440,7 +6440,6 @@ def accounting_reports():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
 @app.route('/api/accounting/balances', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -6476,9 +6475,13 @@ def get_balances():
         cursor = conn.cursor()
         cursor.execute('''
             SELECT 
-                SUM(-1 * bt.amount) AS private_account_balance
+                SUM(CASE 
+                    WHEN bt.post_to = 53 THEN -bt.amount 
+                    WHEN bt.post_from = 53 THEN bt.amount 
+                    ELSE 0 
+                END) AS private_account_balance
             FROM bank_transactions bt
-            WHERE bt.post_to = 53
+            WHERE bt.post_from = 53 OR bt.post_to = 53
         ''')
         
         row = cursor.fetchone()
@@ -6499,8 +6502,7 @@ def get_balances():
         app.logger.error(f"Error in get_balances: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
+ 
 @app.route('/api/accounting/monthly-pl', methods=['GET'])
 @login_required
 @role_required(['admin'])
