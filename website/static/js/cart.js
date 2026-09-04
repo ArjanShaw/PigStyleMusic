@@ -260,9 +260,6 @@
     let publicCheckoutShipping = 0;
     let publicCheckoutTotal = 0;
     let publicCheckoutRemaining = 0;
-    let publicCheckoutPaymentEntries = [];
-    let publicCheckoutId = null;
-    let publicPollInterval = null;
     let publicCheckoutData = {
         customerName: '',
         customerEmail: '',
@@ -278,6 +275,7 @@
     };
     let publicOrderId = null;
     let publicSquareCheckoutUrl = null;
+    let isProcessingCheckout = false;
 
     // ===== OPEN PUBLIC CHECKOUT =====
     window.openPublicCheckout = function() {
@@ -304,11 +302,10 @@
                 country: 'USA'
             }
         };
-        publicCheckoutPaymentEntries = [];
         publicOrderId = null;
         publicSquareCheckoutUrl = null;
+        isProcessingCheckout = false;
 
-        // REMOVED: No need to check Square availability - just show checkout
         showPublicCheckoutModal();
     };
 
@@ -399,18 +396,18 @@
                         </div>
                     </div>
 
-                    <!-- Shipping Method -->
+                    <!-- Shipping Method - FIXED: Black text on white background -->
                     <div style="margin-bottom: 15px; padding: 12px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
                         <div style="font-weight: 600; color: #333; font-size: 14px; margin-bottom: 8px;"><i class="fas fa-truck"></i> Delivery Method</div>
                         <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                             <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 8px 14px; background: white; border-radius: 6px; border: 2px solid #28a745; flex: 1; min-width: 120px;">
                                 <input type="radio" name="shipping-method" value="pickup" checked onchange="updatePublicShipping()">
-                                <span style="font-weight: 500;">📦 Pick up in store</span>
+                                <span style="font-weight: 500; color: #333;">📦 Pick up in store</span>
                                 <span style="color: #28a745; font-size: 12px; font-weight: 600;">Free</span>
                             </label>
                             <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 8px 14px; background: white; border-radius: 6px; border: 2px solid #ddd; flex: 1; min-width: 120px;" id="shipping-label">
                                 <input type="radio" name="shipping-method" value="shipping" onchange="updatePublicShipping()">
-                                <span style="font-weight: 500;">🚚 Ship to me</span>
+                                <span style="font-weight: 500; color: #333;">🚚 Ship to me</span>
                                 <span style="color: #fd7e14; font-size: 12px; font-weight: 600;">+ $${SHIPPING_COST.toFixed(2)}</span>
                             </label>
                         </div>
@@ -451,15 +448,15 @@
                     <div style="margin-bottom: 15px; padding: 12px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
                         <div style="display: flex; justify-content: space-between; padding: 4px 0;">
                             <span style="color: #666;">Subtotal:</span>
-                            <span id="public-display-subtotal" style="font-weight: 500;">$${publicCheckoutSubtotal.toFixed(2)}</span>
+                            <span id="public-display-subtotal" style="font-weight: 500; color: #333;">$${publicCheckoutSubtotal.toFixed(2)}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 4px 0;">
                             <span style="color: #666;">Shipping:</span>
-                            <span id="public-display-shipping" style="font-weight: 500;">$0.00</span>
+                            <span id="public-display-shipping" style="font-weight: 500; color: #333;">$0.00</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #e9ecef; padding-bottom: 8px; margin-bottom: 8px;">
                             <span style="color: #666;">Tax (7%):</span>
-                            <span id="public-display-tax" style="font-weight: 500;">$${publicCheckoutTax.toFixed(2)}</span>
+                            <span id="public-display-tax" style="font-weight: 500; color: #333;">$${publicCheckoutTax.toFixed(2)}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span style="font-weight: 600; color: #333; font-size: 16px;">Total:</span>
@@ -575,7 +572,7 @@
         }
     }
 
-    // ===== PROCESS PUBLIC CARD PAYMENT - FIXED =====
+    // ===== PROCESS PUBLIC CARD PAYMENT =====
     window.processPublicCardPayment = function() {
         const payAmount = publicCheckoutRemaining;
         
