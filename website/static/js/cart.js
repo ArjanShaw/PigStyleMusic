@@ -444,22 +444,15 @@
 
     // ===== PROCESS INLINE PAYMENT =====
     window.processInlinePayment = function() {
-        alert('🔵 STEP 1: processInlinePayment() called');
-        
         const items = window.cart.getItems();
         if (items.length === 0) {
-            alert('❌ Cart is empty');
             showInlineStatus('Your cart is empty.', 'warning');
             return;
         }
         
-        alert(`🔵 STEP 2: Cart has ${items.length} items`);
-        
         const subtotal = window.cart.getTotal();
         const taxAmount = calculateTax(subtotal);
         const totalWithTax = subtotal + taxAmount + publicCheckoutShipping;
-        
-        alert(`🔵 STEP 3: Subtotal: $${subtotal}, Tax: $${taxAmount}, Shipping: $${publicCheckoutShipping}, Total: $${totalWithTax}`);
         
         // Gather customer info
         const nameInput = document.getElementById('inline-customer-name');
@@ -468,13 +461,10 @@
         const email = emailInput ? emailInput.value.trim() : '';
 
         if (!name) {
-            alert('⚠️ Please enter your name.');
             showInlineStatus('⚠️ Please enter your name.', 'warning');
             nameInput?.focus();
             return;
         }
-
-        alert(`🔵 STEP 4: Customer name: ${name}, Email: ${email}`);
 
         // Validate address if shipping
         if (publicCheckoutData.shippingMethod === 'shipping') {
@@ -484,25 +474,21 @@
             const zip = document.getElementById('inline-address-zip');
 
             if (!line1 || !line1.value.trim()) {
-                alert('⚠️ Please enter your street address.');
                 showInlineStatus('⚠️ Please enter your street address.', 'warning');
                 line1?.focus();
                 return;
             }
             if (!city || !city.value.trim()) {
-                alert('⚠️ Please enter your city.');
                 showInlineStatus('⚠️ Please enter your city.', 'warning');
                 city?.focus();
                 return;
             }
             if (!state || !state.value.trim()) {
-                alert('⚠️ Please enter your state.');
                 showInlineStatus('⚠️ Please enter your state.', 'warning');
                 state?.focus();
                 return;
             }
             if (!zip || !zip.value.trim()) {
-                alert('⚠️ Please enter your ZIP code.');
                 showInlineStatus('⚠️ Please enter your ZIP code.', 'warning');
                 zip?.focus();
                 return;
@@ -514,8 +500,6 @@
             publicCheckoutData.address.state = state.value.trim();
             publicCheckoutData.address.zip = zip.value.trim();
             publicCheckoutData.address.country = document.getElementById('inline-address-country')?.value.trim() || 'USA';
-            
-            alert(`🔵 STEP 5: Shipping address: ${publicCheckoutData.address.line1}, ${publicCheckoutData.address.city}, ${publicCheckoutData.address.state} ${publicCheckoutData.address.zip}`);
         }
 
         publicCheckoutData.customerName = name;
@@ -559,7 +543,6 @@
             source: 'public_checkout'
         };
 
-        alert(`🔵 STEP 6: Sending order to /api/checkout/process with ${orderData.items.length} items`);
         console.log('📦 Order data:', orderData);
 
         fetch(`${API_BASE}/api/checkout/process`, {
@@ -568,19 +551,13 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(orderData)
         })
-        .then(res => {
-            alert(`🔵 STEP 7: /api/checkout/process response status: ${res.status}`);
-            return res.json();
-        })
+        .then(res => res.json())
         .then(data => {
-            alert(`🔵 STEP 8: /api/checkout/process response data: ${JSON.stringify(data, null, 2)}`);
             console.log('📦 /api/checkout/process response:', data);
             
             if (data.status === 'success') {
                 publicOrderId = data.order_id;
                 publicSquareCheckoutUrl = data.checkout_url;
-                
-                alert(`🔵 STEP 9: Order created! Order ID: ${publicOrderId}, Redirect URL: ${publicSquareCheckoutUrl}`);
                 
                 if (statusEl) {
                     statusEl.textContent = '✅ Payment link created! Redirecting to Square...';
@@ -588,13 +565,11 @@
                 }
                 
                 // Redirect to Square checkout
-                alert(`🔵 STEP 10: Redirecting to Square: ${publicSquareCheckoutUrl}`);
                 setTimeout(() => {
                     window.location.href = data.checkout_url;
                 }, 1000);
                 
             } else {
-                alert(`❌ Failed to create payment: ${data.error || 'Unknown error'}`);
                 showInlineStatus('❌ Failed to create payment: ' + (data.error || 'Unknown error'), 'error');
                 if (btn) {
                     btn.disabled = false;
@@ -607,7 +582,6 @@
             }
         })
         .catch(err => {
-            alert(`❌ FETCH ERROR: ${err.message}`);
             console.error('❌ Payment creation error:', err);
             showInlineStatus('❌ Error: ' + err.message, 'error');
             if (btn) {
@@ -652,17 +626,14 @@
 
     // ===== CHECK FOR SQUARE RETURN =====
     function checkSquareReturn() {
-        alert('🔵 CHECK SQUARE RETURN: Function called');
-        
         const urlParams = new URLSearchParams(window.location.search);
         const status = urlParams.get('status');
         const orderId = urlParams.get('order_id');
         const paymentId = urlParams.get('payment_id');
 
-        alert(`🔵 URL Params - status: ${status}, orderId: ${orderId}, paymentId: ${paymentId}`);
+        console.log(`🔵 URL Params - status: ${status}, orderId: ${orderId}, paymentId: ${paymentId}`);
 
         if (status === 'completed' && orderId) {
-            alert(`🔵 STEP A: Square payment completed for order: ${orderId}`);
             console.log('✅ Square payment completed for order:', orderId);
             
             // Show status
@@ -680,7 +651,7 @@
                 transaction_id: paymentId || 'square_' + Date.now()
             };
             
-            alert(`🔵 STEP B: Calling /api/order/complete with payload: ${JSON.stringify(payload)}`);
+            console.log('📦 Calling /api/order/complete with payload:', payload);
             
             // Call order complete endpoint to mark records as sold
             fetch(`${API_BASE}/api/order/complete`, {
@@ -689,17 +660,11 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             })
-            .then(res => {
-                alert(`🔵 STEP C: /api/order/complete response status: ${res.status}`);
-                return res.json();
-            })
+            .then(res => res.json())
             .then(data => {
-                alert(`🔵 STEP D: /api/order/complete response data: ${JSON.stringify(data, null, 2)}`);
                 console.log('📥 Order complete response:', data);
                 
                 if (data.status === 'success') {
-                    alert(`🔵 STEP E: ✅ Order complete! Records sold: ${data.records_sold || 0}`);
-                    
                     // Clear cart and update UI
                     window.cart.clear();
                     window.renderCart();
@@ -716,12 +681,10 @@
                         window.showToast('🎉 Order complete! Thank you!', 'success');
                     }
                     
-                    alert('🎉 ORDER COMPLETE! Records marked as sold.');
-                    
                     // Clean URL (remove query params)
                     window.history.replaceState({}, document.title, window.location.pathname);
                 } else {
-                    alert(`❌ Order completion failed: ${data.error || 'Unknown error'}`);
+                    console.error('❌ Order completion failed:', data.error);
                     if (statusDiv) {
                         statusDiv.textContent = '⚠️ ' + (data.error || 'Order confirmation failed. Please contact support.');
                         statusDiv.style.background = '#fff3cd';
@@ -734,7 +697,6 @@
                 }
             })
             .catch(err => {
-                alert(`❌ FETCH ERROR on /api/order/complete: ${err.message}`);
                 console.error('❌ Order complete error:', err);
                 if (statusDiv) {
                     statusDiv.textContent = '⚠️ Error: ' + err.message;
@@ -747,7 +709,7 @@
                 }
             });
         } else {
-            alert(`🔵 No completed order found in URL params. status: ${status}, orderId: ${orderId}`);
+            console.log('🔵 No completed order found in URL params.');
         }
     }
 
@@ -800,7 +762,6 @@
 
     // ===== INIT CART =====
     window.initCart = function() {
-        alert('🔵 INIT CART called');
         console.log('🛒 Cart initialized with', window.cart.getItemCount(), 'items');
         updateBadge();
         window.renderCart();

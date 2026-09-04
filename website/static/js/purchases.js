@@ -38,11 +38,9 @@
     window.printPurchaseLabels = async function(purchaseId) {
         const statusDiv = document.getElementById('purchases-status');
         
-        // Check if dependencies are loaded
         if (!dependenciesLoaded) {
             showStatus('⏳ Loading label printer dependencies...', 'info');
             
-            // Wait for dependencies to load
             await new Promise(function(resolve) {
                 var waitInterval = setInterval(function() {
                     if (dependenciesLoaded) {
@@ -50,7 +48,6 @@
                         resolve();
                     }
                 }, 200);
-                // Timeout after 10 seconds
                 setTimeout(function() {
                     clearInterval(waitInterval);
                     resolve();
@@ -63,14 +60,12 @@
             }
         }
 
-        // Disable all print buttons for this purchase
         var buttons = document.querySelectorAll('.btn-print[data-purchase-id="' + purchaseId + '"]');
         buttons.forEach(function(btn) { btn.disabled = true; });
 
         showStatus('📄 Fetching records for purchase #' + purchaseId + '...', 'info');
 
         try {
-            // Fetch records for this purchase
             var url = API_BASE + '/records?batch_id=' + purchaseId + '&limit=1000';
             var response = await fetch(url, {
                 credentials: 'include',
@@ -97,7 +92,6 @@
 
             showStatus('🖨️ Generating ' + records.length + ' labels for purchase #' + purchaseId + '...', 'info');
 
-            // Use LabelPrinter if available
             if (window.LabelPrinter) {
                 await window.LabelPrinter.generatePriceTags(records, {
                     title: 'Purchase #' + purchaseId + ' - ' + records.length + ' records'
@@ -120,7 +114,6 @@
         let statusDiv = document.getElementById('purchases-status');
         
         if (!statusDiv) {
-            // Create status div if it doesn't exist
             const container = document.querySelector('.purchases-container') || document.body;
             const div = document.createElement('div');
             div.id = 'purchases-status';
@@ -250,6 +243,9 @@
                     <div style="display: flex; gap: 4px; flex-wrap: wrap; justify-content: center;">
                         <button onclick="purchasesSelect(${p.id})" style="padding: 4px 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
                             <i class="fas fa-eye"></i>
+                        </button>
+                        <button onclick="editPurchasePrice(${p.id})" style="padding: 4px 10px; background: #ffc107; color: #333; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;" title="Edit purchase price">
+                            <i class="fas fa-dollar-sign"></i>
                         </button>
                         ${recordCount > 0 ? `
                             <button class="btn-print" data-purchase-id="${p.id}" onclick="printPurchaseLabels(${p.id})" 
@@ -393,20 +389,72 @@
         row.insertAdjacentHTML('afterend', html);
     }
 
+    // ===== EDIT PURCHASE PRICE =====
+    window.editPurchasePrice = async function(purchaseId) {
+        // Find the purchase in the data
+        const purchase = purchases.find(p => p.id === purchaseId);
+        if (!purchase) {
+            showStatus('❌ Purchase not found', 'error');
+            return;
+        }
+        
+        const currentPrice = purchase.amount_spent || 0;
+        
+        const newPrice = prompt(`Enter new total purchase price for batch #${purchaseId}:`, currentPrice.toFixed(2));
+        
+        if (newPrice === null) return; // Cancelled
+        
+        const priceValue = parseFloat(newPrice);
+        if (isNaN(priceValue) || priceValue < 0) {
+            showStatus('Please enter a valid positive number.', 'warning');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${API_BASE}/api/inventory-purchases/${purchaseId}`, {
+                method: 'PUT',
+                credentials: 'include',
+                mode: 'cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ total_purchase_price: priceValue })
+            });
+            
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                showStatus(`✅ Purchase price updated to $${priceValue.toFixed(2)}`, 'success');
+                // Refresh the purchases list
+                loadPurchases();
+            } else {
+                showStatus(`❌ Error: ${data.error || 'Failed to update price'}`, 'error');
+            }
+        } catch (err) {
+            console.error('Error updating purchase price:', err);
+            showStatus('❌ Error updating price: ' + err.message, 'error');
+        }
+    };
+
     // ===== CREATE NEW PURCHASE =====
     window.purchasesCreate = async function() {
         const sellerName = prompt('Enter seller name:');
         if (!sellerName) return;
         const contact = prompt('Enter contact (phone/email) [optional]:') || '';
         const description = prompt('Enter description [optional]:') || '';
+        const amount = prompt('Enter total purchase price ($) [optional, default 0]:') || '0';
+        const amountValue = parseFloat(amount) || 0;
         
         try {
-            const response = await fetch(`${API_BASE}/api/purchases`, {
+            const response = await fetch(`${API_BASE}/api/inventory-purchases`, {
                 method: 'POST',
                 credentials: 'include',
                 mode: 'cors',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ seller_name: sellerName, seller_contact: contact, description: description })
+                body: JSON.stringify({ 
+                    seller_name: sellerName, 
+                    seller_contact: contact, 
+                    description: description,
+                    amount_spent: amountValue
+                })
             });
             
             if (!response.ok) {
@@ -417,9 +465,9 @@
             if (data.status === 'success') {
                 showStatus('✅ Purchase created successfully!', 'success');
                 loadPurchases();
-                if (data.id) {
-                    selectedPurchaseId = data.id;
-                    setTimeout(() => purchasesSelect(data.id), 300);
+                if (data.purchase_id) {
+                    selectedPurchaseId = data.purchase_id;
+                    setTimeout(() => purchasesSelect(data.purchase_id), 300);
                 }
             } else {
                 showStatus('❌ Error: ' + (data.error || 'Failed to create purchase'), 'error');
@@ -523,7 +571,7 @@
         }
         
         try {
-            const response = await fetch(`${API_BASE}/api/purchases/${selectedPurchaseId}`, {
+            const response = await fetch(`${API_BASE}/api/inventory-purchases/${selectedPurchaseId}`, {
                 method: 'DELETE',
                 credentials: 'include',
                 mode: 'cors',
@@ -561,7 +609,6 @@
     window.initPurchases = function() {
         console.log('Purchases initialized');
         loadPurchases();
-        // Check dependencies after a delay
         setTimeout(checkDependencies, 1000);
     };
 })();

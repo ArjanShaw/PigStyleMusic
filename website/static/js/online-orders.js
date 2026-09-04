@@ -5,6 +5,8 @@
 (function() {
     'use strict';
 
+    console.log('📦 Online Orders module loaded');
+
     let orders = [];
     let filteredOrders = [];
     let currentPage = 1;
@@ -25,7 +27,10 @@
     // Load orders
     async function loadOrders() {
         const list = document.getElementById('oo-list');
-        if (!list) return;
+        if (!list) {
+            console.warn('⚠️ oo-list not found');
+            return;
+        }
         
         list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading...</div>';
         
@@ -65,10 +70,15 @@
         const completed = orders.filter(o => o.order_status === 'completed' || o.payment_status === 'paid').length;
         const revenue = orders.reduce((sum, o) => sum + (parseFloat(o.total) || 0), 0);
         
-        document.getElementById('oo-total-orders').textContent = total;
-        document.getElementById('oo-pending-orders').textContent = pending;
-        document.getElementById('oo-completed-orders').textContent = completed;
-        document.getElementById('oo-total-revenue').textContent = '$' + revenue.toFixed(2);
+        const totalEl = document.getElementById('oo-total-orders');
+        const pendingEl = document.getElementById('oo-pending-orders');
+        const completedEl = document.getElementById('oo-completed-orders');
+        const revenueEl = document.getElementById('oo-total-revenue');
+        
+        if (totalEl) totalEl.textContent = total;
+        if (pendingEl) pendingEl.textContent = pending;
+        if (completedEl) completedEl.textContent = completed;
+        if (revenueEl) revenueEl.textContent = '$' + revenue.toFixed(2);
     }
 
     // Apply local filters
@@ -405,9 +415,9 @@
         }
     });
 
-    // Init
+    // ===== INIT FUNCTION =====
     window.initOnlineOrders = function() {
-        console.log('Online Orders initialized');
+        console.log('📦 Online Orders initialized');
         loadOrders();
     };
 
