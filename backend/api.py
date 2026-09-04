@@ -2163,14 +2163,23 @@ def create_record():
         location_index = data.get('location_index')
         format_id = data.get('format_id')
         
+        # ===== GET last_seen from request or use CURRENT_TIMESTAMP =====
+        last_seen = data.get('last_seen')
+        if last_seen:
+            # Use the provided timestamp (from frontend)
+            last_seen_value = last_seen
+        else:
+            # Fallback to CURRENT_TIMESTAMP
+            last_seen_value = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
         cursor.execute('''
             INSERT INTO records (
                 artist, title, barcode, image_url, catalog_number,
                 condition_sleeve_id, condition_disc_id, store_price,
                 consignor_id, commission_rate, status_id, discogs_genre_raw, notes,
                 batch_id, format_id, location_id, location_index,
-                created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                created_at, last_seen
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
         ''', (
             data.get('artist'), 
             data.get('title'), 
@@ -2188,7 +2197,8 @@ def create_record():
             batch_id,
             format_id,
             location_id,
-            location_index
+            location_index,
+            last_seen_value
         ))
         
         record_id = cursor.lastrowid

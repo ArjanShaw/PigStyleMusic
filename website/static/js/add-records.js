@@ -1,5 +1,14 @@
 // Add Records page
 (function() {
+    'use strict';
+
+    // ===== API BASE URL =====
+    const API_BASE = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5000' 
+        : 'https://www.pigstylemusic.com';
+
+    console.log('📀 Add Records API_BASE:', API_BASE);
+
     let purchases = [];
     let conditions = [];
     let formats = [];
@@ -19,10 +28,23 @@
     // Load purchases
     async function loadPurchases() {
         try {
-            const response = await fetch('/api/inventory-purchases', {
+            const response = await fetch(`${API_BASE}/api/inventory-purchases`, {
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' }
             });
+            
+            if (!response.ok) {
+                if (response.status === 401) {
+                    document.getElementById('add-purchase-info').textContent = '⚠️ Please log in as admin';
+                    return;
+                }
+                if (response.status === 403) {
+                    document.getElementById('add-purchase-info').textContent = '⚠️ Admin access required';
+                    return;
+                }
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
             const data = await response.json();
             if (data.status === 'success') {
                 purchases = data.purchases || [];
@@ -50,7 +72,7 @@
     // Load conditions
     async function loadConditions() {
         try {
-            const response = await fetch('/api/conditions', {
+            const response = await fetch(`${API_BASE}/api/conditions`, {
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -73,7 +95,7 @@
     // Load formats
     async function loadFormats() {
         try {
-            const response = await fetch('/api/formats', {
+            const response = await fetch(`${API_BASE}/api/formats`, {
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -93,7 +115,7 @@
     // Load consignors
     async function loadConsignors() {
         try {
-            const response = await fetch('/users', {
+            const response = await fetch(`${API_BASE}/users`, {
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -163,7 +185,7 @@
         resultsDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Searching Discogs...</div>';
         
         try {
-            const response = await fetch(`/api/discogs/search?q=${encodeURIComponent(term)}`, {
+            const response = await fetch(`${API_BASE}/api/discogs/search?q=${encodeURIComponent(term)}`, {
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -344,7 +366,7 @@
         };
         
         try {
-            const response = await fetch('/records', {
+            const response = await fetch(`${API_BASE}/records`, {
                 method: 'POST',
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
