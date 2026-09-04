@@ -2925,6 +2925,87 @@ def get_inventory_purchases():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/inventory-purchases', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def create_inventory_purchase():
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+
+        seller_name = data.get('seller_name')
+        if not seller_name or not str(seller_name).strip():
+            return jsonify({'status': 'error', 'error': 'Seller name is required'}), 400
+
+        # Allow $0 for donations
+        amount_spent = float(data.get('amount_spent', 0))
+        if amount_spent < 0:
+            return jsonify({'status': 'error', 'error': 'amount_spent cannot be negative'}), 400
+
+        purchase_date = data.get('purchase_date') or datetime.now().strftime('%Y-%m-%d')
+        seller_contact = (data.get('seller_contact') or '').strip()
+        description_text = (data.get('description') or '').strip()
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # 1. INSERT INTO purchases table
+        cursor.execute('''
+            INSERT INTO purchases (seller_name, seller_contact, description, created_at, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ''', (seller_name, seller_contact, description_text))
+        
+        purchase_id = cursor.lastrowid
+        
+        # 2. INSERT INTO journal_entries_simple (if amount > 0)
+        if amount_spent > 0:
+            desc = f"Inventory purchase | seller: {seller_name} | contact: {seller_contact} | amount: {amount_spent:.2f} | date: {purchase_date} | desc: {description_text}"
+            
+            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1050',))
+            inventory_row = cursor.fetchone()
+            if not inventory_row:
+                conn.rollback()
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'Inventory account (1050) not found'}), 500
+            inventory_id = inventory_row['id']
+            
+            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
+            cash_row = cursor.fetchone()
+            if not cash_row:
+                conn.rollback()
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'Cash account (1015) not found'}), 500
+            cash_id = cash_row['id']
+            
+            cursor.execute('''
+                INSERT INTO journal_entries_simple (
+                    transaction_date, description, source_type, source_id,
+                    post_from, post_to, amount
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                purchase_date,
+                desc,
+                'purchase',
+                str(purchase_id),
+                cash_id,          # post_from = credit (cash)
+                inventory_id,     # post_to = debit (inventory)
+                int(round(amount_spent * 100))
+            ))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Inventory purchase recorded',
+            'purchase_id': purchase_id,
+            'amount_spent': amount_spent
+        })
+    except Exception as e:
+        app.logger.error(f"Error creating inventory purchase: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/purchases/<int:purchase_id>', methods=['DELETE'])
 @login_required
