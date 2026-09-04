@@ -1,3 +1,8 @@
+<!-- ================================================================ -->
+<!-- FILE: /tiles/post-discogs.html                                   -->
+<!-- Post to Discogs page - Location-based UI with section grouping   -->
+<!-- ================================================================ -->
+
 <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
     <h2 style="color: #333; margin: 0 0 5px 0;">📤 Post to Discogs</h2>
     
@@ -29,18 +34,32 @@
         </span>
     </div>
     
+    <!-- Selection Controls -->
+    <div style="width: 100%; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; padding: 5px 0;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <label style="font-size: 13px; font-weight: 600; color: #333;">
+                <input type="checkbox" id="select-all-locations" onchange="toggleAllLocations()"> Select All Locations
+            </label>
+            <span id="selection-info" style="font-size: 13px; color: #666;">0 locations selected, 0 records</span>
+        </div>
+        <button onclick="postSelectedLocations()" id="post-selected-btn" disabled 
+                style="padding: 6px 20px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            📤 Post Selected
+        </button>
+        <button onclick="cancelPosting()" id="cancel-post-btn" disabled 
+                style="display: none; padding: 6px 20px; background: #dc3545; color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            ⏹️ Cancel
+        </button>
+        <span id="post-status-badge" style="font-size: 12px; color: #888; margin-left: auto;"></span>
+    </div>
+    
     <!-- Status -->
     <div id="post-discogs-status" style="width: 100%; display: none; padding: 8px 12px; border-radius: 8px; font-size: 13px;"></div>
     
-    <!-- Records Table -->
+    <!-- Locations Tree -->
     <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
-        <div id="post-discogs-records" style="width: 100%;">
+        <div id="post-discogs-locations" style="width: 100%;">
             <div style="text-align: center; padding: 20px; color: #999;">Loading records...</div>
         </div>
     </div>
-    
-    <!-- Post ALL Button -->
-    <button onclick="postDiscogsAll()" id="post-discogs-btn" disabled style="padding: 10px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 30px; cursor: pointer; font-size: 14px; font-weight: 600;">
-        <i class="fas fa-share-alt"></i> Post All Records to Discogs
-    </button> 
 </div>

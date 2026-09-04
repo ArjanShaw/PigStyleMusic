@@ -1,3 +1,8 @@
+// ================================================================
+// FILE: /static/js/app.js
+// Page navigation - UNCHANGED from working version
+// ================================================================
+
 // Page navigation
 let currentUser = null;
 
