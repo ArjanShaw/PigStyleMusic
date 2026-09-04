@@ -135,7 +135,7 @@
                     </div>
                     
                     ${inStock ? `
-                        <button onclick="window.addRecordToCart(${recordData})" 
+                        <button onclick="window.addRecordToCartDirect(${recordData})" 
                                 style="width: 100%; padding: 14px; background: #ff6b6b; color: white; border: none; border-radius: 30px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
                             <i class="fas fa-shopping-cart"></i> Add to Cart
                         </button>
@@ -172,25 +172,62 @@
         }
     };
 
-    // Add record to cart
-    window.addRecordToCart = function(record) {
+    // ===== ADD RECORD TO CART (DIRECT) - FIXED: No conflict with custom-checkout.js =====
+    window.addRecordToCartDirect = function(record) {
+        console.log('🛒 addRecordToCartDirect called with record:', record);
+        
         if (!window.cart) {
             console.error('Cart not initialized');
-            alert('Cart not initialized. Please refresh the page.');
+            if (typeof window.showToast === 'function') {
+                window.showToast('❌ Cart not initialized. Please refresh the page.', 'error');
+            } else {
+                alert('Cart not initialized. Please refresh the page.');
+            }
             return;
         }
         
         const price = parseFloat(record.store_price) || 0;
-        window.cart.addItem({
-            id: record.id,
+        if (price <= 0) {
+            if (typeof window.showToast === 'function') {
+                window.showToast('⚠️ This record has no price set.', 'warning');
+            }
+            return;
+        }
+        
+        // Check if already in cart
+        const items = window.cart.getItems();
+        const exists = items.some(item => 
+            item.type === 'record' && 
+            (item.original_id === record.id || 
+             (item.barcode && record.barcode && item.barcode === record.barcode))
+        );
+        
+        if (exists) {
+            if (typeof window.showToast === 'function') {
+                window.showToast(`⚠️ "${record.artist} - ${record.title}" is already in your cart.`, 'warning');
+            }
+            closeRecordModal();
+            return;
+        }
+        
+        const item = {
+            id: 'record_' + record.id + '_' + Date.now(),
             type: 'record',
-            title: record.artist + ' - ' + record.title,
+            title: record.title || 'Unknown Title',
+            artist: record.artist || 'Unknown Artist',
             price: price,
             quantity: 1,
-            artist: record.artist,
-            condition: record.condition || 'Unknown'
-        });
+            condition: record.sleeve_condition_name || record.condition || 'Unknown',
+            barcode: record.barcode || '',
+            catalog_number: record.catalog_number || '',
+            original_id: record.id,
+            image_url: record.image_url || ''
+        };
         
+        window.cart.addItem(item);
+        console.log('✅ Added to cart:', item);
+        
+        // Update UI
         if (typeof window.renderCart === 'function') {
             window.renderCart();
         }
@@ -201,10 +238,18 @@
         closeRecordModal();
         
         if (typeof window.showToast === 'function') {
-            window.showToast('✅ Added to cart: ' + record.artist + ' - ' + record.title);
+            window.showToast(`✅ Added "${record.artist} - ${record.title}" to cart!`, 'success');
         } else {
-            alert('Added to cart: ' + record.artist + ' - ' + record.title);
+            alert(`Added "${record.artist} - ${record.title}" to cart!`);
         }
+    };
+
+    // ===== LEGACY: Keep for backwards compatibility (deprecated) =====
+    // This function is overridden by custom-checkout.js if loaded
+    // The shop should use addRecordToCartDirect instead
+    window.addRecordToCart = function(record) {
+        console.warn('⚠️ addRecordToCart is deprecated. Use addRecordToCartDirect instead.');
+        window.addRecordToCartDirect(record);
     };
 
     // RecordsComponent class
@@ -217,7 +262,7 @@
                 currentPage: 1,
                 totalRecords: 0,
                 totalPages: 0,
-                locationIds: config.locationIds || null,  // CHANGED: plural, comma-separated
+                locationIds: config.locationIds || null,
                 statusId: config.statusId || null,
                 borderColor: config.borderColor || '#ff6b6b',
                 badgeText: config.badgeText || null,
@@ -347,7 +392,7 @@
             console.log('📀 Component:', this.config.title);
             console.log('📀 Container ID:', this.config.containerId);
             console.log('📀 Status Filter:', this.config.statusId || 'None');
-            console.log('📀 Location Filter:', this.config.locationIds || 'None');  // CHANGED
+            console.log('📀 Location Filter:', this.config.locationIds || 'None');
             console.log('📀 Cutoff Date:', this.cutoffDate || 'None (showing all)');
             console.log('📀 Page Size:', this.config.pageSize);
 
@@ -363,7 +408,6 @@
                     limit: 1000
                 });
                 
-                // CHANGED: Use locationIds (plural, comma-separated)
                 if (this.config.locationIds) {
                     params.append('location_ids', this.config.locationIds);
                 }

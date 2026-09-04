@@ -141,7 +141,7 @@
             return this.items.map(item => {
                 if (item.type === 'record') {
                     return {
-                        copy_id: item.id,
+                        copy_id: item.original_id || item.id,
                         artist: item.artist || '',
                         title: item.title,
                         condition: item.condition || 'Unknown',
@@ -200,11 +200,16 @@
             else if (item.type === 'giftcard') icon = '🎁';
             else if (item.type === 'custom') icon = '🛍️';
             
+            let displayTitle = item.title || 'Item';
+            if (item.type === 'record' && item.artist) {
+                displayTitle = item.artist + ' - ' + item.title;
+            }
+            
             html += `
                 <div style="display: flex; align-items: center; gap: 12px; background: #f8f8f8; border-radius: 8px; padding: 10px; border: 1px solid #eee;">
                     <div style="flex: 1;">
-                        <div style="font-weight: bold; color: #333; font-size: 14px;">${icon} ${item.title || 'Item'}</div>
-                        <div style="color: #666; font-size: 12px;">${item.artist || ''} ${item.type ? '[' + item.type + ']' : ''}</div>
+                        <div style="font-weight: bold; color: #333; font-size: 14px;">${icon} ${displayTitle}</div>
+                        <div style="color: #666; font-size: 12px;">${item.type === 'record' ? '📀 ' + (item.condition || 'Unknown') : ''}</div>
                         <div style="color: #ff6b6b; font-weight: bold; font-size: 14px;">$${(item.price || 0).toFixed(2)} × ${item.quantity || 1}</div>
                     </div>
                     <div style="font-weight: bold; color: #333; font-size: 14px; min-width: 70px; text-align: right;">$${itemTotal.toFixed(2)}</div>
@@ -256,7 +261,6 @@
     let publicCheckoutTotal = 0;
     let publicCheckoutRemaining = 0;
     let publicCheckoutPaymentEntries = [];
-    let publicSquareAvailable = false;
     let publicCheckoutId = null;
     let publicPollInterval = null;
     let publicCheckoutData = {
@@ -280,7 +284,9 @@
         console.log('🛒 Opening public checkout...');
         
         if (window.cart.isEmpty()) {
-            window.showToast('Your cart is empty!', 'warning');
+            if (typeof window.showToast === 'function') {
+                window.showToast('Your cart is empty!', 'warning');
+            }
             return;
         }
 
@@ -302,35 +308,9 @@
         publicOrderId = null;
         publicSquareCheckoutUrl = null;
 
-        checkPublicSquareAvailability().then(() => {
-            showPublicCheckoutModal();
-        });
+        // REMOVED: No need to check Square availability - just show checkout
+        showPublicCheckoutModal();
     };
-
-    // ===== CHECK SQUARE AVAILABILITY =====
-    async function checkPublicSquareAvailability() {
-        try {
-            console.log('📟 Checking Square availability...');
-            const response = await fetch(`${API_BASE}/api/square/terminals`, {
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                if (data.status === 'success' && data.terminals && data.terminals.length > 0) {
-                    publicSquareAvailable = true;
-                    return true;
-                }
-            }
-            publicSquareAvailable = false;
-            return false;
-        } catch (err) {
-            console.warn('⚠️ Square check failed:', err.message);
-            publicSquareAvailable = false;
-            return false;
-        }
-    }
 
     // ===== SHOW PUBLIC CHECKOUT MODAL =====
     function showPublicCheckoutModal() {
@@ -376,9 +356,15 @@
             if (item.type === 'bernie') icon = '🌹';
             else if (item.type === 'giftcard') icon = '🎁';
             else if (item.type === 'custom') icon = '🛍️';
+            
+            let displayTitle = item.title || 'Item';
+            if (item.type === 'record' && item.artist) {
+                displayTitle = item.artist + ' - ' + item.title;
+            }
+            
             itemsHtml += `
                 <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #eee; font-size: 13px;">
-                    <span>${icon} ${item.title}</span>
+                    <span>${icon} ${displayTitle}</span>
                     <span>${qty}× $${price.toFixed(2)} = $${totalPrice.toFixed(2)}</span>
                 </div>
             `;
@@ -481,11 +467,11 @@
                         </div>
                     </div>
 
-                    <!-- Payment Method -->
+                    <!-- Payment Method - Card Only -->
                     <div style="margin-bottom: 15px;">
                         <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 8px;">Payment</label>
                         
-                        <!-- Card Payment (Square) - Only payment method -->
+                        <!-- Card Payment (Square) - Only payment method for public -->
                         <div style="background: #f8f9fa; border-radius: 8px; padding: 12px; border: 2px solid #28a745;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                 <span style="font-weight: 600; color: #333;"><i class="fas fa-credit-card" style="color: #17a2b8;"></i> Credit Card</span>
@@ -495,7 +481,7 @@
                                 <span style="color: #666; font-size: 13px;">Amount to charge:</span>
                                 <span id="public-charge-amount" style="font-weight: bold; color: #28a745; font-size: 15px;">$${publicCheckoutRemaining.toFixed(2)}</span>
                             </div>
-                            <button onclick="addPublicCardPayment()" id="public-card-pay-btn" style="width: 100%; margin-top: 8px; padding: 10px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px;">
+                            <button onclick="processPublicCardPayment()" id="public-card-pay-btn" style="width: 100%; margin-top: 8px; padding: 10px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px;">
                                 <i class="fas fa-credit-card"></i> Pay $${publicCheckoutRemaining.toFixed(2)} with Card
                             </button>
                             <div id="public-card-status" style="margin-top: 5px; font-size: 12px; color: #6c757d; display: none;"></div>
@@ -589,17 +575,12 @@
         }
     }
 
-    // ===== ADD PUBLIC CARD PAYMENT =====
-    window.addPublicCardPayment = function() {
+    // ===== PROCESS PUBLIC CARD PAYMENT - FIXED =====
+    window.processPublicCardPayment = function() {
         const payAmount = publicCheckoutRemaining;
         
         if (payAmount <= 0) {
             showPublicCheckoutStatus('No remaining balance to pay.', 'warning');
-            return;
-        }
-
-        if (!publicSquareAvailable) {
-            showPublicCheckoutStatus('Square payment is not available. Please try again later.', 'error');
             return;
         }
 
@@ -676,6 +657,7 @@
 
         const orderData = {
             items: window.cart.getCheckoutPayload(),
+            item_type: 'record',
             subtotal: subtotal,
             tax: taxAmount,
             total: totalWithTaxAndShipping,
@@ -685,7 +667,12 @@
             },
             customer_name: publicCheckoutData.customerName,
             customer_email: publicCheckoutData.customerEmail,
-            address: publicCheckoutData.shippingMethod === 'shipping' ? publicCheckoutData.address : null,
+            address: publicCheckoutData.shippingMethod === 'shipping' ? publicCheckoutData.address.line1 : '',
+            apt: publicCheckoutData.shippingMethod === 'shipping' ? publicCheckoutData.address.line2 : '',
+            city: publicCheckoutData.shippingMethod === 'shipping' ? publicCheckoutData.address.city : '',
+            state: publicCheckoutData.shippingMethod === 'shipping' ? publicCheckoutData.address.state : '',
+            zip: publicCheckoutData.shippingMethod === 'shipping' ? publicCheckoutData.address.zip : '',
+            country: publicCheckoutData.shippingMethod === 'shipping' ? publicCheckoutData.address.country : 'USA',
             notes: publicCheckoutData.shippingMethod === 'shipping' ? 
                 'Shipped to: ' + publicCheckoutData.address.line1 + ', ' + publicCheckoutData.address.city + ', ' + publicCheckoutData.address.state + ' ' + publicCheckoutData.address.zip : 
                 'Pickup in store',
@@ -694,6 +681,7 @@
 
         console.log('📦 Creating order with Square payment:', orderData);
 
+        // Use the checkout/process endpoint (public, no auth required)
         fetch(`${API_BASE}/api/checkout/process`, {
             method: 'POST',
             credentials: 'include',
@@ -708,7 +696,10 @@
                 publicSquareCheckoutUrl = data.checkout_url;
                 
                 // Add payment entry (will be confirmed after Square redirect)
-                addPublicPaymentEntry('Credit Card', payAmount);
+                publicCheckoutPaymentEntries.push({
+                    method: 'Credit Card',
+                    amount: payAmount
+                });
                 
                 if (statusEl) {
                     statusEl.textContent = '✅ Payment link created! Redirecting to Square...';
@@ -745,13 +736,6 @@
             }
         });
     };
-
-    // ===== ADD PUBLIC PAYMENT ENTRY =====
-    function addPublicPaymentEntry(method, amount) {
-        publicCheckoutPaymentEntries.push({ method, amount });
-        publicCheckoutRemaining -= amount;
-        updatePublicCheckoutUI();
-    }
 
     // ===== SHOW PUBLIC CHECKOUT STATUS =====
     function showPublicCheckoutStatus(message, type = 'info') {
@@ -819,7 +803,9 @@
                     statusDiv.style.border = '1px solid #c3e6cb';
                 }
                 
-                window.showToast('🎉 Order complete! Thank you!', 'success');
+                if (typeof window.showToast === 'function') {
+                    window.showToast('🎉 Order complete! Thank you!', 'success');
+                }
                 
                 // Clean URL (remove query params)
                 window.history.replaceState({}, document.title, window.location.pathname);
@@ -832,7 +818,9 @@
                     statusDiv.style.color = '#856404';
                     statusDiv.style.border = '1px solid #ffeeba';
                 }
-                window.showToast('⚠️ Payment completed but order confirmation failed. Please contact support.', 'error');
+                if (typeof window.showToast === 'function') {
+                    window.showToast('⚠️ Payment completed but order confirmation failed. Please contact support.', 'error');
+                }
             });
         }
     }
@@ -902,6 +890,7 @@
     window.openPublicCheckout = window.openPublicCheckout;
     window.closePublicCheckoutModal = window.closePublicCheckoutModal;
     window.updatePublicShipping = window.updatePublicShipping;
+    window.processPublicCardPayment = window.processPublicCardPayment;
 
     // ===== AUTO-INIT ON LOAD =====
     console.log('🛒 Cart module loaded');
