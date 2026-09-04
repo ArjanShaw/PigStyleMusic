@@ -135,6 +135,14 @@
             }
         },
         { 
+            page: 'online-orders', 
+            icon: 'fa-shopping-bag', 
+            label: 'Online Orders', 
+            description: 'Manage orders from the online store (Square checkout)',
+            color: 'purple',
+            notification: null
+        },
+        { 
             page: 'sticky-notes', 
             icon: 'fa-sticky-note', 
             label: 'Sticky Notes', 
@@ -473,6 +481,21 @@
                             <span class="notification-label">${feature.notification.label}: </span>
                             <span class="notification-count" style="font-weight: 700; color: #dc3545;">0</span>
                         </div>
+                    ` : ''}
+                    ${feature.page === 'online-orders' ? `
+                        <div style="
+                            position: absolute;
+                            top: 8px;
+                            left: 8px;
+                            background: #6f42c1;
+                            color: white;
+                            font-size: 8px;
+                            font-weight: 700;
+                            padding: 2px 8px;
+                            border-radius: 10px;
+                            letter-spacing: 0.5px;
+                            text-transform: uppercase;
+                        ">NEW</div>
                     ` : ''}
                 </div>
             `;

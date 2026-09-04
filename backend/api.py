@@ -1326,13 +1326,27 @@ def process_checkout():
             'Square-Version': '2026-01-22'
         }
         
-        env = os.getenv("ENV", "production")
+        # ===== DETECT ENVIRONMENT FROM REQUEST =====
+        # Check the request's host/origin to determine where to redirect back
+        referer = request.headers.get('Referer', '')
+        origin = request.headers.get('Origin', '')
+        host = request.headers.get('Host', '')
         
-        # 👇 CHANGED: redirect to root with status parameter
-        if env == "development":
-            redirect_url = f"http://localhost:8000/?status=completed&order_id={order_id}"
+        # Determine the base URL for redirect
+        if 'localhost' in referer or 'localhost' in origin or 'localhost' in host:
+            # Frontend is running on localhost
+            # Check if it's on port 8000 (common for frontend dev servers)
+            if ':8000' in referer or ':8000' in origin:
+                redirect_url = f"http://localhost:8000/?status=completed&order_id={order_id}"
+            else:
+                # Fallback to localhost:8000
+                redirect_url = f"http://localhost:8000/?status=completed&order_id={order_id}"
         else:
+            # Production
             redirect_url = f"https://www.pigstylemusic.com/?status=completed&order_id={order_id}"
+
+        app.logger.info(f"🔀 Redirect URL: {redirect_url}")
+        app.logger.info(f"📋 Referer: {referer}, Origin: {origin}, Host: {host}")
 
         payload = {
             "idempotency_key": str(uuid.uuid4()),
@@ -1346,6 +1360,7 @@ def process_checkout():
         response = requests.post(f'{square_base_url}/v2/online-checkout/payment-links', headers=headers, json=payload)
         
         if response.status_code != 200:
+            app.logger.error(f"Square error: {response.status_code} - {response.text}")
             return jsonify({'status': 'error', 'error': 'Failed to create payment link'}), 400
         
         result = response.json()
@@ -1386,9 +1401,11 @@ def process_checkout():
                 ''', (order_id, item.get('copy_id'), item.get('title'), item.get('artist'), item.get('condition'), float(item.get('price'))))
             
             conn.commit()
+            app.logger.info(f"✅ Order {order_id} created successfully")
         except Exception as e:
             conn.rollback()
             app.logger.error(f"Error creating order: {str(e)}")
+            app.logger.error(traceback.format_exc())
         finally:
             conn.close()
         
@@ -1396,7 +1413,9 @@ def process_checkout():
         
     except Exception as e:
         app.logger.error(f"Checkout error: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': f'Server error: {str(e)}'}), 500
+
 
 # ==================== SQUARE TERMINAL ENDPOINTS ====================
 

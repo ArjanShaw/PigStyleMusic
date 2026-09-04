@@ -105,7 +105,7 @@ async function showPage(page, btnElement) {
         'sticky-notes', 'stats', 'creditors', 'users', 'print-settings', 
         'store-settings', 'gift-cards', 'config-keys', 'cache-management', 
         'system-info', 'db-query', 'custom-checkout', 'admin-dashboard',
-        'email-list'
+        'email-list', 'online-orders'
     ];
     
     if (restrictedPages.includes(page)) {
@@ -120,7 +120,8 @@ async function showPage(page, btnElement) {
             'email-subscriptions', 'record-orders', 'feedback', 'sticky-notes', 
             'stats', 'creditors', 'users', 'print-settings', 'store-settings', 
             'gift-cards', 'config-keys', 'cache-management', 'system-info', 
-            'db-query', 'custom-checkout', 'admin-dashboard', 'email-list'
+            'db-query', 'custom-checkout', 'admin-dashboard', 'email-list',
+            'online-orders'
         ];
         if (adminOnly.includes(page) && user.role !== 'admin') {
             showPage('home');
@@ -209,7 +210,9 @@ async function showPage(page, btnElement) {
             'cache-management': 'initCacheManagement',
             'system-info': 'initSystemInfo',
             'db-query': 'initDbQuery',
-            'email-list': 'initEmailList'
+            'email-list': 'initEmailList',
+            'confirmation': 'initConfirmation',
+            'online-orders': 'initOnlineOrders'
         };
         
         const initFn = initMap[page];
@@ -218,6 +221,12 @@ async function showPage(page, btnElement) {
             window[initFn]();
         } else {
             console.log('ℹ️ No init function for:', page);
+        }
+        
+        // After loading confirmation page, check for Square return
+        if (page === 'confirmation' && typeof window.checkSquareReturn === 'function') {
+            // The confirmation page will handle the order completion
+            console.log('🔵 Confirmation page loaded, checking for order...');
         }
         
     } catch(err) {
@@ -365,15 +374,48 @@ document.addEventListener('keydown', function(e) {
 // Make navigateMenu globally available
 window.navigateMenu = navigateMenu;
 
+// ===== CHECK FOR SQUARE RETURN ON APP START =====
+function checkSquareReturnOnStart() {
+    console.log('🔵 [APP START] Checking for Square return...');
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const status = urlParams.get('status');
+    const orderId = urlParams.get('order_id');
+    const paymentId = urlParams.get('payment_id');
+    
+    console.log(`🔵 [APP START] status: ${status}, orderId: ${orderId}`);
+    
+    if (status === 'completed' && orderId) {
+        console.log('✅ [APP START] Found completed order:', orderId);
+        
+        // Store pending order info
+        window.pendingOrderId = orderId;
+        window.pendingPaymentId = paymentId;
+        
+        // Navigate to confirmation page
+        setTimeout(function() {
+            showPage('confirmation');
+        }, 100);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     var homeBtn = document.querySelector('nav button:first-child');
     if (homeBtn) {
         homeBtn.classList.add('active');
     }
     updateMenu();
-    showPage('home');
+    
+    // Check for Square return BEFORE loading home page
+    checkSquareReturnOnStart();
+    
+    // Only load home if not redirected to confirmation
+    if (!window.pendingOrderId) {
+        showPage('home');
+    }
 });
 
 window.updateMenu = updateMenu;
 window.showPage = showPage;
 window.getUser = getUser;
+window.checkSquareReturnOnStart = checkSquareReturnOnStart;

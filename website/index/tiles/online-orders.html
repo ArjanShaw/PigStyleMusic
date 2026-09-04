@@ -1,0 +1,89 @@
+<!-- /website/index/tiles/online-orders.html -->
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">🛒 Online Orders</h2>
+    <p style="color: #666; margin: 0 0 10px 0;">Manage orders from the online store (Square checkout)</p>
+    
+    <!-- Stats Summary -->
+    <div style="display: flex; gap: 15px; width: 100%; flex-wrap: wrap; margin-bottom: 5px;">
+        <div style="flex: 1; min-width: 120px; background: #f8f9fa; padding: 12px; border-radius: 8px; text-align: center; border-left: 4px solid #17a2b8;">
+            <div style="font-size: 22px; font-weight: bold; color: #17a2b8;" id="oo-total-orders">0</div>
+            <div style="font-size: 12px; color: #666;">Total Orders</div>
+        </div>
+        <div style="flex: 1; min-width: 120px; background: #f8f9fa; padding: 12px; border-radius: 8px; text-align: center; border-left: 4px solid #ffc107;">
+            <div style="font-size: 22px; font-weight: bold; color: #ffc107;" id="oo-pending-orders">0</div>
+            <div style="font-size: 12px; color: #666;">Pending</div>
+        </div>
+        <div style="flex: 1; min-width: 120px; background: #f8f9fa; padding: 12px; border-radius: 8px; text-align: center; border-left: 4px solid #28a745;">
+            <div style="font-size: 22px; font-weight: bold; color: #28a745;" id="oo-completed-orders">0</div>
+            <div style="font-size: 12px; color: #666;">Completed</div>
+        </div>
+        <div style="flex: 1; min-width: 120px; background: #f8f9fa; padding: 12px; border-radius: 8px; text-align: center; border-left: 4px solid #6f42c1;">
+            <div style="font-size: 22px; font-weight: bold; color: #6f42c1;" id="oo-total-revenue">$0</div>
+            <div style="font-size: 12px; color: #666;">Total Revenue</div>
+        </div>
+    </div>
+    
+    <!-- Actions -->
+    <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap;">
+        <button onclick="ooRefresh()" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-sync"></i> Refresh
+        </button>
+        <button onclick="ooExportCSV()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <i class="fas fa-file-csv"></i> Export CSV
+        </button>
+    </div>
+    
+    <!-- Search -->
+    <div style="display: flex; gap: 10px; width: 100%; flex-wrap: wrap;">
+        <input type="text" id="oo-search" placeholder="Search by order #, customer name, email..." style="flex: 1; min-width: 200px; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+        <button onclick="ooClearSearch()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer;">
+            <i class="fas fa-times"></i> Clear
+        </button>
+    </div>
+    
+    <!-- Orders Table -->
+    <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+        <div id="oo-list" style="width: 100%;">
+            <div style="text-align: center; padding: 40px; color: #999;">Loading orders...</div>
+        </div>
+    </div>
+    
+    <!-- Pagination Controls -->
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 10px 5px; flex-wrap: wrap; gap: 10px; border-top: 1px solid #eee;">
+        <div style="display: flex; gap: 8px;">
+            <button id="oo-prev-page" onclick="ooPrevPage()" style="padding: 6px 14px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                <i class="fas fa-chevron-left"></i> Previous
+            </button>
+            <button id="oo-next-page" onclick="ooNextPage()" style="padding: 6px 14px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                Next <i class="fas fa-chevron-right"></i>
+            </button>
+        </div>
+        <div>
+            <span id="oo-page-info" style="color: #666; font-size: 14px; font-weight: 500;">Page 1 of 1</span>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <span style="color: #666; font-size: 13px;">Total:</span>
+            <span id="oo-total-records" style="color: #333; font-weight: 600; font-size: 14px;">0</span>
+        </div>
+    </div>
+</div>
+
+<!-- View Order Modal -->
+<div id="oo-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10001; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 16px; max-width: 600px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+            <h2 id="oo-modal-title" style="margin: 0; color: #333; font-size: 20px;">Order Details</h2>
+            <button onclick="ooCloseModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
+        </div>
+        <input type="hidden" id="oo-view-id">
+        
+        <div id="oo-modal-body">
+            <div style="text-align: center; padding: 20px; color: #888;">Loading...</div>
+        </div>
+        
+        <div id="oo-modal-status" style="margin-top: 10px; display: none; padding: 10px; border-radius: 8px; font-size: 13px;"></div>
+        <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
+            <button onclick="ooCloseModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Close</button>
+        </div>
+    </div>
+</div>

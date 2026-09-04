@@ -1,0 +1,80 @@
+<!-- /website/index/tiles/confirmation.html -->
+<div id="page-confirmation" style="display: none; width: 100%; height: 100%; overflow-y: auto; padding: 20px; box-sizing: border-box;">
+    <div style="max-width: 600px; margin: 40px auto; background: white; border-radius: 16px; padding: 40px; box-shadow: 0 20px 60px rgba(0,0,0,0.1); text-align: center;">
+        <!-- Loading State -->
+        <div id="confirmation-loading">
+            <div style="font-size: 64px; margin-bottom: 16px;">⏳</div>
+            <h2 style="color: #333; margin: 0 0 8px 0;">Processing Your Order...</h2>
+            <p style="color: #666;">Please wait while we confirm your payment.</p>
+            <div style="margin-top: 20px;">
+                <div style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #28a745; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;"></div>
+            </div>
+        </div>
+        
+        <!-- Success State -->
+        <div id="confirmation-success" style="display: none;">
+            <div style="font-size: 64px; margin-bottom: 16px;">🎉</div>
+            <h2 style="color: #28a745; margin: 0 0 8px 0;">Order Complete!</h2>
+            <p style="color: #666; margin-bottom: 20px;">Thank you for your purchase!</p>
+            
+            <div style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin-bottom: 20px; text-align: left;">
+                <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee;">
+                    <span style="color: #666;">Order Number:</span>
+                    <span id="conf-order-number" style="font-weight: 600; color: #333;">PS-20250101-XXXX</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee;">
+                    <span style="color: #666;">Total:</span>
+                    <span id="conf-order-total" style="font-weight: 600; color: #28a745;">$0.00</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee;">
+                    <span style="color: #666;">Items:</span>
+                    <span id="conf-order-items" style="font-weight: 600; color: #333;">0</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 6px 0;">
+                    <span style="color: #666;">Records Sold:</span>
+                    <span id="conf-records-sold" style="font-weight: 600; color: #28a745;">0</span>
+                </div>
+            </div>
+            
+            <div id="conf-order-details" style="display: none; background: #f8f9fa; border-radius: 8px; padding: 15px; margin-bottom: 20px; text-align: left; max-height: 200px; overflow-y: auto;">
+                <div style="font-weight: 600; color: #333; margin-bottom: 8px;">Order Items:</div>
+                <div id="conf-order-items-list" style="font-size: 13px; color: #666;"></div>
+            </div>
+            
+            <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+                <button onclick="showPage('shop')" style="padding: 12px 30px; background: #28a745; color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: 600; font-size: 16px;">
+                    <i class="fas fa-store"></i> Continue Shopping
+                </button>
+                <button onclick="showPage('cart')" style="padding: 12px 30px; background: #6f42c1; color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: 600; font-size: 16px;">
+                    <i class="fas fa-shopping-cart"></i> View Cart
+                </button>
+            </div>
+        </div>
+        
+        <!-- Error State -->
+        <div id="confirmation-error" style="display: none;">
+            <div style="font-size: 64px; margin-bottom: 16px;">⚠️</div>
+            <h2 style="color: #dc3545; margin: 0 0 8px 0;">Order Confirmation Failed</h2>
+            <p id="conf-error-message" style="color: #666; margin-bottom: 20px;">There was a problem confirming your order.</p>
+            
+            <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+                <button onclick="showPage('cart')" style="padding: 12px 30px; background: #6c757d; color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: 600; font-size: 16px;">
+                    <i class="fas fa-arrow-left"></i> Back to Cart
+                </button>
+                <button onclick="window.location.reload()" style="padding: 12px 30px; background: #17a2b8; color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: 600; font-size: 16px;">
+                    <i class="fas fa-sync"></i> Retry
+                </button>
+                <button onclick="showPage('shop')" style="padding: 12px 30px; background: #28a745; color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: 600; font-size: 16px;">
+                    <i class="fas fa-store"></i> Continue Shopping
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
