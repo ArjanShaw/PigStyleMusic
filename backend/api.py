@@ -1584,6 +1584,270 @@ def get_admin_online_orders():
         app.logger.error(f"Error getting admin online orders: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/online-checkout', methods=['POST'])
+def process_online_checkout():
+    """
+    Create a Square payment link for online store checkout.
+    Writes to online_orders table.
+    Used by: Shop page cart checkout.
+    """
+    try:
+        data = request.json
+        items = data.get('items', [])
+        item_type = data.get('item_type', 'record')
+        shipping = data.get('shipping')
+        subtotal = data.get('subtotal', 0)
+        total = data.get('total', 0)
+        
+        order_id = str(uuid.uuid4())
+        date_str = datetime.now().strftime('%Y%m%d')
+        random_chars = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+        order_number = f"PS-{date_str}-{random_chars}"
+        
+        if not items or total <= 0:
+            return jsonify({'status': 'error', 'error': 'Invalid cart data'}), 400
+        
+        access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
+        location_id = os.environ.get('SQUARE_LOCATION_ID')
+        
+        if not access_token or not location_id:
+            return jsonify({'status': 'error', 'error': 'Payment system not configured'}), 500
+        
+        # ===== BUILD SQUARE LINE ITEMS =====
+        line_items = []
+        item_ids = []
+        record_descriptions = []
+        
+        def trim_string(s, max_length=50):
+            if not s:
+                return ''
+            s = str(s)
+            if len(s) <= max_length:
+                return s
+            return s[:max_length-3] + '...'
+        
+        for item in items:
+            if item_type == 'accessory':
+                item_name = item.get('description') or item.get('title', 'Merchandise')
+                barcode = item.get('bar_code') or 'NO-BARCODE'
+                trimmed_name = trim_string(item_name)
+                record_descriptions.append(f"{barcode} | ACC: {trimmed_name}")
+                display_name = item_name
+            else:
+                barcode = item.get('barcode') or item.get('bar_code') or 'NO-BARCODE'
+                artist = item.get('artist', 'Unknown Artist')
+                title = item.get('title', 'Unknown Title')
+                trimmed_artist = trim_string(artist)
+                trimmed_title = trim_string(title)
+                record_descriptions.append(f"{barcode} | {trimmed_artist} | {trimmed_title}")
+                artist_name = item.get('artist', '')
+                item_name = item.get('title', 'Unknown')
+                if artist_name:
+                    display_name = f"{artist_name} - {item_name}"
+                else:
+                    display_name = item_name
+            
+            line_items.append({
+                "name": display_name,
+                "quantity": str(item.get('quantity', 1)),
+                "base_price_money": {"amount": int(round(float(item.get('price', 0)) * 100)), "currency": "USD"}
+            })
+            
+            item_id = item.get('copy_id') or item.get('accessory_id') or item.get('id')
+            if item_id:
+                item_ids.append(str(item_id))
+        
+        if shipping and shipping.get('amount', 0) > 0:
+            line_items.append({
+                "name": "Shipping",
+                "quantity": "1",
+                "base_price_money": {"amount": int(round(shipping.get('amount', 0) * 100)), "currency": "USD"}
+            })
+        
+        tax_amount = data.get('tax', 0)
+        if tax_amount and float(tax_amount) > 0:
+            line_items.append({
+                "name": "Sales Tax",
+                "quantity": "1",
+                "base_price_money": {"amount": int(round(float(tax_amount) * 100)), "currency": "USD"}
+            })
+        
+        formatted_note = " || ".join(record_descriptions)
+        if len(formatted_note) > 500:
+            formatted_note = formatted_note[:497] + "..."
+        
+        metadata = {
+            'order_id': str(order_id), 
+            'order_number': order_number, 
+            'item_type': item_type, 
+            'item_ids': json.dumps(item_ids),
+            'customer_name': data.get('customer_name', 'Walk-in Customer'),
+            'customer_email': data.get('customer_email', ''),
+            'customer_phone': data.get('customer_phone', ''),
+            'shipping_method': shipping.get('method', 'pickup') if shipping else 'pickup',
+            'address': data.get('address', ''),
+            'city': data.get('city', ''),
+            'state': data.get('state', ''),
+            'zip': data.get('zip', ''),
+            'notes': data.get('notes', '')
+        }
+        
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'Square-Version': '2026-01-22'
+        }
+        
+        # ===== DETECT ENVIRONMENT FROM REQUEST =====
+        referer = request.headers.get('Referer', '')
+        origin = request.headers.get('Origin', '')
+        host = request.headers.get('Host', '')
+        
+        if 'localhost' in referer or 'localhost' in origin or 'localhost' in host:
+            if ':8000' in referer or ':8000' in origin:
+                redirect_url = f"http://localhost:8000/?page=cart&status=completed&order_id={order_id}"
+            else:
+                redirect_url = f"http://localhost:8000/?page=cart&status=completed&order_id={order_id}"
+        else:
+            redirect_url = f"https://www.pigstylemusic.com/?page=cart&status=completed&order_id={order_id}"
+
+        app.logger.info(f"🔀 Redirect URL: {redirect_url}")
+
+        # ===== CREATE SQUARE PAYMENT LINK =====
+        payload = {
+            "idempotency_key": str(uuid.uuid4()),
+            "order": {
+                "location_id": location_id, 
+                "line_items": line_items, 
+                "reference_id": str(order_id)
+            },
+            "payment_note": formatted_note,
+            "metadata": metadata,
+            "checkout_options": {"redirect_url": redirect_url}
+        }
+        
+        square_base_url = 'https://connect.squareup.com'
+        response = requests.post(f'{square_base_url}/v2/online-checkout/payment-links', headers=headers, json=payload)
+        
+        if response.status_code != 200:
+            app.logger.error(f"Square error: {response.status_code} - {response.text}")
+            return jsonify({'status': 'error', 'error': 'Failed to create payment link'}), 400
+        
+        result = response.json()
+        payment_link = result.get('payment_link', {})
+        checkout_url = payment_link.get('url')
+        square_order_id = payment_link.get('order_id')
+        
+        if not square_order_id or not checkout_url:
+            return jsonify({'status': 'error', 'error': 'Missing required data from Square'}), 500
+        
+        # ===== SAVE TO online_orders TABLE =====
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        shipping_method = shipping.get('method', 'pickup') if shipping else 'pickup'
+        shipping_cost = float(shipping.get('amount', 0)) if shipping else 0
+        
+        try:
+            cursor.execute("BEGIN TRANSACTION")
+            
+            # Insert into online_orders table
+            cursor.execute('''
+                INSERT INTO online_orders (
+                    id, 
+                    order_number, 
+                    customer_name, 
+                    customer_email, 
+                    customer_phone,
+                    shipping_method, 
+                    shipping_address_line1, 
+                    shipping_address_line2, 
+                    shipping_city, 
+                    shipping_state, 
+                    shipping_zip, 
+                    shipping_country,
+                    shipping_cost, 
+                    subtotal, 
+                    tax, 
+                    total,
+                    square_checkout_id, 
+                    square_order_id, 
+                    square_payment_id,
+                    order_status,
+                    payment_status,
+                    notes, 
+                    created_at, 
+                    notified
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 0)
+            ''', (
+                order_id, 
+                order_number, 
+                data.get('customer_name', 'Walk-in Customer'), 
+                data.get('customer_email', ''),
+                data.get('customer_phone', ''),
+                shipping_method, 
+                data.get('address', ''), 
+                data.get('apt', ''), 
+                data.get('city', ''), 
+                data.get('state', ''), 
+                data.get('zip', ''), 
+                data.get('country', 'USA'), 
+                shipping_cost, 
+                subtotal, 
+                data.get('tax', 0), 
+                total,
+                payment_link.get('id'), 
+                square_order_id, 
+                '',  # square_payment_id (will be updated later when payment completes)
+                'pending',
+                'pending',
+                data.get('notes', '')
+            ))
+            
+            # Insert order items
+            for item in items:
+                cursor.execute('''
+                    INSERT INTO order_items (
+                        order_id, 
+                        record_id, 
+                        record_title, 
+                        record_artist, 
+                        record_condition, 
+                        price_at_time, 
+                        created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ''', (
+                    order_id, 
+                    item.get('copy_id'), 
+                    item.get('title'), 
+                    item.get('artist'), 
+                    item.get('condition'), 
+                    float(item.get('price'))
+                ))
+            
+            conn.commit()
+            app.logger.info(f"✅ Online order {order_id} created in online_orders table")
+            
+        except Exception as e:
+            conn.rollback()
+            app.logger.error(f"Error creating online order: {str(e)}")
+            app.logger.error(traceback.format_exc())
+        finally:
+            conn.close()
+        
+        return jsonify({
+            'status': 'success', 
+            'checkout_url': checkout_url, 
+            'order_id': order_id, 
+            'order_number': order_number, 
+            'square_order_id': square_order_id
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Online checkout error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': f'Server error: {str(e)}'}), 500
+
 @app.route('/api/square/terminal/checkout', methods=['POST'])
 @login_required
 @role_required(['admin'])

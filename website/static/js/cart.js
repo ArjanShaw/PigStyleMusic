@@ -545,7 +545,10 @@
 
         console.log('📦 Order data:', orderData);
 
-        fetch(`${API_BASE}/api/checkout/process`, {
+        // ============================================================
+        // FIXED: Use /api/online-checkout (not /create)
+        // ============================================================
+        fetch(`${API_BASE}/api/online-checkout`, {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
@@ -553,7 +556,7 @@
         })
         .then(res => res.json())
         .then(data => {
-            console.log('📦 /api/checkout/process response:', data);
+            console.log('📦 /api/online-checkout response:', data);
             
             if (data.status === 'success') {
                 publicOrderId = data.order_id;
