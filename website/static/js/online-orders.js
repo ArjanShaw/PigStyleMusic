@@ -1,5 +1,5 @@
 // ============================================================
-// ONLINE ORDERS - Orders from Square checkout (orders table)
+// ONLINE ORDERS - Orders from online_orders table
 // ============================================================
 
 (function() {
@@ -24,7 +24,7 @@
         return headers;
     }
 
-    // Load orders
+    // Load orders from online_orders table
     async function loadOrders() {
         const list = document.getElementById('oo-list');
         if (!list) {
@@ -37,7 +37,8 @@
         try {
             const searchTerm = document.getElementById('oo-search')?.value || '';
             
-            let url = `${API_BASE}/api/admin/orders?per_page=500`;
+            // FIXED: Use online_orders endpoint
+            let url = `${API_BASE}/api/admin/online-orders?per_page=500`;
             if (searchTerm) {
                 url += `&search=${encodeURIComponent(searchTerm)}`;
             }
@@ -210,7 +211,7 @@
         }, 300);
     }
 
-    // View order
+    // View order from online_orders
     window.ooView = async function(id) {
         document.getElementById('oo-modal-title').textContent = `📦 Order #${id}`;
         document.getElementById('oo-view-id').value = id;
@@ -219,7 +220,8 @@
         document.getElementById('oo-modal').style.display = 'flex';
         
         try {
-            const response = await fetch(`${API_BASE}/api/admin/orders/${id}`, {
+            // FIXED: Use online_orders detail endpoint
+            const response = await fetch(`${API_BASE}/api/admin/online-orders/${id}`, {
                 credentials: 'include',
                 headers: getHeaders()
             });

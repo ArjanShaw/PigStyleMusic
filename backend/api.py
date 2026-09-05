@@ -1483,6 +1483,107 @@ def api_get_terminals():
         app.logger.error(f"Error in api_get_terminals: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/admin/online-orders', methods=['GET', 'OPTIONS'])
+def get_admin_online_orders():
+    """Get all orders from online_orders table for admin panel"""
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
+    
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        search = request.args.get('search', '').strip()
+        
+        offset = (page - 1) * per_page
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        query = '''
+            SELECT 
+                id,
+                order_number,
+                customer_name,
+                customer_email,
+                customer_phone,
+                shipping_method,
+                shipping_address_line1,
+                shipping_address_line2,
+                shipping_city,
+                shipping_state,
+                shipping_zip,
+                shipping_country,
+                shipping_cost,
+                subtotal,
+                tax,
+                total,
+                square_checkout_id,
+                square_order_id,
+                square_payment_id,
+                notes,
+                created_at,
+                notified
+            FROM online_orders
+            WHERE 1=1
+        '''
+        params = []
+        
+        if search:
+            query += ''' AND (
+                order_number LIKE ? OR 
+                customer_name LIKE ? OR 
+                customer_email LIKE ?
+            )'''
+            search_term = f'%{search}%'
+            params.extend([search_term, search_term, search_term])
+        
+        query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?'
+        params.extend([per_page, offset])
+        
+        cursor.execute(query, params)
+        orders = cursor.fetchall()
+        
+        # Get total count separately
+        count_query = 'SELECT COUNT(*) as total FROM online_orders WHERE 1=1'
+        count_params = []
+        if search:
+            count_query += ''' AND (
+                order_number LIKE ? OR 
+                customer_name LIKE ? OR 
+                customer_email LIKE ?
+            )'''
+            count_params.extend([search_term, search_term, search_term])
+        
+        cursor.execute(count_query, count_params)
+        total = cursor.fetchone()['total']
+        
+        conn.close()
+        
+        orders_list = []
+        for order in orders:
+            order_dict = dict(order)
+            # Get item count for each order
+            conn2 = get_db()
+            cur2 = conn2.cursor()
+            cur2.execute('SELECT COUNT(*) as item_count FROM order_items WHERE order_id = ?', (order_dict['id'],))
+            item_count = cur2.fetchone()['item_count']
+            conn2.close()
+            order_dict['item_count'] = item_count
+            orders_list.append(order_dict)
+        
+        return jsonify({
+            'status': 'success',
+            'orders': orders_list,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total + per_page - 1) // per_page if total > 0 else 1
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting admin online orders: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 @app.route('/api/square/terminal/checkout', methods=['POST'])
 @login_required
 @role_required(['admin'])
