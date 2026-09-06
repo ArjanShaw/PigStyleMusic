@@ -1483,6 +1483,121 @@ def api_get_terminals():
         app.logger.error(f"Error in api_get_terminals: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/admin/online-orders/<order_id>', methods=['GET', 'OPTIONS'])
+@login_required
+@role_required(['admin'])
+def get_admin_online_order_detail(order_id):
+    """Get detailed information for a single online order"""
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
+    
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get the order - using ONLY columns that exist in online_orders
+        cursor.execute('''
+            SELECT 
+                id,
+                order_number,
+                customer_name,
+                customer_email,
+                customer_phone,
+                shipping_method,
+                shipping_address_line1,
+                shipping_address_line2,
+                shipping_city,
+                shipping_state,
+                shipping_zip,
+                shipping_country,
+                shipping_cost,
+                subtotal,
+                tax,
+                total,
+                square_checkout_id,
+                square_order_id,
+                square_payment_id,
+                notes,
+                created_at,
+                notified
+            FROM online_orders
+            WHERE id = ?
+        ''', (order_id,))
+        
+        order = cursor.fetchone()
+        
+        if not order:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Order not found'}), 404
+        
+        # Get order items
+        cursor.execute('''
+            SELECT 
+                id,
+                record_id,
+                record_title,
+                record_artist,
+                record_condition,
+                price_at_time,
+                created_at
+            FROM order_items
+            WHERE order_id = ?
+        ''', (order_id,))
+        
+        items = cursor.fetchall()
+        conn.close()
+        
+        # Convert order to dict
+        order_dict = dict(order)
+        
+        # Convert items to list of dicts
+        items_list = []
+        for item in items:
+            items_list.append({
+                'id': item['id'],
+                'record_id': item['record_id'],
+                'record_title': item['record_title'],
+                'record_artist': item['record_artist'],
+                'record_condition': item['record_condition'],
+                'price_at_time': float(item['price_at_time']) if item['price_at_time'] else 0,
+                'created_at': item['created_at']
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'order': {
+                'id': order_dict['id'],
+                'order_number': order_dict['order_number'],
+                'customer_name': order_dict['customer_name'] or '—',
+                'customer_email': order_dict['customer_email'] or '—',
+                'customer_phone': order_dict.get('customer_phone') or '—',
+                'shipping_method': order_dict.get('shipping_method') or '—',
+                'shipping_address_line1': order_dict.get('shipping_address_line1') or '',
+                'shipping_address_line2': order_dict.get('shipping_address_line2') or '',
+                'shipping_city': order_dict.get('shipping_city') or '',
+                'shipping_state': order_dict.get('shipping_state') or '',
+                'shipping_zip': order_dict.get('shipping_zip') or '',
+                'shipping_country': order_dict.get('shipping_country') or 'USA',
+                'shipping_cost': float(order_dict.get('shipping_cost') or 0),
+                'subtotal': float(order_dict.get('subtotal') or 0),
+                'tax': float(order_dict.get('tax') or 0),
+                'total': float(order_dict.get('total') or 0),
+                'square_checkout_id': order_dict.get('square_checkout_id') or '',
+                'square_order_id': order_dict.get('square_order_id') or '',
+                'square_payment_id': order_dict.get('square_payment_id') or '',
+                'notes': order_dict.get('notes') or '',
+                'created_at': order_dict.get('created_at'),
+                'notified': bool(order_dict.get('notified')) if order_dict.get('notified') is not None else False
+            },
+            'items': items_list
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting online order detail: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 @app.route('/api/admin/online-orders', methods=['GET', 'OPTIONS'])
 def get_admin_online_orders():
     """Get all orders from online_orders table for admin panel"""
@@ -4887,6 +5002,8 @@ def get_feedback():
     except Exception as e:
         app.logger.error(f"Error getting feedback: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 
 
 @app.route('/api/feedback/<int:feedback_id>/status', methods=['PUT'])
