@@ -41,7 +41,10 @@
             </div>
             <div>
                 <button onclick="discogsShowAllOrders()" style="padding: 4px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 5px;">
-                    <i class="fas fa-arrow-left"></i> Back to All Orders
+                    <i class="fas fa-arrow-left"></i> Back
+                </button>
+                <button onclick="discogsPrintShippingLabel()" style="padding: 4px 12px; background: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 5px;">
+                    <i class="fas fa-truck"></i> Shipping Label
                 </button>
                 <button onclick="discogsExportOrder()" style="padding: 4px 12px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 5px;">
                     <i class="fas fa-download"></i> Export
@@ -56,3 +59,59 @@
         </div>
     </div>
 </div>
+
+<!-- Shipping Label Modal -->
+<div id="discogs-shipping-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: white; border-radius: 12px; padding: 24px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="margin: 0; color: #333;"><i class="fas fa-truck"></i> Shipping Label</h3>
+            <button onclick="discogsCloseShippingModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999;">&times;</button>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; color: #555; margin-bottom: 5px;">Upload PDF Label:</label>
+            <input type="file" id="discogs-label-pdf" accept=".pdf" style="width: 100%; padding: 8px; border: 2px dashed #ddd; border-radius: 8px; cursor: pointer;">
+            <div style="font-size: 12px; color: #999; margin-top: 5px;">Upload a PDF with Avery 5168 label format (2x2 labels per page)</div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; color: #555; margin-bottom: 5px;">Label Position on Sheet:</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <button onclick="discogsSelectLabelPosition('LT')" id="discogs-pos-LT" style="padding: 12px; border: 2px solid #007bff; border-radius: 8px; background: #e7f3ff; cursor: pointer; font-weight: 500; transition: all 0.2s;">
+                    <i class="fas fa-arrow-up"></i> Top Left
+                </button>
+                <button onclick="discogsSelectLabelPosition('RT')" id="discogs-pos-RT" style="padding: 12px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer; font-weight: 500; transition: all 0.2s;">
+                    <i class="fas fa-arrow-up"></i> Top Right
+                </button>
+                <button onclick="discogsSelectLabelPosition('LB')" id="discogs-pos-LB" style="padding: 12px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer; font-weight: 500; transition: all 0.2s;">
+                    <i class="fas fa-arrow-down"></i> Bottom Left
+                </button>
+                <button onclick="discogsSelectLabelPosition('RB')" id="discogs-pos-RB" style="padding: 12px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer; font-weight: 500; transition: all 0.2s;">
+                    <i class="fas fa-arrow-down"></i> Bottom Right
+                </button>
+            </div>
+            <div style="font-size: 12px; color: #999; margin-top: 5px;">Select where the label appears on the Avery 5168 sheet</div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; color: #555; margin-bottom: 5px;">Order Details:</label>
+            <div style="background: #f8f9fa; padding: 12px; border-radius: 8px; font-size: 14px;">
+                <div><strong>Order:</strong> <span id="discogs-label-order-id">—</span></div>
+                <div><strong>Buyer:</strong> <span id="discogs-label-buyer">—</span></div>
+                <div><strong>Items:</strong> <span id="discogs-label-items">—</span></div>
+            </div>
+        </div>
+        
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button onclick="discogsCloseShippingModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                Cancel
+            </button>
+            <button onclick="discogsPrintLabel()" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                <i class="fas fa-print"></i> Generate & Print Label
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden iframe for PDF printing -->
+<iframe id="discogs-print-frame" style="display: none;"></iframe>

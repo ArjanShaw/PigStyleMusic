@@ -4,6 +4,8 @@
     let orderItems = [];
     let selectedOrderId = null;
     let viewingAllOrders = true;
+    let selectedLabelPosition = 'LT';
+    let labelPdfFile = null;
 
     const API_BASE = window.location.hostname === 'localhost' 
         ? 'http://localhost:5000' 
@@ -458,6 +460,199 @@
         showStatus(`📥 Order exported successfully`, 'success');
     };
 
+    // ===== SHIPPING LABEL FUNCTIONS =====
+    
+    // Open shipping label modal
+    window.discogsPrintShippingLabel = function() {
+        if (!selectedOrderId) {
+            showStatus('⚠️ Please select an order first', 'error');
+            return;
+        }
+        
+        const order = orders.find(o => (o.order_id || o.id) === selectedOrderId);
+        if (!order) {
+            showStatus('⚠️ Order not found', 'error');
+            return;
+        }
+        
+        // Populate order details in modal
+        document.getElementById('discogs-label-order-id').textContent = selectedOrderId;
+        document.getElementById('discogs-label-buyer').textContent = order.buyer_username || order.buyer_name || 'Unknown';
+        document.getElementById('discogs-label-items').textContent = orderItems.length + ' items';
+        
+        // Reset position selection
+        selectedLabelPosition = 'LT';
+        document.querySelectorAll('[id^="discogs-pos-"]').forEach(btn => {
+            btn.style.border = '2px solid #ddd';
+            btn.style.background = 'white';
+        });
+        document.getElementById('discogs-pos-LT').style.border = '2px solid #007bff';
+        document.getElementById('discogs-pos-LT').style.background = '#e7f3ff';
+        
+        // Reset file input
+        document.getElementById('discogs-label-pdf').value = '';
+        labelPdfFile = null;
+        
+        // Show modal
+        document.getElementById('discogs-shipping-modal').style.display = 'flex';
+    };
+    
+    // Close shipping label modal
+    window.discogsCloseShippingModal = function() {
+        document.getElementById('discogs-shipping-modal').style.display = 'none';
+    };
+    
+    // Select label position
+    window.discogsSelectLabelPosition = function(position) {
+        selectedLabelPosition = position;
+        document.querySelectorAll('[id^="discogs-pos-"]').forEach(btn => {
+            btn.style.border = '2px solid #ddd';
+            btn.style.background = 'white';
+        });
+        document.getElementById(`discogs-pos-${position}`).style.border = '2px solid #007bff';
+        document.getElementById(`discogs-pos-${position}`).style.background = '#e7f3ff';
+    };
+    
+    // Generate and print label using simple HTML/CSS approach
+    window.discogsPrintLabel = async function() {
+        const fileInput = document.getElementById('discogs-label-pdf');
+        if (!fileInput.files || fileInput.files.length === 0) {
+            showStatus('⚠️ Please upload a PDF label file', 'error');
+            return;
+        }
+        
+        try {
+            showStatus('📄 Preparing label for printing...', 'success');
+            
+            const file = fileInput.files[0];
+            const fileUrl = URL.createObjectURL(file);
+            
+            // Get order details
+            const order = orders.find(o => (o.order_id || o.id) === selectedOrderId);
+            const buyer = order ? order.buyer_username || order.buyer_name || 'Unknown' : 'Unknown';
+            
+            // Position mapping for CSS
+            const positionStyles = {
+                'LT': { top: '0', left: '0' },
+                'RT': { top: '0', right: '0' },
+                'LB': { bottom: '0', left: '0' },
+                'RB': { bottom: '0', right: '0' }
+            };
+            
+            const pos = positionStyles[selectedLabelPosition];
+            
+            // Create a print window with the label positioned correctly
+            const printWindow = window.open('', '_blank', 'width=800,height=600');
+            
+            // Create HTML with the PDF embedded and positioned
+            printWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Shipping Label - Order #${selectedOrderId}</title>
+                    <style>
+                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                        body { 
+                            background: white; 
+                            margin: 0; 
+                            padding: 0;
+                            width: 100%;
+                            height: 100%;
+                        }
+                        .page-container {
+                            width: 8.5in;
+                            height: 11in;
+                            margin: 0 auto;
+                            position: relative;
+                            background: white;
+                        }
+                        .label-container {
+                            position: absolute;
+                            width: 4.25in;
+                            height: 5.5in;
+                            ${pos.top !== undefined ? `top: ${pos.top};` : ''}
+                            ${pos.bottom !== undefined ? `bottom: ${pos.bottom};` : ''}
+                            ${pos.left !== undefined ? `left: ${pos.left};` : ''}
+                            ${pos.right !== undefined ? `right: ${pos.right};` : ''}
+                            border: 1px dashed #ccc;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            background: white;
+                            padding: 10px;
+                            overflow: hidden;
+                        }
+                        .label-container iframe {
+                            width: 100%;
+                            height: 100%;
+                            border: none;
+                            background: white;
+                        }
+                        .label-info {
+                            position: absolute;
+                            bottom: 10px;
+                            left: 10px;
+                            font-size: 10px;
+                            color: #999;
+                            font-family: Arial, sans-serif;
+                            background: rgba(255,255,255,0.9);
+                            padding: 2px 8px;
+                            border-radius: 4px;
+                        }
+                        .label-position {
+                            position: absolute;
+                            top: 10px;
+                            right: 10px;
+                            font-size: 10px;
+                            color: #999;
+                            font-family: Arial, sans-serif;
+                            background: rgba(255,255,255,0.9);
+                            padding: 2px 8px;
+                            border-radius: 4px;
+                        }
+                        @media print {
+                            body { margin: 0; padding: 0; }
+                            .page-container { margin: 0; }
+                            .label-container { border: none; }
+                            .label-info, .label-position { display: none; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="page-container">
+                        <div class="label-container">
+                            <iframe src="${fileUrl}"></iframe>
+                        </div>
+                        <div class="label-info">Order #${selectedOrderId} | ${buyer}</div>
+                        <div class="label-position">Position: ${selectedLabelPosition}</div>
+                    </div>
+                    <script>
+                        // Auto-print when loaded
+                        window.onload = function() {
+                            setTimeout(function() {
+                                window.print();
+                            }, 1000);
+                        };
+                    <\/script>
+                </body>
+                </html>
+            `);
+            
+            printWindow.document.close();
+            
+            showStatus(`✅ Label ready for printing - Order #${selectedOrderId} at position ${selectedLabelPosition}`, 'success');
+            
+            // Close modal after a delay
+            setTimeout(() => {
+                document.getElementById('discogs-shipping-modal').style.display = 'none';
+            }, 2000);
+            
+        } catch (err) {
+            console.error('Error preparing label:', err);
+            showStatus(`❌ Error preparing label: ${err.message}`, 'error');
+        }
+    };
+
     // Show status
     function showStatus(message, type) {
         const statusDiv = document.getElementById('discogs-orders-status-msg');
@@ -513,6 +708,13 @@
         if (dateTo && !dateTo.value) {
             dateTo.value = new Date().toISOString().split('T')[0];
         }
+        
+        // Close modal on click outside
+        document.getElementById('discogs-shipping-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                discogsCloseShippingModal();
+            }
+        });
 
         loadOrders();
     };
