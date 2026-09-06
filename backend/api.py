@@ -1597,6 +1597,48 @@ def get_admin_online_order_detail(order_id):
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/discogs/test-token', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def test_discogs_token():
+    """Test if the Discogs token is valid and working."""
+    try:
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+        if not TOKEN:
+            return jsonify({
+                'status': 'error',
+                'error': 'DISCOGS_USER_TOKEN is not set in environment variables'
+            }), 500
+        
+        # Make a simple test request to Discogs
+        headers = {
+            'Authorization': f'Discogs token={TOKEN}',
+            'User-Agent': 'PigStyleMusic/1.0'
+        }
+        
+        response = requests.get('https://api.discogs.com/oauth/identity', headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            user_data = response.json()
+            return jsonify({
+                'status': 'success',
+                'message': 'Token is valid',
+                'username': user_data.get('username', 'Unknown'),
+                'user_id': user_data.get('id', 'Unknown')
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'error': f'Discogs API returned status {response.status_code}',
+                'response': response.text[:200] if response.text else 'No response body'
+            }), response.status_code
+            
+    except Exception as e:
+        app.logger.error(f"Error testing Discogs token: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
 
 @app.route('/api/admin/online-orders', methods=['GET', 'OPTIONS'])
 def get_admin_online_orders():

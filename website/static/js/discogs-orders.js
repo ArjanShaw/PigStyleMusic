@@ -9,7 +9,7 @@
 
     const API_BASE = window.location.hostname === 'localhost' 
         ? 'http://localhost:5000' 
-        : 'https://www.pigstylemusic.com';
+ : 'https://www.pigstylemusic.com';
 
     function getHeaders() {
         const headers = { 'Content-Type': 'application/json' };
@@ -38,11 +38,17 @@
             if (search && search.value) url += `&search=${encodeURIComponent(search.value)}`;
             url += '&all=true';
 
+            console.log('🔍 Fetching orders from:', url);
+
             const response = await fetch(url, {
                 credentials: 'include',
                 headers: getHeaders()
             });
+            
+            console.log('📡 Response status:', response.status);
+            
             const data = await response.json();
+            console.log('📦 Response data:', data);
 
             if (data.status === 'success') {
                 orders = data.orders || [];
@@ -56,12 +62,39 @@
                 renderOrdersTable();
                 showStatus(`✅ Loaded ${orders.length} orders (latest first)`, 'success');
             } else {
-                tableDiv.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'Failed to load orders'}</div>`;
-                showStatus(`❌ Error: ${data.error || 'Failed to load'}`, 'error');
+                // SHOW THE ERROR MESSAGE
+                const errorMsg = data.error || data.message || 'Failed to load orders';
+                console.error('❌ API Error:', errorMsg);
+                tableDiv.innerHTML = `
+                    <div style="text-align: center; padding: 30px 20px; color: #dc3545;">
+                        <div style="font-size: 48px; margin-bottom: 10px;">⚠️</div>
+                        <div style="font-weight: 600; margin-bottom: 8px;">Error Loading Orders</div>
+                        <div style="color: #666; font-size: 14px;">${errorMsg}</div>
+                        <div style="margin-top: 15px; font-size: 12px; color: #999;">
+                            Check that DISCOGS_USER_TOKEN is properly configured in the server environment.
+                        </div>
+                        <button onclick="discogsOrdersRefresh()" style="margin-top: 15px; padding: 8px 24px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                            <i class="fas fa-sync"></i> Retry
+                        </button>
+                    </div>
+                `;
+                showStatus(`❌ ${errorMsg}`, 'error');
             }
         } catch (err) {
-            console.error('Error loading orders:', err);
-            tableDiv.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${err.message}</div>`;
+            console.error('❌ Fetch error:', err);
+            tableDiv.innerHTML = `
+                <div style="text-align: center; padding: 30px 20px; color: #dc3545;">
+                    <div style="font-size: 48px; margin-bottom: 10px;">🔌</div>
+                    <div style="font-weight: 600; margin-bottom: 8px;">Connection Error</div>
+                    <div style="color: #666; font-size: 14px;">${err.message}</div>
+                    <div style="margin-top: 15px; font-size: 12px; color: #999;">
+                        Could not connect to the server. Please check your internet connection.
+                    </div>
+                    <button onclick="discogsOrdersRefresh()" style="margin-top: 15px; padding: 8px 24px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                        <i class="fas fa-sync"></i> Retry
+                    </button>
+                </div>
+            `;
             showStatus(`❌ Error: ${err.message}`, 'error');
         }
     }
@@ -694,7 +727,7 @@
 
     // Init
     window.initDiscogsOrders = function() {
-        console.log('Discogs Orders initialized');
+        console.log('📦 Discogs Orders initialized');
         
         // Set default date range
         const dateFrom = document.getElementById('discogs-orders-date-from');
