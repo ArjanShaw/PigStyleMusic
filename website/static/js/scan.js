@@ -66,7 +66,6 @@
     function cleanArtistName(artist) {
         if (!artist) return '';
         let cleaned = artist.trim();
-        // Remove "The " from the beginning
         if (cleaned.toLowerCase().startsWith('the ')) {
             cleaned = cleaned.substring(4);
         }
@@ -79,6 +78,74 @@
         return cleaned.charAt(0).toUpperCase();
     }
 
+    // ===== CHECK IF WE CAN RESOLVE FROM PREVIOUS SCANS =====
+    function canResolveFromPrevious(records, prevScans) {
+        if (prevScans.length === 0) return null;
+        if (records.length === 1) return records[0];
+        
+        // Get the most recent scan's letter
+        const lastScan = prevScans[0];
+        const lastLetter = getArtistFirstLetter(lastScan.artist);
+        
+        // Get the next letter in the alphabet
+        const nextLetter = String.fromCharCode(lastLetter.charCodeAt(0) + 1);
+        
+        // Find which records match the same letter OR the next letter
+        const sameLetterMatches = records.filter(r => getArtistFirstLetter(r.artist) === lastLetter);
+        const nextLetterMatches = records.filter(r => getArtistFirstLetter(r.artist) === nextLetter);
+        
+        // Count valid candidates
+        const validCandidates = [...sameLetterMatches, ...nextLetterMatches];
+        
+        if (validCandidates.length === 0) {
+            return null;
+        }
+        
+        if (validCandidates.length === 1) {
+            return validCandidates[0];
+        }
+        
+        // Multiple valid candidates → cannot resolve
+        return null;
+    }
+
+    // ===== PLAY LOUD ALERT SOUND =====
+    function playAlertSound() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Play a loud, attention-grabbing sound - alternating high-low tones
+            const frequencies = [880, 660, 880, 660, 880];
+            const durations = [0.15, 0.15, 0.15, 0.15, 0.3];
+            
+            frequencies.forEach((freq, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.frequency.value = freq;
+                osc.type = 'square';
+                gain.gain.value = 0.3;
+                osc.start(ctx.currentTime + i * 0.2);
+                osc.stop(ctx.currentTime + i * 0.2 + durations[i]);
+            });
+        } catch (e) {
+            // Fallback - use a simple beep
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.frequency.value = 800;
+                osc.type = 'square';
+                gain.gain.value = 0.3;
+                osc.start();
+                osc.stop(ctx.currentTime + 0.5);
+            } catch (e2) {}
+        }
+    }
+
     // ===== LOAD LAST 10 RECORDS BY LAST_SEEN =====
     async function loadLastSeenRecords() {
         const list = document.getElementById('scan-records-list');
@@ -87,7 +154,6 @@
         list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading records...</div>';
 
         try {
-            // Get the last 10 records by last_seen (status_id = 2 for active)
             const response = await fetch(`${API_BASE}/records?status_ids=2&limit=10&order_by=last_seen&order_dir=DESC`, {
                 credentials: 'include',
                 headers: getHeaders()
@@ -311,8 +377,12 @@
     async function handleDuplicateBarcode(records, locationId) {
         const statusDiv = document.getElementById('scan-status');
         
-        // Build selection dialog
-        let message = '⚠️ Multiple records found with this barcode:\n\n';
+        // Play loud alert sound FIRST to get attention
+        playAlertSound();
+        
+        let message = '⚠️⚠️⚠️ ATTENTION REQUIRED ⚠️⚠️⚠️\n\n';
+        message += 'Multiple records found with this barcode.\n';
+        message += 'You must choose which one to scan:\n\n';
         records.forEach((r, i) => {
             const artist = r.artist || 'Unknown';
             const title = r.title || 'Unknown';
@@ -365,7 +435,6 @@
         }
 
         try {
-            // Search by barcode first
             const response = await fetch(`${API_BASE}/records?barcode=${encodeURIComponent(term)}`, {
                 credentials: 'include',
                 headers: getHeaders()
@@ -375,11 +444,9 @@
             if (data.status === 'success' && data.records && data.records.length > 0) {
                 let records = data.records;
                 
-                // If multiple records found
                 if (records.length > 1) {
-                    // Check if this is the first scan (no history)
+                    // If no history, prompt user
                     if (recentlyScanned.length === 0) {
-                        // No history - prompt user to choose
                         await handleDuplicateBarcode(records, locationId);
                         const input = document.getElementById('scan-input');
                         if (input) {
@@ -389,38 +456,25 @@
                         return;
                     }
                     
-                    // Has history - check previous scan
-                    const prevScan = recentlyScanned[0];
-                    const prevLetter = getArtistFirstLetter(prevScan.artist);
+                    // Try to resolve using the new logic
+                    const resolved = canResolveFromPrevious(records, recentlyScanned);
                     
-                    // Find which possible records match the previous letter
-                    const matches = records.filter(r => getArtistFirstLetter(r.artist) === prevLetter);
-                    
-                    if (matches.length === 1) {
-                        // Only ONE match - resolve immediately!
-                        const record = matches[0];
-                        await processScannedRecord(record, locationId);
+                    if (resolved) {
+                        await processScannedRecord(resolved, locationId);
                         if (statusDiv) {
-                            statusDiv.textContent = `✅ Resolved by previous scan: ${record.artist} - ${record.title}`;
+                            statusDiv.textContent = `✅ Resolved: ${resolved.artist} - ${resolved.title}`;
                             statusDiv.className = 'status-message status-success';
                         }
                         playSound('success');
-                    } else if (matches.length > 1) {
-                        // Multiple matches - prompt user to choose
-                        if (statusDiv) {
-                            statusDiv.textContent = `⚠️ Multiple records match previous scan (${matches.length} possible) - please choose`;
-                            statusDiv.className = 'status-message status-warning';
-                        }
-                        await handleDuplicateBarcode(records, locationId);
-                        playSound('error');
                     } else {
-                        // No matches - prompt user to choose
+                        // Multiple valid candidates - need user to choose
                         if (statusDiv) {
-                            statusDiv.textContent = `⚠️ No match with previous scan - please choose`;
+                            statusDiv.textContent = '⚠️⚠️⚠️ MULTIPLE VALID CANDIDATES - PLEASE CHOOSE ⚠️⚠️⚠️';
                             statusDiv.className = 'status-message status-warning';
+                            statusDiv.style.fontWeight = 'bold';
+                            statusDiv.style.fontSize = '16px';
                         }
                         await handleDuplicateBarcode(records, locationId);
-                        playSound('error');
                     }
                     
                     const input = document.getElementById('scan-input');
@@ -431,11 +485,9 @@
                     return;
                 }
                 
-                // Single record found
                 const record = records[0];
                 await processScannedRecord(record, locationId);
             } else {
-                // No barcode match, try general search
                 const searchResponse = await fetch(`${API_BASE}/records/search?q=${encodeURIComponent(term)}`, {
                     credentials: 'include',
                     headers: getHeaders()
@@ -515,7 +567,6 @@
                     location_id: locationId
                 };
 
-                // Remove if already exists
                 recentlyScanned = recentlyScanned.filter(r => r.id !== record.id);
                 recentlyScanned.unshift(scanEntry);
                 if (recentlyScanned.length > MAX_RECENT) {
