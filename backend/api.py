@@ -4788,6 +4788,7 @@ def merchandise_page():
     """Serve the merchandise store page"""
     return send_from_directory('static', 'accessories.html')
 
+
 @app.route('/api/feedback', methods=['POST'])
 def submit_feedback():
     """Submit feedback from the connect page"""
@@ -4797,32 +4798,28 @@ def submit_feedback():
         if not data:
             return jsonify({'status': 'error', 'error': 'No data provided'}), 400
         
-        type_of_feedback = data.get('type_of_feedback', 'general')
         content = data.get('content', '').strip()
         contact_info = data.get('contact_info', '').strip()
-        event_name = data.get('event_name', '').strip()
+        name = data.get('name', '').strip()
         
-        # Validate based on feedback type
-        if type_of_feedback == 'general' and not content:
+        # Validate
+        if not content:
             return jsonify({'status': 'error', 'error': 'Feedback content is required'}), 400
-        
-        if type_of_feedback == 'event' and not event_name and not content:
-            return jsonify({'status': 'error', 'error': 'Event selection or description is required'}), 400
         
         conn = get_db()
         cursor = conn.cursor()
         
-        # MODIFIED: Added notified = 0 (unread) for new feedback
+        # Insert new feedback with notified = 0 (unread)
         cursor.execute('''
-            INSERT INTO feedback (type_of_feedback, content, contact_info, event_name, status, notified)
-            VALUES (?, ?, ?, ?, 'new', 0)
-        ''', (type_of_feedback, content, contact_info, event_name))
+            INSERT INTO feedback (content, contact_info, name, notified)
+            VALUES (?, ?, ?, 0)
+        ''', (content, contact_info, name))
         
         feedback_id = cursor.lastrowid
         conn.commit()
         conn.close()
         
-        app.logger.info(f"Feedback submitted: ID={feedback_id}, Type={type_of_feedback}")
+        app.logger.info(f"Feedback submitted: ID={feedback_id}, Name={name}")
         
         return jsonify({
             'status': 'success',
@@ -4832,8 +4829,8 @@ def submit_feedback():
         
     except Exception as e:
         app.logger.error(f"Error submitting feedback: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 @app.route('/api/record-orders/unread-count', methods=['GET'])
 @login_required

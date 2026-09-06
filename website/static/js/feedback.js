@@ -46,7 +46,6 @@
                 await markAllFeedbackRead();
                 
                 applyLocalFilters(searchTerm);
-                
                 renderFeedback();
             } else {
                 list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'Failed to load'}</div>`;
@@ -58,7 +57,7 @@
     }
 
     // Mark all feedback as read
-    async function markAllFeedbackRead() {
+    window.markAllFeedbackRead = async function() {
         try {
             const response = await fetch(`${API_BASE}/api/feedback/mark-all-read`, {
                 method: 'POST',
@@ -68,11 +67,16 @@
             const result = await response.json();
             if (result.status === 'success') {
                 console.log('✅ All feedback marked as read');
+                showToast('✅ All feedback marked as read');
+                // Update local data
+                feedbackItems.forEach(item => item.notified = 1);
+                renderFeedback();
             }
         } catch (err) {
             console.error('Error marking all feedback as read:', err);
+            showToast('❌ Error marking all as read', 'error');
         }
-    }
+    };
 
     // Apply local filters (instant search)
     function applyLocalFilters(searchTerm) {
@@ -85,13 +89,11 @@
         filteredItems = feedbackItems.filter(item => {
             const content = (item.content || '').toLowerCase();
             const contact = (item.contact_info || '').toLowerCase();
-            const type = (item.type_of_feedback || '').toLowerCase();
-            const event = (item.event_name || '').toLowerCase();
+            const name = (item.name || '').toLowerCase();
             
             return content.includes(term) || 
                    contact.includes(term) || 
-                   type.includes(term) || 
-                   event.includes(term);
+                   name.includes(term);
         });
     }
 
@@ -114,10 +116,9 @@
             <thead>
                 <tr style="background: #f8f9fa; border-bottom: 2px solid #ddd;">
                     <th style="padding: 8px 10px; text-align: left; color: #333;">ID</th>
-                    <th style="padding: 8px 10px; text-align: left; color: #333;">Type</th>
+                    <th style="padding: 8px 10px; text-align: left; color: #333;">Name</th>
                     <th style="padding: 8px 10px; text-align: left; color: #333;">Content</th>
                     <th style="padding: 8px 10px; text-align: left; color: #333;">Contact</th>
-                    <th style="padding: 8px 10px; text-align: center; color: #333;">Status</th>
                     <th style="padding: 8px 10px; text-align: left; color: #333;">Created</th>
                     <th style="padding: 8px 10px; text-align: center; color: #333;">Actions</th>
                 </tr>
@@ -125,24 +126,14 @@
             <tbody>`;
         
         pageData.forEach(item => {
-            const statusClass = item.status === 'new' ? 'new' :
-                               item.status === 'read' ? 'read' :
-                               item.status === 'responded' ? 'responded' :
-                               item.status === 'archived' ? 'archived' : '';
-            const statusText = item.status ? item.status.charAt(0).toUpperCase() + item.status.slice(1) : '—';
-            const typeText = item.type_of_feedback ? item.type_of_feedback.charAt(0).toUpperCase() + item.type_of_feedback.slice(1) : '—';
             const contentPreview = item.content ? item.content.substring(0, 100) + (item.content.length > 100 ? '...' : '') : '—';
+            const isNew = item.notified === 0 || item.notified === false || item.notified === null;
             
-            html += `<tr>
+            html += `<tr style="${isNew ? 'background: #fff3cd;' : ''}">
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333; font-weight: 600;">${item.id}</td>
-                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333;">
-                    <span class="status-badge ${item.type_of_feedback || 'general'}">${typeText}</span>
-                </td>
+                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333;">${item.name || 'Anonymous'}</td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${contentPreview}</td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333;">${item.contact_info || '—'}</td>
-                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">
-                    <span class="status-badge ${statusClass}">${statusText}</span>
-                </td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #666; font-size: 12px;">${item.created_at ? new Date(item.created_at).toLocaleDateString() : '—'}</td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">
                     <button onclick="fbView(${item.id})" style="padding: 4px 8px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; margin-right: 4px;">
@@ -195,7 +186,6 @@
             applyLocalFilters(searchTerm);
             currentPage = 1;
             renderFeedback();
-            loadFeedback();
         }, 300);
     }
 
@@ -216,9 +206,9 @@
             }
             
             // Mark as read if new
-            if (item.status === 'new') {
+            if (!item.notified) {
                 await markFeedbackRead(id);
-                item.status = 'read';
+                item.notified = 1;
                 renderFeedback();
             }
             
@@ -232,24 +222,23 @@
     // Render feedback details
     function renderFeedbackDetails(item) {
         const body = document.getElementById('fb-modal-body');
-        
-        const statusOptions = ['new', 'read', 'responded', 'archived'];
-        let statusSelect = `<select id="fb-status-select" style="width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">`;
-        statusOptions.forEach(s => {
-            const selected = s === item.status ? 'selected' : '';
-            statusSelect += `<option value="${s}" ${selected}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`;
-        });
-        statusSelect += `</select>`;
+        const isRead = item.notified === 1 || item.notified === true;
         
         body.innerHTML = `
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                 <div>
-                    <label style="display: block; font-weight: 600; color: #555; font-size: 12px; margin-bottom: 2px;">Type</label>
-                    <div style="color: #333; font-weight: 600;">${item.type_of_feedback ? item.type_of_feedback.charAt(0).toUpperCase() + item.type_of_feedback.slice(1) : '—'}</div>
+                    <label style="display: block; font-weight: 600; color: #555; font-size: 12px; margin-bottom: 2px;">ID</label>
+                    <div style="color: #333; font-weight: 600;">#${item.id}</div>
                 </div>
                 <div>
                     <label style="display: block; font-weight: 600; color: #555; font-size: 12px; margin-bottom: 2px;">Status</label>
-                    ${statusSelect}
+                    <div style="color: #333;">
+                        <span class="status-badge ${isRead ? 'read' : 'new'}">${isRead ? 'Read' : 'New'}</span>
+                    </div>
+                </div>
+                <div style="grid-column: 1 / -1;">
+                    <label style="display: block; font-weight: 600; color: #555; font-size: 12px; margin-bottom: 2px;">Name</label>
+                    <div style="color: #333; background: #f8f9fa; padding: 8px 12px; border-radius: 4px;">${item.name || 'Anonymous'}</div>
                 </div>
                 <div style="grid-column: 1 / -1;">
                     <label style="display: block; font-weight: 600; color: #555; font-size: 12px; margin-bottom: 2px;">Content</label>
@@ -263,60 +252,9 @@
                     <label style="display: block; font-weight: 600; color: #555; font-size: 12px; margin-bottom: 2px;">Created</label>
                     <div style="color: #333;">${item.created_at ? new Date(item.created_at).toLocaleString() : '—'}</div>
                 </div>
-                ${item.event_name ? `
-                <div>
-                    <label style="display: block; font-weight: 600; color: #555; font-size: 12px; margin-bottom: 2px;">Event</label>
-                    <div style="color: #333;">${item.event_name}</div>
-                </div>
-                ` : ''}
-                ${item.updated_at ? `
-                <div>
-                    <label style="display: block; font-weight: 600; color: #555; font-size: 12px; margin-bottom: 2px;">Last Updated</label>
-                    <div style="color: #333;">${new Date(item.updated_at).toLocaleString()}</div>
-                </div>
-                ` : ''}
             </div>
         `;
     }
-
-    // Update status
-    window.fbUpdateStatus = async function() {
-        const id = document.getElementById('fb-view-id').value;
-        const status = document.getElementById('fb-status-select')?.value;
-        if (!id || !status) return;
-        
-        const item = feedbackItems.find(f => f.id == id);
-        if (!item) return;
-        
-        if (item.status === status) {
-            showModalStatus('No change to status', 'info');
-            return;
-        }
-        
-        try {
-            const response = await fetch(`${API_BASE}/api/feedback/${id}/status`, {
-                method: 'PUT',
-                credentials: 'include',
-                headers: getHeaders(),
-                body: JSON.stringify({ status: status })
-            });
-            const result = await response.json();
-            
-            if (result.status === 'success') {
-                showModalStatus('✅ Feedback status updated!', 'success');
-                item.status = status;
-                renderFeedback();
-                setTimeout(() => {
-                    fbCloseModal();
-                }, 1000);
-            } else {
-                showModalStatus(`❌ Error: ${result.error || 'Failed to update'}`, 'error');
-            }
-        } catch (err) {
-            console.error('Error updating feedback:', err);
-            showModalStatus(`❌ Error: ${err.message}`, 'error');
-        }
-    };
 
     // Mark as read
     async function markFeedbackRead(id) {
@@ -336,7 +274,8 @@
         const item = feedbackItems.find(f => f.id === id);
         if (!item) return;
         
-        if (!confirm(`Delete this feedback item from ${item.contact_info || 'anonymous'}? This cannot be undone.`)) return;
+        const name = item.name || 'anonymous';
+        if (!confirm(`Delete feedback from ${name}? This cannot be undone.`)) return;
         
         try {
             const response = await fetch(`${API_BASE}/api/feedback/${id}`, {
@@ -363,11 +302,21 @@
         }
     };
 
+    // Delete from modal
+    window.fbDeleteFromModal = function() {
+        const id = document.getElementById('fb-view-id').value;
+        if (id) {
+            fbCloseModal();
+            setTimeout(() => fbDelete(parseInt(id)), 300);
+        }
+    };
+
     // Clear search
     window.fbClearSearch = function() {
         document.getElementById('fb-search').value = '';
         currentPage = 1;
-        loadFeedback();
+        applyLocalFilters('');
+        renderFeedback();
     };
 
     // Pagination
@@ -391,28 +340,6 @@
         document.getElementById('fb-modal').style.display = 'none';
         currentViewId = null;
     };
-
-    // Modal status
-    function showModalStatus(message, type) {
-        const statusDiv = document.getElementById('fb-modal-status');
-        statusDiv.style.display = 'block';
-        statusDiv.textContent = message;
-        const colors = {
-            success: '#d4edda',
-            error: '#f8d7da',
-            warning: '#fff3cd',
-            info: '#cce5ff'
-        };
-        const textColors = {
-            success: '#155724',
-            error: '#721c24',
-            warning: '#856404',
-            info: '#004085'
-        };
-        statusDiv.style.background = colors[type] || '#f8f9fa';
-        statusDiv.style.color = textColors[type] || '#333';
-        setTimeout(() => { statusDiv.style.display = 'none'; }, 5000);
-    }
 
     // Toast
     function showToast(message, type = 'success') {
@@ -440,6 +367,31 @@
         }, 3000);
     }
 
+    // Export CSV
+    window.fbExportCSV = function() {
+        if (!feedbackItems || feedbackItems.length === 0) {
+            showToast('No feedback to export', 'info');
+            return;
+        }
+        
+        let csv = 'ID,Name,Content,Contact,Created,Read\n';
+        feedbackItems.forEach(item => {
+            const readStatus = item.notified ? 'Read' : 'New';
+            csv += `${item.id},"${(item.name || 'Anonymous').replace(/"/g, '""')}","${(item.content || '').replace(/"/g, '""')}","${(item.contact_info || '').replace(/"/g, '""')}",${item.created_at || ''},${readStatus}\n`;
+        });
+        
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `feedback_${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        showToast('✅ CSV exported successfully');
+    };
+
     // Initialize search with instant updates
     document.addEventListener('DOMContentLoaded', function() {
         const searchInput = document.getElementById('fb-search');
@@ -455,7 +407,6 @@
                     applyLocalFilters(searchTerm);
                     currentPage = 1;
                     renderFeedback();
-                    loadFeedback();
                 }
             });
         }

@@ -1,5 +1,10 @@
 // Connect page - contact form
 (function() {
+    // Determine API base URL based on environment
+    const API_BASE = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5000' 
+        : 'https://www.pigstylemusic.com';
+
     window.sendConnectMessage = async function() {
         const name = document.getElementById('connectName').value.trim();
         const email = document.getElementById('connectEmail').value.trim();
@@ -26,17 +31,13 @@
         statusDiv.innerHTML = '<span style="color:#666;">⏳ Sending...</span>';
         
         try {
-            // Combine name and email into contact_info (what the backend expects)
-            const contact_info = `${name} <${email}>`;
-            
-            const response = await fetch('/api/feedback', {
+            const response = await fetch(`${API_BASE}/api/feedback`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    contact_info: contact_info,  // ← FIXED: This is what the backend expects
-                    content: message,
-                    type_of_feedback: 'general',
-                    event_name: ''
+                    name: name,
+                    contact_info: email,
+                    content: message
                 })
             });
             
