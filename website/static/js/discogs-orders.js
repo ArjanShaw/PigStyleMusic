@@ -3,6 +3,7 @@
     let orders = [];
     let orderItems = [];
     let selectedOrderId = null;
+    let viewingAllOrders = true;
 
     const API_BASE = window.location.hostname === 'localhost' 
         ? 'http://localhost:5000' 
@@ -22,10 +23,10 @@
         const dateTo = document.getElementById('discogs-orders-date-to');
         const search = document.getElementById('discogs-orders-search');
 
-        const select = document.getElementById('discogs-order-select');
-        if (!select) return;
+        const tableDiv = document.getElementById('discogs-orders-table');
+        if (!tableDiv) return;
         
-        select.innerHTML = '<option value="">Loading orders...</option>';
+        tableDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading orders...</div>';
 
         try {
             let url = `${API_BASE}/api/discogs/orders?per_page=200`;
@@ -43,37 +44,208 @@
 
             if (data.status === 'success') {
                 orders = data.orders || [];
-                renderOrders();
-                showStatus(`✅ Loaded ${orders.length} orders`, 'success');
+                // Sort orders by date (latest first)
+                orders.sort((a, b) => {
+                    const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
+                    const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
+                    return dateB - dateA;
+                });
+                viewingAllOrders = true;
+                renderOrdersTable();
+                showStatus(`✅ Loaded ${orders.length} orders (latest first)`, 'success');
             } else {
-                select.innerHTML = '<option value="">Error loading orders</option>';
+                tableDiv.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'Failed to load orders'}</div>`;
                 showStatus(`❌ Error: ${data.error || 'Failed to load'}`, 'error');
             }
         } catch (err) {
             console.error('Error loading orders:', err);
-            select.innerHTML = '<option value="">Error loading orders</option>';
+            tableDiv.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${err.message}</div>`;
             showStatus(`❌ Error: ${err.message}`, 'error');
         }
     }
 
-    // Render orders dropdown
-    function renderOrders() {
-        const select = document.getElementById('discogs-order-select');
-        if (!select) return;
+    // Render orders table
+    function renderOrdersTable() {
+        const tableDiv = document.getElementById('discogs-orders-table');
+        const container = document.getElementById('discogs-orders-container');
+        if (!tableDiv || !container) return;
         
-        select.innerHTML = '<option value="">-- Select an order --</option>';
+        // Determine which orders to show
+        let displayOrders = orders;
+        if (!viewingAllOrders && selectedOrderId) {
+            displayOrders = orders.filter(o => (o.order_id || o.id) === selectedOrderId);
+        }
         
-        orders.forEach(order => {
-            const opt = document.createElement('option');
-            opt.value = order.order_id || order.id;
-            const buyer = order.buyer_username || order.buyer_name || 'Unknown buyer';
-            const date = order.created_at ? new Date(order.created_at).toLocaleDateString() : '';
-            const total = order.total_amount ? '$' + order.total_amount.toFixed(2) : '';
-            const itemCount = order.items ? order.items.length : 0;
-            opt.textContent = `${order.order_id || order.id} - ${buyer} ${date} ${total} (${itemCount} items)`;
-            select.appendChild(opt);
+        // Adjust container height based on view mode
+        if (!viewingAllOrders && selectedOrderId) {
+            container.style.flex = '0.5';
+            container.style.maxHeight = '200px';
+        } else {
+            container.style.flex = '2';
+            container.style.maxHeight = 'none';
+        }
+        
+        if (displayOrders.length === 0) {
+            if (!viewingAllOrders) {
+                tableDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">Order not found</div>';
+            } else {
+                tableDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">No orders found</div>';
+            }
+            return;
+        }
+
+        let html = `<div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 10px; background: #f8f9fa; border-bottom: 2px solid #ddd; position: sticky; top: 0; z-index: 5;">
+            <span style="font-weight: 600; color: #333;">
+                ${viewingAllOrders ? `📋 All Orders (${displayOrders.length})` : `📋 Order #${selectedOrderId}`}
+            </span>
+            ${!viewingAllOrders ? 
+                `<button onclick="discogsShowAllOrders()" style="padding: 4px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                    <i class="fas fa-arrow-left"></i> Back to All Orders
+                </button>` : ''
+            }
+        </div>
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 5px;">
+            <thead>
+                <tr style="background: #f8f9fa; border-bottom: 2px solid #ddd;">
+                    <th style="padding: 8px 10px; text-align: left; color: #333;">Order ID</th>
+                    <th style="padding: 8px 10px; text-align: left; color: #333;">Buyer</th>
+                    <th style="padding: 8px 10px; text-align: left; color: #333;">Date</th>
+                    <th style="padding: 8px 10px; text-align: right; color: #333;">Total</th>
+                    <th style="padding: 8px 10px; text-align: center; color: #333;">Items</th>
+                    <th style="padding: 8px 10px; text-align: center; color: #333;">Status</th>
+                    <th style="padding: 8px 10px; text-align: center; color: #333;">Action</th>
+                </tr>
+            </thead>
+            <tbody>`;
+        
+        displayOrders.forEach((order, index) => {
+            const statusColor = order.status === 'Payment Received' ? '#28a745' :
+                              order.status === 'Shipped' ? '#007bff' :
+                              order.status === 'Delivered' ? '#17a2b8' :
+                              order.status === 'Cancelled' ? '#dc3545' :
+                              order.status === 'Refunded' ? '#ffc107' : '#6c757d';
+            
+            const rowBg = index % 2 === 0 ? '#ffffff' : '#f9f9f9';
+            const isSelected = selectedOrderId === (order.order_id || order.id) && !viewingAllOrders;
+            
+            // Show relative time for recent orders
+            let dateDisplay = '—';
+            if (order.created_at) {
+                const date = new Date(order.created_at);
+                const now = new Date();
+                const diffMs = now - date;
+                const diffMins = Math.floor(diffMs / 60000);
+                const diffHours = Math.floor(diffMs / 3600000);
+                const diffDays = Math.floor(diffMs / 86400000);
+                
+                if (diffMins < 1) {
+                    dateDisplay = 'Just now';
+                } else if (diffMins < 60) {
+                    dateDisplay = `${diffMins}m ago`;
+                } else if (diffHours < 24) {
+                    dateDisplay = `${diffHours}h ago`;
+                } else if (diffDays < 7) {
+                    dateDisplay = `${diffDays}d ago`;
+                } else {
+                    dateDisplay = date.toLocaleDateString();
+                }
+            }
+            
+            html += `<tr style="background: ${rowBg}; ${isSelected ? 'border-left: 3px solid #007bff;' : ''}">
+                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333; font-weight: ${isSelected ? '600' : 'normal'};">
+                    ${order.order_id || order.id}
+                </td>
+                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333;">
+                    ${order.buyer_username || order.buyer_name || 'Unknown'}
+                </td>
+                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #666; font-size: 12px;">
+                    ${dateDisplay}
+                </td>
+                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: right; color: #333; font-weight: 500;">
+                    ${order.total_amount ? '$' + order.total_amount.toFixed(2) : '—'}
+                </td>
+                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center; color: #555;">
+                    ${order.items ? order.items.length : 0}
+                </td>
+                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">
+                    <span style="display: inline-block; padding: 2px 8px; border-radius: 12px; background: ${statusColor}20; color: ${statusColor}; font-size: 11px; font-weight: 500;">
+                        ${order.status || 'Unknown'}
+                    </span>
+                </td>
+                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">
+                    ${viewingAllOrders ? 
+                        `<button onclick="discogsSelectOrder('${order.order_id || order.id}')" style="padding: 4px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                            <i class="fas fa-eye"></i> View Items
+                        </button>` :
+                        `<span style="color: #28a745; font-weight: 500; font-size: 11px;">✓ Viewing</span>`
+                    }
+                </td>
+            </tr>`;
         });
+        
+        html += '</tbody></table>';
+        tableDiv.innerHTML = html;
+        
+        // If viewing a single order, scroll to show the items
+        if (!viewingAllOrders && selectedOrderId) {
+            setTimeout(() => {
+                const itemsSection = document.getElementById('discogs-order-items-section');
+                if (itemsSection) {
+                    itemsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }, 100);
+        }
     }
+
+    // Select order and load items
+    window.discogsSelectOrder = function(orderId) {
+        selectedOrderId = orderId;
+        viewingAllOrders = false;
+        
+        // Find the selected order to get details
+        const order = orders.find(o => (o.order_id || o.id) === orderId);
+        if (order) {
+            // Update order summary
+            const summaryEl = document.getElementById('discogs-order-summary');
+            if (summaryEl) {
+                const buyer = order.buyer_username || order.buyer_name || 'Unknown';
+                const total = order.total_amount ? '$' + order.total_amount.toFixed(2) : '—';
+                const date = order.created_at ? new Date(order.created_at).toLocaleDateString() : '—';
+                summaryEl.textContent = `${buyer} | ${order.items ? order.items.length : 0} items | Total: ${total} | ${date}`;
+            }
+            
+            // Show order items section
+            const itemsSection = document.getElementById('discogs-order-items-section');
+            if (itemsSection) {
+                itemsSection.style.display = 'block';
+            }
+            
+            loadOrderItems(orderId);
+        }
+        
+        renderOrdersTable(); // Update table to show only selected order
+    };
+
+    // Show all orders
+    window.discogsShowAllOrders = function() {
+        viewingAllOrders = true;
+        selectedOrderId = null;
+        
+        // Hide order items section
+        const itemsSection = document.getElementById('discogs-order-items-section');
+        if (itemsSection) {
+            itemsSection.style.display = 'none';
+        }
+        
+        // Clear order items
+        const itemsDiv = document.getElementById('discogs-order-items');
+        if (itemsDiv) {
+            itemsDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">Select an order to view items</div>';
+        }
+        
+        renderOrdersTable();
+        showStatus('📋 Showing all orders', 'success');
+    };
 
     // Load order items
     async function loadOrderItems(orderId) {
@@ -130,7 +302,17 @@
                 
                 orderItems = enriched;
                 renderOrderItems(orderItems);
-                showStatus(`✅ ${orderItems.length} items loaded`, 'success');
+                
+                // Update order summary
+                const summaryEl = document.getElementById('discogs-order-summary');
+                if (summaryEl) {
+                    const buyer = order.buyer_username || order.buyer_name || 'Unknown';
+                    const total = order.total_amount ? '$' + order.total_amount.toFixed(2) : '—';
+                    const date = order.created_at ? new Date(order.created_at).toLocaleDateString() : '—';
+                    summaryEl.textContent = `${buyer} | ${orderItems.length} items | Total: ${total} | ${date}`;
+                }
+                
+                showStatus(`✅ ${orderItems.length} items loaded for order #${orderId}`, 'success');
             } else {
                 list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error loading order items</div>`;
             }
@@ -169,9 +351,9 @@
             const statusText = item.record_status_id === 2 ? 'Active' :
                               item.record_status_id === 3 || item.record_status_id === 4 ? 'Sold' :
                               item.record_status_id === 1 ? 'New' : '—';
-            const statusClass = item.record_status_id === 2 ? 'active' :
-                               item.record_status_id === 3 || item.record_status_id === 4 ? 'sold' :
-                               item.record_status_id === 1 ? 'new' : '';
+            const statusColor = item.record_status_id === 2 ? '#28a745' :
+                               item.record_status_id === 3 || item.record_status_id === 4 ? '#dc3545' :
+                               item.record_status_id === 1 ? '#17a2b8' : '#6c757d';
             
             html += `<tr>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333;">${idx + 1}</td>
@@ -186,13 +368,17 @@
                     }
                 </td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">
-                    <span class="status-badge ${statusClass}">${statusText}</span>
+                    <span style="display: inline-block; padding: 2px 8px; border-radius: 12px; background: ${statusColor}20; color: ${statusColor}; font-size: 11px; font-weight: 500;">
+                        ${statusText}
+                    </span>
                 </td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">
                     ${item.pigstyle_id && item.record_status_id !== 3 && item.record_status_id !== 4 ? 
                         `<button onclick="discogsMarkSold(${item.pigstyle_id})" style="padding: 4px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
                             <i class="fas fa-check"></i> Mark Sold
                         </button>` :
+                        item.pigstyle_id && (item.record_status_id === 3 || item.record_status_id === 4) ?
+                        `<span style="color: #28a745; font-weight: 500; font-size: 11px;">✓ Sold</span>` :
                         ''
                     }
                 </td>
@@ -229,6 +415,49 @@
         }
     };
 
+    // Refresh order items
+    window.discogsRefreshOrderItems = function() {
+        if (selectedOrderId) {
+            loadOrderItems(selectedOrderId);
+        } else {
+            showStatus('⚠️ No order selected', 'error');
+        }
+    };
+
+    // Export order
+    window.discogsExportOrder = function() {
+        if (!selectedOrderId || orderItems.length === 0) {
+            showStatus('⚠️ No order selected or no items to export', 'error');
+            return;
+        }
+        
+        const order = orders.find(o => (o.order_id || o.id) === selectedOrderId);
+        const buyer = order ? order.buyer_username || order.buyer_name || 'Unknown' : 'Unknown';
+        
+        let csv = `Order ID,${selectedOrderId}\n`;
+        csv += `Buyer,${buyer}\n`;
+        csv += `Date,${order && order.created_at ? new Date(order.created_at).toLocaleString() : '—'}\n`;
+        csv += `Status,${order ? order.status : '—'}\n`;
+        csv += `Total,${order && order.total_amount ? '$' + order.total_amount.toFixed(2) : '—'}\n\n`;
+        csv += `#,Artist,Title,Price,Condition,PigStyle ID,Status\n`;
+        
+        orderItems.forEach((item, idx) => {
+            const statusText = item.record_status_id === 2 ? 'Active' :
+                              item.record_status_id === 3 || item.record_status_id === 4 ? 'Sold' :
+                              item.record_status_id === 1 ? 'New' : '—';
+            csv += `${idx + 1},"${item.artist}","${item.title}",$${item.price.toFixed(2)},${item.media_condition || '—'},${item.pigstyle_id || '—'},${statusText}\n`;
+        });
+        
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `order_${selectedOrderId}_${buyer.replace(/[^a-zA-Z0-9]/g, '_')}.csv`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+        
+        showStatus(`📥 Order exported successfully`, 'success');
+    };
+
     // Show status
     function showStatus(message, type) {
         const statusDiv = document.getElementById('discogs-orders-status-msg');
@@ -236,16 +465,36 @@
         statusDiv.style.display = 'block';
         statusDiv.textContent = message;
         statusDiv.className = `status-message status-${type}`;
-        setTimeout(() => { statusDiv.style.display = 'none'; }, 5000);
+        // Clear any existing timeout
+        if (window.statusTimeout) {
+            clearTimeout(window.statusTimeout);
+        }
+        window.statusTimeout = setTimeout(() => { 
+            statusDiv.style.display = 'none'; 
+        }, 5000);
     }
 
     // Expose functions
     window.discogsOrdersApplyFilters = function() {
+        viewingAllOrders = true;
+        selectedOrderId = null;
+        // Hide order items section
+        const itemsSection = document.getElementById('discogs-order-items-section');
+        if (itemsSection) {
+            itemsSection.style.display = 'none';
+        }
         loadOrders();
     };
 
     window.discogsOrdersRefresh = function() {
-        loadOrders();
+        if (viewingAllOrders) {
+            loadOrders();
+        } else if (selectedOrderId) {
+            loadOrderItems(selectedOrderId);
+            renderOrdersTable();
+        } else {
+            loadOrders();
+        }
     };
 
     // Init
@@ -265,23 +514,6 @@
             dateTo.value = new Date().toISOString().split('T')[0];
         }
 
-        const orderSelect = document.getElementById('discogs-order-select');
-        if (orderSelect) {
-            orderSelect.addEventListener('change', function() {
-                const orderId = this.value;
-                selectedOrderId = orderId;
-                if (orderId) {
-                    loadOrderItems(orderId);
-                } else {
-                    const list = document.getElementById('discogs-order-items');
-                    if (list) {
-                        list.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">Select an order to view items</div>';
-                    }
-                    orderItems = [];
-                }
-            });
-        }
-        
         loadOrders();
     };
 })();

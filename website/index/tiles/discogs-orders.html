@@ -22,21 +22,37 @@
         </button>
     </div>
     
-    <!-- Order Select -->
-    <div style="display: flex; gap: 10px; width: 100%; align-items: center; flex-wrap: wrap;">
-        <label style="font-weight: 600; color: #555;">Order:</label>
-        <select id="discogs-order-select" style="flex: 1; min-width: 300px; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
-            <option value="">-- Select an order --</option>
-        </select>
-    </div>
-    
     <!-- Status -->
     <div id="discogs-orders-status-msg" style="width: 100%; display: none; padding: 8px 12px; border-radius: 8px; font-size: 13px;"></div>
     
-    <!-- Order Items -->
-    <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
-        <div id="discogs-order-items" style="width: 100%;">
-            <div style="text-align: center; padding: 20px; color: #999;">Select an order to view items</div>
+    <!-- Orders Table Container -->
+    <div id="discogs-orders-container" style="width: 100%; flex: 2; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px; transition: all 0.3s ease;">
+        <div id="discogs-orders-table" style="width: 100%;">
+            <div style="text-align: center; padding: 20px; color: #999;">Loading orders...</div>
+        </div>
+    </div>
+    
+    <!-- Order Items Section -->
+    <div id="discogs-order-items-section" style="width: 100%; display: none; border: 1px solid #eee; border-radius: 8px; padding: 5px; margin-top: 5px; max-height: 60vh; overflow-y: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #f8f9fa; border-bottom: 2px solid #ddd; position: sticky; top: 0; z-index: 10;">
+            <div>
+                <span style="font-weight: 600; color: #333;">📦 Order Items</span>
+                <span id="discogs-order-summary" style="margin-left: 10px; color: #666; font-size: 13px;"></span>
+            </div>
+            <div>
+                <button onclick="discogsShowAllOrders()" style="padding: 4px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 5px;">
+                    <i class="fas fa-arrow-left"></i> Back to All Orders
+                </button>
+                <button onclick="discogsExportOrder()" style="padding: 4px 12px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 5px;">
+                    <i class="fas fa-download"></i> Export
+                </button>
+                <button onclick="discogsRefreshOrderItems()" style="padding: 4px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                    <i class="fas fa-sync"></i> Refresh
+                </button>
+            </div>
+        </div>
+        <div id="discogs-order-items" style="width: 100%; padding: 5px;">
+            <div style="text-align: center; padding: 20px; color: #999;">Loading items...</div>
         </div>
     </div>
 </div>

@@ -62,6 +62,23 @@
         }
     }
 
+    // ===== CLEAN ARTIST NAME (remove "The", get first letter) =====
+    function cleanArtistName(artist) {
+        if (!artist) return '';
+        let cleaned = artist.trim();
+        // Remove "The " from the beginning
+        if (cleaned.toLowerCase().startsWith('the ')) {
+            cleaned = cleaned.substring(4);
+        }
+        return cleaned.trim();
+    }
+
+    // ===== GET FIRST LETTER OF ARTIST (ignoring "The") =====
+    function getArtistFirstLetter(artist) {
+        const cleaned = cleanArtistName(artist);
+        return cleaned.charAt(0).toUpperCase();
+    }
+
     // ===== LOAD LAST 10 RECORDS BY LAST_SEEN =====
     async function loadLastSeenRecords() {
         const list = document.getElementById('scan-records-list');
@@ -122,6 +139,7 @@
                         <th style="padding: 6px 8px; text-align: left; color: #333;">Title</th>
                         <th style="padding: 6px 8px; text-align: left; color: #333;">Location</th>
                         <th style="padding: 6px 8px; text-align: right; color: #333;">Last Seen</th>
+                        <th style="padding: 6px 8px; text-align: center; color: #333; width: 50px;">Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -137,6 +155,7 @@
                     <td style="padding: 6px 8px; color: #333;">${r.title}</td>
                     <td style="padding: 6px 8px; color: #28a745; font-weight: 500;">📍 ${locationName}</td>
                     <td style="padding: 6px 8px; text-align: right; color: #666; font-size: 12px;">${lastSeen}</td>
+                    <td style="padding: 6px 8px; text-align: center; color: #28a745; font-size: 14px;">✅</td>
                 </tr>
             `;
         });
@@ -160,17 +179,9 @@
 
     // ===== GET LOCATION ORDER =====
     function getLocationOrder() {
-        // Sort locations by name to get consistent order
-        // Names like "Bin 1 LT", "Bin 1 RT", "Bin 2 LT", etc.
         return [...locations].sort((a, b) => {
             return a.name.localeCompare(b.name, undefined, { numeric: true });
         });
-    }
-
-    // ===== FIND LOCATION INDEX =====
-    function findLocationIndex(locationId) {
-        const sorted = getLocationOrder();
-        return sorted.findIndex(l => l.id === locationId);
     }
 
     // ===== NAVIGATE TO NEXT/PREVIOUS LOCATION =====
@@ -180,7 +191,6 @@
 
         const currentId = parseInt(select.value);
         if (!currentId) {
-            // If no location selected, select the first one
             const sorted = getLocationOrder();
             if (sorted.length > 0) {
                 select.value = sorted[0].id;
@@ -202,7 +212,6 @@
             newIdx = currentIdx - 1;
         }
 
-        // Check if new index is valid
         if (newIdx >= 0 && newIdx < sorted.length) {
             select.value = sorted[newIdx].id;
             updateLocationPreview();
@@ -228,10 +237,7 @@
         const sorted = getLocationOrder();
         const currentIdx = sorted.findIndex(l => l.id === currentId);
 
-        // Disable Previous if at first location or no location selected
         prevBtn.disabled = (currentIdx <= 0);
-        
-        // Disable Next if at last location
         nextBtn.disabled = (currentIdx === -1 || currentIdx >= sorted.length - 1);
     }
 
@@ -249,7 +255,6 @@
             if (data.status === 'success') {
                 locations = data.locations || [];
                 
-                // Sort locations by name with numeric sorting
                 locations.sort((a, b) => {
                     return a.name.localeCompare(b.name, undefined, { numeric: true });
                 });
@@ -262,7 +267,6 @@
                     select.appendChild(opt);
                 });
                 
-                // Try to restore last selected location
                 const savedLocation = localStorage.getItem('pigstyle_scan_location');
                 if (savedLocation && locations.some(l => l.id == savedLocation)) {
                     select.value = savedLocation;
@@ -292,7 +296,6 @@
             display.style.color = '#28a745';
             input.disabled = false;
             btn.disabled = false;
-            // Save selected location
             localStorage.setItem('pigstyle_scan_location', String(locationId));
         } else {
             display.textContent = 'No location selected';
@@ -301,8 +304,46 @@
             btn.disabled = true;
         }
         
-        // Update nav buttons
         updateNavButtons();
+    }
+
+    // ===== HANDLE DUPLICATE BARCODE (User chooses) =====
+    async function handleDuplicateBarcode(records, locationId) {
+        const statusDiv = document.getElementById('scan-status');
+        
+        // Build selection dialog
+        let message = '⚠️ Multiple records found with this barcode:\n\n';
+        records.forEach((r, i) => {
+            const artist = r.artist || 'Unknown';
+            const title = r.title || 'Unknown';
+            const location = r.location_name || 'No location';
+            const lastSeen = r.last_seen ? new Date(r.last_seen).toLocaleDateString() : 'Never';
+            message += `${i + 1}. ${artist} - ${title}\n`;
+            message += `   ID: ${r.id} | Location: ${location} | Last Seen: ${lastSeen}\n\n`;
+        });
+        message += 'Enter the number of the record to scan (or Cancel to skip):';
+        
+        const choice = prompt(message);
+        if (choice === null) {
+            if (statusDiv) {
+                statusDiv.textContent = '⏹️ Scan skipped - record not updated';
+                statusDiv.className = 'status-message status-info';
+            }
+            return;
+        }
+        
+        const index = parseInt(choice) - 1;
+        if (isNaN(index) || index < 0 || index >= records.length) {
+            if (statusDiv) {
+                statusDiv.textContent = '❌ Invalid selection - record not updated';
+                statusDiv.className = 'status-message status-error';
+            }
+            playSound('error');
+            return;
+        }
+        
+        const selectedRecord = records[index];
+        await processScannedRecord(selectedRecord, locationId);
     }
 
     // ===== PERFORM SCAN =====
@@ -324,21 +365,93 @@
         }
 
         try {
-            const response = await fetch(`${API_BASE}/records/search?q=${encodeURIComponent(term)}`, {
+            // Search by barcode first
+            const response = await fetch(`${API_BASE}/records?barcode=${encodeURIComponent(term)}`, {
                 credentials: 'include',
                 headers: getHeaders()
             });
             const data = await response.json();
 
             if (data.status === 'success' && data.records && data.records.length > 0) {
-                const record = data.records[0];
+                let records = data.records;
+                
+                // If multiple records found
+                if (records.length > 1) {
+                    // Check if this is the first scan (no history)
+                    if (recentlyScanned.length === 0) {
+                        // No history - prompt user to choose
+                        await handleDuplicateBarcode(records, locationId);
+                        const input = document.getElementById('scan-input');
+                        if (input) {
+                            input.value = '';
+                            input.focus();
+                        }
+                        return;
+                    }
+                    
+                    // Has history - check previous scan
+                    const prevScan = recentlyScanned[0];
+                    const prevLetter = getArtistFirstLetter(prevScan.artist);
+                    
+                    // Find which possible records match the previous letter
+                    const matches = records.filter(r => getArtistFirstLetter(r.artist) === prevLetter);
+                    
+                    if (matches.length === 1) {
+                        // Only ONE match - resolve immediately!
+                        const record = matches[0];
+                        await processScannedRecord(record, locationId);
+                        if (statusDiv) {
+                            statusDiv.textContent = `✅ Resolved by previous scan: ${record.artist} - ${record.title}`;
+                            statusDiv.className = 'status-message status-success';
+                        }
+                        playSound('success');
+                    } else if (matches.length > 1) {
+                        // Multiple matches - prompt user to choose
+                        if (statusDiv) {
+                            statusDiv.textContent = `⚠️ Multiple records match previous scan (${matches.length} possible) - please choose`;
+                            statusDiv.className = 'status-message status-warning';
+                        }
+                        await handleDuplicateBarcode(records, locationId);
+                        playSound('error');
+                    } else {
+                        // No matches - prompt user to choose
+                        if (statusDiv) {
+                            statusDiv.textContent = `⚠️ No match with previous scan - please choose`;
+                            statusDiv.className = 'status-message status-warning';
+                        }
+                        await handleDuplicateBarcode(records, locationId);
+                        playSound('error');
+                    }
+                    
+                    const input = document.getElementById('scan-input');
+                    if (input) {
+                        input.value = '';
+                        input.focus();
+                    }
+                    return;
+                }
+                
+                // Single record found
+                const record = records[0];
                 await processScannedRecord(record, locationId);
             } else {
-                if (statusDiv) {
-                    statusDiv.textContent = '❌ No record found';
-                    statusDiv.className = 'status-message status-error';
+                // No barcode match, try general search
+                const searchResponse = await fetch(`${API_BASE}/records/search?q=${encodeURIComponent(term)}`, {
+                    credentials: 'include',
+                    headers: getHeaders()
+                });
+                const searchData = await searchResponse.json();
+                
+                if (searchData.status === 'success' && searchData.records && searchData.records.length > 0) {
+                    const record = searchData.records[0];
+                    await processScannedRecord(record, locationId);
+                } else {
+                    if (statusDiv) {
+                        statusDiv.textContent = '❌ No record found';
+                        statusDiv.className = 'status-message status-error';
+                    }
+                    playSound('error');
                 }
-                playSound('error');
             }
         } catch (err) {
             console.error('Scan error:', err);
@@ -358,11 +471,9 @@
     // ===== PROCESS SCANNED RECORD =====
     async function processScannedRecord(record, locationId) {
         const statusDiv = document.getElementById('scan-status');
-        // Get current datetime with time
-        const now = new Date().toISOString(); // YYYY-MM-DDTHH:MM:SS.MMMZ
+        const now = new Date().toISOString();
 
         try {
-            // Get current max location_index for this location
             let maxIndex = 0;
             try {
                 const indexResponse = await fetch(`${API_BASE}/records?location_id=${locationId}&limit=1&order_by=location_index&order_dir=DESC`, {
@@ -386,17 +497,15 @@
                 body: JSON.stringify({
                     location_id: locationId,
                     location_index: newIndex,
-                    last_seen: now  // Full timestamp with time
+                    last_seen: now
                 })
             });
             const data = await response.json();
 
             if (data.status === 'success') {
-                // Get location name
                 const loc = locations.find(l => l.id === locationId);
                 const locationName = loc ? loc.name : 'Unknown';
 
-                // Add to recent list (at the top)
                 const scanEntry = {
                     id: record.id,
                     artist: record.artist || 'Unknown',
@@ -406,11 +515,9 @@
                     location_id: locationId
                 };
 
-                // Remove if already exists (based on id)
+                // Remove if already exists
                 recentlyScanned = recentlyScanned.filter(r => r.id !== record.id);
-                // Add to front
                 recentlyScanned.unshift(scanEntry);
-                // Keep only MAX_RECENT
                 if (recentlyScanned.length > MAX_RECENT) {
                     recentlyScanned = recentlyScanned.slice(0, MAX_RECENT);
                 }
@@ -418,7 +525,6 @@
                 renderRecords();
                 updateCounter();
 
-                // Format time for display
                 const timeStr = new Date(now).toLocaleString('en-US', {
                     hour: '2-digit',
                     minute: '2-digit'
@@ -492,20 +598,12 @@
     window.initScan = function() {
         console.log('🔍 Scan/Locate initialized');
         
-        // Load recent scans from storage
         loadRecentScans();
-        
-        // Load locations
         loadLocations();
-        
-        // Load last 10 records by last_seen
         loadLastSeenRecords();
-        
-        // Render UI
         renderRecords();
         updateCounter();
 
-        // Bind events
         const locationSelect = document.getElementById('scan-location-select');
         const submitBtn = document.getElementById('scan-submit-btn');
         const scanInput = document.getElementById('scan-input');
@@ -519,7 +617,6 @@
             });
         }
 
-        // Bind nav buttons
         if (prevBtn) {
             prevBtn.addEventListener('click', function() {
                 window.scanNav('prev');
@@ -546,14 +643,11 @@
                     performScan(this.value.trim());
                 }
             });
-            // Focus the input after a short delay
             setTimeout(() => scanInput.focus(), 300);
         }
 
-        // Initial nav button state
         updateNavButtons();
 
-        // Add refresh and clear buttons safely
         const actionsDiv = document.querySelector('.scan-actions');
         if (actionsDiv) {
             const refreshBtn = document.createElement('button');
