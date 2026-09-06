@@ -9,7 +9,7 @@
 
     const API_BASE = window.location.hostname === 'localhost' 
         ? 'http://localhost:5000' 
- : 'https://www.pigstylemusic.com';
+        : 'https://www.pigstylemusic.com';
 
     function getHeaders() {
         const headers = { 'Content-Type': 'application/json' };
@@ -62,7 +62,6 @@
                 renderOrdersTable();
                 showStatus(`✅ Loaded ${orders.length} orders (latest first)`, 'success');
             } else {
-                // SHOW THE ERROR MESSAGE
                 const errorMsg = data.error || data.message || 'Failed to load orders';
                 console.error('❌ API Error:', errorMsg);
                 tableDiv.innerHTML = `
@@ -73,7 +72,7 @@
                         <div style="margin-top: 15px; font-size: 12px; color: #999;">
                             Check that DISCOGS_USER_TOKEN is properly configured in the server environment.
                         </div>
-                        <button onclick="discogsOrdersRefresh()" style="margin-top: 15px; padding: 8px 24px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                        <button onclick="discogsOrdersApplyFilters()" style="margin-top: 15px; padding: 8px 24px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">
                             <i class="fas fa-sync"></i> Retry
                         </button>
                     </div>
@@ -90,7 +89,7 @@
                     <div style="margin-top: 15px; font-size: 12px; color: #999;">
                         Could not connect to the server. Please check your internet connection.
                     </div>
-                    <button onclick="discogsOrdersRefresh()" style="margin-top: 15px; padding: 8px 24px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">
+                    <button onclick="discogsOrdersApplyFilters()" style="margin-top: 15px; padding: 8px 24px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;">
                         <i class="fas fa-sync"></i> Retry
                     </button>
                 </div>
@@ -258,7 +257,7 @@
             loadOrderItems(orderId);
         }
         
-        renderOrdersTable(); // Update table to show only selected order
+        renderOrdersTable();
     };
 
     // Show all orders
@@ -350,10 +349,12 @@
                 showStatus(`✅ ${orderItems.length} items loaded for order #${orderId}`, 'success');
             } else {
                 list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error loading order items</div>`;
+                showStatus(`❌ Error loading order items`, 'error');
             }
         } catch (err) {
             console.error('Error loading order items:', err);
             list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${err.message}</div>`;
+            showStatus(`❌ Error: ${err.message}`, 'error');
         }
     }
 
@@ -390,6 +391,9 @@
                                item.record_status_id === 3 || item.record_status_id === 4 ? '#dc3545' :
                                item.record_status_id === 1 ? '#17a2b8' : '#6c757d';
             
+            // Check if item is already sold (status 3 or 4)
+            const isSold = item.record_status_id === 3 || item.record_status_id === 4;
+            
             html += `<tr>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333;">${idx + 1}</td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333;">${item.artist}</td>
@@ -408,11 +412,11 @@
                     </span>
                 </td>
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">
-                    ${item.pigstyle_id && item.record_status_id !== 3 && item.record_status_id !== 4 ? 
-                        `<button onclick="discogsMarkSold(${item.pigstyle_id})" style="padding: 4px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                    ${item.pigstyle_id && !isSold ? 
+                        `<button onclick="discogsMarkSold(${item.pigstyle_id}, ${idx})" style="padding: 4px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
                             <i class="fas fa-check"></i> Mark Sold
                         </button>` :
-                        item.pigstyle_id && (item.record_status_id === 3 || item.record_status_id === 4) ?
+                        isSold ?
                         `<span style="color: #28a745; font-weight: 500; font-size: 11px;">✓ Sold</span>` :
                         ''
                     }
@@ -424,8 +428,8 @@
         list.innerHTML = html;
     }
 
-    // Mark record as sold on Discogs
-    window.discogsMarkSold = async function(recordId) {
+    // Mark record as sold on Discogs - FIXED to update UI
+    window.discogsMarkSold = async function(recordId, itemIndex) {
         if (!confirm(`Mark record #${recordId} as sold on Discogs?`)) return;
 
         try {
@@ -438,8 +442,24 @@
 
             if (data.status === 'success') {
                 showStatus(`✅ Record #${recordId} marked as sold on Discogs`, 'success');
-                if (selectedOrderId) {
-                    loadOrderItems(selectedOrderId);
+                
+                // Update the local data
+                if (orderItems[itemIndex]) {
+                    // Update the record status in the items array
+                    orderItems[itemIndex].record_status_id = 4; // Sold status
+                    // Re-render the items table
+                    renderOrderItems(orderItems);
+                    
+                    // Also update the order in the orders list if it has the pigstyle_id
+                    // Update the item count in the orders table
+                    const order = orders.find(o => (o.order_id || o.id) === selectedOrderId);
+                    if (order && order.items) {
+                        // Find the item in the order items and update its status
+                        // We don't have a direct way to update the order items, but we can reload
+                        // the order items from the server to be safe
+                        // But since we already updated the UI, just refresh the orders table
+                        renderOrdersTable();
+                    }
                 }
             } else {
                 showStatus(`❌ Error: ${data.error || 'Failed to mark as sold'}`, 'error');
@@ -448,49 +468,6 @@
             console.error('Error marking sold:', err);
             showStatus(`❌ Error: ${err.message}`, 'error');
         }
-    };
-
-    // Refresh order items
-    window.discogsRefreshOrderItems = function() {
-        if (selectedOrderId) {
-            loadOrderItems(selectedOrderId);
-        } else {
-            showStatus('⚠️ No order selected', 'error');
-        }
-    };
-
-    // Export order
-    window.discogsExportOrder = function() {
-        if (!selectedOrderId || orderItems.length === 0) {
-            showStatus('⚠️ No order selected or no items to export', 'error');
-            return;
-        }
-        
-        const order = orders.find(o => (o.order_id || o.id) === selectedOrderId);
-        const buyer = order ? order.buyer_username || order.buyer_name || 'Unknown' : 'Unknown';
-        
-        let csv = `Order ID,${selectedOrderId}\n`;
-        csv += `Buyer,${buyer}\n`;
-        csv += `Date,${order && order.created_at ? new Date(order.created_at).toLocaleString() : '—'}\n`;
-        csv += `Status,${order ? order.status : '—'}\n`;
-        csv += `Total,${order && order.total_amount ? '$' + order.total_amount.toFixed(2) : '—'}\n\n`;
-        csv += `#,Artist,Title,Price,Condition,PigStyle ID,Status\n`;
-        
-        orderItems.forEach((item, idx) => {
-            const statusText = item.record_status_id === 2 ? 'Active' :
-                              item.record_status_id === 3 || item.record_status_id === 4 ? 'Sold' :
-                              item.record_status_id === 1 ? 'New' : '—';
-            csv += `${idx + 1},"${item.artist}","${item.title}",$${item.price.toFixed(2)},${item.media_condition || '—'},${item.pigstyle_id || '—'},${statusText}\n`;
-        });
-        
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `order_${selectedOrderId}_${buyer.replace(/[^a-zA-Z0-9]/g, '_')}.csv`;
-        link.click();
-        URL.revokeObjectURL(link.href);
-        
-        showStatus(`📥 Order exported successfully`, 'success');
     };
 
     // ===== SHIPPING LABEL FUNCTIONS =====
@@ -712,17 +689,6 @@
             itemsSection.style.display = 'none';
         }
         loadOrders();
-    };
-
-    window.discogsOrdersRefresh = function() {
-        if (viewingAllOrders) {
-            loadOrders();
-        } else if (selectedOrderId) {
-            loadOrderItems(selectedOrderId);
-            renderOrdersTable();
-        } else {
-            loadOrders();
-        }
     };
 
     // Init
