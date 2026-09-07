@@ -1642,7 +1642,7 @@ def test_discogs_token():
 
 @app.route('/api/records/scan/<term>', methods=['GET'])
 def scan_record(term):
-    """Fast barcode/ID lookup for scanning - minimal data, no heavy joins"""
+    """Fast barcode/ID lookup for scanning - only active records"""
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -1655,7 +1655,7 @@ def scan_record(term):
         except:
             pass
         
-        # Build query
+        # Build query - ONLY ACTIVE RECORDS (status_id = 2)
         if is_id:
             cursor.execute('''
                 SELECT 
@@ -1668,7 +1668,7 @@ def scan_record(term):
                     l.name as location_name
                 FROM records r
                 LEFT JOIN locations l ON r.location_id = l.id
-                WHERE r.barcode = ? OR r.id = ?
+                WHERE (r.barcode = ? OR r.id = ?) AND r.status_id = 2
             ''', (term, id_val))
         else:
             cursor.execute('''
@@ -1682,7 +1682,7 @@ def scan_record(term):
                     l.name as location_name
                 FROM records r
                 LEFT JOIN locations l ON r.location_id = l.id
-                WHERE r.barcode = ?
+                WHERE r.barcode = ? AND r.status_id = 2
             ''', (term,))
         
         records = cursor.fetchall()
@@ -1697,6 +1697,8 @@ def scan_record(term):
     except Exception as e:
         app.logger.error(f"Scan error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 
 @app.route('/api/admin/online-orders', methods=['GET', 'OPTIONS'])
 def get_admin_online_orders():

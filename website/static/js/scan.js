@@ -122,7 +122,6 @@
                             <th style="padding: 6px 8px; text-align: left; color: #333;">Title</th>
                             <th style="padding: 6px 8px; text-align: left; color: #333;">Location</th>
                             <th style="padding: 6px 8px; text-align: right; color: #333;">Last Seen</th>
-                            <th style="padding: 6px 8px; text-align: center; color: #333; width: 50px;">Status</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -139,7 +138,6 @@
                     <td style="padding: 6px 8px; color: #333;">${r.title}</td>
                     <td style="padding: 6px 8px; color: #28a745; font-weight: 500;">📍 ${locationName}</td>
                     <td style="padding: 6px 8px; text-align: right; color: #666; font-size: 12px;">${lastSeen}</td>
-                    <td style="padding: 6px 8px; text-align: center; color: #28a745; font-size: 14px;">✅</td>
                 </tr>
             `;
         });
@@ -311,7 +309,6 @@
         }
 
         try {
-            // Scan endpoint - returns record(s) matching barcode or ID
             const response = await fetch(`${API_BASE}/api/records/scan/${encodeURIComponent(term)}`, {
                 credentials: 'include',
                 headers: getHeaders()
@@ -319,13 +316,16 @@
             const data = await response.json();
 
             if (data.status === 'success' && data.records && data.records.length > 0) {
-                // Since barcodes are now unique, we should only get one record
-                // But if multiple exist, we'll take the first one (shouldn't happen)
+                // THROW EXCEPTION IF MULTIPLE RECORDS FOUND - THIS SHOULD NEVER HAPPEN
+                if (data.records.length > 1) {
+                    throw new Error(`Duplicate barcode detected: ${data.records.length} records found for barcode "${term}". Please clean up duplicate records.`);
+                }
+                
                 const record = data.records[0];
                 await processScannedRecord(record, locationId);
             } else {
                 if (statusDiv) {
-                    statusDiv.textContent = '❌ No record found';
+                    statusDiv.textContent = '❌ No active record found';
                     statusDiv.className = 'status-message status-error';
                 }
                 playSound('error');
@@ -333,9 +333,10 @@
         } catch (err) {
             console.error('Scan error:', err);
             if (statusDiv) {
-                statusDiv.textContent = `❌ Error: ${err.message}`;
+                statusDiv.textContent = `❌ ${err.message}`;
                 statusDiv.className = 'status-message status-error';
             }
+            playSound('error');
         }
 
         const input = document.getElementById('scan-input');
@@ -351,7 +352,6 @@
         const now = new Date().toISOString();
 
         try {
-            // Get max location index for this location
             let maxIndex = 0;
             try {
                 const indexResponse = await fetch(`${API_BASE}/records?location_id=${locationId}&limit=1&order_by=location_index&order_dir=DESC`, {
@@ -368,7 +368,6 @@
 
             const newIndex = maxIndex + 1;
 
-            // Update the record with new location and last_seen
             const response = await fetch(`${API_BASE}/records/${record.id}`, {
                 method: 'PUT',
                 credentials: 'include',
@@ -395,7 +394,6 @@
                     barcode: record.barcode || ''
                 };
 
-                // Remove if already exists (avoid duplicates)
                 recentlyScanned = recentlyScanned.filter(r => r.id !== record.id);
                 recentlyScanned.unshift(scanEntry);
                 if (recentlyScanned.length > MAX_RECENT) {
