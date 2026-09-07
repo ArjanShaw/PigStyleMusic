@@ -4,9 +4,8 @@
 
     let locations = [];
     let recentlyScanned = [];
-    const MAX_RECENT = 100;  // Increased to show more records
+    const MAX_RECENT = 100;
     const STORAGE_KEY = 'pigstyle_recent_scans';
-    let currentLocationIndex = -1; // Index in the locations array
 
     // ===== API BASE URL =====
     const API_BASE = window.location.hostname === 'localhost' 
@@ -70,7 +69,6 @@
         list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading records...</div>';
 
         try {
-            // Get records by last_seen (status_id = 2 for active)
             const response = await fetch(`${API_BASE}/records?status_ids=2&limit=100&order_by=last_seen&order_dir=DESC`, {
                 credentials: 'include',
                 headers: getHeaders()
@@ -85,9 +83,7 @@
                     last_seen: r.last_seen,
                     location_name: r.location_name || 'No location',
                     location_id: r.location_id,
-                    barcode: r.barcode,
-                    was_ambiguous: false,
-                    possible_records: []
+                    barcode: r.barcode
                 }));
                 saveRecentScans();
                 renderRecords();
@@ -127,7 +123,6 @@
                             <th style="padding: 6px 8px; text-align: left; color: #333;">Location</th>
                             <th style="padding: 6px 8px; text-align: right; color: #333;">Last Seen</th>
                             <th style="padding: 6px 8px; text-align: center; color: #333; width: 50px;">Status</th>
-                            <th style="padding: 6px 8px; text-align: center; color: #333; width: 80px;">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -136,7 +131,6 @@
         recentlyScanned.forEach((r, i) => {
             const locationName = r.location_name || '—';
             const lastSeen = formatTimestamp(r.last_seen);
-            const isAmbiguous = r.was_ambiguous === true;
             
             html += `
                 <tr style="border-bottom: 1px solid #f0f0f0; ${i % 2 === 0 ? 'background: #fafafa;' : ''}">
@@ -145,17 +139,7 @@
                     <td style="padding: 6px 8px; color: #333;">${r.title}</td>
                     <td style="padding: 6px 8px; color: #28a745; font-weight: 500;">📍 ${locationName}</td>
                     <td style="padding: 6px 8px; text-align: right; color: #666; font-size: 12px;">${lastSeen}</td>
-                    <td style="padding: 6px 8px; text-align: center; color: ${isAmbiguous ? '#ffc107' : '#28a745'}; font-size: 14px;">
-                        ${isAmbiguous ? '⚠️' : '✅'}
-                    </td>
-                    <td style="padding: 6px 8px; text-align: center;">
-                        ${isAmbiguous ? 
-                            `<button onclick="resolveAmbiguousScan(${i})" style="padding: 4px 8px; background: #ffc107; color: #333; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600;">
-                                <i class="fas fa-edit"></i> Fix
-                            </button>` : 
-                            '—'
-                        }
-                    </td>
+                    <td style="padding: 6px 8px; text-align: center; color: #28a745; font-size: 14px;">✅</td>
                 </tr>
             `;
         });
@@ -165,7 +149,7 @@
                 </table>
             </div>
             <div style="padding: 8px 8px 0 8px; color: #999; font-size: 11px; text-align: right;">
-                Showing ${recentlyScanned.length} records ${recentlyScanned.some(r => r.was_ambiguous) ? '(⚠️ = ambiguous - click Fix to correct)' : ''}
+                Showing ${recentlyScanned.length} records
             </div>
         `;
 
@@ -308,285 +292,6 @@
         updateNavButtons();
     }
 
-    // ===== SHOW CUSTOM POPUP WITH SCROLLBAR =====
-    function showChoicePopup(records) {
-        return new Promise((resolve) => {
-            // Create overlay
-            const overlay = document.createElement('div');
-            overlay.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0,0,0,0.7);
-                z-index: 99999;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            `;
-
-            // Create popup
-            const popup = document.createElement('div');
-            popup.style.cssText = `
-                background: white;
-                border-radius: 16px;
-                max-width: 600px;
-                width: 95%;
-                max-height: 80vh;
-                padding: 30px;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-                position: relative;
-                overflow: hidden;
-                display: flex;
-                flex-direction: column;
-            `;
-
-            // Header
-            const header = document.createElement('div');
-            header.style.cssText = `
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 15px;
-                flex-shrink: 0;
-            `;
-            header.innerHTML = `
-                <h2 style="margin: 0; color: #dc3545; font-size: 20px;">⚠️⚠️⚠️ AMBIGUOUS SCAN ⚠️⚠️⚠️</h2>
-                <button id="popup-close-btn" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
-            `;
-
-            // Subtitle
-            const subtitle = document.createElement('div');
-            subtitle.style.cssText = `
-                color: #666;
-                margin-bottom: 15px;
-                flex-shrink: 0;
-                font-size: 14px;
-            `;
-            subtitle.textContent = 'Multiple records found with this barcode. Click on the correct record to fix it:';
-
-            // Scrollable list container
-            const listContainer = document.createElement('div');
-            listContainer.style.cssText = `
-                flex: 1;
-                overflow-y: auto;
-                margin-bottom: 20px;
-                border: 1px solid #eee;
-                border-radius: 8px;
-                padding: 5px;
-                max-height: 300px;
-            `;
-
-            // Build the list
-            records.forEach((r, i) => {
-                const artist = r.artist || 'Unknown';
-                const title = r.title || 'Unknown';
-                const location = r.location_name || 'No location';
-                const lastSeen = r.last_seen ? new Date(r.last_seen).toLocaleDateString() : 'Never';
-                
-                const itemDiv = document.createElement('div');
-                itemDiv.style.cssText = `
-                    padding: 10px 12px;
-                    border-bottom: 1px solid #f0f0f0;
-                    cursor: pointer;
-                `;
-                itemDiv.innerHTML = `
-                    <div style="font-weight: 600; color: #333;">${i + 1}. ${artist} - ${title}</div>
-                    <div style="font-size: 12px; color: #666;">ID: ${r.id} | Location: ${location} | Last Seen: ${lastSeen}</div>
-                `;
-                
-                // Hover effect
-                itemDiv.addEventListener('mouseenter', function() {
-                    this.style.background = '#f8f9fa';
-                });
-                itemDiv.addEventListener('mouseleave', function() {
-                    this.style.background = 'transparent';
-                });
-                
-                // Click to select
-                itemDiv.addEventListener('click', function() {
-                    closePopup();
-                    resolve(i);
-                });
-                
-                listContainer.appendChild(itemDiv);
-            });
-
-            // Action buttons
-            const buttonContainer = document.createElement('div');
-            buttonContainer.style.cssText = `
-                display: flex;
-                gap: 10px;
-                justify-content: flex-end;
-                flex-shrink: 0;
-                padding-top: 10px;
-                border-top: 1px solid #eee;
-            `;
-
-            const cancelBtn = document.createElement('button');
-            cancelBtn.textContent = 'Cancel (Keep current)';
-            cancelBtn.style.cssText = `
-                padding: 10px 20px;
-                background: #6c757d;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                cursor: pointer;
-                font-weight: 600;
-                font-size: 14px;
-            `;
-            cancelBtn.addEventListener('click', function() {
-                closePopup();
-                resolve(null);
-            });
-
-            buttonContainer.appendChild(cancelBtn);
-
-            // Assemble popup
-            popup.appendChild(header);
-            popup.appendChild(subtitle);
-            popup.appendChild(listContainer);
-            popup.appendChild(buttonContainer);
-
-            // Close function
-            function closePopup() {
-                if (document.body.contains(overlay)) {
-                    document.body.removeChild(overlay);
-                }
-            }
-
-            // Close button
-            header.querySelector('#popup-close-btn').addEventListener('click', function() {
-                closePopup();
-                resolve(null);
-            });
-
-            // Click on overlay to close
-            overlay.addEventListener('click', function(e) {
-                if (e.target === overlay) {
-                    closePopup();
-                    resolve(null);
-                }
-            });
-
-            // Keyboard support - Escape to cancel
-            document.addEventListener('keydown', function keyHandler(e) {
-                if (e.key === 'Escape') {
-                    closePopup();
-                    resolve(null);
-                    document.removeEventListener('keydown', keyHandler);
-                }
-            });
-
-            // Add popup to body
-            overlay.appendChild(popup);
-            document.body.appendChild(overlay);
-        });
-    }
-
-    // ===== RESOLVE AMBIGUOUS SCAN (Fix button) =====
-    window.resolveAmbiguousScan = async function(index) {
-        if (index < 0 || index >= recentlyScanned.length) {
-            showStatus('Invalid record index', 'error');
-            return;
-        }
-
-        const record = recentlyScanned[index];
-        if (!record) {
-            showStatus('Record not found', 'error');
-            return;
-        }
-
-        if (!record.was_ambiguous) {
-            showStatus('This scan is not ambiguous', 'info');
-            return;
-        }
-
-        // Get the barcode from the record
-        const barcode = record.barcode;
-        if (!barcode) {
-            showStatus('No barcode found for this record', 'error');
-            return;
-        }
-
-        // Fetch all records with this barcode
-        try {
-            const scanResponse = await fetch(`${API_BASE}/api/records/scan/${encodeURIComponent(barcode)}`, {
-                credentials: 'include',
-                headers: getHeaders()
-            });
-            const scanData = await scanResponse.json();
-
-            if (scanData.status === 'success' && scanData.records && scanData.records.length > 0) {
-                let records = scanData.records;
-                
-                if (records.length > 1) {
-                    // Show the popup to choose the correct record
-                    const choice = await showChoicePopup(records);
-                    
-                    if (choice === null || choice === undefined) {
-                        showStatus('No change made', 'info');
-                        return;
-                    }
-                    
-                    if (choice < 0 || choice >= records.length) {
-                        showStatus('Invalid selection', 'error');
-                        return;
-                    }
-                    
-                    const selectedRecord = records[choice];
-                    
-                    // Update the record in the database
-                    const locationId = record.location_id;
-                    const now = new Date().toISOString();
-                    
-                    const updateResponse = await fetch(`${API_BASE}/records/${selectedRecord.id}`, {
-                        method: 'PUT',
-                        credentials: 'include',
-                        headers: getHeaders(),
-                        body: JSON.stringify({
-                            location_id: locationId,
-                            location_index: record.location_index || 1,
-                            last_seen: now
-                        })
-                    });
-                    
-                    if (updateResponse.ok) {
-                        // Update the entry in recentScanned
-                        recentlyScanned[index] = {
-                            id: selectedRecord.id,
-                            artist: selectedRecord.artist || 'Unknown',
-                            title: selectedRecord.title || 'Unknown',
-                            last_seen: now,
-                            location_name: record.location_name,
-                            location_id: locationId,
-                            barcode: barcode,
-                            was_ambiguous: false,
-                            possible_records: []
-                        };
-                        
-                        saveRecentScans();
-                        renderRecords();
-                        updateCounter();
-                        
-                        showStatus(`✅ Fixed: ${selectedRecord.artist} - ${selectedRecord.title}`, 'success');
-                        playSound('success');
-                    } else {
-                        showStatus('❌ Failed to update record', 'error');
-                    }
-                } else {
-                    showStatus('Only one record found - no ambiguity', 'info');
-                }
-            } else {
-                showStatus('❌ Could not find records for this barcode', 'error');
-            }
-        } catch (err) {
-            console.error('Error resolving ambiguous scan:', err);
-            showStatus(`❌ Error: ${err.message}`, 'error');
-        }
-    };
-
     // ===== PERFORM SCAN =====
     async function performScan(term) {
         const select = document.getElementById('scan-location-select');
@@ -606,7 +311,7 @@
         }
 
         try {
-            // FAST endpoint - searches barcode AND id
+            // Scan endpoint - returns record(s) matching barcode or ID
             const response = await fetch(`${API_BASE}/api/records/scan/${encodeURIComponent(term)}`, {
                 credentials: 'include',
                 headers: getHeaders()
@@ -614,33 +319,10 @@
             const data = await response.json();
 
             if (data.status === 'success' && data.records && data.records.length > 0) {
-                let records = data.records;
-                
-                if (records.length > 1) {
-                    // Multiple records found - mark as ambiguous but still scan
-                    // Pick the first one for now, mark as ambiguous
-                    const selectedRecord = records[0];
-                    
-                    // Scan the first record
-                    await processScannedRecord(selectedRecord, locationId, true, records);
-                    
-                    if (statusDiv) {
-                        statusDiv.textContent = `⚠️ AMBIGUOUS: ${selectedRecord.artist} - ${selectedRecord.title} (${records.length} possible records - click Fix to correct)`;
-                        statusDiv.className = 'status-message status-warning';
-                        statusDiv.style.fontWeight = 'bold';
-                    }
-                    playSound('success');
-                    
-                    const input = document.getElementById('scan-input');
-                    if (input) {
-                        input.value = '';
-                        input.focus();
-                    }
-                    return;
-                }
-                
-                const record = records[0];
-                await processScannedRecord(record, locationId, false);
+                // Since barcodes are now unique, we should only get one record
+                // But if multiple exist, we'll take the first one (shouldn't happen)
+                const record = data.records[0];
+                await processScannedRecord(record, locationId);
             } else {
                 if (statusDiv) {
                     statusDiv.textContent = '❌ No record found';
@@ -664,11 +346,12 @@
     }
 
     // ===== PROCESS SCANNED RECORD =====
-    async function processScannedRecord(record, locationId, wasAmbiguous = false, possibleRecords = []) {
+    async function processScannedRecord(record, locationId) {
         const statusDiv = document.getElementById('scan-status');
         const now = new Date().toISOString();
 
         try {
+            // Get max location index for this location
             let maxIndex = 0;
             try {
                 const indexResponse = await fetch(`${API_BASE}/records?location_id=${locationId}&limit=1&order_by=location_index&order_dir=DESC`, {
@@ -685,6 +368,7 @@
 
             const newIndex = maxIndex + 1;
 
+            // Update the record with new location and last_seen
             const response = await fetch(`${API_BASE}/records/${record.id}`, {
                 method: 'PUT',
                 credentials: 'include',
@@ -708,12 +392,10 @@
                     last_seen: now,
                     location_name: locationName,
                     location_id: locationId,
-                    barcode: record.barcode || '',
-                    was_ambiguous: wasAmbiguous,
-                    possible_records: wasAmbiguous ? possibleRecords : []
+                    barcode: record.barcode || ''
                 };
 
-                // Remove if already exists
+                // Remove if already exists (avoid duplicates)
                 recentlyScanned = recentlyScanned.filter(r => r.id !== record.id);
                 recentlyScanned.unshift(scanEntry);
                 if (recentlyScanned.length > MAX_RECENT) {
@@ -728,16 +410,17 @@
                     minute: '2-digit'
                 });
 
-                if (statusDiv && !wasAmbiguous) {
+                if (statusDiv) {
                     statusDiv.textContent = `✅ #${record.id}: ${record.artist} - ${record.title} → ${locationName} (Index: ${newIndex}) at ${timeStr}`;
                     statusDiv.className = 'status-message status-success';
                 }
-                // If wasAmbiguous, status is set by the caller
+                playSound('success');
             } else {
                 if (statusDiv) {
                     statusDiv.textContent = `❌ Error updating record`;
                     statusDiv.className = 'status-message status-error';
                 }
+                playSound('error');
             }
         } catch (err) {
             console.error('Error processing record:', err);
