@@ -1640,6 +1640,64 @@ def test_discogs_token():
             'error': str(e)
         }), 500
 
+@app.route('/api/records/scan/<term>', methods=['GET'])
+def scan_record(term):
+    """Fast barcode/ID lookup for scanning - minimal data, no heavy joins"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Try as integer for ID lookup
+        is_id = False
+        try:
+            id_val = int(term)
+            is_id = True
+        except:
+            pass
+        
+        # Build query
+        if is_id:
+            cursor.execute('''
+                SELECT 
+                    r.id,
+                    r.artist,
+                    r.title,
+                    r.barcode,
+                    r.location_id,
+                    r.last_seen,
+                    l.name as location_name
+                FROM records r
+                LEFT JOIN locations l ON r.location_id = l.id
+                WHERE r.barcode = ? OR r.id = ?
+            ''', (term, id_val))
+        else:
+            cursor.execute('''
+                SELECT 
+                    r.id,
+                    r.artist,
+                    r.title,
+                    r.barcode,
+                    r.location_id,
+                    r.last_seen,
+                    l.name as location_name
+                FROM records r
+                LEFT JOIN locations l ON r.location_id = l.id
+                WHERE r.barcode = ?
+            ''', (term,))
+        
+        records = cursor.fetchall()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'records': [dict(r) for r in records],
+            'count': len(records)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Scan error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 @app.route('/api/admin/online-orders', methods=['GET', 'OPTIONS'])
 def get_admin_online_orders():
     """Get all orders from online_orders table for admin panel"""
