@@ -1640,63 +1640,79 @@ def test_discogs_token():
             'error': str(e)
         }), 500
 
-@app.route('/api/records/scan/<term>', methods=['GET'])
-def scan_record(term):
-    """Fast barcode/ID lookup for scanning - only active records"""
+
+@app.route('/api/records/scan-update', methods=['POST'])
+def scan_update_record():
+    """
+    Single API call to scan and update a record.
+    Expects: { "barcode": "ABC123", "location_id": 5, "location_index": 42 }
+    Returns: { "status": "success", "record": {...} } or error
+    """
     try:
+        data = request.json
+        barcode = data.get('barcode')
+        location_id = data.get('location_id')
+        location_index = data.get('location_index')
+        
+        if not barcode:
+            return jsonify({'status': 'error', 'error': 'barcode required'}), 400
+        if not location_id:
+            return jsonify({'status': 'error', 'error': 'location_id required'}), 400
+        if not location_index:
+            return jsonify({'status': 'error', 'error': 'location_index required'}), 400
+        
         conn = get_db()
         cursor = conn.cursor()
         
-        # Try as integer for ID lookup
-        is_id = False
-        try:
-            id_val = int(term)
-            is_id = True
-        except:
-            pass
+        # Find the active record by barcode
+        cursor.execute('''
+            SELECT id, artist, title, barcode, location_id, last_seen
+            FROM records
+            WHERE (barcode = ? OR id = ?) AND status_id = 2
+        ''', (barcode, barcode))
         
-        # Build query - ONLY ACTIVE RECORDS (status_id = 2)
-        if is_id:
-            cursor.execute('''
-                SELECT 
-                    r.id,
-                    r.artist,
-                    r.title,
-                    r.barcode,
-                    r.location_id,
-                    r.last_seen,
-                    l.name as location_name
-                FROM records r
-                LEFT JOIN locations l ON r.location_id = l.id
-                WHERE (r.barcode = ? OR r.id = ?) AND r.status_id = 2
-            ''', (term, id_val))
-        else:
-            cursor.execute('''
-                SELECT 
-                    r.id,
-                    r.artist,
-                    r.title,
-                    r.barcode,
-                    r.location_id,
-                    r.last_seen,
-                    l.name as location_name
-                FROM records r
-                LEFT JOIN locations l ON r.location_id = l.id
-                WHERE r.barcode = ? AND r.status_id = 2
-            ''', (term,))
+        record = cursor.fetchone()
         
-        records = cursor.fetchall()
+        if not record:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'No active record found for this barcode'}), 404
+        
+        now = datetime.now().isoformat()
+        
+        # Update the record in one shot
+        cursor.execute('''
+            UPDATE records
+            SET location_id = ?, location_index = ?, last_seen = ?
+            WHERE id = ?
+        ''', (location_id, location_index, now, record['id']))
+        
+        conn.commit()
+        
+        # Get location name
+        cursor.execute('SELECT name FROM locations WHERE id = ?', (location_id,))
+        loc = cursor.fetchone()
+        location_name = loc['name'] if loc else 'Unknown'
+        
         conn.close()
         
         return jsonify({
             'status': 'success',
-            'records': [dict(r) for r in records],
-            'count': len(records)
+            'record': {
+                'id': record['id'],
+                'artist': record['artist'],
+                'title': record['title'],
+                'barcode': record['barcode'],
+                'location_id': location_id,
+                'location_name': location_name,
+                'location_index': location_index,
+                'last_seen': now
+            }
         })
         
     except Exception as e:
-        app.logger.error(f"Scan error: {str(e)}")
+        app.logger.error(f"Scan update error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 
 
