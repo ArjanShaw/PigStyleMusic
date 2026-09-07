@@ -3037,8 +3037,8 @@ def get_records():
             )
             params.extend([search_like, search_like, search_like, search_like, search_like])
 
-        # --- Location (multiple, comma-separated) --- FIXED: supports multiple IDs
-        location_ids = request.args.get('location_ids')  # Changed from 'location_id'
+        # --- Location (multiple, comma-separated) ---
+        location_ids = request.args.get('location_ids')
         if location_ids:
             ids = [int(x.strip()) for x in location_ids.split(',') if x.strip()]
             if ids:
@@ -3046,7 +3046,6 @@ def get_records():
                 where_clauses.append(f"r.location_id IN ({placeholders})")
                 params.extend(ids)
             else:
-                # If location_ids parameter exists but is empty or invalid, return no records
                 where_clauses.append("1=0")
 
         # --- Formats (comma-separated) ---
@@ -3066,6 +3065,17 @@ def get_records():
                 placeholders = ','.join(['?'] * len(ids))
                 where_clauses.append(f"l.genre_id IN ({placeholders})")
                 params.extend(ids)
+
+        # --- max_price filter (NEW) ---
+        max_price = request.args.get('max_price')
+        if max_price:
+            try:
+                max_price_val = float(max_price)
+                if max_price_val > 0:
+                    where_clauses.append("r.store_price <= ?")
+                    params.append(max_price_val)
+            except ValueError:
+                pass  # Ignore invalid max_price
 
         # --- Legacy 'genres' filter (string-based, OR LIKE on discogs_genre_raw) ---
         genres = request.args.get('genres')
@@ -3163,6 +3173,81 @@ def get_records():
             'status': 'error',
             'error': str(e)
         }), 500
+
+@app.route('/api/genres-with-records', methods=['GET'])
+def get_genres_with_records():
+    """
+    Get genres that have active records in the specified locations.
+    Automatically applies LAST_SEEN_CUTOFF_DATE from app_config.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        location_ids = request.args.get('location_ids')
+        status_ids = request.args.get('status_ids')
+        
+        # Fetch cutoff date from app_config
+        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'LAST_SEEN_CUTOFF_DATE'")
+        row = cursor.fetchone()
+        cutoff_date = row['config_value'] if row else None
+        
+        query = '''
+            SELECT 
+                g.id,
+                g.name,
+                COUNT(r.id) as record_count
+            FROM genres g
+            INNER JOIN locations l ON l.genre_id = g.id
+            INNER JOIN records r ON r.location_id = l.id
+            WHERE 1=1
+        '''
+        params = []
+        
+        if location_ids:
+            ids = [int(x.strip()) for x in location_ids.split(',') if x.strip()]
+            if ids:
+                placeholders = ','.join(['?'] * len(ids))
+                query += f' AND l.id IN ({placeholders})'
+                params.extend(ids)
+        
+        if status_ids:
+            ids = [int(x.strip()) for x in status_ids.split(',') if x.strip()]
+            if ids:
+                placeholders = ','.join(['?'] * len(ids))
+                query += f' AND r.status_id IN ({placeholders})'
+                params.extend(ids)
+        
+        # Apply cutoff date if it exists
+        if cutoff_date:
+            query += ' AND date(r.last_seen) >= date(?)'
+            params.append(cutoff_date)
+        
+        query += ' GROUP BY g.id, g.name HAVING COUNT(r.id) > 0 ORDER BY g.name'
+        
+        cursor.execute(query, params)
+        results = cursor.fetchall()
+        conn.close()
+        
+        genres = []
+        for row in results:
+            genres.append({
+                'id': row['id'],
+                'name': row['name'],
+                'record_count': row['record_count']
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'genres': genres,
+            'cutoff_applied': cutoff_date is not None,
+            'cutoff_date': cutoff_date
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting genres with records: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/api/stats/last-seen-distribution', methods=['GET'])
 def get_last_seen_distribution_stats():

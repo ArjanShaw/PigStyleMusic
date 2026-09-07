@@ -72,6 +72,64 @@
         return 'Unknown';
     }
 
+    // ===== FETCH GENRES THAT HAVE ACTIVE RECORDS =====
+    async function fetchGenresWithRecords(locationIds, statusId) {
+        try {
+            // Build query params
+            const params = new URLSearchParams();
+            if (locationIds) {
+                params.append('location_ids', locationIds);
+            }
+            if (statusId) {
+                params.append('status_ids', statusId);
+            }
+            
+            const url = `${API_BASE}/api/genres-with-records?${params.toString()}`;
+            const response = await fetch(url, {
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (data.status === 'success') {
+                return data.genres || [];
+            }
+            return [];
+        } catch (err) {
+            console.error('Error fetching genres with records:', err);
+            return [];
+        }
+    }
+
+    // ===== POPULATE GENRE DROPDOWN =====
+    async function populateGenreDropdown(selectId, selectedGenreId, locationIds, statusId) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        
+        const genres = await fetchGenresWithRecords(locationIds, statusId);
+        
+        // Clear existing options
+        select.innerHTML = '';
+        
+        // Add "All Genres" option
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'All Genres';
+        select.appendChild(defaultOption);
+        
+        // Add genre options
+        genres.forEach(genre => {
+            const option = document.createElement('option');
+            option.value = genre.id;
+            option.textContent = `${genre.name} (${genre.record_count})`;
+            if (selectedGenreId && parseInt(selectedGenreId) === genre.id) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+        
+        console.log(`📀 Populated genre dropdown with ${genres.length} genres`);
+    }
+
     // Modal functions
     window.openRecordModal = function(record) {
         const price = parseFloat(record.store_price) || 0;
@@ -79,6 +137,7 @@
         const imageUrl = record.image_url || '';
         const condition = getConditionDisplay(record);
         const location = record.location_name || '';
+        const locationIndex = record.location_index || '';
         const lastSeen = record.last_seen ? new Date(record.last_seen).toLocaleString('en-US', {
             year: 'numeric',
             month: 'short',
@@ -105,6 +164,11 @@
         
         const recordData = JSON.stringify(record).replace(/"/g, '&quot;');
         
+        let locationDisplay = '';
+        if (location) {
+            locationDisplay = locationIndex ? `📍 ${location} (#${locationIndex})` : `📍 ${location}`;
+        }
+        
         modal.innerHTML = `
             <div style="background: white; border-radius: 16px; max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
@@ -123,7 +187,7 @@
                         <div style="font-size: 18px; font-weight: bold; color: #333;">${record.title || 'Untitled'}</div>
                         <div style="color: #666; margin: 4px 0;">${condition}</div>
                         <div style="color: #666; font-size: 14px;">${record.format_name || 'Unknown Format'}</div>
-                        ${location ? `<div style="color: #888; font-size: 12px; margin-top: 4px;">📍 ${location}</div>` : ''}
+                        ${locationDisplay ? `<div style="color: #888; font-size: 12px; margin-top: 4px;">${locationDisplay}</div>` : ''}
                         ${record.last_seen ? `<div style="color: #888; font-size: 11px; margin-top: 2px;">Last seen: ${lastSeen}</div>` : ''}
                     </div>
                 </div>
@@ -172,7 +236,7 @@
         }
     };
 
-    // ===== ADD RECORD TO CART (DIRECT) - FIXED: No conflict with custom-checkout.js =====
+    // ===== ADD RECORD TO CART (DIRECT) =====
     window.addRecordToCartDirect = function(record) {
         console.log('🛒 addRecordToCartDirect called with record:', record);
         
@@ -194,7 +258,6 @@
             return;
         }
         
-        // Check if already in cart
         const items = window.cart.getItems();
         const exists = items.some(item => 
             item.type === 'record' && 
@@ -227,7 +290,6 @@
         window.cart.addItem(item);
         console.log('✅ Added to cart:', item);
         
-        // Update UI
         if (typeof window.renderCart === 'function') {
             window.renderCart();
         }
@@ -245,8 +307,6 @@
     };
 
     // ===== LEGACY: Keep for backwards compatibility (deprecated) =====
-    // This function is overridden by custom-checkout.js if loaded
-    // The shop should use addRecordToCartDirect instead
     window.addRecordToCart = function(record) {
         console.warn('⚠️ addRecordToCart is deprecated. Use addRecordToCartDirect instead.');
         window.addRecordToCartDirect(record);
@@ -264,6 +324,8 @@
                 totalPages: 0,
                 locationIds: config.locationIds || null,
                 statusId: config.statusId || null,
+                genreIds: config.genreIds || null,
+                maxPrice: config.maxPrice || null,
                 borderColor: config.borderColor || '#ff6b6b',
                 badgeText: config.badgeText || null,
                 badgeColor: config.badgeColor || '#ff6b6b',
@@ -282,6 +344,8 @@
             this.filteredData = [];
             this.searchTerm = '';
             this.cutoffDate = null;
+            this.selectedGenreId = config.genreIds || null;
+            this.currentMaxPrice = config.maxPrice || null;
         }
 
         init() {
@@ -289,6 +353,36 @@
             this.isInitialized = true;
             
             console.log(`📀 ${this.config.title} component initializing...`);
+            console.log(`📀 Genre filter: ${this.selectedGenreId || 'None'}`);
+            console.log(`📀 Max price: ${this.currentMaxPrice || 'None'}`);
+            
+            // Populate genre dropdown with ONLY genres that have records
+            const genreSelectId = `${this.config.idPrefix}GenreSelect`;
+            const genreSelect = document.getElementById(genreSelectId);
+            if (genreSelect) {
+                // Pass locationIds and statusId to filter genres
+                const locationIds = this.config.locationIds;
+                const statusId = this.config.statusId;
+                populateGenreDropdown(genreSelectId, this.selectedGenreId, locationIds, statusId);
+                
+                genreSelect.addEventListener('change', (e) => {
+                    this.selectedGenreId = e.target.value || null;
+                    this.applyFilters();
+                });
+            }
+            
+            // Bind max price input if it exists
+            const maxPriceInput = document.getElementById(`${this.config.idPrefix}MaxPrice`);
+            if (maxPriceInput) {
+                if (this.currentMaxPrice) {
+                    maxPriceInput.value = this.currentMaxPrice;
+                }
+                maxPriceInput.addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    this.currentMaxPrice = (val > 0) ? val : null;
+                    this.applyFilters();
+                });
+            }
             
             fetchLastSeenCutoff().then(date => {
                 this.cutoffDate = date;
@@ -381,6 +475,68 @@
             this.updatePagination();
         }
 
+        applyFilters() {
+            let filtered = [...this.allData];
+            
+            if (this.selectedGenreId) {
+                filtered = filtered.filter(record => {
+                    return record.genre_id && parseInt(record.genre_id) === parseInt(this.selectedGenreId);
+                });
+            }
+            
+            if (this.currentMaxPrice && this.currentMaxPrice > 0) {
+                filtered = filtered.filter(record => {
+                    const price = parseFloat(record.store_price) || 0;
+                    return price <= this.currentMaxPrice;
+                });
+            }
+            
+            if (this.searchTerm) {
+                const term = this.searchTerm.toLowerCase().trim();
+                const isNumeric = /^\d+$/.test(term);
+                filtered = filtered.filter(record => {
+                    if (isNumeric && record.id && record.id.toString() === term) {
+                        return true;
+                    }
+                    if (record.barcode && record.barcode.toLowerCase() === term) {
+                        return true;
+                    }
+                    if (record.artist && record.artist.toLowerCase().includes(term)) {
+                        return true;
+                    }
+                    if (record.title && record.title.toLowerCase().includes(term)) {
+                        return true;
+                    }
+                    return false;
+                });
+            }
+            
+            this.filteredData = filtered;
+            this.totalRecords = this.filteredData.length;
+            this.currentPage = 1;
+            this.totalPages = Math.ceil(this.totalRecords / this.config.pageSize) || 1;
+            this.renderPage();
+            this.updatePagination();
+        }
+
+        setGenre(genreId) {
+            this.selectedGenreId = genreId;
+            const genreSelect = document.getElementById(`${this.config.idPrefix}GenreSelect`);
+            if (genreSelect) {
+                genreSelect.value = genreId || '';
+            }
+            this.applyFilters();
+        }
+
+        setMaxPrice(price) {
+            this.currentMaxPrice = (price > 0) ? price : null;
+            const maxPriceInput = document.getElementById(`${this.config.idPrefix}MaxPrice`);
+            if (maxPriceInput) {
+                maxPriceInput.value = price > 0 ? price : '';
+            }
+            this.applyFilters();
+        }
+
         async loadRecords() {
             const container = document.getElementById(this.config.containerId);
             if (!container) {
@@ -393,6 +549,8 @@
             console.log('📀 Container ID:', this.config.containerId);
             console.log('📀 Status Filter:', this.config.statusId || 'None');
             console.log('📀 Location Filter:', this.config.locationIds || 'None');
+            console.log('📀 Genre Filter:', this.selectedGenreId || 'None');
+            console.log('📀 Max Price:', this.currentMaxPrice || 'None');
             console.log('📀 Cutoff Date:', this.cutoffDate || 'None (showing all)');
             console.log('📀 Page Size:', this.config.pageSize);
 
@@ -416,11 +574,16 @@
                 }
                 if (this.cutoffDate) {
                     params.append('last_seen_after', this.cutoffDate);
-                    console.log('📀 Adding last_seen_after filter:', this.cutoffDate);
+                }
+                if (this.selectedGenreId) {
+                    params.append('genre_ids', this.selectedGenreId);
+                }
+                if (this.currentMaxPrice && this.currentMaxPrice > 0) {
+                    params.append('max_price', this.currentMaxPrice);
                 }
 
                 const url = `${API_BASE}/records?${params.toString()}`;
-                console.log('📡 📡 📡 FETCHING RECORDS FROM:', url);
+                console.log('📡 FETCHING RECORDS FROM:', url);
 
                 const response = await fetch(url, {
                     credentials: 'include',
@@ -501,6 +664,11 @@
                     const recordData = JSON.stringify(record).replace(/"/g, '&quot;');
                     const condition = getConditionDisplay(record);
                     const location = record.location_name || '';
+                    const locationIndex = record.location_index || '';
+                    let locationDisplay = '';
+                    if (location && this.config.showLocation) {
+                        locationDisplay = locationIndex ? `📍 ${location} (#${locationIndex})` : `📍 ${location}`;
+                    }
                     
                     html += `
                         <div style="background: #f8f8f8; border-radius: 8px; overflow: hidden; border: 2px solid ${this.config.borderColor}; padding: 12px; cursor: pointer; transition: all 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.08);" 
@@ -519,7 +687,7 @@
                             <div style="font-weight: bold; color: #333; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${record.artist || 'Unknown Artist'}</div>
                             <div style="color: #666; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${record.title || 'Untitled'}</div>
                             ${this.config.showCondition ? `<div style="color: #555; font-size: 10px; margin-top: 2px;">📦 ${condition}</div>` : ''}
-                            ${this.config.showLocation && location ? `<div style="color: #888; font-size: 10px; margin-top: 1px;">📍 ${location}</div>` : ''}
+                            ${this.config.showLocation && locationDisplay ? `<div style="color: #888; font-size: 10px; margin-top: 1px;">${locationDisplay}</div>` : ''}
                             <div style="color: #ff6b6b; font-size: 16px; font-weight: bold; margin-top: 4px;">$${price.toFixed(2)}</div>
                             ${record.barcode ? `<div style="font-size: 8px; color: #999; margin-top: 2px; font-family: monospace;">${record.barcode}</div>` : ''}
                         </div>
@@ -527,7 +695,6 @@
                 });
             }
             
-            // ===== ADD EMPTY CARD WITH PIG IMAGE =====
             if (this.config.showEmptyCard) {
                 html += `
                     <div onclick="showRandomModal()" style="background: #f8f8f8; border-radius: 8px; overflow: hidden; border: 2px solid ${this.config.borderColor}; padding: 12px; cursor: pointer; transition: all 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 200px;">
@@ -620,6 +787,18 @@
     window.newClearSearch = function() {
         if (window.newComponent) {
             window.newComponent.clearSearch();
+        }
+    };
+
+    window.newArrivalsSearch = function() {
+        if (window.newArrivalsComponent) {
+            window.newArrivalsComponent.performSearch();
+        }
+    };
+
+    window.newArrivalsClearSearch = function() {
+        if (window.newArrivalsComponent) {
+            window.newArrivalsComponent.clearSearch();
         }
     };
 

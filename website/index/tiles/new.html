@@ -17,6 +17,22 @@
                 </button>
             </div>
             
+            <!-- NEW: Filter Row - Genre ONLY (NO price filter) -->
+            <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-shrink: 0; flex-wrap: wrap; align-items: center; background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
+                <!-- Genre Filter -->
+                <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 150px;">
+                    <label style="font-size: 13px; font-weight: 600; color: #555; white-space: nowrap;">🎵 Genre:</label>
+                    <select id="newGenreSelect" style="flex: 1; padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; background: white; min-width: 120px;">
+                        <option value="">All Genres</option>
+                    </select>
+                </div>
+                
+                <!-- Clear Genre Button (NO price filter) -->
+                <button onclick="newClearGenreFilter()" style="padding: 6px 14px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap;">
+                    <i class="fas fa-undo"></i> Clear Genre
+                </button>
+            </div>
+            
             <div id="newCatalogContainer" style="flex: 1; overflow-y: auto; padding: 5px 0; min-height: 0;">
                 <div style="text-align: center; padding: 40px; color: #888;">
                     <div style="margin-bottom: 10px;">⏳</div>
