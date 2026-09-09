@@ -5,10 +5,18 @@ app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INDEX_DIR = os.path.join(BASE_DIR, 'index')
 IMAGES_DIR = os.path.join(BASE_DIR, 'images')
+ENGAGEMENT_DIR = os.path.join(BASE_DIR, 'engagement')  # ADD THIS
 
 @app.route('/')
 def index():
     return send_from_directory(INDEX_DIR, 'index.html')
+
+# ===== ADD THIS ROUTE FOR ENGAGEMENT PAGE =====
+@app.route('/engagement')
+@app.route('/engagement/')
+@app.route('/engagement/engagement.html')
+def engagement():
+    return send_from_directory(ENGAGEMENT_DIR, 'engagement.html')
 
 @app.route('/static/<path:path>')
 def serve_static(path):
