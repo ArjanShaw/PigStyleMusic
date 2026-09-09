@@ -1,12 +1,12 @@
-// Scan/Locate page
+// Scan/Locate page - SINGLE API CALL
 (function() {
     'use strict';
 
     let locations = [];
     let recentlyScanned = [];
-    const MAX_RECENT = 10;
+    let locationIndexCache = {}; // Track next index per location
+    const MAX_RECENT = 100;
     const STORAGE_KEY = 'pigstyle_recent_scans';
-    let currentLocationIndex = -1; // Index in the locations array
 
     // ===== API BASE URL =====
     const API_BASE = window.location.hostname === 'localhost' 
@@ -26,7 +26,6 @@
             const stored = localStorage.getItem(STORAGE_KEY);
             if (stored) {
                 recentlyScanned = JSON.parse(stored);
-                console.log(`📋 Loaded ${recentlyScanned.length} recent scans from storage`);
                 return recentlyScanned;
             }
         } catch (err) {
@@ -39,7 +38,6 @@
     function saveRecentScans() {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(recentlyScanned));
-            console.log(`💾 Saved ${recentlyScanned.length} recent scans to storage`);
         } catch (err) {
             console.error('Error saving recent scans:', err);
         }
@@ -62,7 +60,7 @@
         }
     }
 
-    // ===== LOAD LAST 10 RECORDS BY LAST_SEEN =====
+    // ===== LOAD LAST RECORDS BY LAST_SEEN =====
     async function loadLastSeenRecords() {
         const list = document.getElementById('scan-records-list');
         if (!list) return;
@@ -70,8 +68,7 @@
         list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading records...</div>';
 
         try {
-            // Get the last 10 records by last_seen (status_id = 2 for active)
-            const response = await fetch(`${API_BASE}/records?status_ids=2&limit=10&order_by=last_seen&order_dir=DESC`, {
+            const response = await fetch(`${API_BASE}/records?status_ids=2&limit=100&order_by=last_seen&order_dir=DESC`, {
                 credentials: 'include',
                 headers: getHeaders()
             });
@@ -84,8 +81,20 @@
                     title: r.title || 'Unknown',
                     last_seen: r.last_seen,
                     location_name: r.location_name || 'No location',
-                    location_id: r.location_id
+                    location_id: r.location_id,
+                    barcode: r.barcode
                 }));
+                
+                // Pre-populate cache with max indices from loaded records
+                data.records.forEach(r => {
+                    if (r.location_id) {
+                        const currentMax = locationIndexCache[r.location_id] || 0;
+                        if (r.location_index && r.location_index > currentMax) {
+                            locationIndexCache[r.location_id] = r.location_index;
+                        }
+                    }
+                });
+                
                 saveRecentScans();
                 renderRecords();
             } else {
@@ -114,22 +123,24 @@
         }
 
         let html = `
-            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                <thead>
-                    <tr style="background: #f8f9fa; border-bottom: 2px solid #ddd;">
-                        <th style="padding: 6px 8px; text-align: left; color: #333; width: 40px;">#</th>
-                        <th style="padding: 6px 8px; text-align: left; color: #333;">Artist</th>
-                        <th style="padding: 6px 8px; text-align: left; color: #333;">Title</th>
-                        <th style="padding: 6px 8px; text-align: left; color: #333;">Location</th>
-                        <th style="padding: 6px 8px; text-align: right; color: #333;">Last Seen</th>
-                    </tr>
-                </thead>
-                <tbody>
+            <div style="max-height: 500px; overflow-y: auto; width: 100%;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <thead style="position: sticky; top: 0; z-index: 10;">
+                        <tr style="background: #f8f9fa; border-bottom: 2px solid #ddd;">
+                            <th style="padding: 6px 8px; text-align: left; color: #333; width: 40px;">#</th>
+                            <th style="padding: 6px 8px; text-align: left; color: #333;">Artist</th>
+                            <th style="padding: 6px 8px; text-align: left; color: #333;">Title</th>
+                            <th style="padding: 6px 8px; text-align: left; color: #333;">Location</th>
+                            <th style="padding: 6px 8px; text-align: right; color: #333;">Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
         `;
 
         recentlyScanned.forEach((r, i) => {
             const locationName = r.location_name || '—';
             const lastSeen = formatTimestamp(r.last_seen);
+            
             html += `
                 <tr style="border-bottom: 1px solid #f0f0f0; ${i % 2 === 0 ? 'background: #fafafa;' : ''}">
                     <td style="padding: 6px 8px; color: #999; font-size: 12px;">${i + 1}</td>
@@ -142,8 +153,9 @@
         });
 
         html += `
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
+            </div>
             <div style="padding: 8px 8px 0 8px; color: #999; font-size: 11px; text-align: right;">
                 Showing ${recentlyScanned.length} records
             </div>
@@ -160,17 +172,9 @@
 
     // ===== GET LOCATION ORDER =====
     function getLocationOrder() {
-        // Sort locations by name to get consistent order
-        // Names like "Bin 1 LT", "Bin 1 RT", "Bin 2 LT", etc.
         return [...locations].sort((a, b) => {
             return a.name.localeCompare(b.name, undefined, { numeric: true });
         });
-    }
-
-    // ===== FIND LOCATION INDEX =====
-    function findLocationIndex(locationId) {
-        const sorted = getLocationOrder();
-        return sorted.findIndex(l => l.id === locationId);
     }
 
     // ===== NAVIGATE TO NEXT/PREVIOUS LOCATION =====
@@ -180,7 +184,6 @@
 
         const currentId = parseInt(select.value);
         if (!currentId) {
-            // If no location selected, select the first one
             const sorted = getLocationOrder();
             if (sorted.length > 0) {
                 select.value = sorted[0].id;
@@ -202,7 +205,6 @@
             newIdx = currentIdx - 1;
         }
 
-        // Check if new index is valid
         if (newIdx >= 0 && newIdx < sorted.length) {
             select.value = sorted[newIdx].id;
             updateLocationPreview();
@@ -228,10 +230,7 @@
         const sorted = getLocationOrder();
         const currentIdx = sorted.findIndex(l => l.id === currentId);
 
-        // Disable Previous if at first location or no location selected
         prevBtn.disabled = (currentIdx <= 0);
-        
-        // Disable Next if at last location
         nextBtn.disabled = (currentIdx === -1 || currentIdx >= sorted.length - 1);
     }
 
@@ -249,7 +248,6 @@
             if (data.status === 'success') {
                 locations = data.locations || [];
                 
-                // Sort locations by name with numeric sorting
                 locations.sort((a, b) => {
                     return a.name.localeCompare(b.name, undefined, { numeric: true });
                 });
@@ -262,7 +260,6 @@
                     select.appendChild(opt);
                 });
                 
-                // Try to restore last selected location
                 const savedLocation = localStorage.getItem('pigstyle_scan_location');
                 if (savedLocation && locations.some(l => l.id == savedLocation)) {
                     select.value = savedLocation;
@@ -292,7 +289,6 @@
             display.style.color = '#28a745';
             input.disabled = false;
             btn.disabled = false;
-            // Save selected location
             localStorage.setItem('pigstyle_scan_location', String(locationId));
         } else {
             display.textContent = 'No location selected';
@@ -301,11 +297,17 @@
             btn.disabled = true;
         }
         
-        // Update nav buttons
         updateNavButtons();
     }
 
-    // ===== PERFORM SCAN =====
+    // ===== GET NEXT LOCATION INDEX =====
+    function getNextLocationIndex(locationId) {
+        // Get from cache, default to 0
+        const currentMax = locationIndexCache[locationId] || 0;
+        return currentMax + 1;
+    }
+
+    // ===== PERFORM SCAN - SINGLE API CALL =====
     async function performScan(term) {
         const select = document.getElementById('scan-location-select');
         if (!select) return;
@@ -319,98 +321,51 @@
         const statusDiv = document.getElementById('scan-status');
         if (statusDiv) {
             statusDiv.style.display = 'block';
-            statusDiv.textContent = '⏳ Searching...';
+            statusDiv.textContent = '⏳ Scanning...';
             statusDiv.className = 'status-message status-info';
         }
 
-        try {
-            const response = await fetch(`${API_BASE}/records/search?q=${encodeURIComponent(term)}`, {
-                credentials: 'include',
-                headers: getHeaders()
-            });
-            const data = await response.json();
-
-            if (data.status === 'success' && data.records && data.records.length > 0) {
-                const record = data.records[0];
-                await processScannedRecord(record, locationId);
-            } else {
-                if (statusDiv) {
-                    statusDiv.textContent = '❌ No record found';
-                    statusDiv.className = 'status-message status-error';
-                }
-                playSound('error');
-            }
-        } catch (err) {
-            console.error('Scan error:', err);
-            if (statusDiv) {
-                statusDiv.textContent = `❌ Error: ${err.message}`;
-                statusDiv.className = 'status-message status-error';
-            }
-        }
-
+        // Clear input immediately for faster scanning
         const input = document.getElementById('scan-input');
         if (input) {
             input.value = '';
-            input.focus();
         }
-    }
-
-    // ===== PROCESS SCANNED RECORD =====
-    async function processScannedRecord(record, locationId) {
-        const statusDiv = document.getElementById('scan-status');
-        // Get current datetime with time
-        const now = new Date().toISOString(); // YYYY-MM-DDTHH:MM:SS.MMMZ
 
         try {
-            // Get current max location_index for this location
-            let maxIndex = 0;
-            try {
-                const indexResponse = await fetch(`${API_BASE}/records?location_id=${locationId}&limit=1&order_by=location_index&order_dir=DESC`, {
-                    credentials: 'include',
-                    headers: getHeaders()
-                });
-                const indexData = await indexResponse.json();
-                if (indexData.status === 'success' && indexData.records && indexData.records.length > 0) {
-                    maxIndex = parseInt(indexData.records[0].location_index) || 0;
-                }
-            } catch (e) {
-                console.warn('Could not get max location index, starting at 0');
-            }
-
-            const newIndex = maxIndex + 1;
-
-            const response = await fetch(`${API_BASE}/records/${record.id}`, {
-                method: 'PUT',
+            // Calculate next index from cache
+            const locationIndex = getNextLocationIndex(locationId);
+            
+            // SINGLE API CALL - send barcode, location_id, and the calculated index
+            const response = await fetch(`${API_BASE}/api/records/scan-update`, {
+                method: 'POST',
                 credentials: 'include',
                 headers: getHeaders(),
                 body: JSON.stringify({
+                    barcode: term,
                     location_id: locationId,
-                    location_index: newIndex,
-                    last_seen: now  // Full timestamp with time
+                    location_index: locationIndex
                 })
             });
+
             const data = await response.json();
 
-            if (data.status === 'success') {
-                // Get location name
-                const loc = locations.find(l => l.id === locationId);
-                const locationName = loc ? loc.name : 'Unknown';
-
-                // Add to recent list (at the top)
+            if (data.status === 'success' && data.record) {
+                // Update cache with the new index
+                locationIndexCache[locationId] = locationIndex;
+                
+                // Add to recent scans
                 const scanEntry = {
-                    id: record.id,
-                    artist: record.artist || 'Unknown',
-                    title: record.title || 'Unknown',
-                    last_seen: now,
-                    location_name: locationName,
-                    location_id: locationId
+                    id: data.record.id,
+                    artist: data.record.artist || 'Unknown',
+                    title: data.record.title || 'Unknown',
+                    last_seen: data.record.last_seen,
+                    location_name: data.record.location_name || 'Unknown',
+                    location_id: data.record.location_id,
+                    barcode: data.record.barcode || ''
                 };
 
-                // Remove if already exists (based on id)
-                recentlyScanned = recentlyScanned.filter(r => r.id !== record.id);
-                // Add to front
+                recentlyScanned = recentlyScanned.filter(r => r.id !== data.record.id);
                 recentlyScanned.unshift(scanEntry);
-                // Keep only MAX_RECENT
                 if (recentlyScanned.length > MAX_RECENT) {
                     recentlyScanned = recentlyScanned.slice(0, MAX_RECENT);
                 }
@@ -418,30 +373,35 @@
                 renderRecords();
                 updateCounter();
 
-                // Format time for display
-                const timeStr = new Date(now).toLocaleString('en-US', {
+                const timeStr = new Date(data.record.last_seen).toLocaleString('en-US', {
                     hour: '2-digit',
                     minute: '2-digit'
                 });
 
                 if (statusDiv) {
-                    statusDiv.textContent = `✅ #${record.id}: ${record.artist} - ${record.title} → ${locationName} (Index: ${newIndex}) at ${timeStr}`;
+                    statusDiv.textContent = `✅ #${data.record.id}: ${data.record.artist} - ${data.record.title} → ${data.record.location_name} (Index: ${locationIndex}) at ${timeStr}`;
                     statusDiv.className = 'status-message status-success';
                 }
                 playSound('success');
             } else {
                 if (statusDiv) {
-                    statusDiv.textContent = `❌ Error updating record`;
+                    statusDiv.textContent = `❌ ${data.error || 'No active record found'}`;
                     statusDiv.className = 'status-message status-error';
                 }
+                playSound('error');
             }
         } catch (err) {
-            console.error('Error processing record:', err);
+            console.error('Scan error:', err);
             if (statusDiv) {
-                statusDiv.textContent = `❌ Error: ${err.message}`;
+                statusDiv.textContent = `❌ ${err.message}`;
                 statusDiv.className = 'status-message status-error';
             }
             playSound('error');
+        }
+
+        // Refocus input for next scan
+        if (input) {
+            setTimeout(() => input.focus(), 100);
         }
     }
 
@@ -492,20 +452,12 @@
     window.initScan = function() {
         console.log('🔍 Scan/Locate initialized');
         
-        // Load recent scans from storage
         loadRecentScans();
-        
-        // Load locations
         loadLocations();
-        
-        // Load last 10 records by last_seen
         loadLastSeenRecords();
-        
-        // Render UI
         renderRecords();
         updateCounter();
 
-        // Bind events
         const locationSelect = document.getElementById('scan-location-select');
         const submitBtn = document.getElementById('scan-submit-btn');
         const scanInput = document.getElementById('scan-input');
@@ -519,7 +471,6 @@
             });
         }
 
-        // Bind nav buttons
         if (prevBtn) {
             prevBtn.addEventListener('click', function() {
                 window.scanNav('prev');
@@ -546,14 +497,11 @@
                     performScan(this.value.trim());
                 }
             });
-            // Focus the input after a short delay
             setTimeout(() => scanInput.focus(), 300);
         }
 
-        // Initial nav button state
         updateNavButtons();
 
-        // Add refresh and clear buttons safely
         const actionsDiv = document.querySelector('.scan-actions');
         if (actionsDiv) {
             const refreshBtn = document.createElement('button');

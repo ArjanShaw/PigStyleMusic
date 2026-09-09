@@ -12,9 +12,11 @@ function initNew() {
             badgeColor: '#28a745',
             buttonColor: '#28a745',
             buttonTextColor: 'white',
-            // FIXED: Use locationIds (plural) with all 5 locations
             locationIds: '154,155,156,157',  // Bin 35 LT, Bin 35 RT, Bin 35 LB, Bin 35 RB, Wall Display West /2
             statusId: 2,
+            // NEW: Genre filter support
+            genreIds: null,  // Will be set by dropdown
+            // NO price filter for New Sealed (per requirements)
             searchInputId: 'newSearchInput',
             showCondition: true,
             showLocation: true,
@@ -62,6 +64,25 @@ window.showRandomModal = function() {
             modal.remove();
         }
     });
+};
+
+// ===== NEW SEALED GENRE FILTER FUNCTIONS =====
+window.newSetGenre = function(genreId) {
+    if (window.newComponent) {
+        window.newComponent.setGenre(genreId);
+    }
+};
+
+// ===== NEW SEALED CLEAR GENRE FILTER =====
+window.newClearGenreFilter = function() {
+    if (window.newComponent) {
+        // Clear genre dropdown
+        const genreSelect = document.getElementById('newGenreSelect');
+        if (genreSelect) {
+            genreSelect.value = '';
+        }
+        window.newComponent.setGenre(null);
+    }
 };
 
 // Global search functions for new sealed records

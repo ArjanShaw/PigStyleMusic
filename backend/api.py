@@ -1483,6 +1483,239 @@ def api_get_terminals():
         app.logger.error(f"Error in api_get_terminals: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/admin/online-orders/<order_id>', methods=['GET', 'OPTIONS'])
+@login_required
+@role_required(['admin'])
+def get_admin_online_order_detail(order_id):
+    """Get detailed information for a single online order"""
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
+    
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get the order - using ONLY columns that exist in online_orders
+        cursor.execute('''
+            SELECT 
+                id,
+                order_number,
+                customer_name,
+                customer_email,
+                customer_phone,
+                shipping_method,
+                shipping_address_line1,
+                shipping_address_line2,
+                shipping_city,
+                shipping_state,
+                shipping_zip,
+                shipping_country,
+                shipping_cost,
+                subtotal,
+                tax,
+                total,
+                square_checkout_id,
+                square_order_id,
+                square_payment_id,
+                notes,
+                created_at,
+                notified
+            FROM online_orders
+            WHERE id = ?
+        ''', (order_id,))
+        
+        order = cursor.fetchone()
+        
+        if not order:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Order not found'}), 404
+        
+        # Get order items
+        cursor.execute('''
+            SELECT 
+                id,
+                record_id,
+                record_title,
+                record_artist,
+                record_condition,
+                price_at_time,
+                created_at
+            FROM order_items
+            WHERE order_id = ?
+        ''', (order_id,))
+        
+        items = cursor.fetchall()
+        conn.close()
+        
+        # Convert order to dict
+        order_dict = dict(order)
+        
+        # Convert items to list of dicts
+        items_list = []
+        for item in items:
+            items_list.append({
+                'id': item['id'],
+                'record_id': item['record_id'],
+                'record_title': item['record_title'],
+                'record_artist': item['record_artist'],
+                'record_condition': item['record_condition'],
+                'price_at_time': float(item['price_at_time']) if item['price_at_time'] else 0,
+                'created_at': item['created_at']
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'order': {
+                'id': order_dict['id'],
+                'order_number': order_dict['order_number'],
+                'customer_name': order_dict['customer_name'] or '—',
+                'customer_email': order_dict['customer_email'] or '—',
+                'customer_phone': order_dict.get('customer_phone') or '—',
+                'shipping_method': order_dict.get('shipping_method') or '—',
+                'shipping_address_line1': order_dict.get('shipping_address_line1') or '',
+                'shipping_address_line2': order_dict.get('shipping_address_line2') or '',
+                'shipping_city': order_dict.get('shipping_city') or '',
+                'shipping_state': order_dict.get('shipping_state') or '',
+                'shipping_zip': order_dict.get('shipping_zip') or '',
+                'shipping_country': order_dict.get('shipping_country') or 'USA',
+                'shipping_cost': float(order_dict.get('shipping_cost') or 0),
+                'subtotal': float(order_dict.get('subtotal') or 0),
+                'tax': float(order_dict.get('tax') or 0),
+                'total': float(order_dict.get('total') or 0),
+                'square_checkout_id': order_dict.get('square_checkout_id') or '',
+                'square_order_id': order_dict.get('square_order_id') or '',
+                'square_payment_id': order_dict.get('square_payment_id') or '',
+                'notes': order_dict.get('notes') or '',
+                'created_at': order_dict.get('created_at'),
+                'notified': bool(order_dict.get('notified')) if order_dict.get('notified') is not None else False
+            },
+            'items': items_list
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting online order detail: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/discogs/test-token', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def test_discogs_token():
+    """Test if the Discogs token is valid and working."""
+    try:
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+        if not TOKEN:
+            return jsonify({
+                'status': 'error',
+                'error': 'DISCOGS_USER_TOKEN is not set in environment variables'
+            }), 500
+        
+        # Make a simple test request to Discogs
+        headers = {
+            'Authorization': f'Discogs token={TOKEN}',
+            'User-Agent': 'PigStyleMusic/1.0'
+        }
+        
+        response = requests.get('https://api.discogs.com/oauth/identity', headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            user_data = response.json()
+            return jsonify({
+                'status': 'success',
+                'message': 'Token is valid',
+                'username': user_data.get('username', 'Unknown'),
+                'user_id': user_data.get('id', 'Unknown')
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'error': f'Discogs API returned status {response.status_code}',
+                'response': response.text[:200] if response.text else 'No response body'
+            }), response.status_code
+            
+    except Exception as e:
+        app.logger.error(f"Error testing Discogs token: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/records/scan-update', methods=['POST'])
+def scan_update_record():
+    """
+    Single API call to scan and update a record.
+    Expects: { "barcode": "ABC123", "location_id": 5, "location_index": 42 }
+    Returns: { "status": "success", "record": {...} } or error
+    """
+    try:
+        data = request.json
+        barcode = data.get('barcode')
+        location_id = data.get('location_id')
+        location_index = data.get('location_index')
+        
+        if not barcode:
+            return jsonify({'status': 'error', 'error': 'barcode required'}), 400
+        if not location_id:
+            return jsonify({'status': 'error', 'error': 'location_id required'}), 400
+        if not location_index:
+            return jsonify({'status': 'error', 'error': 'location_index required'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Find the active record by barcode
+        cursor.execute('''
+            SELECT id, artist, title, barcode, location_id, last_seen
+            FROM records
+            WHERE (barcode = ? OR id = ?) AND status_id = 2
+        ''', (barcode, barcode))
+        
+        record = cursor.fetchone()
+        
+        if not record:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'No active record found for this barcode'}), 404
+        
+        now = datetime.now().isoformat()
+        
+        # Update the record in one shot
+        cursor.execute('''
+            UPDATE records
+            SET location_id = ?, location_index = ?, last_seen = ?
+            WHERE id = ?
+        ''', (location_id, location_index, now, record['id']))
+        
+        conn.commit()
+        
+        # Get location name
+        cursor.execute('SELECT name FROM locations WHERE id = ?', (location_id,))
+        loc = cursor.fetchone()
+        location_name = loc['name'] if loc else 'Unknown'
+        
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'record': {
+                'id': record['id'],
+                'artist': record['artist'],
+                'title': record['title'],
+                'barcode': record['barcode'],
+                'location_id': location_id,
+                'location_name': location_name,
+                'location_index': location_index,
+                'last_seen': now
+            }
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Scan update error: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+
+
 @app.route('/api/admin/online-orders', methods=['GET', 'OPTIONS'])
 def get_admin_online_orders():
     """Get all orders from online_orders table for admin panel"""
@@ -2804,8 +3037,8 @@ def get_records():
             )
             params.extend([search_like, search_like, search_like, search_like, search_like])
 
-        # --- Location (multiple, comma-separated) --- FIXED: supports multiple IDs
-        location_ids = request.args.get('location_ids')  # Changed from 'location_id'
+        # --- Location (multiple, comma-separated) ---
+        location_ids = request.args.get('location_ids')
         if location_ids:
             ids = [int(x.strip()) for x in location_ids.split(',') if x.strip()]
             if ids:
@@ -2813,7 +3046,6 @@ def get_records():
                 where_clauses.append(f"r.location_id IN ({placeholders})")
                 params.extend(ids)
             else:
-                # If location_ids parameter exists but is empty or invalid, return no records
                 where_clauses.append("1=0")
 
         # --- Formats (comma-separated) ---
@@ -2833,6 +3065,17 @@ def get_records():
                 placeholders = ','.join(['?'] * len(ids))
                 where_clauses.append(f"l.genre_id IN ({placeholders})")
                 params.extend(ids)
+
+        # --- max_price filter (NEW) ---
+        max_price = request.args.get('max_price')
+        if max_price:
+            try:
+                max_price_val = float(max_price)
+                if max_price_val > 0:
+                    where_clauses.append("r.store_price <= ?")
+                    params.append(max_price_val)
+            except ValueError:
+                pass  # Ignore invalid max_price
 
         # --- Legacy 'genres' filter (string-based, OR LIKE on discogs_genre_raw) ---
         genres = request.args.get('genres')
@@ -2930,6 +3173,81 @@ def get_records():
             'status': 'error',
             'error': str(e)
         }), 500
+
+@app.route('/api/genres-with-records', methods=['GET'])
+def get_genres_with_records():
+    """
+    Get genres that have active records in the specified locations.
+    Automatically applies LAST_SEEN_CUTOFF_DATE from app_config.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        location_ids = request.args.get('location_ids')
+        status_ids = request.args.get('status_ids')
+        
+        # Fetch cutoff date from app_config
+        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'LAST_SEEN_CUTOFF_DATE'")
+        row = cursor.fetchone()
+        cutoff_date = row['config_value'] if row else None
+        
+        query = '''
+            SELECT 
+                g.id,
+                g.name,
+                COUNT(r.id) as record_count
+            FROM genres g
+            INNER JOIN locations l ON l.genre_id = g.id
+            INNER JOIN records r ON r.location_id = l.id
+            WHERE 1=1
+        '''
+        params = []
+        
+        if location_ids:
+            ids = [int(x.strip()) for x in location_ids.split(',') if x.strip()]
+            if ids:
+                placeholders = ','.join(['?'] * len(ids))
+                query += f' AND l.id IN ({placeholders})'
+                params.extend(ids)
+        
+        if status_ids:
+            ids = [int(x.strip()) for x in status_ids.split(',') if x.strip()]
+            if ids:
+                placeholders = ','.join(['?'] * len(ids))
+                query += f' AND r.status_id IN ({placeholders})'
+                params.extend(ids)
+        
+        # Apply cutoff date if it exists
+        if cutoff_date:
+            query += ' AND date(r.last_seen) >= date(?)'
+            params.append(cutoff_date)
+        
+        query += ' GROUP BY g.id, g.name HAVING COUNT(r.id) > 0 ORDER BY g.name'
+        
+        cursor.execute(query, params)
+        results = cursor.fetchall()
+        conn.close()
+        
+        genres = []
+        for row in results:
+            genres.append({
+                'id': row['id'],
+                'name': row['name'],
+                'record_count': row['record_count']
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'genres': genres,
+            'cutoff_applied': cutoff_date is not None,
+            'cutoff_date': cutoff_date
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting genres with records: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/api/stats/last-seen-distribution', methods=['GET'])
 def get_last_seen_distribution_stats():
@@ -4887,6 +5205,8 @@ def get_feedback():
     except Exception as e:
         app.logger.error(f"Error getting feedback: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 
 
 @app.route('/api/feedback/<int:feedback_id>/status', methods=['PUT'])

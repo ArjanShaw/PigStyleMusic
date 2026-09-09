@@ -12,6 +12,10 @@ function initShop() {
             buttonTextColor: 'white',
             searchInputId: 'shopSearchInput',
             statusId: 2,
+            // NEW: Genre filter support
+            genreIds: null,  // Will be set by dropdown
+            // NEW: Max price filter for Shop
+            maxPrice: null,  // Will be set by input
             showCondition: true,
             showLocation: true,
             onAddToCart: function(record) {
@@ -76,6 +80,39 @@ function showToast(message) {
         setTimeout(() => toast.remove(), 300);
     }, 3000);
 }
+
+// ===== SHOP GENRE FILTER FUNCTIONS =====
+window.shopSetGenre = function(genreId) {
+    if (window.shopComponent) {
+        window.shopComponent.setGenre(genreId);
+    }
+};
+
+// ===== SHOP PRICE FILTER FUNCTIONS =====
+window.shopSetMaxPrice = function(price) {
+    if (window.shopComponent) {
+        window.shopComponent.setMaxPrice(price);
+    }
+};
+
+// ===== SHOP CLEAR ALL FILTERS =====
+window.shopClearFilters = function() {
+    if (window.shopComponent) {
+        // Clear genre dropdown
+        const genreSelect = document.getElementById('shopGenreSelect');
+        if (genreSelect) {
+            genreSelect.value = '';
+        }
+        // Clear max price input
+        const maxPriceInput = document.getElementById('shopMaxPrice');
+        if (maxPriceInput) {
+            maxPriceInput.value = '';
+        }
+        // Reset component filters
+        window.shopComponent.setGenre(null);
+        window.shopComponent.setMaxPrice(null);
+    }
+};
 
 window.initShop = initShop;
 window.showToast = showToast;
