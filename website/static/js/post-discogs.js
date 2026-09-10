@@ -1,8 +1,8 @@
 // ================================================================
 // FILE: /static/js/post-discogs.js
 // Post to Discogs page - Location-based display with section grouping
-// Fixed: Bin sorting by numeric value
-// Added: Section grouping (Bin 1 → Bin 1 LT, RT, LB, RB → records)
+// Records are loaded manually via the "Load Records" button.
+// Progress is shown during pagination and price calculation.
 // ================================================================
 
 (function() {
@@ -21,7 +21,9 @@
     let isUpdating = false;
     let isPosting = false;
     let cancelPosting = false;
-    
+    let isLoadingRecords = false;
+    let hasLoadedOnce = false;
+
     // Location display state
     let expandedLocations = new Set();
     let selectedLocations = new Set();
@@ -46,7 +48,8 @@
                 const data = await response.json();
                 if (data.status === 'success' && data.config_value) {
                     discogsMarkupPercent = parseFloat(data.config_value);
-                    document.getElementById('discogs-markup-percent').value = discogsMarkupPercent;
+                    const el = document.getElementById('discogs-markup-percent');
+                    if (el) el.value = discogsMarkupPercent;
                 }
             }
 
@@ -59,7 +62,8 @@
                 const data = await response.json();
                 if (data.status === 'success' && data.config_value) {
                     discogsPriceStep = parseFloat(data.config_value);
-                    document.getElementById('discogs-price-step').value = discogsPriceStep;
+                    const el = document.getElementById('discogs-price-step');
+                    if (el) el.value = discogsPriceStep;
                 }
             }
 
@@ -72,7 +76,8 @@
                 const data = await response.json();
                 if (data.status === 'success' && data.config_value !== null && data.config_value !== undefined) {
                     discogsMinMarkdown = parseFloat(data.config_value);
-                    document.getElementById('discogs-min-markdown').value = discogsMinMarkdown;
+                    const el = document.getElementById('discogs-min-markdown');
+                    if (el) el.value = discogsMinMarkdown;
                 }
             }
 
@@ -93,10 +98,7 @@
                 headers: getHeaders(),
                 body: JSON.stringify({ config_value: discogsMarkupPercent })
             });
-            
-            if (!response.ok) {
-                console.warn('Failed to save DISCOGS_MARKUP_PERCENT');
-            }
+            if (!response.ok) console.warn('Failed to save DISCOGS_MARKUP_PERCENT');
 
             response = await fetch(`${API_BASE}/config/DISCOGS_PRICE_STEP`, {
                 method: 'PUT',
@@ -104,10 +106,7 @@
                 headers: getHeaders(),
                 body: JSON.stringify({ config_value: discogsPriceStep })
             });
-            
-            if (!response.ok) {
-                console.warn('Failed to save DISCOGS_PRICE_STEP');
-            }
+            if (!response.ok) console.warn('Failed to save DISCOGS_PRICE_STEP');
 
             response = await fetch(`${API_BASE}/config/DISCOGS_MIN_MARKDOWN`, {
                 method: 'PUT',
@@ -115,10 +114,7 @@
                 headers: getHeaders(),
                 body: JSON.stringify({ config_value: discogsMinMarkdown })
             });
-            
-            if (!response.ok) {
-                console.warn('Failed to save DISCOGS_MIN_MARKDOWN');
-            }
+            if (!response.ok) console.warn('Failed to save DISCOGS_MIN_MARKDOWN');
 
             return true;
         } catch (err) {
@@ -127,7 +123,7 @@
         }
     }
 
-    // ===== FETCH LAST_SEEN_CUTOFF_DATE FROM CONFIG (UNCHANGED) =====
+    // ===== FETCH LAST_SEEN_CUTOFF_DATE (UNCHANGED) =====
     async function fetchLastSeenCutoff() {
         try {
             const response = await fetch(`${API_BASE}/config/LAST_SEEN_CUTOFF_DATE`, {
@@ -152,7 +148,7 @@
         }
     }
 
-    // ===== CHECK IF RECORD SHOULD BE VISIBLE (UNCHANGED) =====
+    // ===== CHECK IF RECORD SHOULD BE VISIBLE =====
     function isRecordVisible(record) {
         if (!cutoffDate) return true;
         if (!record.last_seen) return false;
@@ -163,7 +159,7 @@
         return lastSeenDate >= cutoffDate;
     }
 
-    // ===== CALCULATE DISCOGS PRICE WITH MARKDOWN (UNCHANGED) =====
+    // ===== CALCULATE DISCOGS PRICE =====
     function calculateDiscogsPrice(record) {
         if (!record || !record.created_at || !record.store_price || record.store_price <= 0) {
             return null;
@@ -200,7 +196,7 @@
         }
     }
 
-    // ===== UPDATE PRICE INFO DISPLAY (UNCHANGED) =====
+    // ===== UPDATE PRICE INFO DISPLAY =====
     function updatePriceInfo() {
         const info = document.getElementById('price-calc-info');
         if (info) {
@@ -209,14 +205,12 @@
         }
     }
 
-    // ===== CALCULATE DISCOGS PRICES FOR ALL RECORDS (UNCHANGED) =====
+    // ===== CALCULATE PRICES FOR ALL RECORDS =====
     function calculateDiscogsPricesForRecords(recordsToCalculate) {
         if (!recordsToCalculate || recordsToCalculate.length === 0) {
             return [];
         }
-
         console.log(`💰 Calculating Discogs prices for ${recordsToCalculate.length} records...`);
-
         return recordsToCalculate.map(r => {
             const priceData = calculateDiscogsPrice(r);
             if (priceData) {
@@ -234,9 +228,17 @@
         });
     }
 
-    // ===== UPDATE PRICES (called when parameters change) - UNCHANGED =====
+    // ===== UPDATE PRICES (called when parameters change) =====
     window.updateDiscogsPrices = async function() {
         if (isUpdating) return;
+        if (isLoadingRecords) {
+            alert('Please wait — records are still loading.');
+            return;
+        }
+        if (records.length === 0) {
+            alert('Load records first.');
+            return;
+        }
         isUpdating = true;
 
         const markupInput = document.getElementById('discogs-markup-percent');
@@ -278,16 +280,16 @@
         showStatus(`✅ Prices updated! ${withPrices.length} records have prices (${withMarkdown.length} on markdown)`, 'info');
 
         updateButtons();
-
         isUpdating = false;
     };
 
-    // ===== FETCH ALL RECORDS WITH PAGINATION (UNCHANGED) =====
-    async function fetchAllRecords() {
+    // ===== FETCH ALL RECORDS WITH PROGRESS CALLBACK =====
+    async function fetchAllRecords(onProgress) {
         let allRecords = [];
         let page = 1;
         const perPage = 100;
         let hasMore = true;
+        let total = 0;
 
         console.log('📊 Fetching all records with pagination...');
 
@@ -298,8 +300,6 @@
                 if (cutoffDate) {
                     url += `&last_seen_after=${cutoffDate}`;
                 }
-
-                console.log(`📄 Fetching page ${page}...`);
 
                 const response = await fetch(url, {
                     credentials: 'include',
@@ -315,15 +315,21 @@
                 const data = await response.json();
                 
                 if (data.status === 'success') {
-                    const records = data.records || [];
-                    const total = data.total || 0;
+                    const pageRecords = data.records || [];
+                    total = data.total || 0;
+                    allRecords = allRecords.concat(pageRecords);
+
+                    if (onProgress) {
+                        onProgress({
+                            page,
+                            loaded: allRecords.length,
+                            total,
+                            finished: false
+                        });
+                    }
                     
-                    allRecords = allRecords.concat(records);
-                    console.log(`📄 Page ${page}: ${records.length} records (total: ${allRecords.length}/${total})`);
-                    
-                    if (allRecords.length >= total || records.length < perPage) {
+                    if (allRecords.length >= total || pageRecords.length < perPage) {
                         hasMore = false;
-                        console.log(`✅ Fetched all ${allRecords.length} records`);
                     } else {
                         page++;
                     }
@@ -337,68 +343,159 @@
             }
         }
 
+        if (onProgress) {
+            onProgress({
+                page,
+                loaded: allRecords.length,
+                total,
+                finished: true
+            });
+        }
+
         return allRecords;
     }
 
-    // ===== LOAD RECORDS (UNCHANGED) =====
-    async function loadRecords() {
+    // ===== PROGRESS UI HELPERS =====
+    function showLoadProgressBar(label, loaded, total, extra) {
+        const statusDiv = document.getElementById('post-discogs-status');
+        if (!statusDiv) return;
+        const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
+        statusDiv.style.display = 'block';
+        statusDiv.className = 'status-message status-info';
+        statusDiv.innerHTML = `
+            <div style="display:flex;flex-direction:column;gap:6px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span>${label}</span>
+                    <span style="font-weight:600;">${loaded}${total ? ' / ' + total : ''}${total ? ' (' + pct + '%)' : ''}</span>
+                </div>
+                <div style="width:100%;height:8px;background:#e9ecef;border-radius:4px;overflow:hidden;">
+                    <div style="width:${pct}%;height:100%;background:linear-gradient(90deg,#667eea,#764ba2);transition:width 0.2s ease;"></div>
+                </div>
+                ${extra ? `<div style="font-size:12px;color:#666;">${extra}</div>` : ''}
+            </div>
+        `;
+    }
+
+    function showLoadError(msg) {
+        const statusDiv = document.getElementById('post-discogs-status');
+        if (!statusDiv) return;
+        statusDiv.style.display = 'block';
+        statusDiv.className = 'status-message status-error';
+        statusDiv.innerHTML = `❌ ${msg}`;
+    }
+
+    // ===== UPDATE LOAD BUTTON STATE =====
+    function updateLoadButtonState(loading) {
+        const btn = document.getElementById('load-records-btn');
+        const info = document.getElementById('load-records-info');
+        if (btn) {
+            btn.disabled = loading;
+            btn.style.opacity = loading ? '0.6' : '1';
+            btn.style.cursor = loading ? 'not-allowed' : 'pointer';
+            btn.textContent = loading ? '⏳ Loading...' : '📥 Load Records';
+        }
+        if (info && loading) {
+            info.textContent = 'Fetching records from the server...';
+        }
+    }
+
+    // ===== MAIN LOAD FUNCTION (called by the button) =====
+    window.loadPostDiscogsRecords = async function() {
+        if (isLoadingRecords) {
+            console.log('⏳ Already loading, ignoring click');
+            return;
+        }
+        if (isPosting) {
+            alert('Please wait — a post is in progress.');
+            return;
+        }
+
+        isLoadingRecords = true;
+        updateLoadButtonState(true);
+
         const list = document.getElementById('post-discogs-locations');
-        if (!list) return;
-        
-        list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading records...</div>';
-        
+        if (list) {
+            list.innerHTML = '<div style="text-align:center;padding:30px;color:#666;">Fetching records...</div>';
+        }
+
         try {
+            // 1. Fetch config
+            showLoadProgressBar('⚙️ Loading configuration...', 0, 0, '');
             await fetchDiscogsConfig();
-            
-            let fetchedRecords = await fetchAllRecords();
-            
-            if (fetchedRecords.length === 0) {
-                list.innerHTML = `<div style="text-align: center; padding: 20px; color: #999;">
+            cutoffDate = await fetchLastSeenCutoff();
+
+            // 2. Fetch records page by page
+            const fetched = await fetchAllRecords(({ page, loaded, total, finished }) => {
+                const label = finished
+                    ? '✅ Records fetched'
+                    : `📥 Fetching page ${page}...`;
+                showLoadProgressBar(label, loaded, total, cutoffDate ? `Cutoff: ${cutoffDate}` : 'No cutoff');
+            });
+
+            if (fetched.length === 0) {
+                list.innerHTML = `<div style="text-align:center;padding:20px;color:#999;">
                     No records found${cutoffDate ? ` (seen after ${cutoffDate})` : ''}
                 </div>`;
+                showLoadProgressBar('✅ Loaded (empty)', 0, 0, '');
                 return;
             }
 
+            // 3. Client-side cutoff filter (if server didn't do it)
+            let filtered = fetched;
             if (cutoffDate) {
-                const beforeFilter = fetchedRecords.length;
-                fetchedRecords = fetchedRecords.filter(record => isRecordVisible(record));
-                console.log(`📅 Client-side cutoff filter: ${beforeFilter} → ${fetchedRecords.length} records`);
+                const before = fetched.length;
+                filtered = fetched.filter(record => isRecordVisible(record));
+                console.log(`📅 Client-side cutoff filter: ${before} → ${filtered.length}`);
             }
-            
-            records = calculateDiscogsPricesForRecords(fetchedRecords);
+
+            // 4. Calculate prices — show a progress message, then yield once
+            // so the browser paints it before the sync loop
+            showLoadProgressBar('💰 Calculating prices...', filtered.length, filtered.length, '');
+            await new Promise(resolve => setTimeout(resolve, 30));
+
+            records = calculateDiscogsPricesForRecords(filtered);
             renderRecords();
             updatePriceInfo();
-            
+
+            // 5. Show final status
             const withPrices = records.filter(r => r._discogsPrice && r._discogsPrice > 0);
             const withMarkdown = records.filter(r => r._markupPercent && r._markupPercent < 0);
-            const statusMsg = withPrices.length > 0 
-                ? `Loaded ${records.length} records (${withPrices.length} with prices, ${withMarkdown.length} on markdown)`
+            const statusMsg = withPrices.length > 0
+                ? `✅ Loaded ${records.length} records (${withPrices.length} with prices, ${withMarkdown.length} on markdown)`
                 : `Loaded ${records.length} records but NONE have Discogs prices`;
             showStatus(statusMsg, withPrices.length > 0 ? 'info' : 'warning');
-            
+
+            const info = document.getElementById('load-records-info');
+            if (info) {
+                info.textContent = `Loaded ${records.length} records. Click again to refresh.`;
+            }
+
+            hasLoadedOnce = true;
             updateButtons();
 
         } catch (err) {
-            console.error('Error loading records:', err);
-            list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${err.message}</div>`;
+            console.error('❌ Error loading records:', err);
+            showLoadError(err.message || 'Failed to load records');
+            if (list) {
+                list.innerHTML = `<div style="text-align:center;padding:20px;color:#dc3545;">Error: ${err.message}</div>`;
+            }
+        } finally {
+            isLoadingRecords = false;
+            updateLoadButtonState(false);
         }
-    }
+    };
 
-    // ===== EXTRACT BIN NUMBER FROM LOCATION NAME =====
+    // ===== EXTRACT BIN NUMBER =====
     function extractBinNumber(locationName) {
         const match = locationName.match(/Bin\s*(\d+)/i);
-        if (match) {
-            return parseInt(match[1], 10);
-        }
+        if (match) return parseInt(match[1], 10);
         return null;
     }
 
-    // ===== EXTRACT BIN SECTION (LT, RT, LB, RB) =====
+    // ===== EXTRACT BIN SECTION =====
     function extractBinSection(locationName) {
         const match = locationName.match(/Bin\s*\d+\s*([A-Z]{2})/i);
-        if (match) {
-            return match[1].toUpperCase();
-        }
+        if (match) return match[1].toUpperCase();
         return null;
     }
 
@@ -407,16 +504,14 @@
         return /Bin\s*\d+/i.test(locationName);
     }
 
-    // ===== GET BIN BASE NAME (without LT/RT/LB/RB) =====
+    // ===== GET BIN BASE NAME =====
     function getBinBaseName(locationName) {
         const match = locationName.match(/(Bin\s*\d+)/i);
-        if (match) {
-            return match[1];
-        }
+        if (match) return match[1];
         return locationName;
     }
 
-    // ===== SORT BIN SECTIONS (LT, RT, LB, RB order) =====
+    // ===== SORT BIN SECTIONS =====
     function sortBinSections(sections) {
         const order = ['LT', 'RT', 'LB', 'RB'];
         return sections.sort((a, b) => {
@@ -428,7 +523,7 @@
         });
     }
 
-    // ===== GROUP RECORDS BY LOCATION WITH SECTION HIERARCHY =====
+    // ===== GROUP RECORDS BY LOCATION =====
     function groupRecordsByLocation(recordsArray) {
         const groups = {};
         const binSections = {};
@@ -446,7 +541,6 @@
             }
             groups[locationId].records.push(r);
             
-            // Track bin sections for bin grouping
             if (isBinLocation(locationName)) {
                 const baseName = getBinBaseName(locationName);
                 const section = extractBinSection(locationName);
@@ -467,12 +561,10 @@
             }
         }
         
-        // Sort sections within each bin
         for (const baseName in binSections) {
             binSections[baseName].sections = sortBinSections(binSections[baseName].sections);
         }
         
-        // Build result: first list all bin sections, then non-bin locations
         const result = [];
         const nonBinGroups = [];
         
@@ -485,7 +577,6 @@
             }
         }
         
-        // Sort bin groups by numeric bin number
         result.sort((a, b) => {
             const numA = extractBinNumber(a.location_name);
             const numB = extractBinNumber(b.location_name);
@@ -495,13 +586,8 @@
             return a.location_name.localeCompare(b.location_name);
         });
         
-        // Sort non-bin groups alphabetically
-        nonBinGroups.sort((a, b) => {
-            return a.location_name.localeCompare(b.location_name);
-        });
+        nonBinGroups.sort((a, b) => a.location_name.localeCompare(b.location_name));
         
-        // Combine: bins first (with their section structure), then non-bins
-        // For bins, we need to group them by base name
         const groupedBins = {};
         for (const group of result) {
             const baseName = getBinBaseName(group.location_name);
@@ -514,7 +600,6 @@
             groupedBins[baseName].locations.push(group);
         }
         
-        // Sort bin groups by number
         const sortedBinKeys = Object.keys(groupedBins).sort((a, b) => {
             const numA = extractBinNumber(a);
             const numB = extractBinNumber(b);
@@ -533,7 +618,6 @@
             });
         }
         
-        // Add non-bin locations
         for (const group of nonBinGroups) {
             finalResult.push({
                 is_bin_section: false,
@@ -546,13 +630,13 @@
         return finalResult;
     }
 
-    // ===== RENDER RECORDS - LOCATION-BASED WITH SECTION HIERARCHY =====
+    // ===== RENDER RECORDS =====
     function renderRecords() {
         const list = document.getElementById('post-discogs-locations');
         if (!list) return;
         
         if (records.length === 0) {
-            list.innerHTML = `<div style="text-align: center; padding: 20px; color: #999;">
+            list.innerHTML = `<div style="text-align:center;padding:20px;color:#999;">
                 No records found${cutoffDate ? ` (seen after ${cutoffDate})` : ''}
             </div>`;
             return;
@@ -573,18 +657,15 @@
 
         for (const group of locationGroups) {
             if (group.is_bin_section) {
-                // === RENDER BIN SECTION (e.g., Bin 1 with LT, RT, LB, RB) ===
                 const baseName = group.base_name;
                 const locations = group.locations;
                 const totalRecords = locations.reduce((sum, loc) => sum + loc.records.length, 0);
                 const isSectionExpanded = expandedSections.has(baseName);
-                
-                // Check if any location in this bin is selected
-                const isSelected = locations.some(loc => selectedLocations.has(loc.location_id));
                 const allSelected = locations.every(loc => selectedLocations.has(loc.location_id));
+                const anySelected = locations.some(loc => selectedLocations.has(loc.location_id));
                 
                 html += `
-                    <div style="border: 2px solid #6c757d; border-radius: 8px; margin-bottom: 10px; background: ${isSelected ? '#f0f8ff' : 'white'};">
+                    <div style="border: 2px solid #6c757d; border-radius: 8px; margin-bottom: 10px; background: ${anySelected ? '#f0f8ff' : 'white'};">
                         <div style="display: flex; align-items: center; padding: 10px 14px; cursor: pointer; background: ${isSectionExpanded ? '#e9ecef' : 'white'}; border-radius: ${isSectionExpanded ? '8px 8px 0 0' : '8px'};"
                              onclick="toggleBinSection('${baseName}')">
                             <span style="font-size: 16px; margin-right: 10px; color: #333;">
@@ -610,7 +691,6 @@
                         </div>
                 `;
 
-                // Render each location within the bin (LT, RT, LB, RB)
                 if (isSectionExpanded) {
                     for (const loc of locations) {
                         const locationId = loc.location_id;
@@ -647,7 +727,6 @@
                                 </div>
                         `;
 
-                        // Individual records table
                         if (isExpanded) {
                             html += `
                                 <div style="padding: 6px 12px 10px 40px; border-top: 1px solid #f0f0f0; overflow-x: auto;">
@@ -667,9 +746,7 @@
                             `;
 
                             const sortedRecords = [...locationRecords].sort((a, b) => {
-                                if (a.location_index && b.location_index) {
-                                    return a.location_index - b.location_index;
-                                }
+                                if (a.location_index && b.location_index) return a.location_index - b.location_index;
                                 return (a.artist || '').localeCompare(b.artist || '');
                             });
 
@@ -714,7 +791,6 @@
                 html += `</div>`;
                 
             } else {
-                // === RENDER NON-BIN LOCATION (Walls, Displays, etc.) ===
                 const locationId = group.location_id;
                 const locationName = group.location_name;
                 const locationRecords = group.records;
@@ -768,9 +844,7 @@
                     `;
 
                     const sortedRecords = [...locationRecords].sort((a, b) => {
-                        if (a.location_index && b.location_index) {
-                            return a.location_index - b.location_index;
-                        }
+                        if (a.location_index && b.location_index) return a.location_index - b.location_index;
                         return (a.artist || '').localeCompare(b.artist || '');
                     });
 
@@ -817,7 +891,7 @@
         updateButtons();
     }
 
-    // ===== TOGGLE BIN SECTION EXPANSION =====
+    // ===== TOGGLE BIN SECTION =====
     window.toggleBinSection = function(baseName) {
         if (expandedSections.has(baseName)) {
             expandedSections.delete(baseName);
@@ -829,7 +903,6 @@
 
     // ===== TOGGLE ALL LOCATIONS IN A BIN =====
     window.toggleAllLocationsInBin = function(baseName) {
-        // Find all locations in this bin
         const allLocations = [];
         for (const group of groupRecordsByLocation(records)) {
             if (group.is_bin_section && group.base_name === baseName) {
@@ -840,17 +913,12 @@
             }
         }
         
-        // Check if all are selected
         const allSelected = allLocations.every(id => selectedLocations.has(id));
         
         if (allSelected) {
-            for (const id of allLocations) {
-                selectedLocations.delete(id);
-            }
+            for (const id of allLocations) selectedLocations.delete(id);
         } else {
-            for (const id of allLocations) {
-                selectedLocations.add(id);
-            }
+            for (const id of allLocations) selectedLocations.add(id);
         }
         
         renderRecords();
@@ -862,7 +930,6 @@
     window.postBinSection = async function(baseName) {
         if (isPosting) return;
         
-        // Find all locations in this bin
         let recordsToPost = [];
         let locationNames = [];
         for (const group of groupRecordsByLocation(records)) {
@@ -922,9 +989,7 @@
         if (isChecked) {
             const locationIds = new Set();
             for (const r of records) {
-                if (r.location_id) {
-                    locationIds.add(r.location_id);
-                }
+                if (r.location_id) locationIds.add(r.location_id);
             }
             selectedLocations = locationIds;
         } else {
@@ -946,17 +1011,13 @@
         
         for (const locationId of selectedLocations) {
             const group = groupRecordsByLocation(records).find(g => {
-                if (g.is_bin_section) {
-                    return g.locations.some(l => l.location_id === locationId);
-                }
+                if (g.is_bin_section) return g.locations.some(l => l.location_id === locationId);
                 return g.location_id === locationId;
             });
             if (group) {
                 if (group.is_bin_section) {
                     for (const loc of group.locations) {
-                        if (loc.location_id === locationId) {
-                            recordCount += loc.records.length;
-                        }
+                        if (loc.location_id === locationId) recordCount += loc.records.length;
                     }
                 } else {
                     recordCount += group.records.length;
@@ -975,9 +1036,7 @@
         let selectedPriced = 0;
         for (const locationId of selectedLocations) {
             const group = groupRecordsByLocation(records).find(g => {
-                if (g.is_bin_section) {
-                    return g.locations.some(l => l.location_id === locationId);
-                }
+                if (g.is_bin_section) return g.locations.some(l => l.location_id === locationId);
                 return g.location_id === locationId;
             });
             if (group) {
@@ -1021,9 +1080,7 @@
         let locationNames = [];
         for (const locationId of selectedLocations) {
             const group = groupRecordsByLocation(records).find(g => {
-                if (g.is_bin_section) {
-                    return g.locations.some(l => l.location_id === locationId);
-                }
+                if (g.is_bin_section) return g.locations.some(l => l.location_id === locationId);
                 return g.location_id === locationId;
             });
             if (group) {
@@ -1067,9 +1124,7 @@
         let locationName = '';
         
         const group = groupRecordsByLocation(records).find(g => {
-            if (g.is_bin_section) {
-                return g.locations.some(l => l.location_id === locationId);
-            }
+            if (g.is_bin_section) return g.locations.some(l => l.location_id === locationId);
             return g.location_id === locationId;
         });
         if (!group) return;
@@ -1109,7 +1164,8 @@
         if (isPosting) {
             cancelPosting = true;
             showStatus('⏹️ Cancelling... Please wait for current record to finish', 'warning');
-            document.getElementById('cancel-post-btn').disabled = true;
+            const btn = document.getElementById('cancel-post-btn');
+            if (btn) btn.disabled = true;
         }
     };
 
@@ -1262,7 +1318,10 @@
         }
         updateButtons();
         
-        loadRecords();
+        // Reload to reflect postings
+        if (hasLoadedOnce) {
+            window.loadPostDiscogsRecords();
+        }
     }
 
     // ===== SHOW STATUS =====
@@ -1277,14 +1336,43 @@
         }
     }
 
-    // ===== INIT =====
+    // ===== INIT — no record fetching here anymore =====
     window.initPostDiscogs = function() {
-        console.log('📀 Post to Discogs initialized - Location-based display with section grouping');
-        
+        console.log('📀 Post to Discogs initialized (manual load mode)');
+
+        // Reset state on init
+        records = [];
+        selectedLocations.clear();
+        expandedLocations.clear();
+        expandedSections.clear();
+        isLoadingRecords = false;
+        hasLoadedOnce = false;
+
+        // Show placeholder
+        const list = document.getElementById('post-discogs-locations');
+        if (list) {
+            list.innerHTML = '<div style="text-align:center;padding:30px;color:#666;">Click <strong>📥 Load Records</strong> above to fetch records for posting.</div>';
+        }
+
+        const statusDiv = document.getElementById('post-discogs-status');
+        if (statusDiv) {
+            statusDiv.style.display = 'none';
+            statusDiv.innerHTML = '';
+        }
+
+        const info = document.getElementById('load-records-info');
+        if (info) {
+            info.textContent = 'Click to fetch records from the server. This may take a moment.';
+        }
+
+        updateLoadButtonState(false);
+        updatePriceInfo();
+        updateButtons();
+
+        // Fetch cutoff date (cheap — one request)
         fetchLastSeenCutoff().then(date => {
             cutoffDate = date;
-            console.log('📅 Post Discogs using cutoff date:', cutoffDate || 'None (showing all)');
-            loadRecords();
+            console.log('📅 Using cutoff date:', cutoffDate || 'None (showing all)');
         });
     };
 

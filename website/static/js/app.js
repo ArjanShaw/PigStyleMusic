@@ -21,9 +21,7 @@ const CUSTOMER_TILES = [
 ];
 
 // Admin tiles — mirror of admin-dashboard.js adminFeatures[].
-// These use the old hard-swap render path and are excluded from rotation.
-// NOTE: 'login' and 'dashboard' are listed but they are NOT auth-gated —
-// they are the escape hatches. See showPage() below.
+// 'login' and 'dashboard' are NOT auth-gated — they are escape hatches.
 const ADMIN_TILES = [
     'admin-dashboard',
     'add-records', 'accounting', 'purchases', 'scan', 'post-discogs',
@@ -32,14 +30,13 @@ const ADMIN_TILES = [
     'email-list', 'online-orders', 'sticky-notes', 'stats', 'creditors',
     'users', 'print-settings', 'store-settings', 'gift-cards',
     'config-keys', 'cache-management', 'system-info', 'db-query',
-    // Consignor + auth, also outside the rotation
     'dashboard', 'login'
 ];
 
 // Runtime state for the slide track
-let slideTrackEl    = null;   // #slides-container
-let slideDotsEl     = null;   // #slide-dots
-let slideCache      = {};     // { page: HTMLElement }
+let slideTrackEl    = null;
+let slideDotsEl     = null;
+let slideCache      = {};
 let currentSlideName = null;
 let autoSlideTimer  = null;
 let autoSlideStopped = false;
@@ -70,15 +67,12 @@ function updateMenu() {
     const loginBtn = nav.querySelector('.login-btn');
     console.log('Updating menu, user:', user);
 
-    // Remove dynamic admin toggle if present
     const existingAdminToggle = nav.querySelector('.admin-toggle');
     if (existingAdminToggle) existingAdminToggle.remove();
 
-    // Remove dynamic consignor dashboard button if present
     const existingDashboard = nav.querySelector('[data-page="dashboard"]');
     if (existingDashboard) existingDashboard.remove();
 
-    // Remove any legacy admin buttons
     ADMIN_TILES.forEach(page => {
         const existing = nav.querySelector(`[data-page="${page}"]`);
         if (existing) existing.remove();
@@ -171,15 +165,24 @@ const INIT_MAP = {
 };
 
 // ==================== SLIDE TRACK SETUP ====================
-// Builds #slides-container + #slide-dots inside #page-content once.
 function ensureSlideTrack() {
-    if (slideTrackEl) return;
-
     const pageContent = document.getElementById('page-content');
     if (!pageContent) {
         console.error('❌ #page-content not found');
         return;
     }
+
+    // Defensive reset: if our references point to detached DOM
+    // (e.g. admin-dashboard.js wiped page-content via innerHTML),
+    // clear them so we rebuild cleanly.
+    if (slideTrackEl && !pageContent.contains(slideTrackEl)) {
+        slideTrackEl = null;
+        slideDotsEl = null;
+        slideCache = {};
+        currentSlideName = null;
+    }
+
+    if (slideTrackEl) return;
 
     // Inject styles once
     if (!document.getElementById('slide-track-styles')) {
@@ -262,37 +265,7 @@ function ensureSlideTrack() {
     pageContent.appendChild(slideDotsEl);
 }
 
-// Ensures the slide for `page` exists in the track, fetched once.
-async function ensureSlide(page) {
-    if (slideCache[page]) return slideCache[page];
-
-    const response = await fetch('/tiles/' + page + '.html');
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    const html = await response.text();
-
-    const slide = document.createElement('div');
-    slide.className = 'slide';
-    slide.dataset.page = page;
-    slide.innerHTML = html;
-
-    slideTrackEl.appendChild(slide);
-    slideCache[page] = slide;
-
-    // Wire flip-card hints inside this slide only
-    slide.querySelectorAll('.flip-hint').forEach(function(hint) {
-        hint.onclick = function(e) {
-            e.stopPropagation();
-            const card = this.closest('.flip-card');
-            if (card) card.classList.toggle('flipped');
-        };
-    });
-
-    return slide;
-}
-
-// Renders dots for all customer slides currently in the track
+// ==================== SLIDE MANAGEMENT ====================
 function renderDots() {
     if (!slideDotsEl) return;
     slideDotsEl.innerHTML = '';
@@ -318,21 +291,18 @@ function updateActiveDot() {
     });
 }
 
-// Sync the highlighted nav button to the current slide
 function updateActiveNavButton() {
     const nav = document.getElementById('menu');
     if (!nav) return;
     nav.querySelectorAll('button').forEach(function(btn) {
         btn.classList.remove('active');
     });
-    // Find the nav button whose onclick references this page
     const target = nav.querySelector(
         `button[onclick*="showPage('${currentSlideName}'"]`
     );
     if (target) target.classList.add('active');
 }
 
-// Slide to an existing slide in the track
 function goToSlide(page) {
     if (isSliding) return;
     if (!slideTrackEl || !slideCache[page]) return;
@@ -391,14 +361,13 @@ function userInteractedWithMenu() {
 async function renderCustomerPage(page, btnElement) {
     ensureSlideTrack();
 
-    // Show the track, hide any admin slot
+    if (!slideTrackEl) return;
+
     slideTrackEl.classList.remove('hidden');
     const existingAdminSlot = document.querySelector('.admin-slot.active');
     if (existingAdminSlot) existingAdminSlot.classList.remove('active');
     slideDotsEl.style.display = 'flex';
 
-    // First visit: preload ALL customer tiles so the rotation is smooth
-    // (engagement.html builds all slides up front for the same reason).
     if (Object.keys(slideCache).length === 0) {
         console.log('📥 Preloading all customer tiles...');
         try {
@@ -410,7 +379,6 @@ async function renderCustomerPage(page, btnElement) {
                 })
             );
 
-            // Append in CUSTOMER_TILES order so the track matches the config
             results.forEach(({ page: p, html }) => {
                 const slide = document.createElement('div');
                 slide.className = 'slide';
@@ -439,28 +407,23 @@ async function renderCustomerPage(page, btnElement) {
         }
     }
 
-    // Make sure the requested page actually exists in the track
     if (!slideCache[page]) {
         console.warn('⚠️ No slide for', page, '— falling back to admin renderer');
         return renderAdminPage(page, btnElement);
     }
 
-    // Every switch — including the first one — uses the same animation.
     goToSlide(page);
 
-    // Run the tile's init function
     const initFn = INIT_MAP[page];
     if (initFn && typeof window[initFn] === 'function') {
         console.log('🔧 Initializing:', page);
         window[initFn]();
     }
 
-    // Dispatch pageChange so pollers can clean up
     document.dispatchEvent(new CustomEvent('pageChange', {
         detail: { page, mode: 'customer' }
     }));
 
-    // Start the rotation now that the track is populated
     if (!autoSlideStopped) {
         resetAutoSlide();
     }
@@ -475,76 +438,94 @@ async function renderAdminPage(page, btnElement) {
     const pageContent = document.getElementById('page-content');
     if (!pageContent) return;
 
-    // Hide slide track if it exists
+    // Defensive reset: if our slide track ref is stale (admin-dashboard.js
+    // wiped #page-content via innerHTML), clear our state so it rebuilds
+    // cleanly on the next customer-page visit.
+    if (slideTrackEl && !pageContent.contains(slideTrackEl)) {
+        slideTrackEl = null;
+        slideDotsEl = null;
+        slideCache = {};
+        currentSlideName = null;
+    }
+
+    // Hide the slide track (if it's still in the DOM)
     if (slideTrackEl) slideTrackEl.classList.add('hidden');
     if (slideDotsEl) slideDotsEl.style.display = 'none';
 
-    // Reuse a single admin slot inside page-content
-    let adminSlot = pageContent.querySelector('.admin-slot');
-    if (!adminSlot) {
-        adminSlot = document.createElement('div');
-        adminSlot.className = 'admin-slot';
-        pageContent.appendChild(adminSlot);
-    }
-    adminSlot.classList.add('active');
-
     try {
-        // admin-dashboard is rendered by JS, not fetched
+        // ─── Special case: admin-dashboard ──────────────────────────
+        // admin-dashboard.js writes directly to #page-content.innerHTML,
+        // so it must own the container entirely. Wipe it first so nothing
+        // gets left behind.
         if (page === 'admin-dashboard') {
+            pageContent.innerHTML = '';
             if (typeof window.renderAdminDashboard === 'function') {
                 window.renderAdminDashboard();
             } else {
-                adminSlot.innerHTML = '<div class="simple-page"><h1>Loading Admin Dashboard...</h1></div>';
+                pageContent.innerHTML = '<div class="simple-page"><h1>Loading Admin Dashboard...</h1></div>';
                 if (typeof window.initAdminDashboard === 'function') {
                     window.initAdminDashboard();
                 }
             }
-        } else {
-            const response = await fetch('/tiles/' + page + '.html');
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            const html = await response.text();
-            adminSlot.innerHTML = html;
-
-            adminSlot.querySelectorAll('.flip-hint').forEach(function(hint) {
-                hint.onclick = function(e) {
-                    e.stopPropagation();
-                    const card = this.closest('.flip-card');
-                    if (card) card.classList.toggle('flipped');
-                };
-            });
+            document.dispatchEvent(new CustomEvent('pageChange', {
+                detail: { page, mode: 'admin' }
+            }));
+            return;
         }
 
-        // Run tile init
+        // ─── All other admin tiles: use an admin-slot ────────────────
+        // If no admin-slot exists in #page-content, it's because either
+        // (a) we're on our first admin page after a customer page, or
+        // (b) admin-dashboard.js just wiped the container.
+        // In both cases, wipe #page-content first so only the admin-slot
+        // remains — otherwise the tile renders BELOW the leftover content
+        // and is clipped by overflow: hidden.
+        let adminSlot = pageContent.querySelector('.admin-slot');
+        if (!adminSlot) {
+            pageContent.innerHTML = '';
+            adminSlot = document.createElement('div');
+            adminSlot.className = 'admin-slot';
+            pageContent.appendChild(adminSlot);
+        }
+        adminSlot.classList.add('active');
+
+        const response = await fetch('/tiles/' + page + '.html');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const html = await response.text();
+        adminSlot.innerHTML = html;
+
+        adminSlot.querySelectorAll('.flip-hint').forEach(function(hint) {
+            hint.onclick = function(e) {
+                e.stopPropagation();
+                const card = this.closest('.flip-card');
+                if (card) card.classList.toggle('flipped');
+            };
+        });
+
         const initFn = INIT_MAP[page];
         if (initFn && typeof window[initFn] === 'function') {
             console.log('🔧 Initializing (admin):', page);
             window[initFn]();
         }
 
-        // Special: confirmation page Square return
         if (page === 'confirmation' && typeof window.checkSquareReturn === 'function') {
             console.log('🔵 Confirmation page loaded, checking for order...');
         }
 
-        // Dispatch pageChange
         document.dispatchEvent(new CustomEvent('pageChange', {
             detail: { page, mode: 'admin' }
         }));
 
     } catch (err) {
         console.error('❌ Failed to load admin page:', page, err);
-        adminSlot.innerHTML = '<div class="simple-page"><h1>Error</h1><p>Failed to load page</p></div>';
+        pageContent.innerHTML = '<div class="simple-page"><h1>Error</h1><p>Failed to load page</p></div>';
     }
 }
 
 // ==================== SHOW PAGE (dispatcher) ====================
 async function showPage(page, btnElement) {
-    // Auth gate — ONLY applies to admin-only pages.
-    // 'login' and 'dashboard' are escape hatches and must never be gated,
-    // otherwise showPage('login') would call itself forever when no user
-    // is logged in (login is listed in ADMIN_TILES but is not admin-only).
     const adminOnly = ADMIN_TILES.filter(p => p !== 'dashboard' && p !== 'login');
 
     if (adminOnly.includes(page)) {
@@ -559,13 +540,11 @@ async function showPage(page, btnElement) {
         }
     }
 
-    // Active button state
     document.querySelectorAll('nav button').forEach(function(btn) {
         btn.classList.remove('active');
     });
     if (btnElement) btnElement.classList.add('active');
 
-    // Dispatch to the right renderer
     if (CUSTOMER_TILES.includes(page)) {
         return renderCustomerPage(page, btnElement);
     }
@@ -634,7 +613,7 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
-// Menu centering (arrow buttons removed)
+// Menu centering
 (function initNavStyles() {
     const styleId = 'nav-arrow-styles';
     if (document.getElementById(styleId)) return;
@@ -649,8 +628,6 @@ document.addEventListener('keydown', function(e) {
             gap: 6px;
             flex-wrap: wrap;
         }
-        /* Kill the margin-left:auto on login so it stops
-           pushing the whole row to the left */
         #menu button.login-btn {
             margin-left: 0 !important;
         }
@@ -659,7 +636,6 @@ document.addEventListener('keydown', function(e) {
 })();
 
 // ==================== USER-INTERACTION STOP HOOKS ====================
-// Any deliberate nav/tile click stops the rotation permanently.
 (function initStopListeners() {
     document.addEventListener('click', function(e) {
         const btn = e.target.closest('nav button');
@@ -710,8 +686,6 @@ document.addEventListener('DOMContentLoaded', function() {
     checkSquareReturnOnStart();
 
     if (!window.pendingOrderId) {
-        // showPage('home') will start the auto-slide itself via
-        // renderCustomerPage → resetAutoSlide(). No separate timer needed.
         showPage('home');
     }
 });
