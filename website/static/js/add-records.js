@@ -161,6 +161,17 @@
                 });
             }
         });
+
+        // If format filter changes, re-run the search automatically
+        const searchFormat = document.getElementById('add-search-format');
+        if (searchFormat) {
+            searchFormat.addEventListener('change', function() {
+                const searchInput = document.getElementById('add-search-input');
+                if (searchInput && searchInput.value.trim()) {
+                    window.addRecordsSearch();
+                }
+            });
+        }
     }
 
     // Search Discogs
@@ -180,21 +191,29 @@
             showStatus('Please enter a search term', 'error');
             return;
         }
+
+        // Read the format filter from the dropdown
+        const formatSelect = document.getElementById('add-search-format');
+        const formatFilter = formatSelect ? formatSelect.value : 'all';
         
         const resultsDiv = document.getElementById('add-results');
         resultsDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Searching Discogs...</div>';
         
         try {
-            const response = await fetch(`${API_BASE}/api/discogs/search?q=${encodeURIComponent(term)}`, {
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' }
-            });
+            const response = await fetch(
+                `${API_BASE}/api/discogs/search?q=${encodeURIComponent(term)}&format=${encodeURIComponent(formatFilter)}`,
+                {
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' }
+                }
+            );
             const data = await response.json();
             
             if (data.status === 'success' && data.results) {
                 searchResults = data.results;
                 renderResults(searchResults);
-                showStatus(`Found ${searchResults.length} results`, 'success');
+                const formatLabel = formatFilter === 'all' ? '' : ` [${formatFilter}]`;
+                showStatus(`Found ${searchResults.length} results${formatLabel}`, 'success');
             } else {
                 resultsDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">No results found</div>';
                 showStatus('No results found', 'warning');

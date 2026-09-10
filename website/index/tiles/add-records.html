@@ -13,6 +13,13 @@
     <!-- Discogs Search -->
     <div style="display: flex; gap: 10px; width: 100%;">
         <input type="text" id="add-search-input" placeholder="Search Discogs (e.g., pink floyd dark side)" style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+        <select id="add-search-format" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; min-width: 130px;">
+            <option value="all">All Formats</option>
+            <option value="vinyl" selected>Vinyl</option>
+            <option value="cd">CD</option>
+            <option value="tape">Cassette</option>
+            <option value="shellac">Shellac</option>
+        </select>
         <button onclick="addRecordsSearch()" id="add-search-btn" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;">
             <i class="fas fa-search"></i> Search
         </button>
