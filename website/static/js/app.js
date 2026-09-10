@@ -22,6 +22,8 @@ const CUSTOMER_TILES = [
 
 // Admin tiles — mirror of admin-dashboard.js adminFeatures[].
 // These use the old hard-swap render path and are excluded from rotation.
+// NOTE: 'login' and 'dashboard' are listed but they are NOT auth-gated —
+// they are the escape hatches. See showPage() below.
 const ADMIN_TILES = [
     'admin-dashboard',
     'add-records', 'accounting', 'purchases', 'scan', 'post-discogs',
@@ -539,15 +541,19 @@ async function renderAdminPage(page, btnElement) {
 
 // ==================== SHOW PAGE (dispatcher) ====================
 async function showPage(page, btnElement) {
-    // Auth gate — same as before
-    if (ADMIN_TILES.includes(page)) {
+    // Auth gate — ONLY applies to admin-only pages.
+    // 'login' and 'dashboard' are escape hatches and must never be gated,
+    // otherwise showPage('login') would call itself forever when no user
+    // is logged in (login is listed in ADMIN_TILES but is not admin-only).
+    const adminOnly = ADMIN_TILES.filter(p => p !== 'dashboard' && p !== 'login');
+
+    if (adminOnly.includes(page)) {
         const user = getUser();
         if (!user || !user.logged_in) {
             showPage('login');
             return;
         }
-        const adminOnly = ADMIN_TILES.filter(p => p !== 'dashboard' && p !== 'login');
-        if (adminOnly.includes(page) && user.role !== 'admin') {
+        if (user.role !== 'admin') {
             showPage('home');
             return;
         }
@@ -704,11 +710,8 @@ document.addEventListener('DOMContentLoaded', function() {
     checkSquareReturnOnStart();
 
     if (!window.pendingOrderId) {
+        // showPage('home') will start the auto-slide itself via
+        // renderCustomerPage → resetAutoSlide(). No separate timer needed.
         showPage('home');
-
-        // Kick off the auto-slide after the grace period
-        setTimeout(function() {
-            if (!autoSlideStopped) startAutoSlide();
-        }, SLIDE_GRACE);
     }
 });
