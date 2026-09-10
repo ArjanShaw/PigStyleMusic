@@ -22,73 +22,6 @@
     
     <!-- Chart.js - Required for accounting bar charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
-    <style>
-        /* Navigation arrows - positioned center left and right */
-        .nav-arrow {
-            position: fixed;
-            top: 50%;
-            transform: translateY(-50%);
-            z-index: 9999;
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(8px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-            color: white;
-            width: 50px;
-            height: 50px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            font-size: 20px;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-        }
-        .nav-arrow:hover {
-            background: rgba(255, 255, 255, 0.2);
-            border-color: rgba(255, 255, 255, 0.4);
-            transform: translateY(-50%) scale(1.1);
-        }
-        .nav-arrow:active {
-            transform: translateY(-50%) scale(0.9);
-        }
-        .nav-arrow-left {
-            left: 20px;
-        }
-        .nav-arrow-right {
-            right: 20px;
-        }
-        .nav-arrow i {
-            pointer-events: none;
-        }
-        @media (max-width: 768px) {
-            .nav-arrow {
-                width: 40px;
-                height: 40px;
-                font-size: 16px;
-            }
-            .nav-arrow-left {
-                left: 10px;
-            }
-            .nav-arrow-right {
-                right: 10px;
-            }
-        }
-        @media (max-width: 480px) {
-            .nav-arrow {
-                width: 32px;
-                height: 32px;
-                font-size: 12px;
-            }
-            .nav-arrow-left {
-                left: 5px;
-            }
-            .nav-arrow-right {
-                right: 5px;
-            }
-        }
-    </style>
 </head>
 <body>
     <nav id="menu">
@@ -115,15 +48,6 @@
         <button onclick="showPage('login', this)" class="login-btn" title="Login"><i class="fas fa-sign-in-alt"></i></button>
     </nav>
     <div id="content">
-        <!-- Navigation arrows - positioned on left and right of screen -->
-        <button class="nav-arrow nav-arrow-left" onclick="navigateMenu('prev')" title="Previous Page">
-            <i class="fas fa-chevron-left"></i>
-        </button>
-        
-        <button class="nav-arrow nav-arrow-right" onclick="navigateMenu('next')" title="Next Page">
-            <i class="fas fa-chevron-right"></i>
-        </button>
-        
         <div id="page-content"></div>
     </div>
 
@@ -170,7 +94,7 @@
     <script src="/static/js/db-query.js"></script>
     <script src="/static/js/custom-checkout.js"></script>
     <script src="/static/js/admin-dashboard.js"></script>
-    <script src="/static/js/online-orders.js"></script>  <!-- ← ADDED -->
+    <script src="/static/js/online-orders.js"></script>
     <script src="/static/js/app.js"></script>
 </body>
 </html>
