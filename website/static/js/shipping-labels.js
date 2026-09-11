@@ -1,20 +1,26 @@
-// Shipping Labels — Avery 5168 (landscape letter, 4 labels per sheet, 2x2)
+// Shipping Labels — Avery 5168 (PORTRAIT letter, 4 labels per sheet, 2x2)
 // Each corner (LT/RT/LB/RB) accepts its own PDF upload. One print button generates
-// a single sheet with all filled positions.
+// a single portrait sheet with all filled positions.
+// Slot size: 3.5" wide x 5" tall. Labels are auto-oriented to fit the slot.
 (function() {
     'use strict';
 
     window.__shippingLabelsLoaded = true;
     console.log('🚀 Shipping Labels module loaded');
 
-    // ========== AVERY 5168 GEOMETRY (inches) ==========
-    const LABEL_W = 5;
-    const LABEL_H = 3.5;
+    // ========== AVERY 5168 GEOMETRY (inches, PORTRAIT sheet 8.5 x 11) ==========
+    // Label 3.5" wide x 5" tall. Sheet layout:
+    //   0.5" top/left/right/bottom margins, 0.5" horizontal gap, 0" vertical gap
+    // Positions (top-left of each label):
+    //   LT (0.5, 0.5)   RT (4.5, 0.5)
+    //   LB (0.5, 5.5)   RB (4.5, 5.5)
+    const LABEL_W = 3.5;
+    const LABEL_H = 5;
     const POS_GEOM = {
         LT: { x: 0.5, y: 0.5 },
-        RT: { x: 5.5, y: 0.5 },
-        LB: { x: 0.5, y: 4.5 },
-        RB: { x: 5.5, y: 4.5 }
+        RT: { x: 4.5, y: 0.5 },
+        LB: { x: 0.5, y: 5.5 },
+        RB: { x: 4.5, y: 5.5 }
     };
     const ALL_POSITIONS = ['LT', 'RT', 'LB', 'RB'];
 
@@ -29,7 +35,7 @@
         'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js'
     ];
 
-    // Per-position rendered canvas (300 DPI)
+    // Per-position rendered canvas (300 DPI, already oriented to fit slot)
     const labelCanvases = { LT: null, RT: null, LB: null, RB: null };
     const labelFileNames = { LT: '', RT: '', LB: '', RB: '' };
 
@@ -80,10 +86,25 @@
         return pdfjsLoading;
     }
 
+    // ========== CANVAS HELPERS ==========
+    function rotate90(src) {
+        const out = document.createElement('canvas');
+        out.width = src.height;
+        out.height = src.width;
+        const ctx = out.getContext('2d');
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, out.width, out.height);
+        ctx.translate(out.width / 2, out.height / 2);
+        ctx.rotate(Math.PI / 2);
+        ctx.drawImage(src, -src.width / 2, -src.height / 2);
+        return out;
+    }
+
     // ========== FIT MATH ==========
+    // Fit source into 3.5 x 5, preserving aspect ratio
     function fitToLabel(srcW, srcH) {
         const srcAspect = srcW / srcH;
-        const labelAspect = LABEL_W / LABEL_H;
+        const labelAspect = LABEL_W / LABEL_H;   // 0.7
         let w, h;
         if (srcAspect > labelAspect) {
             w = LABEL_W;
@@ -93,6 +114,23 @@
             w = LABEL_H * srcAspect;
         }
         return { w, h };
+    }
+
+    // Try as-is vs rotated 90°. Pick whichever fills more of the portrait slot.
+    // For a 4x6 carrier label into a 3.5x5 portrait slot, as-is wins (no rotation).
+    // For a landscape label, rotation wins.
+    function orientForSlot(src) {
+        const asIs = fitToLabel(src.width, src.height);
+        const rotatedDims = fitToLabel(src.height, src.width);
+        const asIsArea = asIs.w * asIs.h;
+        const rotatedArea = rotatedDims.w * rotatedDims.h;
+
+        if (rotatedArea > asIsArea * 1.05) {
+            console.log('🔄 Auto-rotating ' + src.width + 'x' + src.height +
+                        ' → ' + src.height + 'x' + src.width + ' for portrait slot');
+            return rotate90(src);
+        }
+        return src;
     }
 
     // ========== UI HELPERS ==========
@@ -120,6 +158,9 @@
             if (img) {
                 img.src = canvas.toDataURL('image/jpeg', 0.85);
                 img.style.display = 'block';
+                img.style.width = '100%';
+                img.style.height = '100%';
+                img.style.objectFit = 'contain';
             }
             if (rm) rm.style.display = 'flex';
         } else {
@@ -177,7 +218,9 @@
 
             await page.render({ canvasContext: ctx, viewport }).promise;
 
-            labelCanvases[pos] = canvas;
+            const oriented = orientForSlot(canvas);
+
+            labelCanvases[pos] = oriented;
             labelFileNames[pos] = file.name;
 
             refreshSlot(pos);
@@ -188,7 +231,6 @@
             showToast('❌ ' + pos + ': ' + error.message, 'error');
         } finally {
             setSlotLoading(pos, false);
-            // Reset the input value so re-uploading the same file fires `change` again
             const input = document.getElementById('sl-file-' + pos);
             if (input) input.value = '';
         }
@@ -218,11 +260,13 @@
 
         try {
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF({ orientation: 'landscape', unit: 'in', format: 'letter' });
+            // PORTRAIT US Letter — matches the physical Avery 5168 sheet
+            const doc = new jsPDF({ orientation: 'portrait', unit: 'in', format: 'letter' });
 
             ALL_POSITIONS.forEach(pos => {
                 const canvas = labelCanvases[pos];
                 if (!canvas) return;
+
                 const fit = fitToLabel(canvas.width, canvas.height);
                 const g = POS_GEOM[pos];
                 const drawX = g.x + (LABEL_W - fit.w) / 2;
@@ -279,8 +323,6 @@
     }
 
     // ========== GLOBAL EVENT DELEGATION ==========
-    // One change listener on document catches any of the 4 file inputs.
-    // No competing click handler — that was the source of the double dialog.
     function attachGlobalHandlers() {
         if (handlersAttached) return;
         handlersAttached = true;
@@ -311,7 +353,6 @@
         attachGlobalHandlers();
     }
 
-    // Re-run when the tile HTML is swapped in by the router
     const mo = new MutationObserver(() => {
         if (document.querySelector('.sl-slot') && !window.__slReady) {
             window.__slReady = true;

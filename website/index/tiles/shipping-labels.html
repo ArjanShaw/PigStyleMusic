@@ -1,6 +1,6 @@
 <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 14px; overflow-y: auto; width: 100%;">
     <h2 style="color: #333; margin: 0;">📦 Shipping Labels</h2>
-    <p style="color: #666; margin: 0; font-size: 13px;">Avery 5168 — click a corner to upload a shipping label PDF for that position</p>
+    <p style="color: #666; margin: 0; font-size: 13px;">Avery 5168 — 4 labels per sheet (3.5" × 5", portrait). Click a corner to upload a shipping label PDF.</p>
 
     <!-- Sheet -->
     <div class="sl-sheet">
@@ -54,7 +54,7 @@
         <i class="fas fa-print"></i> Print Avery 5168 PDF
     </button>
 
-    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 10px 14px; border-radius: 6px; width: 100%; max-width: 900px; font-size: 12px; color: #856404; text-align: center;">
+    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 10px 14px; border-radius: 6px; width: 100%; max-width: 500px; font-size: 12px; color: #856404; text-align: center;">
         <strong><i class="fas fa-exclamation-triangle"></i> Print at 100% / Actual Size — no scaling.</strong> Do not use "Fit to Page" or "Shrink to Fit".
     </div>
 
@@ -62,8 +62,8 @@
         .sl-sheet {
             position: relative;
             width: 100%;
-            max-width: 900px;
-            aspect-ratio: 11 / 8.5;
+            max-width: 460px; /* narrower for portrait */
+            aspect-ratio: 8.5 / 11;
             background: white;
             border: 2px solid #333;
             border-radius: 4px;
@@ -85,18 +85,19 @@
             border-color: #28a745;
             background: white;
         }
-        .sl-slot[data-pos="LT"] { left: 4.5455%;  top: 5.8824%;  width: 45.4545%; height: 41.1765%; }
-        .sl-slot[data-pos="RT"] { left: 50%;      top: 5.8824%;  width: 45.4545%; height: 41.1765%; }
-        .sl-slot[data-pos="LB"] { left: 4.5455%;  top: 52.9412%; width: 45.4545%; height: 41.1765%; }
-        .sl-slot[data-pos="RB"] { left: 50%;      top: 52.9412%; width: 45.4545%; height: 41.1765%; }
+        /* Portrait sheet — 3.5" × 5" labels, 0.5" margins, 0.5" horizontal gap */
+        .sl-slot[data-pos="LT"] { left: 5.8824%;  top: 4.5455%; width: 41.1765%; height: 45.4545%; }
+        .sl-slot[data-pos="RT"] { left: 52.9412%; top: 4.5455%; width: 41.1765%; height: 45.4545%; }
+        .sl-slot[data-pos="LB"] { left: 5.8824%;  top: 50%;     width: 41.1765%; height: 45.4545%; }
+        .sl-slot[data-pos="RB"] { left: 52.9412%; top: 50%;     width: 41.1765%; height: 45.4545%; }
 
         .sl-slot-upload {
             background: white;
             border: 2px dashed #6d4fc6;
             color: #6d4fc6;
             border-radius: 10px;
-            padding: 10px 22px;
-            font-size: 15px;
+            padding: 10px 20px;
+            font-size: 14px;
             font-weight: 700;
             cursor: pointer;
             display: flex;
@@ -110,7 +111,7 @@
             transform: scale(1.03);
         }
         .sl-slot-upload i {
-            font-size: 18px;
+            font-size: 16px;
         }
 
         .sl-slot-img {
