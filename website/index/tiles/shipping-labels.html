@@ -1,0 +1,160 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 14px; overflow-y: auto; width: 100%;">
+    <h2 style="color: #333; margin: 0;">📦 Shipping Labels</h2>
+    <p style="color: #666; margin: 0; font-size: 13px;">Avery 5168 — click a corner to upload a shipping label PDF for that position</p>
+
+    <!-- Sheet -->
+    <div class="sl-sheet">
+        <!-- LT -->
+        <div class="sl-slot" data-pos="LT">
+            <input type="file" id="sl-file-LT" accept="application/pdf" style="display: none;">
+            <button type="button" class="sl-slot-upload" onclick="slPickFile('LT')">
+                <i class="fas fa-plus"></i>
+                <span>LT</span>
+            </button>
+            <img class="sl-slot-img" alt="LT label" style="display: none;">
+            <button type="button" class="sl-slot-remove" onclick="slRemove('LT')" style="display: none;" title="Remove">×</button>
+        </div>
+
+        <!-- RT -->
+        <div class="sl-slot" data-pos="RT">
+            <input type="file" id="sl-file-RT" accept="application/pdf" style="display: none;">
+            <button type="button" class="sl-slot-upload" onclick="slPickFile('RT')">
+                <i class="fas fa-plus"></i>
+                <span>RT</span>
+            </button>
+            <img class="sl-slot-img" alt="RT label" style="display: none;">
+            <button type="button" class="sl-slot-remove" onclick="slRemove('RT')" style="display: none;" title="Remove">×</button>
+        </div>
+
+        <!-- LB -->
+        <div class="sl-slot" data-pos="LB">
+            <input type="file" id="sl-file-LB" accept="application/pdf" style="display: none;">
+            <button type="button" class="sl-slot-upload" onclick="slPickFile('LB')">
+                <i class="fas fa-plus"></i>
+                <span>LB</span>
+            </button>
+            <img class="sl-slot-img" alt="LB label" style="display: none;">
+            <button type="button" class="sl-slot-remove" onclick="slRemove('LB')" style="display: none;" title="Remove">×</button>
+        </div>
+
+        <!-- RB -->
+        <div class="sl-slot" data-pos="RB">
+            <input type="file" id="sl-file-RB" accept="application/pdf" style="display: none;">
+            <button type="button" class="sl-slot-upload" onclick="slPickFile('RB')">
+                <i class="fas fa-plus"></i>
+                <span>RB</span>
+            </button>
+            <img class="sl-slot-img" alt="RB label" style="display: none;">
+            <button type="button" class="sl-slot-remove" onclick="slRemove('RB')" style="display: none;" title="Remove">×</button>
+        </div>
+    </div>
+
+    <!-- Print button -->
+    <button type="button" id="sl-print-btn" onclick="slPrint()" style="padding: 12px 36px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 700; margin-top: 4px;">
+        <i class="fas fa-print"></i> Print Avery 5168 PDF
+    </button>
+
+    <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 10px 14px; border-radius: 6px; width: 100%; max-width: 900px; font-size: 12px; color: #856404; text-align: center;">
+        <strong><i class="fas fa-exclamation-triangle"></i> Print at 100% / Actual Size — no scaling.</strong> Do not use "Fit to Page" or "Shrink to Fit".
+    </div>
+
+    <style>
+        .sl-sheet {
+            position: relative;
+            width: 100%;
+            max-width: 900px;
+            aspect-ratio: 11 / 8.5;
+            background: white;
+            border: 2px solid #333;
+            border-radius: 4px;
+            margin: 0 auto;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        }
+        .sl-slot {
+            position: absolute;
+            border: 1.5px dashed #ccc;
+            border-radius: 4px;
+            background: #fafafa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .sl-slot.filled {
+            border-style: solid;
+            border-color: #28a745;
+            background: white;
+        }
+        .sl-slot[data-pos="LT"] { left: 4.5455%;  top: 5.8824%;  width: 45.4545%; height: 41.1765%; }
+        .sl-slot[data-pos="RT"] { left: 50%;      top: 5.8824%;  width: 45.4545%; height: 41.1765%; }
+        .sl-slot[data-pos="LB"] { left: 4.5455%;  top: 52.9412%; width: 45.4545%; height: 41.1765%; }
+        .sl-slot[data-pos="RB"] { left: 50%;      top: 52.9412%; width: 45.4545%; height: 41.1765%; }
+
+        .sl-slot-upload {
+            background: white;
+            border: 2px dashed #6d4fc6;
+            color: #6d4fc6;
+            border-radius: 10px;
+            padding: 10px 22px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            transition: all 0.15s;
+        }
+        .sl-slot-upload:hover {
+            background: #f0ecff;
+            transform: scale(1.03);
+        }
+        .sl-slot-upload i {
+            font-size: 18px;
+        }
+
+        .sl-slot-img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        .sl-slot-remove {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: rgba(220, 53, 69, 0.92);
+            color: white;
+            border: 2px solid white;
+            border-radius: 50%;
+            width: 26px;
+            height: 26px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 15px;
+            line-height: 1;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+        }
+        .sl-slot-remove:hover {
+            background: #c82333;
+        }
+        .sl-slot.loading::after {
+            content: "Loading…";
+            position: absolute;
+            inset: 0;
+            background: rgba(255,255,255,0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: #6d4fc6;
+            font-size: 13px;
+        }
+    </style>
+</div>

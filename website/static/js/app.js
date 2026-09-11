@@ -25,7 +25,7 @@ const CUSTOMER_TILES = [
 const ADMIN_TILES = [
     'admin-dashboard',
     'add-records', 'accounting', 'purchases', 'scan', 'post-discogs',
-    'discogs-orders', 'edit-records', 'accessories', 'custom-labels',
+    'discogs-orders', 'edit-records', 'accessories', 'custom-labels', 'shipping-labels',
     'custom-checkout', 'email-subscriptions', 'record-orders', 'feedback',
     'email-list', 'online-orders', 'sticky-notes', 'stats', 'creditors',
     'users', 'print-settings', 'store-settings', 'gift-cards',
@@ -144,6 +144,7 @@ const INIT_MAP = {
     'edit-records': 'initEditRecords',
     'accessories': 'initAccessories',
     'custom-labels': 'initCustomLabels',
+    'shipping-labels': 'initShippingLabels',
     'custom-checkout': 'initCustomCheckout',
     'email-subscriptions': 'initEmailSubscriptions',
     'record-orders': 'initRecordOrders',

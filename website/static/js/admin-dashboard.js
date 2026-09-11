@@ -79,6 +79,14 @@
             notification: null
         },
         { 
+            page: 'shipping-labels', 
+            icon: 'fa-shipping-fast', 
+            label: 'Shipping Labels', 
+            description: 'Print Avery 5168 shipping labels from PDF',
+            color: 'info',
+            notification: null
+        },
+        { 
             page: 'custom-checkout', 
             icon: 'fa-plus-circle', 
             label: 'Custom Checkout', 
