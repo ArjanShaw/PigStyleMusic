@@ -742,190 +742,67 @@ def require_discogs_auth(f):
     return decorated_function
 
 
-# ==================== NEW: SELF-CONTAINED BATCH MARKUP ENDPOINT ====================
-# This is the ONLY endpoint that calculates Discogs prices.
-# No try/catch – it raises exceptions on invalid data.
-# No helper functions – all logic is inlined.
-# ================================================================================
-
-@app.route('/api/discogs/calculate-markup-batch', methods=['POST'])
-def calculate_markup_batch():
-    """
-    ONE endpoint for all markup calculations.
-    Accepts: {"records": [{"id": 1, "created_at": "2026-01-01", "store_price": 10.0}, ...]}
-    Returns: {"status": "success", "results": [{"id": 1, "discogs_price": 12.5, "markup_percent": 20.0, "days_old": 5}, ...]}
-    No try/catch – if data is invalid, it raises an exception and returns 500.
-    """
-    from datetime import date, datetime
-
-    data = request.json
-    records_input = data.get('records', [])
-    if not records_input:
-        raise ValueError('No records provided')
-
-    # Fetch rules once
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT days_old, markup_percent FROM markup_rules ORDER BY days_old ASC')
-    rules_rows = cursor.fetchall()
-    conn.close()
-    if not rules_rows:
-        raise ValueError('No markup rules configured')
-
-    rules = [(r['days_old'], r['markup_percent']) for r in rules_rows]
-    today = date.today()
-    results = []
-
-    for rec in records_input:
-        rec_id = rec.get('id')
-        if rec_id is None:
-            raise ValueError('Missing record id')
-
-        created_at_str = rec.get('created_at')
-        if not created_at_str:
-            raise ValueError(f'Missing created_at for record {rec_id}')
-
-        store_price = rec.get('store_price')
-        if store_price is None:
-            raise ValueError(f'Missing store_price for record {rec_id}')
-        store_price = float(store_price)
-        if store_price <= 0:
-            raise ValueError(f'store_price must be > 0 for record {rec_id}')
-
-        # --- Strict date parsing (no fallback) ---
-        if isinstance(created_at_str, str):
-            try:
-                # Try ISO date first
-                created_date = datetime.strptime(created_at_str.split('T')[0], '%Y-%m-%d').date()
-            except ValueError:
-                # Then try full datetime
-                created_date = datetime.strptime(created_at_str, '%Y-%m-%d %H:%M:%S').date()
-        else:
-            created_date = created_at_str
-
-        days_old = (today - created_date).days
-
-        # --- Inline interpolation (no helper) ---
-        if days_old <= rules[0][0]:
-            markup_percent = rules[0][1]
-        elif days_old >= rules[-1][0]:
-            markup_percent = rules[-1][1]
-        else:
-            markup_percent = 0.0
-            for i in range(len(rules) - 1):
-                x1, y1 = rules[i]
-                x2, y2 = rules[i + 1]
-                if x1 <= days_old <= x2:
-                    if x2 == x1:
-                        markup_percent = y1
-                    else:
-                        t = (days_old - x1) / (x2 - x1)
-                        markup_percent = y1 + t * (y2 - y1)
-                    break
-
-        discogs_price = round(store_price * (1 + markup_percent / 100), 2)
-
-        results.append({
-            'id': rec_id,
-            'discogs_price': discogs_price,
-            'markup_percent': round(markup_percent, 1),
-            'days_old': days_old
-        })
-
-    return jsonify({'status': 'success', 'results': results})
 
 
 @app.route('/api/discogs/create-listing-single', methods=['POST'])
 def create_discogs_listing_single():
-    """Create a single listing on Discogs with dynamic markup based on record age"""
+    """
+    Create a single listing on Discogs.
+    The price MUST be supplied by the client (record.price).
+    No fallback markup calculation — the frontend is the single source of truth.
+    """
     try:
         data = request.json
         record = data.get('record', {})
-        
+
         if not record:
-            return jsonify({'error': 'No record provided'}), 400
-        
-        if not record.get('media_condition') or record['media_condition'].strip() == '':
+            return jsonify({'success': False, 'error': 'No record provided'}), 400
+
+        if not record.get('media_condition') or str(record['media_condition']).strip() == '':
             return jsonify({'success': False, 'error': 'media_condition is required'}), 400
-        
-        if not record.get('sleeve_condition') or record['sleeve_condition'].strip() == '':
+
+        if not record.get('sleeve_condition') or str(record['sleeve_condition']).strip() == '':
             return jsonify({'success': False, 'error': 'sleeve_condition is required'}), 400
-        
+
+        # --- Price is REQUIRED, no fallback ---
+        if record.get('price') is None:
+            return jsonify({'success': False, 'error': 'price is required'}), 400
+
+        try:
+            discogs_price = float(record['price'])
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'price must be a number'}), 400
+
+        if discogs_price <= 0:
+            return jsonify({'success': False, 'error': 'price must be greater than 0'}), 400
+
         TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
         if not TOKEN:
             return jsonify({'success': False, 'error': 'Discogs token not configured'}), 500
-        
-        # Get the full record from database to access created_at and store_price
+
+        # Verify the record exists in the DB
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute('SELECT created_at, store_price FROM records WHERE id = ?', (record['id'],))
-        db_record = cursor.fetchone()
-        conn.close()
-        
-        if not db_record:
+        cursor.execute('SELECT id FROM records WHERE id = ?', (record['id'],))
+        if not cursor.fetchone():
+            conn.close()
             return jsonify({'success': False, 'error': f'Record #{record["id"]} not found'}), 404
-        
-        # ---- Inline markup calculation ----
-        from datetime import date, datetime
-        
-        # Fetch rules
-        conn2 = get_db()
-        cursor2 = conn2.cursor()
-        cursor2.execute('SELECT days_old, markup_percent FROM markup_rules ORDER BY days_old ASC')
-        rules_rows = cursor2.fetchall()
-        conn2.close()
-        if not rules_rows:
-            return jsonify({'success': False, 'error': 'No markup rules configured'}), 400
+        conn.close()
 
-        rules = [(r['days_old'], r['markup_percent']) for r in rules_rows]
-
-        # Parse created_at strictly
-        created_at_str = db_record['created_at']
-        if isinstance(created_at_str, str):
-            try:
-                created_date = datetime.strptime(created_at_str.split('T')[0], '%Y-%m-%d').date()
-            except ValueError:
-                created_date = datetime.strptime(created_at_str, '%Y-%m-%d %H:%M:%S').date()
-        else:
-            created_date = created_at_str
-
-        days_old = (date.today() - created_date).days
-
-        # Inline interpolation
-        if days_old <= rules[0][0]:
-            markup_percent = rules[0][1]
-        elif days_old >= rules[-1][0]:
-            markup_percent = rules[-1][1]
-        else:
-            markup_percent = 0.0
-            for i in range(len(rules) - 1):
-                x1, y1 = rules[i]
-                x2, y2 = rules[i + 1]
-                if x1 <= days_old <= x2:
-                    if x2 == x1:
-                        markup_percent = y1
-                    else:
-                        t = (days_old - x1) / (x2 - x1)
-                        markup_percent = y1 + t * (y2 - y1)
-                    break
-
-        discogs_price = round(db_record['store_price'] * (1 + markup_percent / 100), 2)
-        # ---- End of inline calculation ----
-        
         headers = {
             'Authorization': f'Discogs token={TOKEN}',
             'User-Agent': 'PigStyleMusic/1.0'
         }
-        
+
         # Search for release
         search_url = "https://api.discogs.com/database/search"
         target_catalog = record.get('catalog_number', '')
         target_artist = record.get('artist', '')
         target_title = record.get('title', '')
-        
+
         if not target_catalog:
             return jsonify({'success': False, 'error': 'catalog_number is required for search'}), 400
-        
+
         search_query_parts = []
         if target_artist:
             search_query_parts.append(target_artist)
@@ -933,69 +810,60 @@ def create_discogs_listing_single():
             search_query_parts.append(target_title)
         if target_catalog:
             search_query_parts.append(target_catalog)
-        
         search_query = ' '.join(search_query_parts)
-        
-        search_params = {
-            'q': search_query,
-            'type': 'release',
-            'per_page': 50
-        }
-        
+
+        search_params = {'q': search_query, 'type': 'release', 'per_page': 50}
         search_response = requests.get(search_url, headers=headers, params=search_params)
-        
+
         if search_response.status_code != 200:
             app.logger.error(f"Search failed: {search_response.status_code}")
             return jsonify({'success': False, 'error': f'Search failed: {search_response.status_code}'}), search_response.status_code
-        
+
         search_data = search_response.json()
         all_releases = search_data.get('results', [])
-        
-        # Find exact match
-        exact_matches = []
+
         target_normalized_catno = target_catalog.replace(' ', '').replace('-', '').replace('–', '').strip().lower()
         target_artist_lower = target_artist.strip().lower() if target_artist else ''
         target_title_lower = target_title.strip().lower() if target_title else ''
-        
+
+        exact_matches = []
         for release in all_releases:
             release_catno = release.get('catno', '')
             release_title = release.get('title', '')
             release_artist = release.get('artist', '')
-            
+
             release_normalized_catno = release_catno.replace(' ', '').replace('-', '').replace('–', '').strip().lower()
             catalog_matches = release_normalized_catno == target_normalized_catno
-            
+
             artist_matches = False
             if target_artist_lower:
-                artist_matches = (target_artist_lower in release_artist.lower() or 
-                                 target_artist_lower in release_title.lower())
-            
+                artist_matches = (target_artist_lower in release_artist.lower() or
+                                  target_artist_lower in release_title.lower())
+
             title_matches = False
             if target_title_lower:
                 title_matches = target_title_lower in release_title.lower()
-            
+
             if catalog_matches and (artist_matches or title_matches):
                 exact_matches.append(release)
-        
+
         if not exact_matches:
-            # Return more helpful error message
             return jsonify({
-                'success': False, 
+                'success': False,
                 'error': f'No exact match found for catalog number "{target_catalog}".'
             }), 400
-        
+
         selected_release = exact_matches[0]
         release_id = selected_release.get('id')
-        
-        # Create listing on Discogs
+
         listing_url_endpoint = "https://api.discogs.com/marketplace/listings"
-        
+
         comments = f"[PIGSTYLE ID: {record['id']}]"
         if record.get('location'):
             comments += f" | Location: {record.get('location')}"
         if record.get('notes'):
             comments += f" | {record.get('notes')}"
-        
+
         listing_data = {
             "release_id": release_id,
             "condition": record.get('media_condition'),
@@ -1004,40 +872,36 @@ def create_discogs_listing_single():
             "status": "For Sale",
             "comments": comments
         }
-        
-        app.logger.info(f"Creating listing for release {release_id} at price ${discogs_price} (Record age: {days_old} days, Markup: {markup_percent}%)")
-        
+
+        app.logger.info(f"Creating listing for release {release_id} at client-supplied price ${discogs_price} (Record #{record['id']})")
+
         listing_response = requests.post(listing_url_endpoint, headers=headers, json=listing_data)
-        
+
         if listing_response.status_code in [200, 201]:
             listing_result = listing_response.json()
             listing_id = listing_result.get('listing_id')
             discogs_url = f"https://www.discogs.com/sell/item/{listing_id}"
-            
+
             return jsonify({
                 'success': True,
                 'listing_id': listing_id,
                 'listing_url': discogs_url,
                 'release_id': release_id,
                 'price': discogs_price,
-                'record_id': record['id'],
-                'days_old': days_old,
-                'markup_percent': markup_percent
+                'record_id': record['id']
             })
         else:
             error_text = listing_response.text[:500]
             return jsonify({
-                'success': False, 
+                'success': False,
                 'error': f'Discogs API error: {error_text}'
             }), listing_response.status_code
-        
+
     except Exception as e:
         app.logger.error(f"Error creating listing: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
 
- 
- # ==================== ADMIN ORDERS ENDPOINTS ====================
 
 @app.route('/api/admin/orders', methods=['GET', 'OPTIONS'])
 def get_admin_orders():
@@ -5942,108 +5806,6 @@ def get_created_at_distribution_stats():
         'months': months,
         'counts': counts
     })
-
-@app.route('/api/markup-rules', methods=['GET'])
-def get_markup_rules():
-    """Get all markup rules"""
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT id, days_old, markup_percent, description FROM markup_rules ORDER BY days_old ASC')
-        rules = cursor.fetchall()
-        conn.close()
-        
-        return jsonify({
-            'status': 'success',
-            'rules': [dict(rule) for rule in rules]
-        })
-    except Exception as e:
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
-@app.route('/api/markup-rules', methods=['POST'])
-@login_required
-@role_required(['admin'])
-def create_markup_rule():
-    """Create a new markup rule"""
-    try:
-        data = request.json
-        days_old = data.get('days_old')
-        markup_percent = data.get('markup_percent')
-        description = data.get('description', '')
-        
-        if days_old is None or markup_percent is None:
-            return jsonify({'status': 'error', 'error': 'days_old and markup_percent required'}), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO markup_rules (days_old, markup_percent, description)
-            VALUES (?, ?, ?)
-        ''', (days_old, markup_percent, description))
-        rule_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        
-        return jsonify({'status': 'success', 'id': rule_id})
-    except Exception as e:
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
-@app.route('/api/markup-rules/<int:rule_id>', methods=['PUT'])
-@login_required
-@role_required(['admin'])
-def update_markup_rule(rule_id):
-    """Update a markup rule"""
-    try:
-        data = request.json
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        updates = []
-        params = []
-        
-        if 'days_old' in data:
-            updates.append('days_old = ?')
-            params.append(data['days_old'])
-        if 'markup_percent' in data:
-            updates.append('markup_percent = ?')
-            params.append(data['markup_percent'])
-        if 'description' in data:
-            updates.append('description = ?')
-            params.append(data['description'])
-        
-        if not updates:
-            conn.close()
-            return jsonify({'status': 'error', 'error': 'No fields to update'}), 400
-        
-        updates.append('updated_at = CURRENT_TIMESTAMP')
-        params.append(rule_id)
-        
-        cursor.execute(f'UPDATE markup_rules SET {", ".join(updates)} WHERE id = ?', params)
-        conn.commit()
-        conn.close()
-        
-        return jsonify({'status': 'success'})
-    except Exception as e:
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
-@app.route('/api/markup-rules/<int:rule_id>', methods=['DELETE'])
-@login_required
-@role_required(['admin'])
-def delete_markup_rule(rule_id):
-    """Delete a markup rule"""
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM markup_rules WHERE id = ?', (rule_id,))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'success'})
-    except Exception as e:
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 @app.route('/api/price-estimate-v3', methods=['POST'])
 def price_estimate_v3():

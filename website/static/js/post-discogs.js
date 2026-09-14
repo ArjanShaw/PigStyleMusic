@@ -3,6 +3,14 @@
 // Post to Discogs page - Location-based display with section grouping
 // Records are loaded manually via the "Load Records" button.
 // Progress is shown during pagination and price calculation.
+//
+// MARKUP MODEL (single source of truth — frontend only):
+//   Initial Markup  : starting markup %, e.g. 20
+//   Weekly Step     : markup drops this many points per week, e.g. 2
+//   Max Markdown    : maximum discount as a POSITIVE % (0-100), e.g. 50
+//                     → internally floor = -MaxMarkdown
+//
+// NO FALLBACKS: if a required config value is missing, we throw.
 // ================================================================
 
 (function() {
@@ -15,9 +23,9 @@
 
     let records = [];
     let cutoffDate = null;
-    let discogsMarkupPercent = 20;
-    let discogsPriceStep = 2;
-    let discogsMinMarkdown = -50;
+    let discogsMarkupPercent = null;    // Initial markup — loaded from config, no default
+    let discogsPriceStep = null;        // Weekly step    — loaded from config, no default
+    let discogsMaxMarkdown = null;      // Max markdown   — loaded from config, no default
     let isUpdating = false;
     let isPosting = false;
     let cancelPosting = false;
@@ -36,106 +44,122 @@
         return headers;
     }
 
-    // ===== FETCH CONFIG PARAMETERS (UNCHANGED) =====
+    // ===== HELPER: BUILD LOCATION DISPLAY STRING WITH INDEX =====
+    // Produces "Bin 36/3 (#2)" — same format as the shop page.
+    function buildLocationDisplay(record) {
+        const name = record.location_name || 'Unknown Location';
+        const idx = record.location_index;
+        if (idx === null || idx === undefined || idx === '') {
+            return name;
+        }
+        return `${name} (#${idx})`;
+    }
+
+    // ===== HELPER: INTERNAL FLOOR (negative markup) =====
+    // Max Markdown is stored as a positive number (0-100).
+    // The floor used in the formula is its negative.
+    function getMarkdownFloor() {
+        return -Math.abs(discogsMaxMarkdown);
+    }
+
+    // ===== FETCH A SINGLE REQUIRED CONFIG VALUE =====
+    // Throws on any failure — missing key, network error, bad payload.
+    async function fetchRequiredConfig(key) {
+        const response = await fetch(`${API_BASE}/config/${key}`, {
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Config ${key} not available (HTTP ${response.status})`);
+        }
+
+        const data = await response.json();
+
+        if (data.status !== 'success') {
+            throw new Error(`Config ${key} returned non-success status`);
+        }
+
+        if (data.config_value === null || data.config_value === undefined || data.config_value === '') {
+            throw new Error(`Config ${key} is missing in app_config`);
+        }
+
+        const parsed = parseFloat(data.config_value);
+        if (isNaN(parsed)) {
+            throw new Error(`Config ${key} is not a valid number (got "${data.config_value}")`);
+        }
+
+        return parsed;
+    }
+
+    // ===== FETCH CONFIG PARAMETERS =====
+    // No fallbacks. Throws if any value is missing or invalid.
     async function fetchDiscogsConfig() {
-        try {
-            let response = await fetch(`${API_BASE}/config/DISCOGS_MARKUP_PERCENT`, {
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                if (data.status === 'success' && data.config_value) {
-                    discogsMarkupPercent = parseFloat(data.config_value);
-                    const el = document.getElementById('discogs-markup-percent');
-                    if (el) el.value = discogsMarkupPercent;
-                }
-            }
+        const markup = await fetchRequiredConfig('DISCOGS_MARKUP_PERCENT');
+        const step = await fetchRequiredConfig('DISCOGS_PRICE_STEP');
+        const maxMd = await fetchRequiredConfig('DISCOGS_MAX_MARKDOWN');
 
-            response = await fetch(`${API_BASE}/config/DISCOGS_PRICE_STEP`, {
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                if (data.status === 'success' && data.config_value) {
-                    discogsPriceStep = parseFloat(data.config_value);
-                    const el = document.getElementById('discogs-price-step');
-                    if (el) el.value = discogsPriceStep;
-                }
-            }
-
-            response = await fetch(`${API_BASE}/config/DISCOGS_MIN_MARKDOWN`, {
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                if (data.status === 'success' && data.config_value !== null && data.config_value !== undefined) {
-                    discogsMinMarkdown = parseFloat(data.config_value);
-                    const el = document.getElementById('discogs-min-markdown');
-                    if (el) el.value = discogsMinMarkdown;
-                }
-            }
-
-            updatePriceInfo();
-            return true;
-        } catch (err) {
-            console.warn('Error fetching Discogs config, using defaults:', err);
-            return false;
+        if (maxMd < 0 || maxMd > 100) {
+            throw new Error(`Config DISCOGS_MAX_MARKDOWN must be between 0 and 100 (got ${maxMd})`);
         }
+        if (step < 0) {
+            throw new Error(`Config DISCOGS_PRICE_STEP must be >= 0 (got ${step})`);
+        }
+
+        discogsMarkupPercent = markup;
+        discogsPriceStep = step;
+        discogsMaxMarkdown = Math.abs(maxMd);
+
+        const markupEl = document.getElementById('discogs-markup-percent');
+        if (markupEl) markupEl.value = discogsMarkupPercent;
+
+        const stepEl = document.getElementById('discogs-price-step');
+        if (stepEl) stepEl.value = discogsPriceStep;
+
+        const maxEl = document.getElementById('discogs-max-markdown');
+        if (maxEl) maxEl.value = discogsMaxMarkdown;
+
+        updatePriceInfo();
     }
 
-    // ===== SAVE CONFIG PARAMETERS (UNCHANGED) =====
+    // ===== SAVE CONFIG PARAMETERS =====
     async function saveDiscogsConfig() {
-        try {
-            let response = await fetch(`${API_BASE}/config/DISCOGS_MARKUP_PERCENT`, {
-                method: 'PUT',
-                credentials: 'include',
-                headers: getHeaders(),
-                body: JSON.stringify({ config_value: discogsMarkupPercent })
-            });
-            if (!response.ok) console.warn('Failed to save DISCOGS_MARKUP_PERCENT');
+        let response = await fetch(`${API_BASE}/config/DISCOGS_MARKUP_PERCENT`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: getHeaders(),
+            body: JSON.stringify({ config_value: discogsMarkupPercent })
+        });
+        if (!response.ok) throw new Error('Failed to save DISCOGS_MARKUP_PERCENT');
 
-            response = await fetch(`${API_BASE}/config/DISCOGS_PRICE_STEP`, {
-                method: 'PUT',
-                credentials: 'include',
-                headers: getHeaders(),
-                body: JSON.stringify({ config_value: discogsPriceStep })
-            });
-            if (!response.ok) console.warn('Failed to save DISCOGS_PRICE_STEP');
+        response = await fetch(`${API_BASE}/config/DISCOGS_PRICE_STEP`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: getHeaders(),
+            body: JSON.stringify({ config_value: discogsPriceStep })
+        });
+        if (!response.ok) throw new Error('Failed to save DISCOGS_PRICE_STEP');
 
-            response = await fetch(`${API_BASE}/config/DISCOGS_MIN_MARKDOWN`, {
-                method: 'PUT',
-                credentials: 'include',
-                headers: getHeaders(),
-                body: JSON.stringify({ config_value: discogsMinMarkdown })
-            });
-            if (!response.ok) console.warn('Failed to save DISCOGS_MIN_MARKDOWN');
-
-            return true;
-        } catch (err) {
-            console.error('Error saving Discogs config:', err);
-            return false;
-        }
+        response = await fetch(`${API_BASE}/config/DISCOGS_MAX_MARKDOWN`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: getHeaders(),
+            body: JSON.stringify({ config_value: discogsMaxMarkdown })
+        });
+        if (!response.ok) throw new Error('Failed to save DISCOGS_MAX_MARKDOWN');
     }
 
-    // ===== FETCH LAST_SEEN_CUTOFF_DATE (UNCHANGED) =====
+    // ===== FETCH LAST_SEEN_CUTOFF_DATE =====
     async function fetchLastSeenCutoff() {
         try {
             const response = await fetch(`${API_BASE}/config/LAST_SEEN_CUTOFF_DATE`, {
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' }
             });
-            
             if (!response.ok) {
                 console.warn('Could not fetch LAST_SEEN_CUTOFF_DATE, using default');
                 return null;
             }
-            
             const data = await response.json();
             if (data.status === 'success' && data.config_value) {
                 console.log('📅 LAST_SEEN_CUTOFF_DATE:', data.config_value);
@@ -160,49 +184,52 @@
     }
 
     // ===== CALCULATE DISCOGS PRICE =====
+    // The ONLY place markup is calculated. Backend trusts this price.
     function calculateDiscogsPrice(record) {
         if (!record || !record.created_at || !record.store_price || record.store_price <= 0) {
             return null;
         }
 
-        try {
-            let createdDate;
-            if (typeof record.created_at === 'string') {
-                createdDate = new Date(record.created_at.split('T')[0]);
-            } else {
-                createdDate = new Date(record.created_at);
-            }
-            
-            if (isNaN(createdDate.getTime())) return null;
-
-            const today = new Date();
-            const daysOld = Math.floor((today - createdDate) / (1000 * 60 * 60 * 24));
-            const weeksOld = Math.floor(daysOld / 7);
-            
-            let markup = discogsMarkupPercent - (weeksOld * discogsPriceStep);
-            markup = Math.max(discogsMinMarkdown, markup);
-            
-            const discogsPrice = record.store_price * (1 + markup / 100);
-            
-            return {
-                discogs_price: Math.round(discogsPrice * 100) / 100,
-                markup_percent: Math.round(markup * 10) / 10,
-                days_old: daysOld,
-                weeks_old: weeksOld
-            };
-        } catch (err) {
-            console.error('Error calculating Discogs price for record', record.id, err);
-            return null;
+        if (discogsMarkupPercent === null || discogsPriceStep === null || discogsMaxMarkdown === null) {
+            throw new Error('Discogs config not loaded — cannot calculate price');
         }
+
+        let createdDate;
+        if (typeof record.created_at === 'string') {
+            createdDate = new Date(record.created_at.split('T')[0]);
+        } else {
+            createdDate = new Date(record.created_at);
+        }
+        if (isNaN(createdDate.getTime())) return null;
+
+        const today = new Date();
+        const daysOld = Math.floor((today - createdDate) / (1000 * 60 * 60 * 24));
+        const weeksOld = Math.floor(daysOld / 7);
+
+        const floor = getMarkdownFloor();   // e.g. -50
+        let markup = discogsMarkupPercent - (weeksOld * discogsPriceStep);
+        markup = Math.max(floor, markup);
+
+        const discogsPrice = record.store_price * (1 + markup / 100);
+
+        return {
+            discogs_price: Math.round(discogsPrice * 100) / 100,
+            markup_percent: Math.round(markup * 10) / 10,
+            days_old: daysOld,
+            weeks_old: weeksOld
+        };
     }
 
     // ===== UPDATE PRICE INFO DISPLAY =====
     function updatePriceInfo() {
         const info = document.getElementById('price-calc-info');
-        if (info) {
-            const withPrices = records.filter(r => r._discogsPrice && r._discogsPrice > 0);
-            info.textContent = `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (floor: ${discogsMinMarkdown}%) | ${withPrices.length} records have prices`;
+        if (!info) return;
+        if (discogsMarkupPercent === null) {
+            info.textContent = 'Config not loaded';
+            return;
         }
+        const withPrices = records.filter(r => r._discogsPrice && r._discogsPrice > 0);
+        info.textContent = `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (max markdown: ${discogsMaxMarkdown}%) | ${withPrices.length} records have prices`;
     }
 
     // ===== CALCULATE PRICES FOR ALL RECORDS =====
@@ -228,7 +255,7 @@
         });
     }
 
-    // ===== UPDATE PRICES (called when parameters change) =====
+    // ===== UPDATE PRICES =====
     window.updateDiscogsPrices = async function() {
         if (isUpdating) return;
         if (isLoadingRecords) {
@@ -241,46 +268,49 @@
         }
         isUpdating = true;
 
-        const markupInput = document.getElementById('discogs-markup-percent');
-        const stepInput = document.getElementById('discogs-price-step');
-        const minInput = document.getElementById('discogs-min-markdown');
-        
-        const newMarkup = parseFloat(markupInput.value);
-        const newStep = parseFloat(stepInput.value);
-        const newMin = parseFloat(minInput.value);
-        
-        if (isNaN(newMarkup) || newMarkup < -100) {
-            alert('Initial Markup must be a number (-100 to 200)');
+        try {
+            const markupInput = document.getElementById('discogs-markup-percent');
+            const stepInput = document.getElementById('discogs-price-step');
+            const maxInput = document.getElementById('discogs-max-markdown');
+
+            const newMarkup = parseFloat(markupInput.value);
+            const newStep = parseFloat(stepInput.value);
+            const newMax = parseFloat(maxInput.value);
+
+            if (isNaN(newMarkup) || newMarkup < -100 || newMarkup > 200) {
+                alert('Initial Markup must be a number between -100 and 200');
+                return;
+            }
+            if (isNaN(newStep) || newStep < 0) {
+                alert('Weekly Step must be a positive number');
+                return;
+            }
+            if (isNaN(newMax) || newMax < 0 || newMax > 100) {
+                alert('Max Markdown must be a number between 0 and 100');
+                return;
+            }
+
+            discogsMarkupPercent = newMarkup;
+            discogsPriceStep = newStep;
+            discogsMaxMarkdown = Math.abs(newMax);
+
+            await saveDiscogsConfig();
+
+            records = calculateDiscogsPricesForRecords(records);
+            renderRecords();
+            updatePriceInfo();
+
+            const withPrices = records.filter(r => r._discogsPrice && r._discogsPrice > 0);
+            const withMarkdown = records.filter(r => r._markupPercent && r._markupPercent < 0);
+            showStatus(`✅ Prices updated! ${withPrices.length} records have prices (${withMarkdown.length} on markdown)`, 'info');
+
+            updateButtons();
+        } catch (err) {
+            console.error('Update prices error:', err);
+            showStatus(`❌ ${err.message}`, 'error');
+        } finally {
             isUpdating = false;
-            return;
         }
-        if (isNaN(newStep) || newStep < 0) {
-            alert('Weekly Step must be a positive number');
-            isUpdating = false;
-            return;
-        }
-        if (isNaN(newMin) || newMin > 0 || newMin < -100) {
-            alert('Min Markdown must be between -100 and 0');
-            isUpdating = false;
-            return;
-        }
-
-        discogsMarkupPercent = newMarkup;
-        discogsPriceStep = newStep;
-        discogsMinMarkdown = newMin;
-
-        await saveDiscogsConfig();
-
-        records = calculateDiscogsPricesForRecords(records);
-        renderRecords();
-        updatePriceInfo();
-
-        const withPrices = records.filter(r => r._discogsPrice && r._discogsPrice > 0);
-        const withMarkdown = records.filter(r => r._markupPercent && r._markupPercent < 0);
-        showStatus(`✅ Prices updated! ${withPrices.length} records have prices (${withMarkdown.length} on markdown)`, 'info');
-
-        updateButtons();
-        isUpdating = false;
     };
 
     // ===== FETCH ALL RECORDS WITH PROGRESS CALLBACK =====
@@ -294,64 +324,45 @@
         console.log('📊 Fetching all records with pagination...');
 
         while (hasMore) {
-            try {
-                let url = `${API_BASE}/records?status_ids=2&limit=${perPage}&offset=${(page - 1) * perPage}`;
-                
-                if (cutoffDate) {
-                    url += `&last_seen_after=${cutoffDate}`;
-                }
+            let url = `${API_BASE}/records?status_ids=2&limit=${perPage}&offset=${(page - 1) * perPage}`;
+            if (cutoffDate) {
+                url += `&last_seen_after=${cutoffDate}`;
+            }
 
-                const response = await fetch(url, {
-                    credentials: 'include',
-                    mode: 'cors',
-                    headers: getHeaders()
-                });
+            const response = await fetch(url, {
+                credentials: 'include',
+                mode: 'cors',
+                headers: getHeaders()
+            });
 
-                if (!response.ok) {
-                    console.error(`Failed to fetch page ${page}:`, response.status);
-                    break;
-                }
+            if (!response.ok) {
+                throw new Error(`Failed to fetch page ${page} (HTTP ${response.status})`);
+            }
 
-                const data = await response.json();
-                
-                if (data.status === 'success') {
-                    const pageRecords = data.records || [];
-                    total = data.total || 0;
-                    allRecords = allRecords.concat(pageRecords);
+            const data = await response.json();
 
-                    if (onProgress) {
-                        onProgress({
-                            page,
-                            loaded: allRecords.length,
-                            total,
-                            finished: false
-                        });
-                    }
-                    
-                    if (allRecords.length >= total || pageRecords.length < perPage) {
-                        hasMore = false;
-                    } else {
-                        page++;
-                    }
-                } else {
-                    console.error('API error:', data.error);
-                    hasMore = false;
-                }
-            } catch (err) {
-                console.error('Error fetching records page:', err);
+            if (data.status !== 'success') {
+                throw new Error(data.error || `API error on page ${page}`);
+            }
+
+            const pageRecords = data.records || [];
+            total = data.total || 0;
+            allRecords = allRecords.concat(pageRecords);
+
+            if (onProgress) {
+                onProgress({ page, loaded: allRecords.length, total, finished: false });
+            }
+
+            if (allRecords.length >= total || pageRecords.length < perPage) {
                 hasMore = false;
+            } else {
+                page++;
             }
         }
 
         if (onProgress) {
-            onProgress({
-                page,
-                loaded: allRecords.length,
-                total,
-                finished: true
-            });
+            onProgress({ page, loaded: allRecords.length, total, finished: true });
         }
-
         return allRecords;
     }
 
@@ -399,7 +410,7 @@
         }
     }
 
-    // ===== MAIN LOAD FUNCTION (called by the button) =====
+    // ===== MAIN LOAD FUNCTION =====
     window.loadPostDiscogsRecords = async function() {
         if (isLoadingRecords) {
             console.log('⏳ Already loading, ignoring click');
@@ -419,16 +430,12 @@
         }
 
         try {
-            // 1. Fetch config
             showLoadProgressBar('⚙️ Loading configuration...', 0, 0, '');
             await fetchDiscogsConfig();
             cutoffDate = await fetchLastSeenCutoff();
 
-            // 2. Fetch records page by page
             const fetched = await fetchAllRecords(({ page, loaded, total, finished }) => {
-                const label = finished
-                    ? '✅ Records fetched'
-                    : `📥 Fetching page ${page}...`;
+                const label = finished ? '✅ Records fetched' : `📥 Fetching page ${page}...`;
                 showLoadProgressBar(label, loaded, total, cutoffDate ? `Cutoff: ${cutoffDate}` : 'No cutoff');
             });
 
@@ -440,7 +447,6 @@
                 return;
             }
 
-            // 3. Client-side cutoff filter (if server didn't do it)
             let filtered = fetched;
             if (cutoffDate) {
                 const before = fetched.length;
@@ -448,8 +454,6 @@
                 console.log(`📅 Client-side cutoff filter: ${before} → ${filtered.length}`);
             }
 
-            // 4. Calculate prices — show a progress message, then yield once
-            // so the browser paints it before the sync loop
             showLoadProgressBar('💰 Calculating prices...', filtered.length, filtered.length, '');
             await new Promise(resolve => setTimeout(resolve, 30));
 
@@ -457,7 +461,6 @@
             renderRecords();
             updatePriceInfo();
 
-            // 5. Show final status
             const withPrices = records.filter(r => r._discogsPrice && r._discogsPrice > 0);
             const withMarkdown = records.filter(r => r._markupPercent && r._markupPercent < 0);
             const statusMsg = withPrices.length > 0
@@ -527,28 +530,21 @@
     function groupRecordsByLocation(recordsArray) {
         const groups = {};
         const binSections = {};
-        
+
         for (const r of recordsArray) {
             const locationId = r.location_id || 0;
             const locationName = r.location_name || 'Unknown Location';
-            
+
             if (!groups[locationId]) {
-                groups[locationId] = {
-                    location_id: locationId,
-                    location_name: locationName,
-                    records: []
-                };
+                groups[locationId] = { location_id: locationId, location_name: locationName, records: [] };
             }
             groups[locationId].records.push(r);
-            
+
             if (isBinLocation(locationName)) {
                 const baseName = getBinBaseName(locationName);
                 const section = extractBinSection(locationName);
                 if (!binSections[baseName]) {
-                    binSections[baseName] = {
-                        base_name: baseName,
-                        sections: []
-                    };
+                    binSections[baseName] = { base_name: baseName, sections: [] };
                 }
                 if (section) {
                     binSections[baseName].sections.push({
@@ -560,14 +556,14 @@
                 }
             }
         }
-        
+
         for (const baseName in binSections) {
             binSections[baseName].sections = sortBinSections(binSections[baseName].sections);
         }
-        
+
         const result = [];
         const nonBinGroups = [];
-        
+
         for (const locationId in groups) {
             const group = groups[locationId];
             if (isBinLocation(group.location_name)) {
@@ -576,7 +572,7 @@
                 nonBinGroups.push(group);
             }
         }
-        
+
         result.sort((a, b) => {
             const numA = extractBinNumber(a.location_name);
             const numB = extractBinNumber(b.location_name);
@@ -585,21 +581,18 @@
             if (numB !== null) return 1;
             return a.location_name.localeCompare(b.location_name);
         });
-        
+
         nonBinGroups.sort((a, b) => a.location_name.localeCompare(b.location_name));
-        
+
         const groupedBins = {};
         for (const group of result) {
             const baseName = getBinBaseName(group.location_name);
             if (!groupedBins[baseName]) {
-                groupedBins[baseName] = {
-                    base_name: baseName,
-                    locations: []
-                };
+                groupedBins[baseName] = { base_name: baseName, locations: [] };
             }
             groupedBins[baseName].locations.push(group);
         }
-        
+
         const sortedBinKeys = Object.keys(groupedBins).sort((a, b) => {
             const numA = extractBinNumber(a);
             const numB = extractBinNumber(b);
@@ -608,7 +601,7 @@
             if (numB !== null) return 1;
             return a.localeCompare(b);
         });
-        
+
         const finalResult = [];
         for (const key of sortedBinKeys) {
             finalResult.push({
@@ -617,7 +610,7 @@
                 locations: groupedBins[key].locations
             });
         }
-        
+
         for (const group of nonBinGroups) {
             finalResult.push({
                 is_bin_section: false,
@@ -626,7 +619,7 @@
                 records: group.records
             });
         }
-        
+
         return finalResult;
     }
 
@@ -634,7 +627,7 @@
     function renderRecords() {
         const list = document.getElementById('post-discogs-locations');
         if (!list) return;
-        
+
         if (records.length === 0) {
             list.innerHTML = `<div style="text-align:center;padding:20px;color:#999;">
                 No records found${cutoffDate ? ` (seen after ${cutoffDate})` : ''}
@@ -643,7 +636,7 @@
         }
 
         const locationGroups = groupRecordsByLocation(records);
-        
+
         let html = `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; margin-bottom: 8px; background: #f8f9fa; border-radius: 4px;">
                 <span style="font-size: 13px; color: #666;">
@@ -663,7 +656,7 @@
                 const isSectionExpanded = expandedSections.has(baseName);
                 const allSelected = locations.every(loc => selectedLocations.has(loc.location_id));
                 const anySelected = locations.some(loc => selectedLocations.has(loc.location_id));
-                
+
                 html += `
                     <div style="border: 2px solid #6c757d; border-radius: 8px; margin-bottom: 10px; background: ${anySelected ? '#f0f8ff' : 'white'};">
                         <div style="display: flex; align-items: center; padding: 10px 14px; cursor: pointer; background: ${isSectionExpanded ? '#e9ecef' : 'white'}; border-radius: ${isSectionExpanded ? '8px 8px 0 0' : '8px'};"
@@ -699,7 +692,7 @@
                         const isExpanded = expandedLocations.has(locationId);
                         const isLocSelected = selectedLocations.has(locationId);
                         const withPrices = locationRecords.filter(r => r._discogsPrice && r._discogsPrice > 0);
-                        
+
                         html += `
                             <div style="border-top: 1px solid #dee2e6; padding-left: 20px; background: ${isLocSelected ? '#f8f9fa' : 'white'};">
                                 <div style="display: flex; align-items: center; padding: 6px 12px; cursor: pointer;"
@@ -759,7 +752,7 @@
                                 const markupText = hasPrice ? (markup > 0 ? `+${markup}%` : markup < 0 ? `${markup}%` : '0%') : '—';
                                 const rowStyle = hasPrice ? (isMarkdown ? 'background: #fff5f5;' : '') : 'opacity: 0.4;';
                                 const ageText = hasPrice ? `${r._daysOld}d` : '—';
-                                
+
                                 html += `
                                     <tr style="${rowStyle} border-bottom: 1px solid #f0f0f0;">
                                         <td style="padding: 3px 6px; color: #666; font-size: 10px;">${r.id}</td>
@@ -789,7 +782,7 @@
                 }
 
                 html += `</div>`;
-                
+
             } else {
                 const locationId = group.location_id;
                 const locationName = group.location_name;
@@ -797,7 +790,7 @@
                 const isExpanded = expandedLocations.has(locationId);
                 const isSelected = selectedLocations.has(locationId);
                 const withPrices = locationRecords.filter(r => r._discogsPrice && r._discogsPrice > 0);
-                
+
                 html += `
                     <div style="border: 1px solid #e9ecef; border-radius: 6px; margin-bottom: 6px; background: ${isSelected ? '#f0f8ff' : 'white'};">
                         <div style="display: flex; align-items: center; padding: 8px 12px; cursor: pointer; background: ${isExpanded ? '#f8f9fa' : 'white'}; border-radius: ${isExpanded ? '6px 6px 0 0' : '6px'};"
@@ -857,7 +850,7 @@
                         const markupText = hasPrice ? (markup > 0 ? `+${markup}%` : markup < 0 ? `${markup}%` : '0%') : '—';
                         const rowStyle = hasPrice ? (isMarkdown ? 'background: #fff5f5;' : '') : 'opacity: 0.4;';
                         const ageText = hasPrice ? `${r._daysOld}d` : '—';
-                        
+
                         html += `
                             <tr style="${rowStyle} border-bottom: 1px solid #f0f0f0;">
                                 <td style="padding: 4px 8px; color: #666; font-size: 11px;">${r.id}</td>
@@ -912,15 +905,15 @@
                 break;
             }
         }
-        
+
         const allSelected = allLocations.every(id => selectedLocations.has(id));
-        
+
         if (allSelected) {
             for (const id of allLocations) selectedLocations.delete(id);
         } else {
             for (const id of allLocations) selectedLocations.add(id);
         }
-        
+
         renderRecords();
         updateSelectionInfo();
         updateButtons();
@@ -929,7 +922,7 @@
     // ===== POST ENTIRE BIN SECTION =====
     window.postBinSection = async function(baseName) {
         if (isPosting) return;
-        
+
         let recordsToPost = [];
         let locationNames = [];
         for (const group of groupRecordsByLocation(records)) {
@@ -942,7 +935,7 @@
                 break;
             }
         }
-        
+
         if (recordsToPost.length === 0) {
             showStatus(`⚠️ No records with Discogs prices in ${baseName}`, 'warning');
             return;
@@ -951,8 +944,8 @@
         const withMarkdown = recordsToPost.filter(r => r._markupPercent && r._markupPercent < 0);
         let confirmMsg = `Post ${recordsToPost.length} record(s) from ${baseName} to Discogs?\n\n`;
         confirmMsg += `Locations: ${locationNames.join(', ')}\n`;
-        confirmMsg += `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (floor: ${discogsMinMarkdown}%)\n`;
-        confirmMsg += `${withMarkdown.length} records will be on markdown (${discogsMinMarkdown}% floor)`;
+        confirmMsg += `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (max markdown: ${discogsMaxMarkdown}%)\n`;
+        confirmMsg += `${withMarkdown.length} records will be on markdown`;
 
         if (!confirm(confirmMsg)) return;
 
@@ -985,7 +978,7 @@
     window.toggleAllLocations = function() {
         const selectAll = document.getElementById('select-all-locations');
         const isChecked = selectAll.checked;
-        
+
         if (isChecked) {
             const locationIds = new Set();
             for (const r of records) {
@@ -995,7 +988,7 @@
         } else {
             selectedLocations.clear();
         }
-        
+
         renderRecords();
         updateSelectionInfo();
         updateButtons();
@@ -1005,10 +998,10 @@
     function updateSelectionInfo() {
         const info = document.getElementById('selection-info');
         if (!info) return;
-        
+
         let selectedCount = selectedLocations.size;
         let recordCount = 0;
-        
+
         for (const locationId of selectedLocations) {
             const group = groupRecordsByLocation(records).find(g => {
                 if (g.is_bin_section) return g.locations.some(l => l.location_id === locationId);
@@ -1024,7 +1017,7 @@
                 }
             }
         }
-        
+
         info.textContent = `${selectedCount} locations selected, ${recordCount} records`;
     }
 
@@ -1032,7 +1025,7 @@
     function updateButtons() {
         const postSelectedBtn = document.getElementById('post-selected-btn');
         const cancelBtn = document.getElementById('cancel-post-btn');
-        
+
         let selectedPriced = 0;
         for (const locationId of selectedLocations) {
             const group = groupRecordsByLocation(records).find(g => {
@@ -1051,7 +1044,7 @@
                 }
             }
         }
-        
+
         if (postSelectedBtn) {
             postSelectedBtn.disabled = selectedLocations.size === 0 || selectedPriced === 0 || isPosting;
             if (selectedPriced > 0) {
@@ -1061,7 +1054,7 @@
             }
             postSelectedBtn.style.display = isPosting ? 'none' : 'inline-block';
         }
-        
+
         if (cancelBtn) {
             cancelBtn.style.display = isPosting ? 'inline-block' : 'none';
             cancelBtn.disabled = !isPosting;
@@ -1108,8 +1101,8 @@
         const withMarkdown = recordsToPost.filter(r => r._markupPercent && r._markupPercent < 0);
         let confirmMsg = `Post ${recordsToPost.length} record(s) from ${selectedLocations.size} selected location(s) to Discogs?\n\n`;
         confirmMsg += `Locations: ${locationNames.join(', ')}\n`;
-        confirmMsg += `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (floor: ${discogsMinMarkdown}%)\n`;
-        confirmMsg += `${withMarkdown.length} records will be on markdown (${discogsMinMarkdown}% floor)`;
+        confirmMsg += `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (max markdown: ${discogsMaxMarkdown}%)\n`;
+        confirmMsg += `${withMarkdown.length} records will be on markdown`;
 
         if (!confirm(confirmMsg)) return;
 
@@ -1119,16 +1112,16 @@
     // ===== POST A SINGLE LOCATION =====
     window.postLocation = async function(locationId) {
         if (isPosting) return;
-        
+
         let recordsToPost = [];
         let locationName = '';
-        
+
         const group = groupRecordsByLocation(records).find(g => {
             if (g.is_bin_section) return g.locations.some(l => l.location_id === locationId);
             return g.location_id === locationId;
         });
         if (!group) return;
-        
+
         if (group.is_bin_section) {
             for (const loc of group.locations) {
                 if (loc.location_id === locationId) {
@@ -1143,7 +1136,7 @@
             recordsToPost = recordsToPost.concat(withPrices);
             locationName = group.location_name;
         }
-        
+
         if (recordsToPost.length === 0) {
             showStatus(`⚠️ No records with Discogs prices in ${locationName}`, 'warning');
             return;
@@ -1151,8 +1144,8 @@
 
         const withMarkdown = recordsToPost.filter(r => r._markupPercent && r._markupPercent < 0);
         let confirmMsg = `Post ${recordsToPost.length} record(s) from ${locationName} to Discogs?\n\n`;
-        confirmMsg += `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (floor: ${discogsMinMarkdown}%)\n`;
-        confirmMsg += `${withMarkdown.length} records will be on markdown (${discogsMinMarkdown}% floor)`;
+        confirmMsg += `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (max markdown: ${discogsMaxMarkdown}%)\n`;
+        confirmMsg += `${withMarkdown.length} records will be on markdown`;
 
         if (!confirm(confirmMsg)) return;
 
@@ -1178,7 +1171,7 @@
         const statusDiv = document.getElementById('post-discogs-status');
         const postSelectedBtn = document.getElementById('post-selected-btn');
         const cancelBtn = document.getElementById('cancel-post-btn');
-        
+
         if (postSelectedBtn) postSelectedBtn.disabled = true;
         if (cancelBtn) {
             cancelBtn.disabled = false;
@@ -1201,7 +1194,7 @@
             const total = recordsToPost.length;
             const isMarkdown = record._markupPercent && record._markupPercent < 0;
             const priceColor = isMarkdown ? '#dc3545' : '#28a745';
-            
+
             if (statusDiv) {
                 statusDiv.style.display = 'block';
                 statusDiv.innerHTML = `
@@ -1237,15 +1230,15 @@
 
             try {
                 const discogsPrice = record._discogsPrice;
-                const recordLocation = record.location_name || '';
+                if (discogsPrice === null || discogsPrice === undefined) {
+                    throw new Error('No computed Discogs price');
+                }
 
-                await fetch(`${API_BASE}/records/${record.id}`, {
-                    method: 'PUT',
-                    credentials: 'include',
-                    mode: 'cors',
-                    headers: getHeaders(),
-                    body: JSON.stringify({ location: recordLocation })
-                });
+                const locationDisplay = buildLocationDisplay(record);
+
+                // NOTE: Removed the redundant PUT /records/{id} call.
+                // The location is already in the DB and is passed to
+                // create-listing-single via the `location` field below.
 
                 const listingData = {
                     record: {
@@ -1257,7 +1250,7 @@
                         sleeve_condition: record.sleeve_condition_name || 'Very Good Plus (VG+)',
                         price: discogsPrice,
                         notes: record.notes || '',
-                        location: recordLocation
+                        location: locationDisplay
                     }
                 };
 
@@ -1317,8 +1310,7 @@
             cancelBtn.style.display = 'none';
         }
         updateButtons();
-        
-        // Reload to reflect postings
+
         if (hasLoadedOnce) {
             window.loadPostDiscogsRecords();
         }
@@ -1336,11 +1328,10 @@
         }
     }
 
-    // ===== INIT — no record fetching here anymore =====
+    // ===== INIT =====
     window.initPostDiscogs = function() {
         console.log('📀 Post to Discogs initialized (manual load mode)');
 
-        // Reset state on init
         records = [];
         selectedLocations.clear();
         expandedLocations.clear();
@@ -1348,7 +1339,6 @@
         isLoadingRecords = false;
         hasLoadedOnce = false;
 
-        // Show placeholder
         const list = document.getElementById('post-discogs-locations');
         if (list) {
             list.innerHTML = '<div style="text-align:center;padding:30px;color:#666;">Click <strong>📥 Load Records</strong> above to fetch records for posting.</div>';
@@ -1369,7 +1359,6 @@
         updatePriceInfo();
         updateButtons();
 
-        // Fetch cutoff date (cheap — one request)
         fetchLastSeenCutoff().then(date => {
             cutoffDate = date;
             console.log('📅 Using cutoff date:', cutoffDate || 'None (showing all)');
