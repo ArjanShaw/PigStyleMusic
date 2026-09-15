@@ -407,11 +407,13 @@
             if (result.status === 'success') {
                 showStatus(`✅ Added: ${record.artist} - ${record.title}`, 'success');
                 addToRecent(record.artist || 'Unknown', record.title || 'Unknown', price);
-                searchResults.splice(index, 1);
-                // Removing the first result invalidates the "same search" check,
-                // so reset lastSearchTerm to force a re-search on next Enter.
+
+                // ===== CLEAR ALL SEARCH RESULTS AFTER ADD =====
+                searchResults = [];
                 lastSearchTerm = '';
-                renderResults(searchResults);
+                document.getElementById('add-results').innerHTML =
+                    '<div style="text-align: center; padding: 20px; color: #999;">Select a purchase and search Discogs</div>';
+
                 loadPurchases();
                 setTimeout(() => {
                     const select = document.getElementById('add-purchase-select');
