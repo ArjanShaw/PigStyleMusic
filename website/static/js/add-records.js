@@ -15,15 +15,7 @@
     let consignors = [];
     let searchResults = [];
     let recentAdditions = [];
-
-    // Defaults
-    let defaults = {
-        sleeve: null,
-        disc: null,
-        price: null,
-        format: null,
-        consignor: 'none'
-    };
+    let lastSearchTerm = '';
 
     // Load purchases
     async function loadPurchases() {
@@ -146,13 +138,11 @@
             const el = document.getElementById(id);
             if (el) {
                 el.addEventListener('change', function() {
-                    // Re-render results instantly when any default changes
                     if (searchResults.length > 0) {
                         renderResults(searchResults);
                     }
                 });
                 el.addEventListener('input', function() {
-                    // For price input, re-render on every keystroke
                     if (id === 'add-default-price') {
                         if (searchResults.length > 0) {
                             renderResults(searchResults);
@@ -173,13 +163,22 @@
             });
         }
 
-        // ===== ENTER KEY IN SEARCH INPUT TRIGGERS SEARCH =====
+        // ===== ENTER KEY: SEARCH THEN ADD-FIRST =====
         const searchInput = document.getElementById('add-search-input');
         if (searchInput) {
             searchInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter' || e.keyCode === 13) {
                     e.preventDefault();
-                    window.addRecordsSearch();
+
+                    const currentTerm = searchInput.value.trim();
+
+                    // If we have results and the input still matches the last search term,
+                    // add the first result. Otherwise run a fresh search.
+                    if (searchResults.length > 0 && currentTerm === lastSearchTerm) {
+                        window.addRecord(0);
+                    } else {
+                        window.addRecordsSearch();
+                    }
                 }
             });
         }
@@ -203,7 +202,6 @@
             return;
         }
 
-        // Read the format filter from the dropdown
         const formatSelect = document.getElementById('add-search-format');
         const formatFilter = formatSelect ? formatSelect.value : 'all';
         
@@ -222,16 +220,21 @@
             
             if (data.status === 'success' && data.results) {
                 searchResults = data.results;
+                lastSearchTerm = term;
                 renderResults(searchResults);
                 const formatLabel = formatFilter === 'all' ? '' : ` [${formatFilter}]`;
-                showStatus(`Found ${searchResults.length} results${formatLabel}`, 'success');
+                showStatus(`Found ${searchResults.length} results${formatLabel} — press Enter to add the first`, 'success');
             } else {
                 resultsDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">No results found</div>';
+                searchResults = [];
+                lastSearchTerm = '';
                 showStatus('No results found', 'warning');
             }
         } catch (err) {
             console.error('Search error:', err);
             resultsDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #dc3545;">Error searching</div>';
+            searchResults = [];
+            lastSearchTerm = '';
             showStatus('Error searching: ' + err.message, 'error');
         }
     };
@@ -240,8 +243,8 @@
         document.getElementById('add-search-input').value = '';
         document.getElementById('add-results').innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">Select a purchase and search Discogs</div>';
         searchResults = [];
+        lastSearchTerm = '';
         showStatus('Cleared', 'info');
-        // Return focus to search input for the next search
         const searchInput = document.getElementById('add-search-input');
         if (searchInput) searchInput.focus();
     };
@@ -253,7 +256,6 @@
             return;
         }
         
-        // Get current defaults (read fresh from DOM each time)
         const defaultSleeve = document.getElementById('add-default-sleeve').value;
         const defaultDisc = document.getElementById('add-default-disc').value;
         const defaultPrice = document.getElementById('add-default-price').value;
@@ -271,8 +273,6 @@
                 `<img src="${image}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;">` : 
                 `<div style="width:50px;height:50px;background:#e0e0e0;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:20px;color:#bbb;">🎵</div>`;
             
-            // Determine which fields to show based on defaults
-            // If default is set, field is HIDDEN (disappears instantly)
             const showSleeve = !defaultSleeve;
             const showDisc = !defaultDisc;
             const showPrice = !defaultPrice;
@@ -343,7 +343,6 @@
             return;
         }
         
-        // Get current defaults (read fresh)
         const defaultSleeve = document.getElementById('add-default-sleeve').value;
         const defaultDisc = document.getElementById('add-default-disc').value;
         const defaultPrice = document.getElementById('add-default-price').value;
@@ -352,7 +351,6 @@
         
         const row = document.querySelectorAll('.add-sleeve-select')[index]?.closest('div');
         
-        // Use values from fields if they exist, otherwise use defaults
         const sleeveSelect = row?.querySelector('.add-sleeve-select');
         const discSelect = row?.querySelector('.add-disc-select');
         const priceInput = row?.querySelector('.add-price-input');
@@ -379,8 +377,7 @@
             return;
         }
         
-        // Get current datetime for last_seen (with time)
-        const now = new Date().toISOString(); // YYYY-MM-DDTHH:MM:SS.MMMZ
+        const now = new Date().toISOString();
         
         const data = {
             artist: record.artist || 'Unknown',
@@ -395,7 +392,7 @@
             format_id: formatId,
             batch_id: parseInt(purchaseId),
             status_id: 1,
-            last_seen: now  // Full timestamp with time
+            last_seen: now
         };
         
         try {
@@ -411,6 +408,9 @@
                 showStatus(`✅ Added: ${record.artist} - ${record.title}`, 'success');
                 addToRecent(record.artist || 'Unknown', record.title || 'Unknown', price);
                 searchResults.splice(index, 1);
+                // Removing the first result invalidates the "same search" check,
+                // so reset lastSearchTerm to force a re-search on next Enter.
+                lastSearchTerm = '';
                 renderResults(searchResults);
                 loadPurchases();
                 setTimeout(() => {
@@ -418,7 +418,7 @@
                     if (select) select.value = purchaseId;
                 }, 100);
 
-                // ===== CLEAR SEARCH BOX AND RETURN FOCUS =====
+                // Clear the search box and return focus
                 const searchInput = document.getElementById('add-search-input');
                 if (searchInput) {
                     searchInput.value = '';
@@ -502,7 +502,6 @@
         loadConsignors();
         bindDefaultEvents();
 
-        // Focus the search input on init so the user can start typing immediately
         const searchInput = document.getElementById('add-search-input');
         if (searchInput) {
             setTimeout(() => searchInput.focus(), 100);
