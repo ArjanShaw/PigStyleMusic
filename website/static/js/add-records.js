@@ -418,11 +418,11 @@
                     if (select) select.value = purchaseId;
                 }, 100);
 
-                // ===== RETURN FOCUS TO SEARCH INPUT =====
+                // ===== CLEAR SEARCH BOX AND RETURN FOCUS =====
                 const searchInput = document.getElementById('add-search-input');
                 if (searchInput) {
+                    searchInput.value = '';
                     searchInput.focus();
-                    searchInput.select();
                 }
             } else {
                 showStatus('❌ Error: ' + (result.error || 'Failed to add'), 'error');
