@@ -85,8 +85,8 @@
             bottom: 0;
             left: 0;
             background-image: url('/images/pig_leaving_a_review.png');
-            background-size: cover;
-            background-position: center;
+            background-size: contain;
+            background-position: center center;
             background-repeat: no-repeat;
             z-index: 0;
             opacity: 1;
@@ -100,8 +100,8 @@
             bottom: 0;
             left: 0;
             background-image: url('/images/pig_shooting_from_cannon.png');
-            background-size: cover;
-            background-position: center;
+            background-size: contain;
+            background-position: center center;
             background-repeat: no-repeat;
             z-index: 0;
             opacity: 1;
@@ -690,7 +690,6 @@
 
     <script>
         // ===== SERVICE WORKER REGISTRATION =====
-        // Required by Chrome 81 to enable the "Install app" prompt.
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js').then(function(reg) {
                 console.log('✅ Service worker registered:', reg.scope);
@@ -701,9 +700,6 @@
             console.log('ℹ️ Service worker not supported in this browser');
         }
 
-        // ES5-compatible script. No const/let, no arrow functions,
-        // no template literals, no async/await, no fetch().
-        // Uses XMLHttpRequest for network calls.
         (function() {
             'use strict';
 
@@ -735,7 +731,7 @@
             var autoSlideTimer = null;
             var isTransitioning = false;
 
-            // ===== DOM HELPERS (for old browsers) =====
+            // ===== DOM HELPERS =====
             function hasClass(el, cls) {
                 if (el.classList && el.classList.contains) {
                     return el.classList.contains(cls);
@@ -774,6 +770,33 @@
                 }
             }
 
+            // ===== VIEWPORT HEIGHT FIX =====
+            function fixViewportHeight() {
+                var h = window.innerHeight ||
+                        document.documentElement.clientHeight ||
+                        document.body.clientHeight;
+                var wrap = document.getElementById('engagementWrapper');
+                if (wrap && h > 0) {
+                    wrap.style.height = h + 'px';
+                }
+                if (document.documentElement && h > 0) {
+                    document.documentElement.style.height = h + 'px';
+                }
+                if (document.body && h > 0) {
+                    document.body.style.height = h + 'px';
+                }
+            }
+
+            addListener(window, 'resize', fixViewportHeight);
+            addListener(window, 'orientationchange', function() {
+                setTimeout(fixViewportHeight, 100);
+                setTimeout(fixViewportHeight, 400);
+                setTimeout(fixViewportHeight, 800);
+            });
+            setTimeout(fixViewportHeight, 100);
+            setTimeout(fixViewportHeight, 500);
+            setTimeout(fixViewportHeight, 1500);
+
             // ===== GO TO SLIDE =====
             function goToSlide(index) {
                 if (isTransitioning || index === currentSlide) return;
@@ -806,7 +829,6 @@
                 }, SLIDE_INTERVAL);
             }
 
-            // ===== PAUSE AUTO SLIDE (when modal open) =====
             function pauseAutoSlide() {
                 if (autoSlideTimer) {
                     clearInterval(autoSlideTimer);
@@ -886,7 +908,6 @@
                 }
             });
 
-            // ===== ESC TO CLOSE ANY MODAL =====
             addListener(document, 'keydown', function(e) {
                 if (e.key === 'Escape') {
                     if (hasClass(modalOverlay, 'active')) closeModal();
@@ -894,13 +915,12 @@
                 }
             });
 
-            // ===== MODAL SKIP =====
             addListener(modalSkipEmailBtn, 'click', function(e) {
                 if (e && e.preventDefault) e.preventDefault();
                 closeModal();
             });
 
-            // ===== XHR HELPER (no fetch) =====
+            // ===== XHR HELPER =====
             function postJSON(url, body, onSuccess, onError) {
                 var xhr = new XMLHttpRequest();
                 xhr.open('POST', url, true);
@@ -1045,20 +1065,8 @@
                 }
             });
 
-            // ===== VIEWPORT HEIGHT FIX (for old mobile browsers) =====
-            function fixViewportHeight() {
-                var wrap = document.getElementById('engagementWrapper');
-                if (wrap) {
-                    wrap.style.height = window.innerHeight + 'px';
-                }
-            }
-            addListener(window, 'resize', fixViewportHeight);
-            addListener(window, 'orientationchange', function() {
-                setTimeout(fixViewportHeight, 200);
-            });
-            fixViewportHeight();
-
             // ===== START =====
+            fixViewportHeight();
             resetAutoSlide();
 
             console.log('📧 Email list API base:', API_BASE);
