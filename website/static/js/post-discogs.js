@@ -13,6 +13,7 @@
 // NO FALLBACKS: if a required config value is missing, we throw.
 // CONFIG SAVES INDEPENDENTLY OF LOADED RECORDS.
 // CONFIG LOADS ON INIT AND POPULATES THE INPUTS.
+// DISCOGS POSTING: 3-second delay between listings to respect rate limits.
 // ================================================================
 
 (function() {
@@ -22,6 +23,11 @@
     const API_BASE = window.location.hostname === 'localhost' 
         ? 'http://localhost:5000' 
         : 'https://www.pigstylemusic.com';
+
+    // ===== DISCOGS RATE LIMIT DELAY =====
+    // Discogs marketplace listings must be spaced out; too-fast posting
+    // returns "You are posting requests too quickly" and fails the listing.
+    const DISCOGS_POST_DELAY_MS = 3000;
 
     let records = [];
     let cutoffDate = null;
@@ -62,6 +68,11 @@
     // The floor used in the formula is its negative.
     function getMarkdownFloor() {
         return -Math.abs(discogsMaxMarkdown);
+    }
+
+    // ===== HELPER: SLEEP =====
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     // ===== FETCH A SINGLE REQUIRED CONFIG VALUE =====
@@ -482,7 +493,7 @@
             }
 
             showLoadProgressBar('💰 Calculating prices...', filtered.length, filtered.length, '');
-            await new Promise(resolve => setTimeout(resolve, 30));
+            await sleep(30);
 
             records = calculateDiscogsPricesForRecords(filtered);
             renderRecords();
@@ -969,10 +980,12 @@
         }
 
         const withMarkdown = recordsToPost.filter(r => r._markupPercent && r._markupPercent < 0);
+        const estMinutes = ((recordsToPost.length * DISCOGS_POST_DELAY_MS) / 60000).toFixed(1);
         let confirmMsg = `Post ${recordsToPost.length} record(s) from ${baseName} to Discogs?\n\n`;
         confirmMsg += `Locations: ${locationNames.join(', ')}\n`;
         confirmMsg += `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (max markdown: ${discogsMaxMarkdown}%)\n`;
-        confirmMsg += `${withMarkdown.length} records will be on markdown`;
+        confirmMsg += `${withMarkdown.length} records will be on markdown\n`;
+        confirmMsg += `Estimated time: ~${estMinutes} minutes (${DISCOGS_POST_DELAY_MS / 1000}s between each)`;
 
         if (!confirm(confirmMsg)) return;
 
@@ -1126,10 +1139,12 @@
         }
 
         const withMarkdown = recordsToPost.filter(r => r._markupPercent && r._markupPercent < 0);
+        const estMinutes = ((recordsToPost.length * DISCOGS_POST_DELAY_MS) / 60000).toFixed(1);
         let confirmMsg = `Post ${recordsToPost.length} record(s) from ${selectedLocations.size} selected location(s) to Discogs?\n\n`;
         confirmMsg += `Locations: ${locationNames.join(', ')}\n`;
         confirmMsg += `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (max markdown: ${discogsMaxMarkdown}%)\n`;
-        confirmMsg += `${withMarkdown.length} records will be on markdown`;
+        confirmMsg += `${withMarkdown.length} records will be on markdown\n`;
+        confirmMsg += `Estimated time: ~${estMinutes} minutes (${DISCOGS_POST_DELAY_MS / 1000}s between each)`;
 
         if (!confirm(confirmMsg)) return;
 
@@ -1170,9 +1185,11 @@
         }
 
         const withMarkdown = recordsToPost.filter(r => r._markupPercent && r._markupPercent < 0);
+        const estMinutes = ((recordsToPost.length * DISCOGS_POST_DELAY_MS) / 60000).toFixed(1);
         let confirmMsg = `Post ${recordsToPost.length} record(s) from ${locationName} to Discogs?\n\n`;
         confirmMsg += `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (max markdown: ${discogsMaxMarkdown}%)\n`;
-        confirmMsg += `${withMarkdown.length} records will be on markdown`;
+        confirmMsg += `${withMarkdown.length} records will be on markdown\n`;
+        confirmMsg += `Estimated time: ~${estMinutes} minutes (${DISCOGS_POST_DELAY_MS / 1000}s between each)`;
 
         if (!confirm(confirmMsg)) return;
 
@@ -1223,6 +1240,12 @@
             const priceColor = isMarkdown ? '#dc3545' : '#28a745';
 
             if (statusDiv) {
+                const remaining = total - i;
+                const etaSeconds = Math.max(0, (remaining - 1) * (DISCOGS_POST_DELAY_MS / 1000));
+                const etaText = etaSeconds > 60
+                    ? `~${Math.ceil(etaSeconds / 60)} min left`
+                    : `~${Math.ceil(etaSeconds)}s left`;
+
                 statusDiv.style.display = 'block';
                 statusDiv.innerHTML = `
                     <div style="display: flex; flex-direction: column; gap: 6px; padding: 4px 0;">
@@ -1243,6 +1266,8 @@
                         <div style="font-size: 11px; color: #888; display: flex; gap: 15px;">
                             <span>✅ ${success} posted</span>
                             <span>❌ ${failed} failed</span>
+                            <span>⏱️ ${etaText}</span>
+                            <span>🕒 ${DISCOGS_POST_DELAY_MS / 1000}s between posts</span>
                             ${cancelPosting ? '<span style="color: #dc3545;">⏹️ Cancelling...</span>' : ''}
                         </div>
                         ${errorMessages.length > 0 ? `
@@ -1262,10 +1287,6 @@
                 }
 
                 const locationDisplay = buildLocationDisplay(record);
-
-                // NOTE: Removed the redundant PUT /records/{id} call.
-                // The location is already in the DB and is passed to
-                // create-listing-single via the `location` field below.
 
                 const listingData = {
                     record: {
@@ -1305,8 +1326,12 @@
                 console.error('Error posting record:', err);
             }
 
+            // ===== RATE LIMIT DELAY =====
+            // Discogs rejects listings that come in too fast. Wait between
+            // every record, including after the last successful post, unless
+            // the user cancelled.
             if (i < recordsToPost.length - 1 && !cancelPosting) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                await sleep(DISCOGS_POST_DELAY_MS);
             }
         }
 
