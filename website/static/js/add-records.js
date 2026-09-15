@@ -172,6 +172,17 @@
                 }
             });
         }
+
+        // ===== ENTER KEY IN SEARCH INPUT TRIGGERS SEARCH =====
+        const searchInput = document.getElementById('add-search-input');
+        if (searchInput) {
+            searchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.keyCode === 13) {
+                    e.preventDefault();
+                    window.addRecordsSearch();
+                }
+            });
+        }
     }
 
     // Search Discogs
@@ -230,6 +241,9 @@
         document.getElementById('add-results').innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">Select a purchase and search Discogs</div>';
         searchResults = [];
         showStatus('Cleared', 'info');
+        // Return focus to search input for the next search
+        const searchInput = document.getElementById('add-search-input');
+        if (searchInput) searchInput.focus();
     };
 
     function renderResults(results) {
@@ -403,6 +417,13 @@
                     const select = document.getElementById('add-purchase-select');
                     if (select) select.value = purchaseId;
                 }, 100);
+
+                // ===== RETURN FOCUS TO SEARCH INPUT =====
+                const searchInput = document.getElementById('add-search-input');
+                if (searchInput) {
+                    searchInput.focus();
+                    searchInput.select();
+                }
             } else {
                 showStatus('❌ Error: ' + (result.error || 'Failed to add'), 'error');
             }
@@ -473,18 +494,6 @@
         }, 5000);
     }
 
-    // Enter key to search
-    document.addEventListener('DOMContentLoaded', function() {
-        const searchInput = document.getElementById('add-search-input');
-        if (searchInput) {
-            searchInput.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    window.addRecordsSearch();
-                }
-            });
-        }
-    });
-
     window.initAddRecords = function() {
         console.log('Add Records initialized');
         loadPurchases();
@@ -492,5 +501,11 @@
         loadFormats();
         loadConsignors();
         bindDefaultEvents();
+
+        // Focus the search input on init so the user can start typing immediately
+        const searchInput = document.getElementById('add-search-input');
+        if (searchInput) {
+            setTimeout(() => searchInput.focus(), 100);
+        }
     };
 })();
