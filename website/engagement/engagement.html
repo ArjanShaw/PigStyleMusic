@@ -487,6 +487,47 @@
         .modal-status-msg.info { color: #93c5fd; }
         .modal-status-msg.loading { color: rgba(255, 255, 255, 0.6); }
 
+        /* ===== QR CODE MODAL ===== */
+        .qr-container {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 20px;
+            margin: 0 auto 20px;
+            display: inline-block;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .qr-image {
+            display: block;
+            width: 260px;
+            height: 260px;
+            max-width: 100%;
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+
+        .qr-instruction {
+            font-size: 16px;
+            color: #fff;
+            font-weight: 600;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        .qr-instruction-sub {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+
+        .qr-icon {
+            font-size: 42px;
+            margin-bottom: 14px;
+            color: #1a73e8;
+        }
+
         /* ===== RESPONSIVE ===== */
         @media (max-width: 768px) {
             .slide-btn {
@@ -506,6 +547,7 @@
             .dot.active { width: 24px; }
             .brand-watermark { bottom: 60px; font-size: 10px; }
             .modal-title { font-size: 24px; }
+            .qr-image { width: 220px; height: 220px; }
         }
 
         @media (max-width: 480px) {
@@ -538,6 +580,9 @@
                 padding: 12px 12px 12px 40px;
                 border-radius: 12px;
             }
+            .qr-image { width: 200px; height: 200px; }
+            .qr-container { padding: 16px; }
+            .qr-instruction { font-size: 15px; }
         }
     </style>
 </head>
@@ -579,7 +624,7 @@
         <!-- Brand Watermark -->
         <div class="brand-watermark">PigStyle Music</div>
 
-        <!-- ===== MODAL OVERLAY (Email Only) ===== -->
+        <!-- ===== MODAL OVERLAY (Email) ===== -->
         <div class="modal-overlay" id="modalOverlay">
             <div class="modal-container" id="modalContainer">
 
@@ -617,6 +662,35 @@
             </div>
         </div>
 
+        <!-- ===== QR CODE MODAL (Review) ===== -->
+        <div class="modal-overlay" id="qrModalOverlay">
+            <div class="modal-container">
+                <button class="modal-close" id="closeQrModalBtn" type="button">
+                    <i class="fas fa-times"></i>
+                </button>
+
+                <div style="text-align: center;">
+                    <div class="qr-icon">
+                        <i class="fab fa-google"></i>
+                    </div>
+                    <h2 class="modal-title">Leave Us a Review</h2>
+                    <p class="qr-instruction">Scan this code with your phone's camera</p>
+                    <p class="qr-instruction-sub">Points to our Google review page. Takes about 30 seconds.</p>
+
+                    <div class="qr-container">
+                        <img src="/images/qr-code-review.png" alt="Scan to leave a Google review" class="qr-image" id="qrImage" />
+                    </div>
+
+                    <p class="qr-instruction-sub" style="margin-bottom: 8px;">Or visit:</p>
+                    <p style="font-size: 15px; font-weight: 700; color: #fff; letter-spacing: 0.5px; margin-bottom: 20px;">
+                        pigstylemusic.com/review
+                    </p>
+
+                    <button class="modal-btn-secondary" id="qrCloseBtn" type="button">Close</button>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <script>
@@ -632,10 +706,6 @@
                             ? 'http://localhost:5000'
                             : 'https://www.pigstylemusic.com';
 
-            // ===== DIRECT GOOGLE REVIEW URL WITH CORRECT PLACE ID =====
-            var GOOGLE_REVIEW_URL =
-                'https://search.google.com/local/writereview?placeid=ChIJ-eRIn_ZTaYcRsr7PcilT3dg';
-
             var SLIDE_INTERVAL = 6000;
 
             // ===== DOM REFS =====
@@ -649,6 +719,10 @@
             var modalEmailStatus = document.getElementById('modalEmailStatus');
             var modalSubscribeBtn = document.getElementById('modalSubscribeBtn');
             var modalSkipEmailBtn = document.getElementById('modalSkipEmailBtn');
+
+            var qrModalOverlay = document.getElementById('qrModalOverlay');
+            var closeQrModalBtn = document.getElementById('closeQrModalBtn');
+            var qrCloseBtn = document.getElementById('qrCloseBtn');
 
             var currentSlide = 0;
             var autoSlideTimer = null;
@@ -725,6 +799,14 @@
                 }, SLIDE_INTERVAL);
             }
 
+            // ===== PAUSE AUTO SLIDE (when modal open) =====
+            function pauseAutoSlide() {
+                if (autoSlideTimer) {
+                    clearInterval(autoSlideTimer);
+                    autoSlideTimer = null;
+                }
+            }
+
             // ===== DOT CLICKS =====
             for (var d = 0; d < dots.length; d++) {
                 (function(index) {
@@ -735,19 +817,10 @@
                 })(d);
             }
 
-            // ===== REVIEW BUTTON - GO DIRECTLY TO GOOGLE REVIEW FORM =====
+            // ===== REVIEW BUTTON - OPEN QR MODAL =====
             addListener(reviewDirectBtn, 'click', function(e) {
                 if (e && e.preventDefault) e.preventDefault();
-                window.open(GOOGLE_REVIEW_URL, '_blank');
-
-                this.innerHTML = '<i class="fas fa-check-circle"></i><span>Thank You!</span>';
-                this.style.background = '#28a745';
-
-                var btn = this;
-                setTimeout(function() {
-                    btn.innerHTML = '<i class="fab fa-google"></i><span>Write a Review</span>';
-                    btn.style.background = '';
-                }, 3000);
+                openQrModal();
             });
 
             // ===== EMAIL BUTTON - OPEN MODAL =====
@@ -756,14 +829,32 @@
                 openModal();
             });
 
-            // ===== MODAL FUNCTIONS =====
+            // ===== QR MODAL =====
+            function openQrModal() {
+                addClass(qrModalOverlay, 'active');
+                document.body.style.overflow = 'hidden';
+                pauseAutoSlide();
+            }
+
+            function closeQrModal() {
+                removeClass(qrModalOverlay, 'active');
+                document.body.style.overflow = '';
+                resetAutoSlide();
+            }
+
+            addListener(closeQrModalBtn, 'click', closeQrModal);
+            addListener(qrCloseBtn, 'click', closeQrModal);
+            addListener(qrModalOverlay, 'click', function(e) {
+                if (e.target === qrModalOverlay) {
+                    closeQrModal();
+                }
+            });
+
+            // ===== EMAIL MODAL =====
             function openModal() {
                 addClass(modalOverlay, 'active');
                 document.body.style.overflow = 'hidden';
-                if (autoSlideTimer) {
-                    clearInterval(autoSlideTimer);
-                    autoSlideTimer = null;
-                }
+                pauseAutoSlide();
                 setTimeout(function() {
                     try { modalEmailInput.focus(); } catch (e) {}
                 }, 300);
@@ -781,16 +872,18 @@
                 modalSubscribeBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Subscribe';
             }
 
-            // ===== CLOSE MODAL =====
             addListener(closeModalBtn, 'click', closeModal);
             addListener(modalOverlay, 'click', function(e) {
                 if (e.target === modalOverlay) {
                     closeModal();
                 }
             });
+
+            // ===== ESC TO CLOSE ANY MODAL =====
             addListener(document, 'keydown', function(e) {
-                if (e.key === 'Escape' && hasClass(modalOverlay, 'active')) {
-                    closeModal();
+                if (e.key === 'Escape') {
+                    if (hasClass(modalOverlay, 'active')) closeModal();
+                    if (hasClass(qrModalOverlay, 'active')) closeQrModal();
                 }
             });
 
@@ -928,6 +1021,10 @@
             });
 
             addListener(document, 'touchend', function(e) {
+                // Don't swipe if a modal is open
+                if (hasClass(modalOverlay, 'active') || hasClass(qrModalOverlay, 'active')) {
+                    return;
+                }
                 touchEndX = e.changedTouches[0].screenX;
                 touchEndY = e.changedTouches[0].screenY;
                 var dx = touchEndX - touchStartX;
@@ -943,9 +1040,6 @@
             });
 
             // ===== VIEWPORT HEIGHT FIX (for old mobile browsers) =====
-            // On old mobile browsers 100vh includes the address bar height,
-            // which clips content. Measure window.innerHeight and set the
-            // wrapper height directly.
             function fixViewportHeight() {
                 var wrap = document.getElementById('engagementWrapper');
                 if (wrap) {
@@ -962,7 +1056,7 @@
             resetAutoSlide();
 
             console.log('📧 Email list API base:', API_BASE);
-            console.log('⭐ Google Review URL:', GOOGLE_REVIEW_URL);
+            console.log('⭐ Review button opens QR modal');
 
         })();
     </script>
