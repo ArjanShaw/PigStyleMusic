@@ -5807,6 +5807,101 @@ def get_created_at_distribution_stats():
         'counts': counts
     })
 
+@app.route('/api/discogs/bulk-mark-paid-orders-sold', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def bulk_mark_paid_orders_sold():
+    """
+    Find all Discogs orders with status 'Payment Received',
+    extract PIGSTYLE IDs from items, and mark those records as sold (status_id = 4).
+    """
+    try:
+        TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
+        if not TOKEN:
+            return jsonify({'status': 'error', 'error': 'Discogs token not configured'}), 500
+
+        handler = DiscogsHandler(TOKEN)
+
+        # Fetch all orders, filter to Payment Received
+        all_orders = handler.get_all_orders(status='Payment Received')
+        if not all_orders:
+            return jsonify({'status': 'success', 'message': 'No Payment Received orders found',
+                            'marked': 0, 'skipped': 0, 'not_found': 0, 'details': []})
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        marked = 0
+        skipped = 0          # already sold
+        not_found = 0        # PIGSTYLE ID not in DB
+        no_pigstyle = 0      # item has no [PIGSTYLE ID: N] comment
+        details = []
+
+        today = datetime.now().strftime('%Y-%m-%d')
+
+        for order in all_orders:
+            order_id = order.get('order_id')
+            items = order.get('items', [])
+            for item in items:
+                comments = (item.get('condition_comments') or '') + ' ' + (item.get('private_comments') or '')
+                match = re.search(r'\[PIGSTYLE ID:\s*(\d+)\]', comments, re.IGNORECASE)
+                if not match:
+                    no_pigstyle += 1
+                    continue
+
+                pid = int(match.group(1))
+                sale_price = item.get('price', 0) or 0
+
+                cursor.execute('SELECT id, status_id, artist, title FROM records WHERE id = ?', (pid,))
+                rec = cursor.fetchone()
+                if not rec:
+                    not_found += 1
+                    details.append({'pigstyle_id': pid, 'order_id': order_id, 'result': 'not_found'})
+                    continue
+
+                # Already sold?
+                if rec['status_id'] in (3, 4):
+                    skipped += 1
+                    details.append({'pigstyle_id': pid, 'order_id': order_id,
+                                    'result': 'already_sold', 'status_id': rec['status_id']})
+                    continue
+
+                cursor.execute('''
+                    UPDATE records
+                    SET status_id = 4,
+                        store_price = ?,
+                        date_sold = ?
+                    WHERE id = ?
+                ''', (sale_price, today, pid))
+                marked += 1
+                details.append({
+                    'pigstyle_id': pid,
+                    'order_id': order_id,
+                    'result': 'marked_sold',
+                    'artist': rec['artist'],
+                    'title': rec['title'],
+                    'sale_price': sale_price
+                })
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Marked {marked} records as sold on Discogs',
+            'marked': marked,
+            'skipped': skipped,
+            'not_found': not_found,
+            'no_pigstyle': no_pigstyle,
+            'orders_scanned': len(all_orders),
+            'details': details
+        })
+
+    except Exception as e:
+        app.logger.error(f"Bulk mark sold error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 @app.route('/api/price-estimate-v3', methods=['POST'])
 def price_estimate_v3():
     """Price estimate - uses Discogs price suggestions directly"""

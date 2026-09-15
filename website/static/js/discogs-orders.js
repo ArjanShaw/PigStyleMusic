@@ -470,6 +470,49 @@
         }
     };
 
+    // ===== BULK MARK PAID ORDERS SOLD =====
+    window.discogsBulkMarkPaidOrdersSold = async function() {
+        if (!confirm(
+            'Mark every record in "Payment Received" Discogs orders as sold?\n\n' +
+            'This will set each record to Sold on Discogs and update its store_price ' +
+            'to the Discogs sale price.'
+        )) {
+            return;
+        }
+
+        const tableDiv = document.getElementById('discogs-orders-table');
+        const originalHtml = tableDiv ? tableDiv.innerHTML : '';
+        if (tableDiv) {
+            tableDiv.innerHTML = '<div style="text-align:center;padding:30px;color:#888;">⏳ Scanning Discogs orders and marking records sold...</div>';
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/api/discogs/bulk-mark-paid-orders-sold`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: getHeaders()
+            });
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                showStatus(
+                    `✅ Marked ${data.marked} sold | ${data.skipped} already sold | ` +
+                    `${data.not_found} not in DB | ${data.no_pigstyle} items without PIGSTYLE ID`,
+                    'success'
+                );
+                // Reload orders to refresh the view
+                await loadOrders();
+            } else {
+                showStatus(`❌ ${data.error || 'Bulk action failed'}`, 'error');
+                if (tableDiv) tableDiv.innerHTML = originalHtml;
+            }
+        } catch (err) {
+            console.error('Bulk mark sold error:', err);
+            showStatus(`❌ Error: ${err.message}`, 'error');
+            if (tableDiv) tableDiv.innerHTML = originalHtml;
+        }
+    };
+
     // ===== SHIPPING LABEL FUNCTIONS =====
     
     // Open shipping label modal
