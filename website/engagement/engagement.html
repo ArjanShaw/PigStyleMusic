@@ -23,6 +23,7 @@
             overflow: hidden;
             -ms-touch-action: manipulation;
             touch-action: manipulation;
+            background-color: #0a0618;
         }
 
         /* ===== FULL-PAGE WRAPPER ===== */
@@ -70,15 +71,7 @@
             justify-content: center;
             padding: 20px;
             position: relative;
-        }
-
-        /* ===== BOTH SLIDES WITH background.png ===== */
-        .slide[data-slide="review"],
-        .slide[data-slide="email"] {
-            background-image: url('/images/background.png');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
+            overflow: hidden;
             background-color: #0a0618;
         }
 
@@ -90,7 +83,7 @@
             bottom: 0;
             left: 0;
             background-image: url('/images/pig_leaving_a_review.png');
-            background-size: contain;
+            background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
             z-index: 0;
@@ -105,7 +98,7 @@
             bottom: 0;
             left: 0;
             background-image: url('/images/pig_shooting_from_cannon.png');
-            background-size: contain;
+            background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
             z-index: 0;
