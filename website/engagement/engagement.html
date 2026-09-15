@@ -689,6 +689,18 @@
     </div>
 
     <script>
+        // ===== SERVICE WORKER REGISTRATION =====
+        // Required by Chrome 81 to enable the "Install app" prompt.
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').then(function(reg) {
+                console.log('✅ Service worker registered:', reg.scope);
+            }).catch(function(err) {
+                console.error('❌ Service worker failed:', err);
+            });
+        } else {
+            console.log('ℹ️ Service worker not supported in this browser');
+        }
+
         // ES5-compatible script. No const/let, no arrow functions,
         // no template literals, no async/await, no fetch().
         // Uses XMLHttpRequest for network calls.
@@ -1016,7 +1028,6 @@
             });
 
             addListener(document, 'touchend', function(e) {
-                // Don't swipe if a modal is open
                 if (hasClass(modalOverlay, 'active') || hasClass(qrModalOverlay, 'active')) {
                     return;
                 }
