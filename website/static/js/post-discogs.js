@@ -11,6 +11,8 @@
 //                     → internally floor = -MaxMarkdown
 //
 // NO FALLBACKS: if a required config value is missing, we throw.
+// CONFIG SAVES INDEPENDENTLY OF LOADED RECORDS.
+// CONFIG LOADS ON INIT AND POPULATES THE INPUTS.
 // ================================================================
 
 (function() {
@@ -94,10 +96,13 @@
 
     // ===== FETCH CONFIG PARAMETERS =====
     // No fallbacks. Throws if any value is missing or invalid.
+    // Populates the three input fields on success.
     async function fetchDiscogsConfig() {
         const markup = await fetchRequiredConfig('DISCOGS_MARKUP_PERCENT');
         const step = await fetchRequiredConfig('DISCOGS_PRICE_STEP');
         const maxMd = await fetchRequiredConfig('DISCOGS_MAX_MARKDOWN');
+
+        console.log(`📥 Loaded config: markup=${markup}, step=${step}, maxMd=${maxMd}`);
 
         if (maxMd < 0 || maxMd > 100) {
             throw new Error(`Config DISCOGS_MAX_MARKDOWN must be between 0 and 100 (got ${maxMd})`);
@@ -123,30 +128,43 @@
     }
 
     // ===== SAVE CONFIG PARAMETERS =====
+    // Each key is saved individually. If the server echoes the stored value,
+    // we verify it; otherwise we trust the 200/success response.
     async function saveDiscogsConfig() {
-        let response = await fetch(`${API_BASE}/config/DISCOGS_MARKUP_PERCENT`, {
-            method: 'PUT',
-            credentials: 'include',
-            headers: getHeaders(),
-            body: JSON.stringify({ config_value: discogsMarkupPercent })
-        });
-        if (!response.ok) throw new Error('Failed to save DISCOGS_MARKUP_PERCENT');
+        await saveOneConfig('DISCOGS_MARKUP_PERCENT', discogsMarkupPercent);
+        await saveOneConfig('DISCOGS_PRICE_STEP', discogsPriceStep);
+        await saveOneConfig('DISCOGS_MAX_MARKDOWN', discogsMaxMarkdown);
+    }
 
-        response = await fetch(`${API_BASE}/config/DISCOGS_PRICE_STEP`, {
+    async function saveOneConfig(key, value) {
+        const response = await fetch(`${API_BASE}/config/${key}`, {
             method: 'PUT',
             credentials: 'include',
             headers: getHeaders(),
-            body: JSON.stringify({ config_value: discogsPriceStep })
+            body: JSON.stringify({ config_value: value })
         });
-        if (!response.ok) throw new Error('Failed to save DISCOGS_PRICE_STEP');
 
-        response = await fetch(`${API_BASE}/config/DISCOGS_MAX_MARKDOWN`, {
-            method: 'PUT',
-            credentials: 'include',
-            headers: getHeaders(),
-            body: JSON.stringify({ config_value: discogsMaxMarkdown })
-        });
-        if (!response.ok) throw new Error('Failed to save DISCOGS_MAX_MARKDOWN');
+        if (!response.ok) {
+            let detail = '';
+            try { detail = (await response.json()).error || ''; } catch (_) {}
+            throw new Error(`Failed to save ${key} (HTTP ${response.status}) ${detail}`);
+        }
+
+        const data = await response.json();
+        if (data.status !== 'success') {
+            throw new Error(`Failed to save ${key}: ${data.error || 'unknown error'}`);
+        }
+
+        // If the server echoes the stored value, verify it. Otherwise trust the 200.
+        if (data.config_value !== undefined && data.config_value !== null) {
+            const stored = parseFloat(data.config_value);
+            if (isNaN(stored) || Math.abs(stored - value) > 0.001) {
+                throw new Error(`Server stored ${key}=${data.config_value}, expected ${value}`);
+            }
+            console.log(`✅ Saved ${key} = ${stored}`);
+        } else {
+            console.log(`✅ Saved ${key} = ${value} (server did not echo value)`);
+        }
     }
 
     // ===== FETCH LAST_SEEN_CUTOFF_DATE =====
@@ -228,6 +246,10 @@
             info.textContent = 'Config not loaded';
             return;
         }
+        if (records.length === 0) {
+            info.textContent = `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (max markdown: ${discogsMaxMarkdown}%) | no records loaded`;
+            return;
+        }
         const withPrices = records.filter(r => r._discogsPrice && r._discogsPrice > 0);
         info.textContent = `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (max markdown: ${discogsMaxMarkdown}%) | ${withPrices.length} records have prices`;
     }
@@ -256,16 +278,14 @@
     }
 
     // ===== UPDATE PRICES =====
+    // Always saves config. Only recomputes/re-renders if records are loaded.
     window.updateDiscogsPrices = async function() {
         if (isUpdating) return;
         if (isLoadingRecords) {
             alert('Please wait — records are still loading.');
             return;
         }
-        if (records.length === 0) {
-            alert('Load records first.');
-            return;
-        }
+
         isUpdating = true;
 
         try {
@@ -294,17 +314,24 @@
             discogsPriceStep = newStep;
             discogsMaxMarkdown = Math.abs(newMax);
 
+            // --- Always save the config, regardless of whether records are loaded ---
             await saveDiscogsConfig();
 
-            records = calculateDiscogsPricesForRecords(records);
-            renderRecords();
+            // --- Only recompute prices if we actually have records in memory ---
+            if (records.length > 0) {
+                records = calculateDiscogsPricesForRecords(records);
+                renderRecords();
+
+                const withPrices = records.filter(r => r._discogsPrice && r._discogsPrice > 0);
+                const withMarkdown = records.filter(r => r._markupPercent && r._markupPercent < 0);
+                showStatus(`✅ Settings saved. ${withPrices.length} records priced (${withMarkdown.length} on markdown).`, 'info');
+            } else {
+                showStatus('✅ Settings saved. Load records to apply.', 'info');
+            }
+
             updatePriceInfo();
-
-            const withPrices = records.filter(r => r._discogsPrice && r._discogsPrice > 0);
-            const withMarkdown = records.filter(r => r._markupPercent && r._markupPercent < 0);
-            showStatus(`✅ Prices updated! ${withPrices.length} records have prices (${withMarkdown.length} on markdown)`, 'info');
-
             updateButtons();
+
         } catch (err) {
             console.error('Update prices error:', err);
             showStatus(`❌ ${err.message}`, 'error');
@@ -1356,13 +1383,25 @@
         }
 
         updateLoadButtonState(false);
-        updatePriceInfo();
         updateButtons();
 
+        // --- Load config from server and populate the three inputs ---
+        fetchDiscogsConfig()
+            .then(() => {
+                console.log('✅ Config loaded into inputs');
+            })
+            .catch(err => {
+                console.error('❌ Failed to load config on init:', err);
+                showStatus(`❌ Could not load config: ${err.message}`, 'error');
+            });
+
+        // --- Load cutoff date (independent) ---
         fetchLastSeenCutoff().then(date => {
             cutoffDate = date;
             console.log('📅 Using cutoff date:', cutoffDate || 'None (showing all)');
         });
+
+        updatePriceInfo();
     };
 
 })();
