@@ -7223,7 +7223,6 @@ def accounting_reports():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
 @app.route('/api/accounting/balances', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -7232,16 +7231,33 @@ def get_balances():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get Bluevine (1) and FNBO (21) balances
+        # ============================================================
+        # Cash / bank asset accounts — show running balance
+        # Includes: Bluevine (1), FNBO (21), and the two new
+        # Cash Register accounts (Sales and Purchases).
+        # ============================================================
         cursor.execute('''
             SELECT 
                 a.code,
                 a.name,
-                COALESCE(SUM(bt.amount), 0) AS balance
-            FROM bank_transactions bt
-            INNER JOIN accounts a ON a.id = bt.post_from
-            WHERE bt.post_from IN (1, 21)
+                COALESCE(SUM(
+                    CASE 
+                        WHEN bt.post_to = a.id THEN bt.amount
+                        WHEN bt.post_from = a.id THEN -bt.amount
+                        ELSE 0
+                    END
+                ), 0) AS balance
+            FROM accounts a
+            LEFT JOIN bank_transactions bt 
+                ON bt.post_from = a.id OR bt.post_to = a.id
+            WHERE a.id IN (
+                1,           -- Bluevine
+                21,          -- FNBO
+                (SELECT id FROM accounts WHERE code = '1015'),  -- Cash - Register (Sales)
+                (SELECT id FROM accounts WHERE code = '1017')   -- Cash - Register (Purchases)
+            )
             GROUP BY a.id, a.code, a.name
+            ORDER BY a.code
         ''')
         
         rows = cursor.fetchall()
@@ -7250,11 +7266,13 @@ def get_balances():
             balances.append({
                 'code': row['code'],
                 'name': row['name'],
-                'balance': row['balance']
+                'balance': row['balance'] / 100.0 if row['balance'] else 0.0
             })
         conn.close()
         
-        # Add Private Account balance (account 53)
+        # ============================================================
+        # Private Account balance (account 53)
+        # ============================================================
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute('''
@@ -7278,12 +7296,11 @@ def get_balances():
         })
         
         # ============================================================
-        # ADD PREPAID RENT BALANCE
+        # Prepaid Rent balance (account 52 / code 1055)
         # ============================================================
         conn = get_db()
         cursor = conn.cursor()
         
-        # Prepaid Rent balance = Bank payments (post_to = 52) - Amortization (post_from = 51, post_to = 52)
         cursor.execute('''
             SELECT 
                 (
