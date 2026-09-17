@@ -18,7 +18,185 @@
         return headers;
     }
 
-    // Load orders
+    // =====================================================================
+    // BULK MARK PAID ORDERS SOLD  (defined first so it's always available)
+    // =====================================================================
+    window.discogsBulkMarkPaidOrdersSold = async function() {
+        console.log('🎯 discogsBulkMarkPaidOrdersSold called');
+        if (!confirm(
+            'Mark every record in "Payment Received" Discogs orders as sold?\n\n' +
+            'This will set each record to Sold on Discogs and update its store_price ' +
+            'to the Discogs sale price.'
+        )) return;
+
+        const tableDiv = document.getElementById('discogs-orders-table');
+        const statusDiv = document.getElementById('discogs-orders-status-msg');
+        const originalHtml = tableDiv ? tableDiv.innerHTML : '';
+
+        const startTime = Date.now();
+        let dots = 0;
+
+        // Inject spinner keyframes once
+        if (!document.getElementById('discogsSpinStyle')) {
+            const style = document.createElement('style');
+            style.id = 'discogsSpinStyle';
+            style.textContent = '@keyframes discogsSpin { to { transform: rotate(360deg); } }';
+            document.head.appendChild(style);
+        }
+
+        if (tableDiv) {
+            tableDiv.innerHTML = `
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:50px 20px;gap:14px;">
+                    <div style="width:56px;height:56px;border:5px solid #e9ecef;border-top-color:#28a745;border-radius:50%;animation:discogsSpin 0.9s linear infinite;"></div>
+                    <div style="font-size:16px;font-weight:600;color:#333;">Scanning Payment Received orders…</div>
+                    <div style="font-size:13px;color:#666;">Fetching orders from Discogs and matching PIGSTYLE IDs</div>
+                    <div id="bulk-elapsed" style="font-size:12px;color:#999;">Elapsed: 0s</div>
+                    <div style="font-size:11px;color:#aaa;max-width:420px;text-align:center;line-height:1.5;">
+                        Please don't close this tab.
+                    </div>
+                </div>
+            `;
+        }
+
+        const progressInterval = setInterval(() => {
+            const el = document.getElementById('bulk-elapsed');
+            if (el) {
+                const secs = Math.floor((Date.now() - startTime) / 1000);
+                dots = (dots + 1) % 4;
+                el.textContent = `Elapsed: ${secs}s ${'.'.repeat(dots)}`;
+            }
+        }, 1000);
+
+        if (statusDiv) {
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'status-message status-info';
+            statusDiv.textContent = '⏳ Working… please wait';
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/api/discogs/bulk-mark-paid-orders-sold`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: getHeaders()
+            });
+
+            const data = await response.json();
+            clearInterval(progressInterval);
+
+            if (data.status === 'success') {
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                const details = data.details || [];
+                const interesting = details.filter(d =>
+                    d.result === 'marked_sold' || d.result === 'not_found'
+                );
+
+                let html = `
+                    <div style="padding:24px;max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:14px;">
+                        <div style="font-size:22px;font-weight:700;color:#28a745;text-align:center;">
+                            ✅ Bulk Action Complete
+                        </div>
+                        <div style="font-size:13px;color:#888;text-align:center;">
+                            Finished in ${elapsed}s · Scanned ${data.orders_scanned || 0} order(s)
+                        </div>
+                        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:6px;">
+                            <div style="background:#e7f5ea;padding:12px 16px;border-radius:8px;">
+                                <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#28a745;font-weight:700;">Marked Sold</div>
+                                <div style="font-size:24px;font-weight:700;color:#28a745;">${data.marked}</div>
+                            </div>
+                            <div style="background:#fff4e5;padding:12px 16px;border-radius:8px;">
+                                <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#e67e22;font-weight:700;">Already Sold</div>
+                                <div style="font-size:24px;font-weight:700;color:#e67e22;">${data.skipped}</div>
+                            </div>
+                            <div style="background:#fdecea;padding:12px 16px;border-radius:8px;">
+                                <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#c0392b;font-weight:700;">Not In DB</div>
+                                <div style="font-size:24px;font-weight:700;color:#c0392b;">${data.not_found}</div>
+                            </div>
+                            <div style="background:#eef1f5;padding:12px 16px;border-radius:8px;">
+                                <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#5a6673;font-weight:700;">No PIGSTYLE ID</div>
+                                <div style="font-size:24px;font-weight:700;color:#5a6673;">${data.no_pigstyle}</div>
+                            </div>
+                        </div>
+                `;
+
+                if (interesting.length > 0) {
+                    html += `
+                        <details style="margin-top:8px;">
+                            <summary style="cursor:pointer;font-size:13px;color:#555;font-weight:600;padding:8px 0;">
+                                Show details (${interesting.length})
+                            </summary>
+                            <div style="max-height:300px;overflow-y:auto;border:1px solid #eee;border-radius:6px;margin-top:6px;">
+                                <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                                    <thead>
+                                        <tr style="background:#f8f9fa;position:sticky;top:0;">
+                                            <th style="padding:6px 10px;text-align:left;border-bottom:1px solid #ddd;">PigStyle ID</th>
+                                            <th style="padding:6px 10px;text-align:left;border-bottom:1px solid #ddd;">Order</th>
+                                            <th style="padding:6px 10px;text-align:left;border-bottom:1px solid #ddd;">Result</th>
+                                            <th style="padding:6px 10px;text-align:left;border-bottom:1px solid #ddd;">Info</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${interesting.map(d => {
+                                            const color = d.result === 'marked_sold' ? '#28a745' : '#c0392b';
+                                            const label = d.result === 'marked_sold' ? '✅ Sold' : '❌ Not found';
+                                            const info = d.result === 'marked_sold'
+                                                ? `${d.artist || ''} - ${d.title || ''} ($${(d.sale_price || 0).toFixed(2)})`
+                                                : 'PIGSTYLE ID missing from records table';
+                                            return `<tr>
+                                                <td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;font-family:monospace;">${d.pigstyle_id}</td>
+                                                <td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;color:#666;">${d.order_id || '—'}</td>
+                                                <td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;color:${color};font-weight:600;">${label}</td>
+                                                <td style="padding:5px 10px;border-bottom:1px solid #f0f0f0;color:#555;">${info}</td>
+                                            </tr>`;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </details>
+                    `;
+                }
+
+                html += `
+                        <div style="display:flex;gap:10px;justify-content:center;margin-top:10px;">
+                            <button onclick="discogsOrdersApplyFilters()" 
+                                    style="padding:10px 24px;background:#007bff;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;">
+                                🔄 Reload Orders
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                if (tableDiv) tableDiv.innerHTML = html;
+
+                if (statusDiv) {
+                    statusDiv.style.display = 'block';
+                    statusDiv.className = 'status-message status-success';
+                    statusDiv.textContent = `✅ Marked ${data.marked} sold · ${data.skipped} already sold · ${data.not_found} not in DB · ${data.no_pigstyle} without PIGSTYLE ID`;
+                }
+            } else {
+                if (tableDiv) tableDiv.innerHTML = originalHtml;
+                const msg = data.error || data.message || 'Bulk action failed';
+                if (statusDiv) {
+                    statusDiv.style.display = 'block';
+                    statusDiv.className = 'status-message status-error';
+                    statusDiv.textContent = `❌ ${msg}`;
+                }
+            }
+        } catch (err) {
+            clearInterval(progressInterval);
+            if (tableDiv) tableDiv.innerHTML = originalHtml;
+            const statusDiv2 = document.getElementById('discogs-orders-status-msg');
+            if (statusDiv2) {
+                statusDiv2.style.display = 'block';
+                statusDiv2.className = 'status-message status-error';
+                statusDiv2.textContent = `❌ Error: ${err.message}`;
+            }
+            console.error('Bulk mark sold error:', err);
+        }
+    };
+
+    // =====================================================================
+    // LOAD ORDERS
+    // =====================================================================
     async function loadOrders() {
         const status = document.getElementById('discogs-orders-status');
         const dateFrom = document.getElementById('discogs-orders-date-from');
@@ -45,14 +223,10 @@
                 headers: getHeaders()
             });
             
-            console.log('📡 Response status:', response.status);
-            
             const data = await response.json();
-            console.log('📦 Response data:', data);
 
             if (data.status === 'success') {
                 orders = data.orders || [];
-                // Sort orders by date (latest first)
                 orders.sort((a, b) => {
                     const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
                     const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
@@ -98,19 +272,19 @@
         }
     }
 
-    // Render orders table
+    // =====================================================================
+    // RENDER ORDERS TABLE
+    // =====================================================================
     function renderOrdersTable() {
         const tableDiv = document.getElementById('discogs-orders-table');
         const container = document.getElementById('discogs-orders-container');
         if (!tableDiv || !container) return;
         
-        // Determine which orders to show
         let displayOrders = orders;
         if (!viewingAllOrders && selectedOrderId) {
             displayOrders = orders.filter(o => (o.order_id || o.id) === selectedOrderId);
         }
         
-        // Adjust container height based on view mode
         if (!viewingAllOrders && selectedOrderId) {
             container.style.flex = '0.5';
             container.style.maxHeight = '200px';
@@ -162,7 +336,6 @@
             const rowBg = index % 2 === 0 ? '#ffffff' : '#f9f9f9';
             const isSelected = selectedOrderId === (order.order_id || order.id) && !viewingAllOrders;
             
-            // Show relative time for recent orders
             let dateDisplay = '—';
             if (order.created_at) {
                 const date = new Date(order.created_at);
@@ -220,7 +393,6 @@
         html += '</tbody></table>';
         tableDiv.innerHTML = html;
         
-        // If viewing a single order, scroll to show the items
         if (!viewingAllOrders && selectedOrderId) {
             setTimeout(() => {
                 const itemsSection = document.getElementById('discogs-order-items-section');
@@ -231,15 +403,15 @@
         }
     }
 
-    // Select order and load items
+    // =====================================================================
+    // SELECT / SHOW ORDERS
+    // =====================================================================
     window.discogsSelectOrder = function(orderId) {
         selectedOrderId = orderId;
         viewingAllOrders = false;
         
-        // Find the selected order to get details
         const order = orders.find(o => (o.order_id || o.id) === orderId);
         if (order) {
-            // Update order summary
             const summaryEl = document.getElementById('discogs-order-summary');
             if (summaryEl) {
                 const buyer = order.buyer_username || order.buyer_name || 'Unknown';
@@ -248,7 +420,6 @@
                 summaryEl.textContent = `${buyer} | ${order.items ? order.items.length : 0} items | Total: ${total} | ${date}`;
             }
             
-            // Show order items section
             const itemsSection = document.getElementById('discogs-order-items-section');
             if (itemsSection) {
                 itemsSection.style.display = 'block';
@@ -260,18 +431,15 @@
         renderOrdersTable();
     };
 
-    // Show all orders
     window.discogsShowAllOrders = function() {
         viewingAllOrders = true;
         selectedOrderId = null;
         
-        // Hide order items section
         const itemsSection = document.getElementById('discogs-order-items-section');
         if (itemsSection) {
             itemsSection.style.display = 'none';
         }
         
-        // Clear order items
         const itemsDiv = document.getElementById('discogs-order-items');
         if (itemsDiv) {
             itemsDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">Select an order to view items</div>';
@@ -281,7 +449,10 @@
         showStatus('📋 Showing all orders', 'success');
     };
 
-    // Load order items
+    // =====================================================================
+    // LOAD ORDER ITEMS
+    // (no per-record fetch — backend already returns record_status_id)
+    // =====================================================================
     async function loadOrderItems(orderId) {
         const list = document.getElementById('discogs-order-items');
         if (!list) return;
@@ -299,45 +470,26 @@
                 const order = data.order;
                 const items = order.items || [];
                 
-                // Enrich items with pigstyle data
-                const enriched = [];
-                for (const item of items) {
+                const enriched = items.map(item => {
                     let pigstyleId = null;
-                    let record = null;
-                    
                     if (item.condition_comments || item.private_comments) {
                         const comments = (item.condition_comments || '') + ' ' + (item.private_comments || '');
                         const match = comments.match(/\[PIGSTYLE ID:\s*(\d+)\]/i);
                         if (match) pigstyleId = parseInt(match[1]);
                     }
-                    
-                    if (pigstyleId) {
-                        try {
-                            const recRes = await fetch(`${API_BASE}/records/${pigstyleId}`, {
-                                credentials: 'include',
-                                headers: getHeaders()
-                            });
-                            if (recRes.ok) {
-                                record = await recRes.json();
-                            }
-                        } catch(e) {}
-                    }
-                    
-                    enriched.push({
+                    return {
                         ...item,
                         pigstyle_id: pigstyleId,
-                        record: record,
-                        record_status_id: record ? record.status_id : null,
+                        record_status_id: item.record_status_id ?? null,
                         artist: item.artist || 'Unknown',
                         title: item.title || 'Unknown',
                         price: item.price || 0
-                    });
-                }
+                    };
+                });
                 
                 orderItems = enriched;
                 renderOrderItems(orderItems);
                 
-                // Update order summary
                 const summaryEl = document.getElementById('discogs-order-summary');
                 if (summaryEl) {
                     const buyer = order.buyer_username || order.buyer_name || 'Unknown';
@@ -358,7 +510,9 @@
         }
     }
 
-    // Render order items
+    // =====================================================================
+    // RENDER ORDER ITEMS
+    // =====================================================================
     function renderOrderItems(items) {
         const list = document.getElementById('discogs-order-items');
         if (!list) return;
@@ -391,7 +545,6 @@
                                item.record_status_id === 3 || item.record_status_id === 4 ? '#dc3545' :
                                item.record_status_id === 1 ? '#17a2b8' : '#6c757d';
             
-            // Check if item is already sold (status 3 or 4)
             const isSold = item.record_status_id === 3 || item.record_status_id === 4;
             
             html += `<tr>
@@ -428,7 +581,9 @@
         list.innerHTML = html;
     }
 
-    // Mark record as sold on Discogs - FIXED to update UI
+    // =====================================================================
+    // MARK SINGLE RECORD SOLD
+    // =====================================================================
     window.discogsMarkSold = async function(recordId, itemIndex) {
         if (!confirm(`Mark record #${recordId} as sold on Discogs?`)) return;
 
@@ -442,24 +597,10 @@
 
             if (data.status === 'success') {
                 showStatus(`✅ Record #${recordId} marked as sold on Discogs`, 'success');
-                
-                // Update the local data
                 if (orderItems[itemIndex]) {
-                    // Update the record status in the items array
-                    orderItems[itemIndex].record_status_id = 4; // Sold status
-                    // Re-render the items table
+                    orderItems[itemIndex].record_status_id = 4;
                     renderOrderItems(orderItems);
-                    
-                    // Also update the order in the orders list if it has the pigstyle_id
-                    // Update the item count in the orders table
-                    const order = orders.find(o => (o.order_id || o.id) === selectedOrderId);
-                    if (order && order.items) {
-                        // Find the item in the order items and update its status
-                        // We don't have a direct way to update the order items, but we can reload
-                        // the order items from the server to be safe
-                        // But since we already updated the UI, just refresh the orders table
-                        renderOrdersTable();
-                    }
+                    renderOrdersTable();
                 }
             } else {
                 showStatus(`❌ Error: ${data.error || 'Failed to mark as sold'}`, 'error');
@@ -470,9 +611,9 @@
         }
     };
 
-    // ===== SHIPPING LABEL FUNCTIONS =====
-    
-    // Open shipping label modal
+    // =====================================================================
+    // SHIPPING LABEL FUNCTIONS
+    // =====================================================================
     window.discogsPrintShippingLabel = function() {
         if (!selectedOrderId) {
             showStatus('⚠️ Please select an order first', 'error');
@@ -485,12 +626,10 @@
             return;
         }
         
-        // Populate order details in modal
         document.getElementById('discogs-label-order-id').textContent = selectedOrderId;
         document.getElementById('discogs-label-buyer').textContent = order.buyer_username || order.buyer_name || 'Unknown';
         document.getElementById('discogs-label-items').textContent = orderItems.length + ' items';
         
-        // Reset position selection
         selectedLabelPosition = 'LT';
         document.querySelectorAll('[id^="discogs-pos-"]').forEach(btn => {
             btn.style.border = '2px solid #ddd';
@@ -499,20 +638,16 @@
         document.getElementById('discogs-pos-LT').style.border = '2px solid #007bff';
         document.getElementById('discogs-pos-LT').style.background = '#e7f3ff';
         
-        // Reset file input
         document.getElementById('discogs-label-pdf').value = '';
         labelPdfFile = null;
         
-        // Show modal
         document.getElementById('discogs-shipping-modal').style.display = 'flex';
     };
     
-    // Close shipping label modal
     window.discogsCloseShippingModal = function() {
         document.getElementById('discogs-shipping-modal').style.display = 'none';
     };
     
-    // Select label position
     window.discogsSelectLabelPosition = function(position) {
         selectedLabelPosition = position;
         document.querySelectorAll('[id^="discogs-pos-"]').forEach(btn => {
@@ -523,7 +658,6 @@
         document.getElementById(`discogs-pos-${position}`).style.background = '#e7f3ff';
     };
     
-    // Generate and print label using simple HTML/CSS approach
     window.discogsPrintLabel = async function() {
         const fileInput = document.getElementById('discogs-label-pdf');
         if (!fileInput.files || fileInput.files.length === 0) {
@@ -537,11 +671,9 @@
             const file = fileInput.files[0];
             const fileUrl = URL.createObjectURL(file);
             
-            // Get order details
             const order = orders.find(o => (o.order_id || o.id) === selectedOrderId);
             const buyer = order ? order.buyer_username || order.buyer_name || 'Unknown' : 'Unknown';
             
-            // Position mapping for CSS
             const positionStyles = {
                 'LT': { top: '0', left: '0' },
                 'RT': { top: '0', right: '0' },
@@ -551,10 +683,8 @@
             
             const pos = positionStyles[selectedLabelPosition];
             
-            // Create a print window with the label positioned correctly
             const printWindow = window.open('', '_blank', 'width=800,height=600');
             
-            // Create HTML with the PDF embedded and positioned
             printWindow.document.write(`
                 <!DOCTYPE html>
                 <html>
@@ -562,63 +692,28 @@
                     <title>Shipping Label - Order #${selectedOrderId}</title>
                     <style>
                         * { margin: 0; padding: 0; box-sizing: border-box; }
-                        body { 
-                            background: white; 
-                            margin: 0; 
-                            padding: 0;
-                            width: 100%;
-                            height: 100%;
-                        }
-                        .page-container {
-                            width: 8.5in;
-                            height: 11in;
-                            margin: 0 auto;
-                            position: relative;
-                            background: white;
-                        }
+                        body { background: white; margin: 0; padding: 0; width: 100%; height: 100%; }
+                        .page-container { width: 8.5in; height: 11in; margin: 0 auto; position: relative; background: white; }
                         .label-container {
-                            position: absolute;
-                            width: 4.25in;
-                            height: 5.5in;
+                            position: absolute; width: 4.25in; height: 5.5in;
                             ${pos.top !== undefined ? `top: ${pos.top};` : ''}
                             ${pos.bottom !== undefined ? `bottom: ${pos.bottom};` : ''}
                             ${pos.left !== undefined ? `left: ${pos.left};` : ''}
                             ${pos.right !== undefined ? `right: ${pos.right};` : ''}
                             border: 1px dashed #ccc;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            background: white;
-                            padding: 10px;
-                            overflow: hidden;
+                            display: flex; align-items: center; justify-content: center;
+                            background: white; padding: 10px; overflow: hidden;
                         }
-                        .label-container iframe {
-                            width: 100%;
-                            height: 100%;
-                            border: none;
-                            background: white;
-                        }
+                        .label-container iframe { width: 100%; height: 100%; border: none; background: white; }
                         .label-info {
-                            position: absolute;
-                            bottom: 10px;
-                            left: 10px;
-                            font-size: 10px;
-                            color: #999;
-                            font-family: Arial, sans-serif;
-                            background: rgba(255,255,255,0.9);
-                            padding: 2px 8px;
-                            border-radius: 4px;
+                            position: absolute; bottom: 10px; left: 10px;
+                            font-size: 10px; color: #999; font-family: Arial, sans-serif;
+                            background: rgba(255,255,255,0.9); padding: 2px 8px; border-radius: 4px;
                         }
                         .label-position {
-                            position: absolute;
-                            top: 10px;
-                            right: 10px;
-                            font-size: 10px;
-                            color: #999;
-                            font-family: Arial, sans-serif;
-                            background: rgba(255,255,255,0.9);
-                            padding: 2px 8px;
-                            border-radius: 4px;
+                            position: absolute; top: 10px; right: 10px;
+                            font-size: 10px; color: #999; font-family: Arial, sans-serif;
+                            background: rgba(255,255,255,0.9); padding: 2px 8px; border-radius: 4px;
                         }
                         @media print {
                             body { margin: 0; padding: 0; }
@@ -637,11 +732,8 @@
                         <div class="label-position">Position: ${selectedLabelPosition}</div>
                     </div>
                     <script>
-                        // Auto-print when loaded
                         window.onload = function() {
-                            setTimeout(function() {
-                                window.print();
-                            }, 1000);
+                            setTimeout(function() { window.print(); }, 1000);
                         };
                     <\/script>
                 </body>
@@ -652,7 +744,6 @@
             
             showStatus(`✅ Label ready for printing - Order #${selectedOrderId} at position ${selectedLabelPosition}`, 'success');
             
-            // Close modal after a delay
             setTimeout(() => {
                 document.getElementById('discogs-shipping-modal').style.display = 'none';
             }, 2000);
@@ -663,39 +754,35 @@
         }
     };
 
-    // Show status
+    // =====================================================================
+    // HELPERS
+    // =====================================================================
     function showStatus(message, type) {
         const statusDiv = document.getElementById('discogs-orders-status-msg');
         if (!statusDiv) return;
         statusDiv.style.display = 'block';
         statusDiv.textContent = message;
         statusDiv.className = `status-message status-${type}`;
-        // Clear any existing timeout
-        if (window.statusTimeout) {
-            clearTimeout(window.statusTimeout);
-        }
+        if (window.statusTimeout) clearTimeout(window.statusTimeout);
         window.statusTimeout = setTimeout(() => { 
             statusDiv.style.display = 'none'; 
         }, 5000);
     }
 
-    // Expose functions
     window.discogsOrdersApplyFilters = function() {
         viewingAllOrders = true;
         selectedOrderId = null;
-        // Hide order items section
         const itemsSection = document.getElementById('discogs-order-items-section');
-        if (itemsSection) {
-            itemsSection.style.display = 'none';
-        }
+        if (itemsSection) itemsSection.style.display = 'none';
         loadOrders();
     };
 
-    // Init
+    // =====================================================================
+    // INIT
+    // =====================================================================
     window.initDiscogsOrders = function() {
         console.log('📦 Discogs Orders initialized');
         
-        // Set default date range
         const dateFrom = document.getElementById('discogs-orders-date-from');
         const dateTo = document.getElementById('discogs-orders-date-to');
         
@@ -708,12 +795,12 @@
             dateTo.value = new Date().toISOString().split('T')[0];
         }
         
-        // Close modal on click outside
-        document.getElementById('discogs-shipping-modal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                discogsCloseShippingModal();
-            }
-        });
+        const modal = document.getElementById('discogs-shipping-modal');
+        if (modal) {
+            modal.addEventListener('click', function(e) {
+                if (e.target === this) discogsCloseShippingModal();
+            });
+        }
 
         loadOrders();
     };
