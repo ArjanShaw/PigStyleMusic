@@ -24,7 +24,7 @@
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' }
             });
-            
+
             if (!response.ok) {
                 if (response.status === 401) {
                     document.getElementById('add-purchase-info').textContent = '⚠️ Please log in as admin';
@@ -36,7 +36,7 @@
                 }
                 throw new Error(`HTTP ${response.status}`);
             }
-            
+
             const data = await response.json();
             if (data.status === 'success') {
                 purchases = data.purchases || [];
@@ -84,7 +84,7 @@
         }
     }
 
-    // Load formats
+    // Load formats — used for the search-format dropdown next to the search bar
     async function loadFormats() {
         try {
             const response = await fetch(`${API_BASE}/api/formats`, {
@@ -94,10 +94,14 @@
             const data = await response.json();
             if (data.status === 'success') {
                 formats = data.formats || [];
-                const select = document.getElementById('add-default-format');
-                select.innerHTML = '<option value="">Select...</option>' + formats.map(f => 
-                    `<option value="${f.id}">${f.name}</option>`
+                const select = document.getElementById('add-search-format');
+                // Keep a placeholder so the user actively picks, then list all formats from DB
+                select.innerHTML = '<option value="">All Formats</option>' + formats.map(f =>
+                    `<option value="${f.name.toLowerCase()}">${f.name}</option>`
                 ).join('');
+                // Default to Vinyl if present
+                const vinylOpt = Array.from(select.options).find(o => o.value === 'vinyl');
+                if (vinylOpt) select.value = 'vinyl';
             }
         } catch (err) {
             console.error('Failed to load formats:', err);
@@ -130,10 +134,9 @@
             'add-default-sleeve',
             'add-default-disc',
             'add-default-price',
-            'add-default-format',
             'add-default-consignor'
         ];
-        
+
         defaultFields.forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -188,15 +191,15 @@
     window.addRecordsSearch = async function() {
         const purchaseSelect = document.getElementById('add-purchase-select');
         const purchaseId = purchaseSelect.value;
-        
+
         if (!purchaseId) {
             showStatus('Please select a purchase first', 'error');
             return;
         }
-        
+
         const searchInput = document.getElementById('add-search-input');
         const term = searchInput.value.trim();
-        
+
         if (!term) {
             showStatus('Please enter a search term', 'error');
             return;
@@ -204,25 +207,25 @@
 
         const formatSelect = document.getElementById('add-search-format');
         const formatFilter = formatSelect ? formatSelect.value : 'all';
-        
+
         const resultsDiv = document.getElementById('add-results');
         resultsDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Searching Discogs...</div>';
-        
+
         try {
             const response = await fetch(
-                `${API_BASE}/api/discogs/search?q=${encodeURIComponent(term)}&format=${encodeURIComponent(formatFilter)}`,
+                `${API_BASE}/api/discogs/search?q=${encodeURIComponent(term)}&format=${encodeURIComponent(formatFilter || 'all')}`,
                 {
                     credentials: 'include',
                     headers: { 'Content-Type': 'application/json' }
                 }
             );
             const data = await response.json();
-            
+
             if (data.status === 'success' && data.results) {
                 searchResults = data.results;
                 lastSearchTerm = term;
                 renderResults(searchResults);
-                const formatLabel = formatFilter === 'all' ? '' : ` [${formatFilter}]`;
+                const formatLabel = formatFilter && formatFilter !== 'all' ? ` [${formatFilter}]` : '';
                 showStatus(`Found ${searchResults.length} results${formatLabel} — press Enter to add the first`, 'success');
             } else {
                 resultsDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">No results found</div>';
@@ -255,30 +258,28 @@
             resultsDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">No results found</div>';
             return;
         }
-        
+
         const defaultSleeve = document.getElementById('add-default-sleeve').value;
         const defaultDisc = document.getElementById('add-default-disc').value;
         const defaultPrice = document.getElementById('add-default-price').value;
-        const defaultFormat = document.getElementById('add-default-format').value;
         const defaultConsignor = document.getElementById('add-default-consignor').value;
-        
+
         let html = '';
         results.forEach((record, idx) => {
             const artist = record.artist || 'Unknown';
             const title = record.title || 'Untitled';
             const catalog = record.catalog_number || '—';
             const image = record.image_url || '';
-            
+
             const imgHtml = image ? 
                 `<img src="${image}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;">` : 
                 `<div style="width:50px;height:50px;background:#e0e0e0;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:20px;color:#bbb;">🎵</div>`;
-            
+
             const showSleeve = !defaultSleeve;
             const showDisc = !defaultDisc;
             const showPrice = !defaultPrice;
-            const showFormat = !defaultFormat;
             const showConsignor = !defaultConsignor || defaultConsignor === 'none';
-            
+
             html += `
                 <div style="display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid #f0f0f0; hover:background:#f8f9fa;">
                     <div style="flex: 0 0 50px;">${imgHtml}</div>
@@ -306,12 +307,6 @@
                         ${showPrice ? `
                             <input type="number" class="add-price-input" data-index="${idx}" placeholder="Price" style="width:70px;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:11px;">
                         ` : ''}
-                        ${showFormat ? `
-                            <select class="add-format-select" data-index="${idx}" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
-                                <option value="">Format</option>
-                                ${formats.map(f => `<option value="${f.id}">${f.name}</option>`).join('')}
-                            </select>
-                        ` : ''}
                         ${showConsignor ? `
                             <select class="add-consignor-select" data-index="${idx}" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
                                 <option value="none">None</option>
@@ -334,36 +329,39 @@
             showStatus('Record not found', 'error');
             return;
         }
-        
+
         const purchaseSelect = document.getElementById('add-purchase-select');
         const purchaseId = purchaseSelect.value;
-        
+
         if (!purchaseId) {
             showStatus('Please select a purchase', 'error');
             return;
         }
-        
+
         const defaultSleeve = document.getElementById('add-default-sleeve').value;
         const defaultDisc = document.getElementById('add-default-disc').value;
         const defaultPrice = document.getElementById('add-default-price').value;
-        const defaultFormat = document.getElementById('add-default-format').value;
         const defaultConsignor = document.getElementById('add-default-consignor').value;
-        
+
         const row = document.querySelectorAll('.add-sleeve-select')[index]?.closest('div');
-        
+
         const sleeveSelect = row?.querySelector('.add-sleeve-select');
         const discSelect = row?.querySelector('.add-disc-select');
         const priceInput = row?.querySelector('.add-price-input');
-        const formatSelect = row?.querySelector('.add-format-select');
         const consignorSelect = row?.querySelector('.add-consignor-select');
-        
+
         const sleeveId = sleeveSelect ? parseInt(sleeveSelect.value) : (defaultSleeve ? parseInt(defaultSleeve) : null);
         const discId = discSelect ? parseInt(discSelect.value) : (defaultDisc ? parseInt(defaultDisc) : null);
         const price = priceInput ? parseFloat(priceInput.value) : (defaultPrice ? parseFloat(defaultPrice) : null);
-        const formatId = formatSelect ? parseInt(formatSelect.value) : (defaultFormat ? parseInt(defaultFormat) : null);
         const consignorId = consignorSelect && consignorSelect.value !== 'none' ? parseInt(consignorSelect.value) : 
                            (defaultConsignor && defaultConsignor !== 'none' ? parseInt(defaultConsignor) : null);
-        
+
+        // ===== FORMAT: use the search-format dropdown (single source of truth) =====
+        const searchFormatSelect = document.getElementById('add-search-format');
+        const formatName = searchFormatSelect ? searchFormatSelect.value : '';
+        const matchedFormat = formats.find(f => f.name.toLowerCase() === formatName);
+        const formatId = matchedFormat ? matchedFormat.id : null;
+
         if (!sleeveId) {
             showStatus('Please select sleeve condition', 'error');
             return;
@@ -376,9 +374,9 @@
             showStatus('Please enter a valid price', 'error');
             return;
         }
-        
+
         const now = new Date().toISOString();
-        
+
         const data = {
             artist: record.artist || 'Unknown',
             title: record.title || 'Unknown',
@@ -394,7 +392,7 @@
             status_id: 1,
             last_seen: now
         };
-        
+
         try {
             const response = await fetch(`${API_BASE}/records`, {
                 method: 'POST',
@@ -403,7 +401,7 @@
                 body: JSON.stringify(data)
             });
             const result = await response.json();
-            
+
             if (result.status === 'success') {
                 showStatus(`✅ Added: ${record.artist} - ${record.title}`, 'success');
                 addToRecent(record.artist || 'Unknown', record.title || 'Unknown', price);
