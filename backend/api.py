@@ -3517,12 +3517,12 @@ def create_inventory_purchase():
                 return jsonify({'status': 'error', 'error': 'Inventory account (1050) not found'}), 500
             inventory_id = inventory_row['id']
             
-            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
+            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1017',))
             cash_row = cursor.fetchone()
             if not cash_row:
                 conn.rollback()
                 conn.close()
-                return jsonify({'status': 'error', 'error': 'Cash account (1015) not found'}), 500
+                return jsonify({'status': 'error', 'error': 'Cash - Register (Purchases) account (1017) not found'}), 500
             cash_id = cash_row['id']
             
             cursor.execute('''
@@ -3535,7 +3535,7 @@ def create_inventory_purchase():
                 desc,
                 'purchase',
                 str(purchase_id),
-                cash_id,          # post_from = credit (cash)
+                cash_id,          # post_from = credit (cash - purchases register)
                 inventory_id,     # post_to = debit (inventory)
                 int(round(amount_spent * 100))
             ))
@@ -3553,6 +3553,7 @@ def create_inventory_purchase():
         app.logger.error(f"Error creating inventory purchase: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/api/purchases/<int:purchase_id>', methods=['DELETE'])
 @login_required
@@ -3666,6 +3667,7 @@ def get_inventory_purchase(purchase_id):
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
+
 @app.route('/api/inventory-purchases/<int:purchase_id>', methods=['PUT'])
 @login_required
 @role_required(['admin'])
@@ -3751,7 +3753,7 @@ def update_inventory_purchase(purchase_id):
                 # Create new entry if one doesn't exist (shouldn't happen, but just in case)
                 cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1050',))
                 inventory = cursor.fetchone()
-                cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
+                cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1017',))
                 cash = cursor.fetchone()
                 
                 if inventory and cash:
@@ -3814,7 +3816,6 @@ def update_inventory_purchase(purchase_id):
         app.logger.error(f"Error updating purchase: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 @app.route('/api/inventory-purchases/<int:purchase_id>', methods=['DELETE'])
 @login_required
