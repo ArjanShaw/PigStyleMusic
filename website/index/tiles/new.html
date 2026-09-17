@@ -17,7 +17,7 @@
                 </button>
             </div>
             
-            <!-- NEW: Filter Row - Genre ONLY (NO price filter) -->
+            <!-- Filter Row - Genre + Format -->
             <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-shrink: 0; flex-wrap: wrap; align-items: center; background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
                 <!-- Genre Filter -->
                 <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 150px;">
@@ -27,9 +27,15 @@
                     </select>
                 </div>
                 
-                <!-- Clear Genre Button (NO price filter) -->
-                <button onclick="newClearGenreFilter()" style="padding: 6px 14px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap;">
-                    <i class="fas fa-undo"></i> Clear Genre
+                <!-- Format Multi-Select (wrapper hides itself if 0 or 1 formats) -->
+                <div id="newFormatWrapper" style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 150px;">
+                    <label style="font-size: 13px; font-weight: 600; color: #555; white-space: nowrap;">💿 Format:</label>
+                    <div id="newFormatSelect" style="flex: 1; min-width: 120px;"></div>
+                </div>
+                
+                <!-- Clear Filters Button -->
+                <button onclick="newClearFilters()" style="padding: 6px 14px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap;">
+                    <i class="fas fa-undo"></i> Clear
                 </button>
             </div>
             

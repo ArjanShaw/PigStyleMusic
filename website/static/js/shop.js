@@ -12,10 +12,9 @@ function initShop() {
             buttonTextColor: 'white',
             searchInputId: 'shopSearchInput',
             statusId: 2,
-            // NEW: Genre filter support
-            genreIds: null,  // Will be set by dropdown
-            // NEW: Max price filter for Shop
-            maxPrice: null,  // Will be set by input
+            genreIds: null,
+            formatIds: null,
+            maxPrice: null,
             showCondition: true,
             showLocation: true,
             onAddToCart: function(record) {
@@ -35,12 +34,8 @@ function initShop() {
                     };
                     window.cart.addItem(item);
                     
-                    if (typeof updateCartUI === 'function') {
-                        updateCartUI();
-                    }
-                    if (typeof closeRecordModal === 'function') {
-                        closeRecordModal();
-                    }
+                    if (typeof updateCartUI === 'function') updateCartUI();
+                    if (typeof closeRecordModal === 'function') closeRecordModal();
                     showToast('✅ Added to cart: ' + record.artist + ' - ' + record.title);
                 }
             }
@@ -83,33 +78,30 @@ function showToast(message) {
 
 // ===== SHOP GENRE FILTER FUNCTIONS =====
 window.shopSetGenre = function(genreId) {
-    if (window.shopComponent) {
-        window.shopComponent.setGenre(genreId);
-    }
+    if (window.shopComponent) window.shopComponent.setGenre(genreId);
+};
+
+// ===== SHOP FORMAT FILTER FUNCTIONS =====
+window.shopSetFormats = function(formatIds) {
+    if (window.shopComponent) window.shopComponent.setFormats(formatIds);
 };
 
 // ===== SHOP PRICE FILTER FUNCTIONS =====
 window.shopSetMaxPrice = function(price) {
-    if (window.shopComponent) {
-        window.shopComponent.setMaxPrice(price);
-    }
+    if (window.shopComponent) window.shopComponent.setMaxPrice(price);
 };
 
 // ===== SHOP CLEAR ALL FILTERS =====
 window.shopClearFilters = function() {
     if (window.shopComponent) {
-        // Clear genre dropdown
         const genreSelect = document.getElementById('shopGenreSelect');
-        if (genreSelect) {
-            genreSelect.value = '';
-        }
-        // Clear max price input
+        if (genreSelect) genreSelect.value = '';
+        
         const maxPriceInput = document.getElementById('shopMaxPrice');
-        if (maxPriceInput) {
-            maxPriceInput.value = '';
-        }
-        // Reset component filters
+        if (maxPriceInput) maxPriceInput.value = '';
+        
         window.shopComponent.setGenre(null);
+        window.shopComponent.setFormats([]);
         window.shopComponent.setMaxPrice(null);
     }
 };
