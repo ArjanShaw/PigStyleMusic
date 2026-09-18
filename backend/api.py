@@ -2810,7 +2810,10 @@ def create_record():
 
 @app.route('/records', methods=['GET'])
 def get_records():
-    """Get records with filtering, pagination, and a generic search."""
+    """Get records with filtering, pagination, and a generic search.
+    Format filtering uses records.format_id. Status defaults to 2 (Active) when not specified.
+    No default limit — returns all matching records unless limit is explicitly passed.
+    """
     try:
         conn = get_db()
         conn.row_factory = sqlite3.Row
@@ -2850,7 +2853,7 @@ def get_records():
         where_clauses = []
         params = []
 
-        # --- Status filter (comma-separated) ---
+        # --- Status filter (comma-separated). Default to Active (2) if not specified. ---
         status_ids = request.args.get('status_ids')
         if status_ids:
             ids = [int(x.strip()) for x in status_ids.split(',') if x.strip()]
@@ -2858,6 +2861,10 @@ def get_records():
                 placeholders = ','.join(['?'] * len(ids))
                 where_clauses.append(f"r.status_id IN ({placeholders})")
                 params.extend(ids)
+        else:
+            # Enforce Active by default
+            where_clauses.append("r.status_id = ?")
+            params.append(2)
 
         # --- Artist (partial match) ---
         artist = request.args.get('artist')
@@ -2912,7 +2919,7 @@ def get_records():
             else:
                 where_clauses.append("1=0")
 
-        # --- Formats (comma-separated) ---
+        # --- Formats (comma-separated) — uses records.format_id ---
         format_ids = request.args.get('format_ids')
         if format_ids:
             ids = [int(x.strip()) for x in format_ids.split(',') if x.strip()]
@@ -2921,7 +2928,7 @@ def get_records():
                 where_clauses.append(f"r.format_id IN ({placeholders})")
                 params.extend(ids)
 
-        # --- genre_ids filter (numeric IDs) ---
+        # --- genre_ids filter (numeric IDs via locations.genre_id) ---
         genre_ids_param = request.args.get('genre_ids')
         if genre_ids_param:
             ids = [int(x.strip()) for x in genre_ids_param.split(',') if x.strip()]
@@ -2930,7 +2937,7 @@ def get_records():
                 where_clauses.append(f"l.genre_id IN ({placeholders})")
                 params.extend(ids)
 
-        # --- max_price filter (NEW) ---
+        # --- max_price filter ---
         max_price = request.args.get('max_price')
         if max_price:
             try:
@@ -2939,7 +2946,7 @@ def get_records():
                     where_clauses.append("r.store_price <= ?")
                     params.append(max_price_val)
             except ValueError:
-                pass  # Ignore invalid max_price
+                pass
 
         # --- Legacy 'genres' filter (string-based, OR LIKE on discogs_genre_raw) ---
         genres = request.args.get('genres')
@@ -2990,7 +2997,7 @@ def get_records():
         else:
             where_sql = ""
 
-        # ---------- Count query (no ORDER BY / LIMIT / OFFSET) ----------
+        # ---------- Count query ----------
         count_query = f"SELECT COUNT(*) AS total FROM records r LEFT JOIN locations l ON r.location_id = l.id WHERE 1=1 {where_sql}"
         cursor.execute(count_query, params)
         total = cursor.fetchone()['total']
@@ -3006,7 +3013,7 @@ def get_records():
             order_dir = 'DESC'
         order_sql = f" ORDER BY r.{order_by} {order_dir}"
 
-        # ---------- Pagination (limit + offset) ----------
+        # ---------- Pagination (only if explicitly requested) ----------
         limit = request.args.get('limit')
         offset = request.args.get('offset')
         pagination_sql = ""
@@ -3112,23 +3119,34 @@ def get_genres_with_records():
         app.logger.error(f"Error getting genres with records: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
 @app.route('/api/formats-with-records', methods=['GET'])
 def get_formats_with_records():
     """
-    Get formats that have records in the specified locations/status.
+    Get formats that have active records (status_id = 2 by default).
+    Counts are derived strictly from records.format_id.
     Automatically applies LAST_SEEN_CUTOFF_DATE from app_config.
+    No limit — returns every format that has at least one matching record.
     """
     try:
         conn = get_db()
         cursor = conn.cursor()
-        
+
         location_ids = request.args.get('location_ids')
         status_ids = request.args.get('status_ids')
-        
+
+        # Default status to Active (2) if not given
+        if status_ids:
+            status_id_list = [int(x.strip()) for x in status_ids.split(',') if x.strip()]
+        else:
+            status_id_list = [2]
+
+        # Fetch cutoff date from app_config
         cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'LAST_SEEN_CUTOFF_DATE'")
         row = cursor.fetchone()
         cutoff_date = row['config_value'] if row else None
-        
+
+        # Count records per format directly off records.format_id
         query = '''
             SELECT 
                 f.id,
@@ -3139,31 +3157,32 @@ def get_formats_with_records():
             WHERE 1=1
         '''
         params = []
-        
+
+        # Status filter
+        if status_id_list:
+            placeholders = ','.join(['?'] * len(status_id_list))
+            query += f' AND r.status_id IN ({placeholders})'
+            params.extend(status_id_list)
+
+        # Location filter (optional)
         if location_ids:
             ids = [int(x.strip()) for x in location_ids.split(',') if x.strip()]
             if ids:
                 placeholders = ','.join(['?'] * len(ids))
                 query += f' AND r.location_id IN ({placeholders})'
                 params.extend(ids)
-        
-        if status_ids:
-            ids = [int(x.strip()) for x in status_ids.split(',') if x.strip()]
-            if ids:
-                placeholders = ','.join(['?'] * len(ids))
-                query += f' AND r.status_id IN ({placeholders})'
-                params.extend(ids)
-        
+
+        # Cutoff date (same rule as /records)
         if cutoff_date:
             query += ' AND date(r.last_seen) >= date(?)'
             params.append(cutoff_date)
-        
+
         query += ' GROUP BY f.id, f.name HAVING COUNT(r.id) > 0 ORDER BY f.name'
-        
+
         cursor.execute(query, params)
         results = cursor.fetchall()
         conn.close()
-        
+
         formats = []
         for row in results:
             formats.append({
@@ -3171,14 +3190,14 @@ def get_formats_with_records():
                 'name': row['name'],
                 'record_count': row['record_count']
             })
-        
+
         return jsonify({
             'status': 'success',
             'formats': formats,
             'cutoff_applied': cutoff_date is not None,
             'cutoff_date': cutoff_date
         })
-        
+
     except Exception as e:
         app.logger.error(f"Error getting formats with records: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
