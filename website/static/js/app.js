@@ -4,6 +4,8 @@
 // for CUSTOMER tiles; admin tiles render the old hard-swap way.
 //
 // Admin tile list mirrors admin-dashboard.js — do not change that file.
+//
+// ─── NEW: Menu buttons also auto-rotate every 3s until user interacts.
 // ================================================================
 
 // ==================== STATE ====================
@@ -13,6 +15,11 @@ let currentUser = null;
 const SLIDE_INTERVAL = 4000;      // 4s between auto-advances
 const SLIDE_GRACE    = 3000;      // wait before first auto-advance
 const SLIDE_TRANSITION_MS = 700;  // must match CSS transition duration
+
+// ─── NEW: menu rotation config ───
+const MENU_ROTATE_INTERVAL = 3000;  // 3s between menu button highlights
+let menuRotateTimer   = null;
+let menuRotateStopped = false;
 
 // Rotation order — these are the tiles that live in the slide track
 const CUSTOMER_TILES = [
@@ -278,6 +285,7 @@ function renderDots() {
         dot.addEventListener('click', function(e) {
             e.stopPropagation();
             userInteractedWithMenu();
+            userInteractedWithMenuRotation();   // ─── NEW
             goToSlide(page);
         });
         slideDotsEl.appendChild(dot);
@@ -358,6 +366,30 @@ function userInteractedWithMenu() {
     console.log('⏹️ Auto-slide stopped (user interacted)');
 }
 
+// ==================== MENU AUTO-ROTATION (NEW) ====================
+function startMenuRotation() {
+    if (menuRotateStopped) return;
+    stopMenuRotation();
+    menuRotateTimer = setInterval(() => {
+        navigateMenu('next', true);   // isAuto = true
+    }, MENU_ROTATE_INTERVAL);
+    console.log('▶️ Menu rotation started (' + MENU_ROTATE_INTERVAL + 'ms)');
+}
+
+function stopMenuRotation() {
+    if (menuRotateTimer) {
+        clearInterval(menuRotateTimer);
+        menuRotateTimer = null;
+    }
+}
+
+function userInteractedWithMenuRotation() {
+    if (menuRotateStopped) return;
+    menuRotateStopped = true;
+    stopMenuRotation();
+    console.log('⏹️ Menu rotation stopped (user interacted)');
+}
+
 // ==================== RENDER: CUSTOMER TILE ====================
 async function renderCustomerPage(page, btnElement) {
     ensureSlideTrack();
@@ -367,7 +399,7 @@ async function renderCustomerPage(page, btnElement) {
     slideTrackEl.classList.remove('hidden');
     const existingAdminSlot = document.querySelector('.admin-slot.active');
     if (existingAdminSlot) existingAdminSlot.classList.remove('active');
-    slideDotsEl.style.display = 'flex';
+    if (slideDotsEl) slideDotsEl.style.display = 'flex';   // ─── CHANGED (null-safe)
 
     if (Object.keys(slideCache).length === 0) {
         console.log('📥 Preloading all customer tiles...');
@@ -434,6 +466,7 @@ async function renderCustomerPage(page, btnElement) {
 async function renderAdminPage(page, btnElement) {
     // Kill rotation permanently — the user chose an admin tool
     userInteractedWithMenu();
+    userInteractedWithMenuRotation();   // ─── NEW
     stopAutoSlide();
 
     const pageContent = document.getElementById('page-content');
@@ -553,8 +586,8 @@ async function showPage(page, btnElement) {
 }
 
 // ==================== NAVIGATION HELPERS ====================
-function navigateMenu(direction) {
-    console.log('🔄 Navigating:', direction);
+function navigateMenu(direction, isAuto = false) {   // ─── CHANGED: added isAuto
+    console.log('🔄 Navigating:', direction, isAuto ? '(auto)' : '');
 
     const nav = document.getElementById('menu');
     if (!nav) {
@@ -572,13 +605,21 @@ function navigateMenu(direction) {
 
         const onclick = btn.getAttribute('onclick');
         if (onclick && onclick.includes('showPage')) {
+            // ─── NEW: when auto-rotating, only rotate through customer tiles
+            if (isAuto) {
+                const match = onclick.match(/showPage\(['"]([^'"]+)['"]/);
+                if (!match || !CUSTOMER_TILES.includes(match[1])) return;
+            }
             pageButtons.push(btn);
         }
     });
 
-    const cartBtn = nav.querySelector('[title="Cart"]');
-    if (cartBtn && !pageButtons.includes(cartBtn)) {
-        pageButtons.push(cartBtn);
+    // Cart button only participates in manual navigation, not auto-rotation
+    if (!isAuto) {
+        const cartBtn = nav.querySelector('[title="Cart"]');
+        if (cartBtn && !pageButtons.includes(cartBtn)) {
+            pageButtons.push(cartBtn);
+        }
     }
 
     if (pageButtons.length === 0) return;
@@ -594,7 +635,23 @@ function navigateMenu(direction) {
         activeIndex = (activeIndex - 1 + pageButtons.length) % pageButtons.length;
     }
 
-    if (pageButtons[activeIndex]) pageButtons[activeIndex].click();
+    const target = pageButtons[activeIndex];
+    if (!target) return;
+
+    if (isAuto) {
+        // ─── NEW: bypass real .click() so the capture-phase listener
+        // doesn't treat this as user interaction
+        pageButtons.forEach(b => b.classList.remove('active'));
+        target.classList.add('active');
+
+        const onclick = target.getAttribute('onclick');
+        const match = onclick && onclick.match(/showPage\(['"]([^'"]+)['"]/);
+        if (match) {
+            showPage(match[1], target);
+        }
+    } else {
+        target.click();
+    }
 }
 
 // Keyboard shortcuts
@@ -604,12 +661,14 @@ document.addEventListener('keydown', function(e) {
         if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return;
         e.preventDefault();
         userInteractedWithMenu();
+        userInteractedWithMenuRotation();   // ─── NEW
         navigateMenu('prev');
     } else if (e.key === 'ArrowRight' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const ae = document.activeElement;
         if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return;
         e.preventDefault();
         userInteractedWithMenu();
+        userInteractedWithMenuRotation();   // ─── NEW
         navigateMenu('next');
     }
 });
@@ -642,9 +701,11 @@ document.addEventListener('keydown', function(e) {
         const btn = e.target.closest('nav button');
         if (btn) {
             userInteractedWithMenu();
+            userInteractedWithMenuRotation();   // ─── NEW
         }
         if (e.target.closest('#slides-container')) {
             userInteractedWithMenu();
+            userInteractedWithMenuRotation();   // ─── NEW
         }
     }, true);
 })();
@@ -654,6 +715,8 @@ window.navigateMenu = navigateMenu;
 window.updateMenu = updateMenu;
 window.showPage = showPage;
 window.getUser = getUser;
+window.startMenuRotation = startMenuRotation;   // ─── NEW (handy for debugging)
+window.stopMenuRotation  = stopMenuRotation;    // ─── NEW
 
 // ==================== SQUARE RETURN ====================
 function checkSquareReturnOnStart() {
@@ -689,4 +752,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!window.pendingOrderId) {
         showPage('home');
     }
+
+    // ─── NEW: start rotating menu highlights every 3s ───
+    startMenuRotation();
 });
