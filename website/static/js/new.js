@@ -12,11 +12,10 @@ function initNew() {
             badgeColor: '#28a745',
             buttonColor: '#28a745',
             buttonTextColor: 'white',
-            locationIds: '154,155,156,157',  // Bin 35 LT, Bin 35 RT, Bin 35 LB, Bin 35 RB, Wall Display West /2
+            locationIds: '154,155,156,157',
             statusId: 2,
-            // NEW: Genre filter support
-            genreIds: null,  // Will be set by dropdown
-            // NO price filter for New Sealed (per requirements)
+            genreIds: null,
+            formatIds: null,
             searchInputId: 'newSearchInput',
             showCondition: true,
             showLocation: true,
@@ -58,44 +57,43 @@ window.showRandomModal = function() {
     
     document.body.appendChild(modal);
     
-    // Click outside to close
     modal.addEventListener('click', function(e) {
-        if (e.target === modal) {
-            modal.remove();
-        }
+        if (e.target === modal) modal.remove();
     });
 };
 
 // ===== NEW SEALED GENRE FILTER FUNCTIONS =====
 window.newSetGenre = function(genreId) {
-    if (window.newComponent) {
-        window.newComponent.setGenre(genreId);
-    }
+    if (window.newComponent) window.newComponent.setGenre(genreId);
 };
 
-// ===== NEW SEALED CLEAR GENRE FILTER =====
-window.newClearGenreFilter = function() {
+// ===== NEW SEALED FORMAT FILTER FUNCTIONS =====
+window.newSetFormats = function(formatIds) {
+    if (window.newComponent) window.newComponent.setFormats(formatIds);
+};
+
+// ===== NEW SEALED CLEAR ALL FILTERS =====
+window.newClearFilters = function() {
     if (window.newComponent) {
-        // Clear genre dropdown
         const genreSelect = document.getElementById('newGenreSelect');
-        if (genreSelect) {
-            genreSelect.value = '';
-        }
+        if (genreSelect) genreSelect.value = '';
+        
         window.newComponent.setGenre(null);
+        window.newComponent.setFormats([]);
     }
 };
 
-// Global search functions for new sealed records
+// Legacy alias used elsewhere
+window.newClearGenreFilter = function() {
+    window.newClearFilters();
+};
+
 window.newSearch = function() {
-    if (window.newComponent) {
-        window.newComponent.performSearch();
-    }
+    if (window.newComponent) window.newComponent.performSearch();
 };
 
 window.newClearSearch = function() {
-    if (window.newComponent) {
-        window.newComponent.clearSearch();
-    }
+    if (window.newComponent) window.newComponent.clearSearch();
 };
 
 window.initNew = initNew;

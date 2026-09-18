@@ -75,14 +75,9 @@
     // ===== FETCH GENRES THAT HAVE ACTIVE RECORDS =====
     async function fetchGenresWithRecords(locationIds, statusId) {
         try {
-            // Build query params
             const params = new URLSearchParams();
-            if (locationIds) {
-                params.append('location_ids', locationIds);
-            }
-            if (statusId) {
-                params.append('status_ids', statusId);
-            }
+            if (locationIds) params.append('location_ids', locationIds);
+            if (statusId) params.append('status_ids', statusId);
             
             const url = `${API_BASE}/api/genres-with-records?${params.toString()}`;
             const response = await fetch(url, {
@@ -90,12 +85,31 @@
                 headers: { 'Content-Type': 'application/json' }
             });
             const data = await response.json();
-            if (data.status === 'success') {
-                return data.genres || [];
-            }
+            if (data.status === 'success') return data.genres || [];
             return [];
         } catch (err) {
             console.error('Error fetching genres with records:', err);
+            return [];
+        }
+    }
+
+    // ===== FETCH FORMATS THAT HAVE ACTIVE RECORDS =====
+    async function fetchFormatsWithRecords(locationIds, statusId) {
+        try {
+            const params = new URLSearchParams();
+            if (locationIds) params.append('location_ids', locationIds);
+            if (statusId) params.append('status_ids', statusId);
+            
+            const url = `${API_BASE}/api/formats-with-records?${params.toString()}`;
+            const response = await fetch(url, {
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (data.status === 'success') return data.formats || [];
+            return [];
+        } catch (err) {
+            console.error('Error fetching formats with records:', err);
             return [];
         }
     }
@@ -107,16 +121,13 @@
         
         const genres = await fetchGenresWithRecords(locationIds, statusId);
         
-        // Clear existing options
         select.innerHTML = '';
         
-        // Add "All Genres" option
         const defaultOption = document.createElement('option');
         defaultOption.value = '';
         defaultOption.textContent = 'All Genres';
         select.appendChild(defaultOption);
         
-        // Add genre options
         genres.forEach(genre => {
             const option = document.createElement('option');
             option.value = genre.id;
@@ -128,6 +139,115 @@
         });
         
         console.log(`📀 Populated genre dropdown with ${genres.length} genres`);
+    }
+
+    // ===== POPULATE FORMAT MULTI-SELECT DROPDOWN =====
+    // If 0 or 1 formats exist, hide the entire wrapper (label + container).
+    async function populateFormatDropdown(containerId, selectedFormatIds, locationIds, statusId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        
+        // The wrapper is the parent element created in HTML (contains label + container)
+        const wrapper = container.parentElement;
+        
+        const formats = await fetchFormatsWithRecords(locationIds, statusId);
+        
+        // If 0 or 1 formats, hide the whole filter wrapper and bail out
+        if (!formats || formats.length <= 1) {
+            if (wrapper) wrapper.style.display = 'none';
+            console.log(`🎚️ Format filter hidden (only ${formats ? formats.length : 0} format(s) available)`);
+            return;
+        }
+        
+        // Otherwise show the wrapper
+        if (wrapper) wrapper.style.display = 'flex';
+        
+        const selectedSet = new Set(
+            (Array.isArray(selectedFormatIds) ? selectedFormatIds : [])
+                .map(x => parseInt(x))
+        );
+        
+        const labelId = `${containerId}Label`;
+        const menuId = `${containerId}Menu`;
+        
+        container.innerHTML = `
+            <button type="button" id="${containerId}Btn" 
+                    style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; background: white; color: #000; cursor: pointer; display: flex; align-items: center; gap: 6px; min-width: 120px; justify-content: space-between;">
+                <span id="${labelId}" style="color: #000;">All Formats</span>
+                <i class="fas fa-caret-down" style="font-size: 10px; color: #000;"></i>
+            </button>
+            <div id="${menuId}" 
+                 style="display: none; position: absolute; z-index: 50; background: white; color: #000; border: 1px solid #ddd; border-radius: 6px; padding: 8px; margin-top: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); min-width: 180px; max-height: 260px; overflow-y: auto;">
+            </div>
+        `;
+        
+        const btn = document.getElementById(`${containerId}Btn`);
+        const menu = document.getElementById(`${menuId}`);
+        const label = document.getElementById(labelId);
+        
+        container.style.position = 'relative';
+        
+        formats.forEach(fmt => {
+            const row = document.createElement('label');
+            row.style.cssText = 'display: flex; align-items: center; gap: 8px; padding: 4px 6px; font-size: 13px; cursor: pointer; border-radius: 4px; white-space: nowrap; color: #000;';
+            row.innerHTML = `
+                <input type="checkbox" value="${fmt.id}" ${selectedSet.has(fmt.id) ? 'checked' : ''}
+                       style="cursor: pointer;">
+                <span style="color: #000;">${fmt.name} (${fmt.record_count})</span>
+            `;
+            const cb = row.querySelector('input');
+            cb.addEventListener('change', () => {
+                const current = Array.from(menu.querySelectorAll('input:checked'))
+                    .map(x => parseInt(x.value));
+                updateFormatLabel(label, formats, current);
+                container.dispatchEvent(new CustomEvent('format-change', { detail: { formatIds: current } }));
+            });
+            menu.appendChild(row);
+        });
+        
+        updateFormatLabel(label, formats, Array.from(selectedSet));
+        
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = menu.style.display === 'block';
+            menu.style.display = isOpen ? 'none' : 'block';
+        });
+        
+        const outsideHandler = (e) => {
+            if (!container.contains(e.target)) {
+                menu.style.display = 'none';
+            }
+        };
+        document.addEventListener('click', outsideHandler);
+        
+        container._formatCleanup = () => {
+            document.removeEventListener('click', outsideHandler);
+        };
+        
+        // Allow the component to refresh the checkbox state without full re-render
+        container._formatRefresh = (newSelectedIds) => {
+            const set = new Set((newSelectedIds || []).map(x => parseInt(x)));
+            menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.checked = set.has(parseInt(cb.value));
+            });
+            updateFormatLabel(label, formats, Array.from(set));
+        };
+        
+        console.log(`🎚️ Populated format dropdown with ${formats.length} formats`);
+    }
+
+    function updateFormatLabel(labelEl, formats, selectedIds) {
+        if (!labelEl) return;
+        if (!selectedIds || selectedIds.length === 0) {
+            labelEl.textContent = 'All Formats';
+            return;
+        }
+        if (selectedIds.length === 1) {
+            const fmt = formats.find(f => f.id === selectedIds[0]);
+            labelEl.textContent = fmt ? fmt.name : '1 Format';
+            return;
+        }
+        labelEl.textContent = `${selectedIds.length} Formats`;
     }
 
     // Modal functions
@@ -215,9 +335,7 @@
         document.body.appendChild(modal);
         
         modal.addEventListener('click', function(e) {
-            if (e.target === modal) {
-                closeRecordModal();
-            }
+            if (e.target === modal) closeRecordModal();
         });
         
         const escHandler = function(e) {
@@ -231,9 +349,7 @@
 
     window.closeRecordModal = function() {
         const modal = document.getElementById('recordModal');
-        if (modal) {
-            modal.remove();
-        }
+        if (modal) modal.remove();
     };
 
     // ===== ADD RECORD TO CART (DIRECT) =====
@@ -290,12 +406,8 @@
         window.cart.addItem(item);
         console.log('✅ Added to cart:', item);
         
-        if (typeof window.renderCart === 'function') {
-            window.renderCart();
-        }
-        if (typeof window.updateCartBadge === 'function') {
-            window.updateCartBadge();
-        }
+        if (typeof window.renderCart === 'function') window.renderCart();
+        if (typeof window.updateCartBadge === 'function') window.updateCartBadge();
         
         closeRecordModal();
         
@@ -306,7 +418,6 @@
         }
     };
 
-    // ===== LEGACY: Keep for backwards compatibility (deprecated) =====
     window.addRecordToCart = function(record) {
         console.warn('⚠️ addRecordToCart is deprecated. Use addRecordToCartDirect instead.');
         window.addRecordToCartDirect(record);
@@ -325,6 +436,7 @@
                 locationIds: config.locationIds || null,
                 statusId: config.statusId || null,
                 genreIds: config.genreIds || null,
+                formatIds: config.formatIds || null,
                 maxPrice: config.maxPrice || null,
                 borderColor: config.borderColor || '#ff6b6b',
                 badgeText: config.badgeText || null,
@@ -345,6 +457,7 @@
             this.searchTerm = '';
             this.cutoffDate = null;
             this.selectedGenreId = config.genreIds || null;
+            this.selectedFormatIds = Array.isArray(config.formatIds) ? config.formatIds : (config.formatIds ? [config.formatIds] : []);
             this.currentMaxPrice = config.maxPrice || null;
         }
 
@@ -354,16 +467,13 @@
             
             console.log(`📀 ${this.config.title} component initializing...`);
             console.log(`📀 Genre filter: ${this.selectedGenreId || 'None'}`);
+            console.log(`📀 Format filter: ${this.selectedFormatIds.length ? this.selectedFormatIds.join(',') : 'None'}`);
             console.log(`📀 Max price: ${this.currentMaxPrice || 'None'}`);
             
-            // Populate genre dropdown with ONLY genres that have records
             const genreSelectId = `${this.config.idPrefix}GenreSelect`;
             const genreSelect = document.getElementById(genreSelectId);
             if (genreSelect) {
-                // Pass locationIds and statusId to filter genres
-                const locationIds = this.config.locationIds;
-                const statusId = this.config.statusId;
-                populateGenreDropdown(genreSelectId, this.selectedGenreId, locationIds, statusId);
+                populateGenreDropdown(genreSelectId, this.selectedGenreId, this.config.locationIds, this.config.statusId);
                 
                 genreSelect.addEventListener('change', (e) => {
                     this.selectedGenreId = e.target.value || null;
@@ -371,12 +481,20 @@
                 });
             }
             
-            // Bind max price input if it exists
+            const formatContainerId = `${this.config.idPrefix}FormatSelect`;
+            const formatContainer = document.getElementById(formatContainerId);
+            if (formatContainer) {
+                populateFormatDropdown(formatContainerId, this.selectedFormatIds, this.config.locationIds, this.config.statusId);
+                
+                formatContainer.addEventListener('format-change', (e) => {
+                    this.selectedFormatIds = e.detail.formatIds || [];
+                    this.applyFilters();
+                });
+            }
+            
             const maxPriceInput = document.getElementById(`${this.config.idPrefix}MaxPrice`);
             if (maxPriceInput) {
-                if (this.currentMaxPrice) {
-                    maxPriceInput.value = this.currentMaxPrice;
-                }
+                if (this.currentMaxPrice) maxPriceInput.value = this.currentMaxPrice;
                 maxPriceInput.addEventListener('input', (e) => {
                     const val = parseFloat(e.target.value);
                     this.currentMaxPrice = (val > 0) ? val : null;
@@ -396,33 +514,23 @@
 
         bindEvents() {
             const firstPage = document.getElementById(`${this.config.idPrefix}FirstPage`);
-            if (firstPage) {
-                firstPage.addEventListener('click', () => this.goToPage(1));
-            }
+            if (firstPage) firstPage.addEventListener('click', () => this.goToPage(1));
             
             const prevPage = document.getElementById(`${this.config.idPrefix}PrevPage`);
-            if (prevPage) {
-                prevPage.addEventListener('click', () => this.prevPage());
-            }
+            if (prevPage) prevPage.addEventListener('click', () => this.prevPage());
             
             const nextPage = document.getElementById(`${this.config.idPrefix}NextPage`);
-            if (nextPage) {
-                nextPage.addEventListener('click', () => this.nextPage());
-            }
+            if (nextPage) nextPage.addEventListener('click', () => this.nextPage());
             
             const lastPage = document.getElementById(`${this.config.idPrefix}LastPage`);
-            if (lastPage) {
-                lastPage.addEventListener('click', () => this.goToPage(this.totalPages));
-            }
+            if (lastPage) lastPage.addEventListener('click', () => this.goToPage(this.totalPages));
         }
 
         bindSearchEvents() {
             const searchInput = document.getElementById(this.config.searchInputId);
             if (searchInput) {
                 searchInput.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter') {
-                        this.performSearch();
-                    }
+                    if (e.key === 'Enter') this.performSearch();
                 });
             }
         }
@@ -452,18 +560,10 @@
                 const isNumeric = /^\d+$/.test(term);
                 
                 this.filteredData = this.allData.filter(record => {
-                    if (isNumeric && record.id && record.id.toString() === term) {
-                        return true;
-                    }
-                    if (record.barcode && record.barcode.toLowerCase() === term) {
-                        return true;
-                    }
-                    if (record.artist && record.artist.toLowerCase().includes(term)) {
-                        return true;
-                    }
-                    if (record.title && record.title.toLowerCase().includes(term)) {
-                        return true;
-                    }
+                    if (isNumeric && record.id && record.id.toString() === term) return true;
+                    if (record.barcode && record.barcode.toLowerCase() === term) return true;
+                    if (record.artist && record.artist.toLowerCase().includes(term)) return true;
+                    if (record.title && record.title.toLowerCase().includes(term)) return true;
                     return false;
                 });
             }
@@ -484,6 +584,13 @@
                 });
             }
             
+            if (this.selectedFormatIds && this.selectedFormatIds.length > 0) {
+                const fmtSet = new Set(this.selectedFormatIds.map(x => parseInt(x)));
+                filtered = filtered.filter(record => {
+                    return record.format_id && fmtSet.has(parseInt(record.format_id));
+                });
+            }
+            
             if (this.currentMaxPrice && this.currentMaxPrice > 0) {
                 filtered = filtered.filter(record => {
                     const price = parseFloat(record.store_price) || 0;
@@ -495,18 +602,10 @@
                 const term = this.searchTerm.toLowerCase().trim();
                 const isNumeric = /^\d+$/.test(term);
                 filtered = filtered.filter(record => {
-                    if (isNumeric && record.id && record.id.toString() === term) {
-                        return true;
-                    }
-                    if (record.barcode && record.barcode.toLowerCase() === term) {
-                        return true;
-                    }
-                    if (record.artist && record.artist.toLowerCase().includes(term)) {
-                        return true;
-                    }
-                    if (record.title && record.title.toLowerCase().includes(term)) {
-                        return true;
-                    }
+                    if (isNumeric && record.id && record.id.toString() === term) return true;
+                    if (record.barcode && record.barcode.toLowerCase() === term) return true;
+                    if (record.artist && record.artist.toLowerCase().includes(term)) return true;
+                    if (record.title && record.title.toLowerCase().includes(term)) return true;
                     return false;
                 });
             }
@@ -522,8 +621,20 @@
         setGenre(genreId) {
             this.selectedGenreId = genreId;
             const genreSelect = document.getElementById(`${this.config.idPrefix}GenreSelect`);
-            if (genreSelect) {
-                genreSelect.value = genreId || '';
+            if (genreSelect) genreSelect.value = genreId || '';
+            this.applyFilters();
+        }
+
+        setFormats(formatIds) {
+            this.selectedFormatIds = Array.isArray(formatIds)
+                ? formatIds.map(x => parseInt(x)).filter(x => !isNaN(x))
+                : [];
+            const containerId = `${this.config.idPrefix}FormatSelect`;
+            const container = document.getElementById(containerId);
+            if (container && container._formatRefresh) {
+                container._formatRefresh(this.selectedFormatIds);
+            } else {
+                populateFormatDropdown(containerId, this.selectedFormatIds, this.config.locationIds, this.config.statusId);
             }
             this.applyFilters();
         }
@@ -531,9 +642,7 @@
         setMaxPrice(price) {
             this.currentMaxPrice = (price > 0) ? price : null;
             const maxPriceInput = document.getElementById(`${this.config.idPrefix}MaxPrice`);
-            if (maxPriceInput) {
-                maxPriceInput.value = price > 0 ? price : '';
-            }
+            if (maxPriceInput) maxPriceInput.value = price > 0 ? price : '';
             this.applyFilters();
         }
 
@@ -544,16 +653,6 @@
                 return;
             }
 
-            console.log('📀 ========== LOADING RECORDS ==========');
-            console.log('📀 Component:', this.config.title);
-            console.log('📀 Container ID:', this.config.containerId);
-            console.log('📀 Status Filter:', this.config.statusId || 'None');
-            console.log('📀 Location Filter:', this.config.locationIds || 'None');
-            console.log('📀 Genre Filter:', this.selectedGenreId || 'None');
-            console.log('📀 Max Price:', this.currentMaxPrice || 'None');
-            console.log('📀 Cutoff Date:', this.cutoffDate || 'None (showing all)');
-            console.log('📀 Page Size:', this.config.pageSize);
-
             container.innerHTML = `
                 <div style="text-align: center; padding: 40px; color: #888;">
                     <div style="margin-bottom: 10px;">⏳</div>
@@ -562,25 +661,16 @@
             `;
 
             try {
-                const params = new URLSearchParams({
-                    limit: 1000
-                });
+                const params = new URLSearchParams({ limit: 1000 });
                 
-                if (this.config.locationIds) {
-                    params.append('location_ids', this.config.locationIds);
+                if (this.config.locationIds) params.append('location_ids', this.config.locationIds);
+                if (this.config.statusId) params.append('status_ids', this.config.statusId);
+                if (this.cutoffDate) params.append('last_seen_after', this.cutoffDate);
+                if (this.selectedGenreId) params.append('genre_ids', this.selectedGenreId);
+                if (this.selectedFormatIds && this.selectedFormatIds.length > 0) {
+                    params.append('format_ids', this.selectedFormatIds.join(','));
                 }
-                if (this.config.statusId) {
-                    params.append('status_ids', this.config.statusId);
-                }
-                if (this.cutoffDate) {
-                    params.append('last_seen_after', this.cutoffDate);
-                }
-                if (this.selectedGenreId) {
-                    params.append('genre_ids', this.selectedGenreId);
-                }
-                if (this.currentMaxPrice && this.currentMaxPrice > 0) {
-                    params.append('max_price', this.currentMaxPrice);
-                }
+                if (this.currentMaxPrice && this.currentMaxPrice > 0) params.append('max_price', this.currentMaxPrice);
 
                 const url = `${API_BASE}/records?${params.toString()}`;
                 console.log('📡 FETCHING RECORDS FROM:', url);
@@ -590,9 +680,7 @@
                     headers: { 'Content-Type': 'application/json' }
                 });
 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 
                 const data = await response.json();
 
@@ -600,9 +688,8 @@
                     let records = data.records || [];
                     
                     if (this.cutoffDate) {
-                        const cutoffStr = this.cutoffDate;
                         const beforeFilter = records.length;
-                        records = records.filter(record => isRecordVisible(record, cutoffStr));
+                        records = records.filter(record => isRecordVisible(record, this.cutoffDate));
                         console.log(`📅 Client-side cutoff filter: ${beforeFilter} → ${records.length} records`);
                     }
                     
@@ -612,22 +699,13 @@
                     this.totalPages = Math.ceil(this.totalRecords / this.config.pageSize) || 1;
                     this.currentPage = 1;
                     
-                    console.log('📀 Final data counts:');
-                    console.log('  - allData:', this.allData.length);
-                    console.log('  - filteredData:', this.filteredData.length);
-                    console.log('  - totalRecords:', this.totalRecords);
-                    console.log('  - totalPages:', this.totalPages);
-                    console.log('📀 ========================================');
-                    
                     this.renderPage();
                     this.updatePagination();
                 } else {
-                    console.warn('⚠️ No records returned or status not success');
                     container.innerHTML = `
                         <div style="text-align: center; padding: 40px; color: #888;">
                             <div style="margin-bottom: 10px;">📀</div>
                             <p>No ${this.config.title.toLowerCase()} found</p>
-                            <p style="font-size: 12px; color: #999;">Total returned: ${data.total || 0}</p>
                         </div>
                     `;
                 }
@@ -765,42 +843,13 @@
         }
     };
 
-    // Global search functions for shop and new
-    window.shopSearch = function() {
-        if (window.shopComponent) {
-            window.shopComponent.performSearch();
-        }
-    };
-
-    window.shopClearSearch = function() {
-        if (window.shopComponent) {
-            window.shopComponent.clearSearch();
-        }
-    };
-
-    window.newSearch = function() {
-        if (window.newComponent) {
-            window.newComponent.performSearch();
-        }
-    };
-
-    window.newClearSearch = function() {
-        if (window.newComponent) {
-            window.newComponent.clearSearch();
-        }
-    };
-
-    window.newArrivalsSearch = function() {
-        if (window.newArrivalsComponent) {
-            window.newArrivalsComponent.performSearch();
-        }
-    };
-
-    window.newArrivalsClearSearch = function() {
-        if (window.newArrivalsComponent) {
-            window.newArrivalsComponent.clearSearch();
-        }
-    };
+    // Global search functions
+    window.shopSearch = function() { if (window.shopComponent) window.shopComponent.performSearch(); };
+    window.shopClearSearch = function() { if (window.shopComponent) window.shopComponent.clearSearch(); };
+    window.newSearch = function() { if (window.newComponent) window.newComponent.performSearch(); };
+    window.newClearSearch = function() { if (window.newComponent) window.newComponent.clearSearch(); };
+    window.newArrivalsSearch = function() { if (window.newArrivalsComponent) window.newArrivalsComponent.performSearch(); };
+    window.newArrivalsClearSearch = function() { if (window.newArrivalsComponent) window.newArrivalsComponent.clearSearch(); };
 
     console.log('📀 Records component loaded with API_BASE:', API_BASE || '(same origin)');
 

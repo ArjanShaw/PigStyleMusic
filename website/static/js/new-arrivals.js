@@ -12,12 +12,11 @@ function initNewArrivals() {
             badgeColor: '#ffd93d',
             buttonColor: '#ffd93d',
             buttonTextColor: '#333',
-            locationIds: [150, 151, 152, 153],  // Bin 35 LT, RT, LB, RB
-            statusId: 2,  // Active status
-            // NEW: Genre filter support
-            genreIds: null,  // Will be set by dropdown
-            // NEW: Max price filter for New Arrivals
-            maxPrice: null,  // Will be set by input
+            locationIds: [150, 151, 152, 153],
+            statusId: 2,
+            genreIds: null,
+            formatIds: null,
+            maxPrice: null,
             searchInputId: 'newArrivalsSearchInput',
             showCondition: true,
             showLocation: true  
@@ -30,48 +29,40 @@ function initNewArrivals() {
 
 // ===== NEW ARRIVALS GENRE FILTER FUNCTIONS =====
 window.newArrivalsSetGenre = function(genreId) {
-    if (window.newArrivalsComponent) {
-        window.newArrivalsComponent.setGenre(genreId);
-    }
+    if (window.newArrivalsComponent) window.newArrivalsComponent.setGenre(genreId);
+};
+
+// ===== NEW ARRIVALS FORMAT FILTER FUNCTIONS =====
+window.newArrivalsSetFormats = function(formatIds) {
+    if (window.newArrivalsComponent) window.newArrivalsComponent.setFormats(formatIds);
 };
 
 // ===== NEW ARRIVALS PRICE FILTER FUNCTIONS =====
 window.newArrivalsSetMaxPrice = function(price) {
-    if (window.newArrivalsComponent) {
-        window.newArrivalsComponent.setMaxPrice(price);
-    }
+    if (window.newArrivalsComponent) window.newArrivalsComponent.setMaxPrice(price);
 };
 
 // ===== NEW ARRIVALS CLEAR ALL FILTERS =====
 window.newArrivalsClearFilters = function() {
     if (window.newArrivalsComponent) {
-        // Clear genre dropdown
         const genreSelect = document.getElementById('newArrivalsGenreSelect');
-        if (genreSelect) {
-            genreSelect.value = '';
-        }
-        // Clear max price input
+        if (genreSelect) genreSelect.value = '';
+        
         const maxPriceInput = document.getElementById('newArrivalsMaxPrice');
-        if (maxPriceInput) {
-            maxPriceInput.value = '';
-        }
-        // Reset component filters
+        if (maxPriceInput) maxPriceInput.value = '';
+        
         window.newArrivalsComponent.setGenre(null);
+        window.newArrivalsComponent.setFormats([]);
         window.newArrivalsComponent.setMaxPrice(null);
     }
 };
 
-// Global search functions for new arrivals
 window.newArrivalsSearch = function() {
-    if (window.newArrivalsComponent) {
-        window.newArrivalsComponent.performSearch();
-    }
+    if (window.newArrivalsComponent) window.newArrivalsComponent.performSearch();
 };
 
 window.newArrivalsClearSearch = function() {
-    if (window.newArrivalsComponent) {
-        window.newArrivalsComponent.clearSearch();
-    }
+    if (window.newArrivalsComponent) window.newArrivalsComponent.clearSearch();
 };
 
 window.initNewArrivals = initNewArrivals;

@@ -17,7 +17,7 @@
                 </button>
             </div>
             
-            <!-- NEW: Filter Row - Genre + Price -->
+            <!-- Filter Row - Genre + Format + Price -->
             <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-shrink: 0; flex-wrap: wrap; align-items: center; background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
                 <!-- Genre Filter -->
                 <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 150px;">
@@ -25,6 +25,12 @@
                     <select id="shopGenreSelect" style="flex: 1; padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; background: white; min-width: 120px;">
                         <option value="">All Genres</option>
                     </select>
+                </div>
+                
+                <!-- Format Multi-Select (wrapper hides itself if 0 or 1 formats) -->
+                <div id="shopFormatWrapper" style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 150px;">
+                    <label style="font-size: 13px; font-weight: 600; color: #555; white-space: nowrap;">💿 Format:</label>
+                    <div id="shopFormatSelect" style="flex: 1; min-width: 120px;"></div>
                 </div>
                 
                 <!-- Max Price Filter -->

@@ -3112,6 +3112,76 @@ def get_genres_with_records():
         app.logger.error(f"Error getting genres with records: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/formats-with-records', methods=['GET'])
+def get_formats_with_records():
+    """
+    Get formats that have records in the specified locations/status.
+    Automatically applies LAST_SEEN_CUTOFF_DATE from app_config.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        location_ids = request.args.get('location_ids')
+        status_ids = request.args.get('status_ids')
+        
+        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'LAST_SEEN_CUTOFF_DATE'")
+        row = cursor.fetchone()
+        cutoff_date = row['config_value'] if row else None
+        
+        query = '''
+            SELECT 
+                f.id,
+                f.name,
+                COUNT(r.id) as record_count
+            FROM formats f
+            INNER JOIN records r ON r.format_id = f.id
+            WHERE 1=1
+        '''
+        params = []
+        
+        if location_ids:
+            ids = [int(x.strip()) for x in location_ids.split(',') if x.strip()]
+            if ids:
+                placeholders = ','.join(['?'] * len(ids))
+                query += f' AND r.location_id IN ({placeholders})'
+                params.extend(ids)
+        
+        if status_ids:
+            ids = [int(x.strip()) for x in status_ids.split(',') if x.strip()]
+            if ids:
+                placeholders = ','.join(['?'] * len(ids))
+                query += f' AND r.status_id IN ({placeholders})'
+                params.extend(ids)
+        
+        if cutoff_date:
+            query += ' AND date(r.last_seen) >= date(?)'
+            params.append(cutoff_date)
+        
+        query += ' GROUP BY f.id, f.name HAVING COUNT(r.id) > 0 ORDER BY f.name'
+        
+        cursor.execute(query, params)
+        results = cursor.fetchall()
+        conn.close()
+        
+        formats = []
+        for row in results:
+            formats.append({
+                'id': row['id'],
+                'name': row['name'],
+                'record_count': row['record_count']
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'formats': formats,
+            'cutoff_applied': cutoff_date is not None,
+            'cutoff_date': cutoff_date
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting formats with records: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/stats/last-seen-distribution', methods=['GET'])
 def get_last_seen_distribution_stats():
