@@ -363,6 +363,8 @@
                         <th style="padding: 4px 8px; text-align: left; color: #333;">ID</th>
                         <th style="padding: 4px 8px; text-align: left; color: #333;">Artist</th>
                         <th style="padding: 4px 8px; text-align: left; color: #333;">Title</th>
+                        <th style="padding: 4px 8px; text-align: left; color: #333;">Sleeve</th>
+                        <th style="padding: 4px 8px; text-align: left; color: #333;">Disc</th>
                         <th style="padding: 4px 8px; text-align: right; color: #333;">Price</th>
                         <th style="padding: 4px 8px; text-align: center; color: #333;">Status</th>
                     </tr>
@@ -372,10 +374,14 @@
             records.forEach(r => {
                 const statusMap = { 1: 'New', 2: 'Active', 3: 'Sold', 4: 'Discogs' };
                 const status = statusMap[r.status_id] || 'Unknown';
+                const sleeve = r.sleeve_condition_name || r.sleeve_display || '—';
+                const disc = r.disc_condition_name || r.disc_display || '—';
                 html += `<tr>
                     <td style="padding: 4px 8px; border-bottom: 1px solid #eee; color: #333;">${r.id}</td>
                     <td style="padding: 4px 8px; border-bottom: 1px solid #eee; color: #333;">${r.artist || 'Unknown'}</td>
                     <td style="padding: 4px 8px; border-bottom: 1px solid #eee; color: #333;">${r.title || 'Unknown'}</td>
+                    <td style="padding: 4px 8px; border-bottom: 1px solid #eee; color: #333;">${sleeve}</td>
+                    <td style="padding: 4px 8px; border-bottom: 1px solid #eee; color: #333;">${disc}</td>
                     <td style="padding: 4px 8px; border-bottom: 1px solid #eee; text-align: right; color: #333;">${r.store_price ? '$' + r.store_price.toFixed(2) : '—'}</td>
                     <td style="padding: 4px 8px; border-bottom: 1px solid #eee; text-align: center; color: #333;">${status}</td>
                 </tr>`;
