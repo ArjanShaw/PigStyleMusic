@@ -52,6 +52,9 @@
     let posCheckoutId = null;
     let posPollInterval = null;
     let posInProgress = false;
+    // ===== CHANGE: pending POS amount tracked separately from committed payments =====
+    let posPendingAmount = 0;
+    let posAwaitingManualComplete = false;
     let discountPercent = 0;
     let discountAmount = 0;
     let cashReceived = 0;
@@ -114,6 +117,8 @@
         discountAmount = 0;
         posInProgress = false;
         posCheckoutId = null;
+        posPendingAmount = 0;
+        posAwaitingManualComplete = false;
         storeCreditBarcode = '';
         storeCreditRecipient = '';
         storeCreditBalance = 0;
@@ -248,6 +253,10 @@
                         </button>
                         <button onclick="retryPosPayment()" id="pos-retry-btn" style="display: none; padding: 12px 30px; background: #17a2b8; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 15px;">
                             <i class="fas fa-sync"></i> Retry
+                        </button>
+                        <!-- ===== CHANGE: Close button that just closes the modal, leaves checkout state alone ===== -->
+                        <button onclick="hidePosModal()" id="pos-close-btn" style="padding: 12px 30px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 15px;">
+                            <i class="fas fa-check"></i> Done
                         </button>
                     </div>
                     <div id="pos-modal-error" style="display: none; margin-top: 12px; padding: 12px; background: #f8d7da; color: #721c24; border-radius: 8px; font-size: 13px;"></div>
@@ -539,13 +548,9 @@
                     ${showCash ? `
                     <div id="cash-payment-section" style="margin-bottom: 12px;">
                         <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Cash Amount Received</label>
-                        <div style="display: flex; gap: 8px;">
-                            <input type="number" id="cash-amount" placeholder="0.00" step="0.01" min="0" 
-                                   style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; box-sizing: border-box;">
-                            <button onclick="applyCashPayment()" style="padding: 10px 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; white-space: nowrap;">
-                                Apply
-                            </button>
-                        </div>
+                        <!-- ===== CHANGE: removed Apply button; input is read at Complete time ===== -->
+                        <input type="number" id="cash-amount" placeholder="0.00" step="0.01" min="0" 
+                               style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; box-sizing: border-box;">
                         <div id="cash-change-display" style="margin-top: 6px; font-size: 14px; color: #666; text-align: center;"></div>
                     </div>` : ''}
 
@@ -580,16 +585,23 @@
                         </div>
                     </div>` : ''}
 
-                    <!-- POS Payment Section -->
+                    <!-- ===== CHANGE: POS section now has a dedicated "Send to POS" button ===== -->
                     ${showPos ? `
                     <div id="pos-payment-section" style="margin-bottom: 12px;">
                         <div style="padding: 12px; background: #f8f9fa; border-radius: 8px; text-align: center; border: 1px solid #ddd;">
                             <i class="fas fa-print" style="font-size: 24px; display: block; margin-bottom: 8px; color: #6f42c1;"></i>
                             <div style="font-weight: 600;">POS Terminal</div>
-                            <div style="font-size: 13px; margin-top: 4px; color: #666;">Click "Complete Payment" to send to terminal</div>
+                            <div style="font-size: 13px; margin-top: 4px; color: #666;">Click "Send to POS" to charge the terminal</div>
                             <div id="pos-status-text" style="font-size: 12px; color: #17a2b8; margin-top: 4px;">
                                 ${availableTerminals.length > 0 ? `✅ ${availableTerminals.length} terminal(s) available` : '⏳ Checking terminals...'}
                             </div>
+                        </div>
+                        <button onclick="sendToPos()" id="send-to-pos-btn"
+                                style="width: 100%; margin-top: 8px; padding: 12px; background: #6f42c1; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 15px;">
+                            <i class="fas fa-paper-plane"></i> Send to POS
+                        </button>
+                        <div id="pos-pending-note" style="display: ${posAwaitingManualComplete ? 'block' : 'none'}; margin-top: 8px; padding: 8px; background: #fff3cd; color: #856404; border-radius: 6px; font-size: 12px; text-align: center;">
+                            ⏳ POS request sent. Waiting for terminal, or click Complete Payment to force close.
                         </div>
                     </div>` : ''}
 
@@ -606,10 +618,10 @@
                         </div>
                     </div>
 
-                    <!-- Payment Execute Button -->
+                    <!-- ===== CHANGE: Complete Payment button always enabled, always submits ===== -->
                     <button onclick="executePayment()" id="payment-execute-btn" 
                             style="width: 100%; padding: 14px; background: #28a745; color: white; border: none; border-radius: 30px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
-                        <i class="fas fa-credit-card"></i> Complete Payment
+                        <i class="fas fa-check-circle"></i> Complete Payment
                     </button>
 
                     <!-- Error Display -->
@@ -672,52 +684,10 @@
         }, 50);
     };
 
-    // ===== APPLY CASH PAYMENT =====
-    window.applyCashPayment = function() {
-        const input = document.getElementById('cash-amount');
-        const cashAmount = parseFloat(input?.value) || 0;
-        const total = getTotalWithDiscount();
-        const remaining = Math.max(0, total - cashReceived);
-        
-        if (cashAmount <= 0) {
-            showToast('Please enter a cash amount.', 'warning');
-            return;
-        }
-        
-        if (cashAmount > remaining && remaining > 0) {
-            showToast(`Cash amount exceeds remaining balance. Change due: $${(cashAmount - remaining).toFixed(2)}`, 'warning');
-        }
-        
-        // Add to cash received (limited to remaining balance)
-        const actualPayment = Math.min(cashAmount, remaining);
-        cashReceived += actualPayment;
-        
-        // Track payment entries for the order
-        paymentEntries.push({
-            method: 'Cash',
-            amount: actualPayment
-        });
-        
-        // Update display
-        updateCashDisplay();
-        
-        // Clear the input
-        if (input) input.value = '';
-        
-        const newRemaining = Math.max(0, total - cashReceived);
-        if (newRemaining <= 0.01) {
-            showToast('✅ Fully paid with cash! Click Complete Payment.', 'success');
-        } else {
-            showToast(`💰 Applied $${actualPayment.toFixed(2)}. Remaining: $${newRemaining.toFixed(2)}`, 'info');
-        }
-        
-        // Re-render checkout tab to update the display
-        renderCheckoutTab();
-        // Re-select payment method after render
-        setTimeout(() => selectPaymentMethod(selectedPaymentMethod), 50);
-    };
+    // ===== CHANGE: applyCashPayment removed. Cash is read at Complete time. =====
 
     // ===== UPDATE CASH DISPLAY =====
+    // ===== CHANGE: cash input no longer commits; display is a pure preview =====
     function updateCashDisplay() {
         const changeDisplay = document.getElementById('cash-change-display');
         const input = document.getElementById('cash-amount');
@@ -733,22 +703,16 @@
             return;
         }
         
-        // Show current pending cash amount
         if (cashAmount > 0) {
-            if (cashAmount > remaining) {
-                changeDisplay.textContent = `💵 Change will be: $${(cashAmount - remaining).toFixed(2)}`;
+            if (cashAmount >= remaining) {
+                changeDisplay.textContent = `💵 Change: $${(cashAmount - remaining).toFixed(2)}`;
                 changeDisplay.style.color = '#28a745';
             } else {
-                changeDisplay.textContent = `💵 Cash to apply: $${cashAmount.toFixed(2)} (Remaining: $${remaining.toFixed(2)})`;
+                changeDisplay.textContent = `💵 Cash received: $${cashAmount.toFixed(2)} (Remaining: $${remaining.toFixed(2)})`;
                 changeDisplay.style.color = '#17a2b8';
             }
         } else {
-            if (cashReceived > 0) {
-                changeDisplay.textContent = `💵 Cash applied: $${cashReceived.toFixed(2)}`;
-                changeDisplay.style.color = '#28a745';
-            } else {
-                changeDisplay.textContent = '';
-            }
+            changeDisplay.textContent = '';
         }
     }
 
@@ -1437,6 +1401,9 @@
                 storeCreditBarcode = '';
                 storeCreditRecipient = '';
                 storeCreditBalance = 0;
+                // ===== CHANGE: also reset POS pending state =====
+                posPendingAmount = 0;
+                posAwaitingManualComplete = false;
                 updateCartPreview();
                 updateCartCount();
                 updateTabCartCount();
@@ -1858,7 +1825,184 @@
         showToast('Store credit removed.', 'info');
     };
 
-    // ========== EXECUTE PAYMENT ==========
+    // ========== SEND TO POS (new button) ==========
+    // ===== CHANGE: dedicated POS send. Does NOT commit anything. Just sends to terminal. =====
+    window.sendToPos = async function() {
+        // Guard against double-clicks
+        if (posInProgress) {
+            showToast('⏳ POS request already in progress...', 'warning');
+            return;
+        }
+        
+        const items = window.cart ? window.cart.getItems() : [];
+        if (!items || items.length === 0) {
+            showToast('Cart is empty.', 'warning');
+            return;
+        }
+        
+        const total = getTotalWithDiscount();
+        if (total <= 0) {
+            showToast('Total is $0. Nothing to send.', 'warning');
+            return;
+        }
+        
+        // Amount to send = remaining after any already-applied payments
+        const remaining = Math.max(0, total - cashReceived);
+        if (remaining <= 0.01) {
+            showToast('Nothing left to charge. Click Complete Payment.', 'info');
+            return;
+        }
+        
+        // Check terminal availability
+        const available = await checkSquareAvailability();
+        if (!available || !availableTerminals || availableTerminals.length === 0) {
+            showToast('No POS terminals available. Check Square terminal connectivity.', 'error');
+            return;
+        }
+        
+        // Use first available terminal
+        let deviceId = availableTerminals[0]?.id;
+        if (!deviceId) {
+            showToast('No POS terminal ID found.', 'error');
+            return;
+        }
+        if (deviceId.startsWith('device:')) {
+            deviceId = deviceId.substring(7);
+        }
+        
+        const recordIds = items
+            .filter(item => item.type === 'record' && item.original_id)
+            .map(item => item.original_id);
+        
+        const titles = items.map(item => item.title || 'Item');
+        
+        const payload = {
+            amount_cents: Math.round(remaining * 100),
+            record_ids: recordIds.length > 0 ? recordIds : ['1'],
+            record_titles: titles.length > 0 ? titles : ['Item'],
+            reference_id: 'pos_' + Date.now(),
+            device_id: deviceId
+        };
+        
+        posInProgress = true;
+        posPendingAmount = remaining;
+        posAwaitingManualComplete = false;
+        
+        // Disable Send button during send
+        const sendBtn = document.getElementById('send-to-pos-btn');
+        if (sendBtn) {
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+        }
+        
+        // Show POS modal
+        showPosModal('Sending request to terminal...', false);
+        
+        try {
+            const response = await fetch(`${API_BASE}/api/square/terminal/checkout`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
+            if (response.status === 401 || response.status === 403) {
+                throw new Error('Authentication failed. Please log in as admin and try again.');
+            }
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || errorData.error || `HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.status === 'success' && data.checkout) {
+                const checkoutId = data.checkout.id;
+                posCheckoutId = checkoutId;
+                posAwaitingManualComplete = true;
+                
+                // Update pending note
+                const pendingNote = document.getElementById('pos-pending-note');
+                if (pendingNote) pendingNote.style.display = 'block';
+                
+                showPosModal('Payment request sent. Waiting for terminal, or click Done and then Complete Payment to force close.', false);
+                
+                // Start polling in the background (informational + auto-complete on COMPLETED)
+                waitForPosCompletion(checkoutId).then((completed) => {
+                    // Auto-complete path: Square confirmed
+                    posInProgress = false;
+                    posAwaitingManualComplete = false;
+                    hidePosModal();
+                    
+                    if (completed) {
+                        paymentEntries.push({
+                            method: 'POS Terminal',
+                            amount: posPendingAmount
+                        });
+                        cashReceived += posPendingAmount;
+                        posPendingAmount = 0;
+                        
+                        const newRemaining = Math.max(0, getTotalWithDiscount() - cashReceived);
+                        if (newRemaining <= 0.01) {
+                            submitOrderWithPayments(getTotalWithDiscount(), items);
+                        } else {
+                            renderCheckoutTab();
+                            setTimeout(() => selectPaymentMethod(selectedPaymentMethod), 50);
+                        }
+                    }
+                }).catch((err) => {
+                    // Square said CANCELED/FAILED/timed out. Do NOT auto-submit.
+                    posInProgress = false;
+                    posAwaitingManualComplete = false;
+                    console.warn('POS polling ended without COMPLETED:', err.message);
+                    
+                    // Update pending note to reflect outcome
+                    const pendingNote = document.getElementById('pos-pending-note');
+                    if (pendingNote) {
+                        pendingNote.style.display = 'block';
+                        pendingNote.innerHTML = `⚠️ POS did not confirm. You can retry, or click Complete Payment to force close as paid-in-full.`;
+                        pendingNote.style.background = '#fff3cd';
+                        pendingNote.style.color = '#856404';
+                    }
+                    
+                    // Re-enable send button
+                    const btn = document.getElementById('send-to-pos-btn');
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send to POS';
+                    }
+                });
+                
+                // Re-enable send button (it can be clicked again if you want to send a second request)
+                // but leave it disabled while modal is up? We'll re-enable below on modal actions.
+                if (sendBtn) {
+                    sendBtn.disabled = false;
+                    sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send to POS (again)';
+                }
+                
+                return true;
+            } else {
+                throw new Error(data.message || data.error || 'Failed to create POS checkout');
+            }
+        } catch (err) {
+            posInProgress = false;
+            posPendingAmount = 0;
+            posAwaitingManualComplete = false;
+            console.error('Send to POS error:', err);
+            showPosModal(err.message || 'POS request failed. Please retry.', true);
+            
+            // Re-enable send button
+            if (sendBtn) {
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send to POS';
+            }
+            return false;
+        }
+    };
+
+    // ========== EXECUTE PAYMENT (Complete Payment) ==========
+    // ===== CHANGE: always submits. Reads cash input at click time. Forces paid-in-full. =====
     window.executePayment = async function() {
         if (isProcessingPayment) {
             showToast('⏳ Payment already in progress...', 'warning');
@@ -1889,60 +2033,105 @@
             return;
         }
         
-        // Calculate remaining balance after all payments
+        // ===== CHANGE: if cash method selected, commit the entered amount now =====
+        if (selectedPaymentMethod === 'cash') {
+            const cashInput = document.getElementById('cash-amount');
+            const typedCash = parseFloat(cashInput?.value) || 0;
+            
+            if (typedCash > 0) {
+                // Remove any prior cash entry for this transaction, replace with what's typed
+                paymentEntries = paymentEntries.filter(e => e.method !== 'Cash');
+                
+                // Commit the typed amount as the cash entry (could exceed remaining; that's fine, means change)
+                const priorCash = cashReceived; // only cash commited in a previous execute? unlikely, but safe
+                cashReceived = Math.min(typedCash, total);
+                
+                paymentEntries.push({
+                    method: 'Cash',
+                    amount: cashReceived
+                });
+            }
+        }
+        
+        // ===== CHANGE: if POS is awaiting manual complete, record it as paid now =====
+        if (selectedPaymentMethod === 'pos' && posPendingAmount > 0 && posAwaitingManualComplete) {
+            // Cancel polling so it doesn't double-fire later
+            if (posPollInterval) {
+                clearInterval(posPollInterval);
+                posPollInterval = null;
+            }
+            
+            paymentEntries.push({
+                method: 'POS Terminal (forced)',
+                amount: posPendingAmount
+            });
+            cashReceived += posPendingAmount;
+            posPendingAmount = 0;
+            posAwaitingManualComplete = false;
+            posInProgress = false;
+            hidePosModal();
+        }
+        
+        // Determine remaining after all applied payments
         const remaining = Math.max(0, total - cashReceived);
         outstandingBalance = remaining;
         
-        // If fully paid, submit the order
-        if (remaining <= 0.01) {
-            await submitOrderWithPayments(total, items);
-            return;
-        }
-        
-        // Determine what payment method to use for the remaining balance
-        const method = selectedPaymentMethod;
-        
-        // If cash is selected but there's a remaining balance
-        if (method === 'cash' && remaining > 0.01) {
-            showPaymentError(`Please enter cash amount for the remaining balance of $${remaining.toFixed(2)} or select another payment method.`);
-            return;
-        }
-        
-        // ===== STORE CREDIT =====
-        if (method === 'store_credit') {
-            showStoreCreditModal();
-            return;
-        }
-        
-        // ===== POS =====
-        if (method === 'pos') {
-            const available = await checkSquareAvailability();
-            if (!available) {
-                showPaymentError('No POS terminals available. Please check Square terminal connectivity.');
-                return;
+        // ===== CHANGE: no more gating. If remaining > 0, force-close as paid in full. =====
+        // If there's still an uncommitted remainder via a selected non-cash method,
+        // record it as an entry of that method (assumed paid in full).
+        if (remaining > 0.01) {
+            const methodLabel = {
+                cash: 'Cash',
+                card: 'Card (Square)',
+                pos: 'POS Terminal (forced)',
+                store_credit: 'Store Credit'
+            }[selectedPaymentMethod] || 'Other';
+            
+            // If it's a non-cash method, push an entry so the journal entry reflects the method
+            if (selectedPaymentMethod !== 'cash') {
+                paymentEntries.push({
+                    method: methodLabel,
+                    amount: remaining
+                });
+            } else {
+                // Cash: if nothing was typed, treat as paid in full in cash
+                const existingCash = paymentEntries.find(e => e.method === 'Cash');
+                if (!existingCash) {
+                    paymentEntries.push({ method: 'Cash', amount: remaining });
+                }
             }
-            await processPosPayment(remaining, items, total);
-            return;
+            
+            cashReceived = total; // force full
+            outstandingBalance = 0;
         }
         
-        // ===== CARD =====
-        if (method === 'card') {
-            await processCardPayment(remaining, items, total);
-            return;
-        }
-        
-        showPaymentError('Please select a valid payment method.');
+        // Submit the order
+        await submitOrderWithPayments(total, items);
     };
 
     // ===== SUBMIT ORDER WITH PAYMENTS =====
+    // ===== CHANGE: payment_entries always cover the full total; remaining_balance is always 0 =====
     async function submitOrderWithPayments(total, items) {
         isProcessingPayment = true;
         const statusEl = document.getElementById('payment-status');
         const statusText = document.getElementById('payment-status-text');
         const btn = document.getElementById('payment-execute-btn');
         
-        // Build payment entries
-        const paymentEntriesForOrder = paymentEntries.length > 0 ? paymentEntries : [{ method: 'Cash', amount: total }];
+        // Build payment entries: reconcile entries so they sum to the full total
+        let entries = paymentEntries.length > 0 ? [...paymentEntries] : [];
+        const entriesSum = entries.reduce((s, e) => s + (e.amount || 0), 0);
+        const shortfall = Math.round((total - entriesSum) * 100) / 100;
+        
+        if (Math.abs(shortfall) > 0.01) {
+            // Top up with the selected method so the entries sum to the full total
+            const methodLabel = {
+                cash: 'Cash',
+                card: 'Card (Square)',
+                pos: 'POS Terminal (forced)',
+                store_credit: 'Store Credit'
+            }[selectedPaymentMethod] || 'Other';
+            entries.push({ method: methodLabel, amount: shortfall });
+        }
         
         // Show processing status
         if (statusEl) {
@@ -1971,8 +2160,8 @@
                 shipping: { method: 'pickup', amount: 0 },
                 customer_name: currentUserName + ' (Admin)',
                 customer_email: '',
-                notes: `Admin checkout - ${currentUserName} - Payment entries: ${paymentEntriesForOrder.map(e => `${e.method}: $${e.amount.toFixed(2)}`).join(', ')}`,
-                payment_entries: paymentEntriesForOrder,
+                notes: `Admin checkout - ${currentUserName} - Payment entries: ${entries.map(e => `${e.method}: $${e.amount.toFixed(2)}`).join(', ')}`,
+                payment_entries: entries,
                 source: 'admin_checkout',
                 record_ids: recordIds,
                 discount_percent: discountPercent,
@@ -1994,6 +2183,8 @@
                 storeCreditBarcode = '';
                 storeCreditRecipient = '';
                 storeCreditBalance = 0;
+                posPendingAmount = 0;
+                posAwaitingManualComplete = false;
                 isPaymentComplete = true;
                 
                 updateCartPreview();
@@ -2017,7 +2208,7 @@
         } finally {
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-credit-card"></i> Complete Payment';
+                btn.innerHTML = '<i class="fas fa-check-circle"></i> Complete Payment';
                 btn.style.opacity = '1';
             }
             isProcessingPayment = false;
@@ -2040,7 +2231,7 @@
         // Reset button state
         const btn = document.getElementById('payment-execute-btn');
         if (btn && !btn.disabled) {
-            btn.innerHTML = '<i class="fas fa-credit-card"></i> Complete Payment';
+            btn.innerHTML = '<i class="fas fa-check-circle"></i> Complete Payment';
         }
         isProcessingPayment = false;
     }
@@ -2126,8 +2317,10 @@
     }
 
     // ===== PROCESS POS PAYMENT =====
+    // ===== CHANGE: processPosPayment is no longer called from executePayment. Kept for retry path. =====
     async function processPosPayment(amount, items, total) {
-        console.log('📟 Processing POS payment:', amount);
+        // This is now only used by retryPosPayment
+        console.log('📟 Processing POS payment (retry path):', amount);
         
         if (posInProgress) {
             throw new Error('POS payment already in progress. Please wait or cancel.');
@@ -2142,18 +2335,14 @@
         
         isProcessingPayment = true;
         
-        // Use the first available terminal
         let deviceId = availableTerminals[0]?.id;
         if (!deviceId) {
             throw new Error('No POS terminal ID found.');
         }
         
-        // Clean device ID
         if (deviceId.startsWith('device:')) {
             deviceId = deviceId.substring(7);
         }
-        
-        console.log('📟 Using device ID:', deviceId);
         
         const recordIds = items
             .filter(item => item.type === 'record' && item.original_id)
@@ -2169,10 +2358,7 @@
             device_id: deviceId
         };
         
-        console.log('📟 Sending POS payload:', payload);
-        
         try {
-            // Show POS modal
             showPosModal('Sending request to terminal...', false);
             
             const response = await fetch(`${API_BASE}/api/square/terminal/checkout`, {
@@ -2197,21 +2383,23 @@
                 const checkoutId = data.checkout.id;
                 posCheckoutId = checkoutId;
                 posInProgress = true;
+                posPendingAmount = amount;
+                posAwaitingManualComplete = true;
                 
                 showPosModal('Payment request sent to POS terminal. Complete payment on the device.', false);
                 
-                // Wait for POS completion
                 const result = await waitForPosCompletion(checkoutId);
                 posInProgress = false;
+                posAwaitingManualComplete = false;
                 hidePosModal();
                 
                 if (result) {
-                    // Add to payment entries
                     paymentEntries.push({
                         method: 'POS Terminal',
                         amount: amount
                     });
                     cashReceived += amount;
+                    posPendingAmount = 0;
                     
                     const newRemaining = Math.max(0, getTotalWithDiscount() - cashReceived);
                     if (newRemaining <= 0.01) {
@@ -2229,6 +2417,7 @@
             }
         } catch (err) {
             posInProgress = false;
+            posAwaitingManualComplete = false;
             console.error('POS payment error:', err);
             showPosModal(err.message || 'POS payment failed. Please retry or use another method.', true);
             throw new Error(`POS payment failed: ${err.message}`);
@@ -2263,55 +2452,62 @@
     }
 
     // ===== HIDE POS MODAL =====
-    function hidePosModal() {
+    // ===== CHANGE: exported to window so the "Done" button can close it. =====
+    window.hidePosModal = function() {
         const modal = document.getElementById('pos-modal');
         if (modal) modal.style.display = 'none';
-    }
+    };
 
     // ===== CANCEL POS PAYMENT =====
+    // ===== CHANGE: FIXED. Reads checkout ID before nulling. Cancels backend. Does NOT auto-submit. =====
     window.cancelPosPayment = async function() {
-        // Reset button state first
-        const btn = document.getElementById('payment-execute-btn');
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-credit-card"></i> Complete Payment';
-            btn.style.opacity = '1';
-        }
+        // Capture checkout ID BEFORE we null it (previous bug)
+        const cancelId = posCheckoutId;
         
-        // Hide status and error displays
-        const statusEl = document.getElementById('payment-status');
-        const errorEl = document.getElementById('payment-error');
-        if (statusEl) statusEl.style.display = 'none';
-        if (errorEl) errorEl.style.display = 'none';
-        
-        // Hide POS controls
-        const controls = document.getElementById('pos-controls');
-        if (controls) controls.style.display = 'none';
-        
-        // Clear POS state
+        // Clear polling interval
         if (posPollInterval) {
             clearInterval(posPollInterval);
             posPollInterval = null;
         }
         
+        // Reset POS state
         posInProgress = false;
         posCheckoutId = null;
+        posAwaitingManualComplete = false;
+        // Do NOT reset posPendingAmount here - if user cancels and then forces Complete,
+        // they may want the POS amount counted. Leave it to complete-time logic.
         isProcessingPayment = false;
         
-        // Close modal
-        hidePosModal();
+        // Hide modal, hide POS controls
+        window.hidePosModal();
+        const controls = document.getElementById('pos-controls');
+        if (controls) controls.style.display = 'none';
         
-        // If there was a checkout ID, try to cancel it on the backend
-        if (posCheckoutId) {
+        // Reset status/error displays
+        const statusEl = document.getElementById('payment-status');
+        const errorEl = document.getElementById('payment-error');
+        if (statusEl) statusEl.style.display = 'none';
+        if (errorEl) errorEl.style.display = 'none';
+        
+        // Reset Complete button
+        const execBtn = document.getElementById('payment-execute-btn');
+        if (execBtn) {
+            execBtn.disabled = false;
+            execBtn.innerHTML = '<i class="fas fa-check-circle"></i> Complete Payment';
+            execBtn.style.opacity = '1';
+        }
+        
+        // Actually cancel on backend (using captured ID)
+        if (cancelId) {
             try {
-                const response = await fetch(`${API_BASE}/api/square/terminal/checkout/${posCheckoutId}/cancel`, {
+                const response = await fetch(`${API_BASE}/api/square/terminal/checkout/${cancelId}/cancel`, {
                     method: 'POST',
                     credentials: 'include',
                     headers: { 'Content-Type': 'application/json' }
                 });
                 
                 if (response.ok) {
-                    showToast('POS payment cancelled successfully.', 'warning');
+                    showToast('POS payment cancelled.', 'warning');
                 } else {
                     showToast('Failed to cancel POS payment. Please check the terminal.', 'error');
                 }
@@ -2323,18 +2519,13 @@
             showToast('POS payment cancelled.', 'warning');
         }
         
-        posCheckoutId = null;
-        
-        // Re-enable the execute button
-        const execBtn = document.getElementById('payment-execute-btn');
-        if (execBtn) {
-            execBtn.disabled = false;
-            execBtn.innerHTML = '<i class="fas fa-credit-card"></i> Complete Payment';
-            execBtn.style.opacity = '1';
-        }
+        // Re-render so the pending note reflects the new state
+        renderCheckoutTab();
+        setTimeout(() => selectPaymentMethod(selectedPaymentMethod), 50);
     };
 
     // ===== RETRY POS PAYMENT =====
+    // ===== CHANGE: retry re-sends via sendToPos, not executePayment. =====
     window.retryPosPayment = function() {
         // Reset status and error displays
         const statusEl = document.getElementById('payment-status');
@@ -2342,17 +2533,18 @@
         if (statusEl) statusEl.style.display = 'none';
         if (errorEl) errorEl.style.display = 'none';
         
-        // Reset button state
+        // Reset Complete button state
         const btn = document.getElementById('payment-execute-btn');
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-credit-card"></i> Complete Payment';
+            btn.innerHTML = '<i class="fas fa-check-circle"></i> Complete Payment';
             btn.style.opacity = '1';
         }
         
-        hidePosModal();
-        // Re-run the payment with the same cart
-        executePayment();
+        window.hidePosModal();
+        
+        // Re-send to POS via the dedicated button handler
+        window.sendToPos();
     };
 
     // ===== WAIT FOR POS COMPLETION =====
@@ -2418,7 +2610,6 @@
                     }
                 } catch (err) {
                     console.warn('POS polling error:', err.message);
-                    // Don't reject immediately - network errors might be temporary
                     if (attempts > 5) {
                         console.error('POS polling failed repeatedly:', err);
                     }
