@@ -146,7 +146,15 @@ FORMAT_TO_DISCOGS = {
     'flexi-disc': 'Flexi-disc',
     'box set': 'Box Set',
 }
- 
+FORMAT_ROOTS = {
+    'vinyl':    ['vinyl', 'lp', '12"', '10"', '7"'],
+    '8-track':  ['8-track', '8 track', '8track'],
+    'cassette': ['cassette', 'tape'],
+    'cd':       ['cd'],
+    'shellac':  ['shellac'],
+    'flexi':    ['flexi'],
+    'box set':  ['box set'],
+}
  
 
 # Token storage and background job storage
@@ -762,16 +770,16 @@ def require_discogs_auth(f):
         return f(*args, **kwargs)
     return decorated_function
 
-
 @app.route('/api/discogs/create-listing-single', methods=['POST'])
 def create_discogs_listing_single():
     """
     Create a single listing on Discogs.
 
     Resolution order:
-      1. If the payload carries discogs_release_id, use it directly. No search.
-      2. Otherwise, fall back to a Discogs search constrained by
-         catalog_number + format (mapped through FORMAT_TO_DISCOGS).
+      1. If the payload or the record has discogs_release_id, use it. No search.
+      2. Otherwise, fall back to a Discogs search by catno only, then filter
+         candidates client-side by matching the record's local format against
+         each candidate's `format` array via substring roots.
     Price is always client-supplied. No fallback markup.
     """
     try:
@@ -787,7 +795,6 @@ def create_discogs_listing_single():
         if not record.get('sleeve_condition') or str(record['sleeve_condition']).strip() == '':
             return jsonify({'success': False, 'error': 'sleeve_condition is required'}), 400
 
-        # --- Price is REQUIRED, no fallback ---
         if record.get('price') is None:
             return jsonify({'success': False, 'error': 'price is required'}), 400
 
@@ -803,7 +810,7 @@ def create_discogs_listing_single():
         if not TOKEN:
             return jsonify({'success': False, 'error': 'Discogs token not configured'}), 500
 
-        # Verify the record exists in the DB and read its stored fields
+        # Read the record from DB
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute(
@@ -823,9 +830,7 @@ def create_discogs_listing_single():
 
         release_id = None
 
-        # ===== PATH 1: Use stored discogs_release_id =====
-        # Prefer the payload value, fall back to the DB column if the payload
-        # didn't include it.
+        # ===== PATH 1: stored discogs_release_id =====
         payload_release_id = record.get('discogs_release_id')
         stored_release_id = db_record['discogs_release_id']
 
@@ -846,10 +851,10 @@ def create_discogs_listing_single():
             except (TypeError, ValueError):
                 release_id = None
 
+        # ===== PATH 2: fallback search by catno only =====
         if release_id is None:
-            # ===== PATH 2: Fallback search by catno + format =====
             app.logger.info(
-                f"No stored release ID for record #{record['id']} — falling back to catno+format search"
+                f"No stored release ID for record #{record['id']} — falling back to catno search"
             )
 
             target_catalog = record.get('catalog_number', '') or (db_record['catalog_number'] or '')
@@ -859,13 +864,12 @@ def create_discogs_listing_single():
             if not target_catalog:
                 return jsonify({
                     'success': False,
-                    'error': 'No discogs_release_id and no catalog_number — cannot resolve release. '
-                             'Add a release ID to the record or supply a catalog number.'
+                    'error': 'No discogs_release_id and no catalog_number — cannot resolve release.'
                 }), 400
 
-            # Map local format_id to a Discogs format string
+            # Resolve the target format roots from the local format_id
             format_id = record.get('format_id') or db_record['format_id']
-            discogs_format = None
+            format_roots = []
             if format_id:
                 conn2 = get_db()
                 cur2 = conn2.cursor()
@@ -874,24 +878,25 @@ def create_discogs_listing_single():
                 conn2.close()
                 if fmt_row and fmt_row['name']:
                     local_name = fmt_row['name'].strip().lower()
-                    discogs_format = FORMAT_TO_DISCOGS.get(local_name)
+                    format_roots = FORMAT_ROOTS.get(local_name, [])
                     app.logger.info(
-                        f"Mapped local format '{fmt_row['name']}' -> Discogs '{discogs_format}'"
+                        f"Local format '{fmt_row['name']}' -> roots {format_roots}"
                     )
 
-            # Build a constrained search: catno + format
+            # Discogs search by catno ONLY. No format= parameter, no q=.
             search_url = "https://api.discogs.com/database/search"
             search_params = {
                 'type': 'release',
                 'catno': target_catalog,
                 'per_page': 50
             }
-            if discogs_format:
-                search_params['format'] = discogs_format
 
-            search_response = requests.get(
-                search_url, headers=headers, params=search_params, timeout=15
-            )
+            try:
+                search_response = requests.get(
+                    search_url, headers=headers, params=search_params, timeout=15
+                )
+            except requests.RequestException as e:
+                return jsonify({'success': False, 'error': f'Discogs search failed: {e}'}), 500
 
             if search_response.status_code != 200:
                 app.logger.error(f"Search failed: {search_response.status_code}")
@@ -903,7 +908,6 @@ def create_discogs_listing_single():
             search_data = search_response.json()
             all_releases = search_data.get('results', [])
 
-            # Normalize and filter
             target_normalized_catno = (
                 target_catalog.replace(' ', '').replace('-', '').replace('–', '').strip().lower()
             )
@@ -915,23 +919,27 @@ def create_discogs_listing_single():
                 release_catno = release.get('catno', '')
                 release_title = release.get('title', '')
                 release_artist = release.get('artist', '')
-                release_formats = release.get('format', [])  # list of format strings
+                release_formats = release.get('format', [])  # array of strings
 
+                # Catno must match (normalized)
                 release_normalized_catno = (
                     release_catno.replace(' ', '').replace('-', '').replace('–', '').strip().lower()
                 )
                 if release_normalized_catno != target_normalized_catno:
                     continue
 
-                # Format must match (case-insensitive substring) if we have a target format
-                if discogs_format:
+                # Format match: any of the release's format strings contains
+                # any of our target roots (case-insensitive).
+                if format_roots:
                     format_matches = any(
-                        discogs_format.lower() in rf.lower()
+                        root.lower() in rf.lower()
                         for rf in release_formats
+                        for root in format_roots
                     )
                     if not format_matches:
                         continue
 
+                # Artist or title must loosely match
                 artist_matches = False
                 if target_artist_lower:
                     artist_matches = (
@@ -947,28 +955,20 @@ def create_discogs_listing_single():
                     exact_matches.append(release)
 
             if not exact_matches:
-                fmt_label = discogs_format or 'any format'
+                fmt_label = ', '.join(format_roots) if format_roots else 'any format'
                 return jsonify({
                     'success': False,
-                    'error': f'No {fmt_label} release found for catalog number "{target_catalog}". '
-                             f'Record #{record["id"]} has no stored discogs_release_id and the '
-                             f'fallback search did not find a format-matching release.'
+                    'error': f'No release matching format [{fmt_label}] and catalog number '
+                             f'"{target_catalog}" found on Discogs. Record #{record["id"]} has no '
+                             f'stored discogs_release_id and the fallback search found nothing.'
                 }), 400
-
-            # Prefer releases whose format array exactly mentions the target format first
-            if discogs_format:
-                exact_matches.sort(
-                    key=lambda r: 0 if any(
-                        discogs_format.lower() == rf.lower() for rf in r.get('format', [])
-                    ) else 1
-                )
 
             release_id = exact_matches[0].get('id')
             app.logger.info(
-                f"Fallback search matched release {release_id} for record #{record['id']}"
+                f"Fallback matched release {release_id} for record #{record['id']}"
             )
 
-            # Persist the resolved ID so future posts don't re-search
+            # Persist the resolved ID
             try:
                 conn3 = get_db()
                 cur3 = conn3.cursor()
@@ -984,7 +984,7 @@ def create_discogs_listing_single():
             except Exception as e:
                 app.logger.warning(f"Could not persist resolved release_id: {e}")
 
-        # ===== Create the listing against release_id =====
+        # ===== Create the listing =====
         comments = f"[PIGSTYLE ID: {record['id']}]"
         if record.get('location'):
             comments += f" | Location: {record.get('location')}"
@@ -1004,12 +1004,15 @@ def create_discogs_listing_single():
             f"Creating listing for release {release_id} at ${discogs_price} (Record #{record['id']})"
         )
 
-        listing_response = requests.post(
-            "https://api.discogs.com/marketplace/listings",
-            headers=headers,
-            json=listing_data,
-            timeout=15
-        )
+        try:
+            listing_response = requests.post(
+                "https://api.discogs.com/marketplace/listings",
+                headers=headers,
+                json=listing_data,
+                timeout=15
+            )
+        except requests.RequestException as e:
+            return jsonify({'success': False, 'error': f'Discogs listing request failed: {e}'}), 500
 
         if listing_response.status_code in (200, 201):
             listing_result = listing_response.json()
@@ -1035,6 +1038,8 @@ def create_discogs_listing_single():
         app.logger.error(f"Error creating listing: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
+    
+
 
 @app.route('/api/admin/orders', methods=['GET', 'OPTIONS'])
 def get_admin_orders():
