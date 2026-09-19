@@ -179,8 +179,6 @@
 
                     const currentTerm = searchInput.value.trim();
 
-                    // If we have results and the input still matches the last search term,
-                    // add the first result. Otherwise run a fresh search.
                     if (searchResults.length > 0 && currentTerm === lastSearchTerm) {
                         window.addRecord(0);
                     } else {
@@ -274,6 +272,7 @@
             const title = record.title || 'Untitled';
             const catalog = record.catalog_number || '—';
             const image = record.image_url || '';
+            const hasReleaseId = record.discogs_id ? true : false;
 
             const imgHtml = image ? 
                 `<img src="${image}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;">` : 
@@ -284,13 +283,16 @@
             const showPrice = !defaultPrice;
             const showConsignor = !defaultConsignor || defaultConsignor === 'none';
 
+            // ===== CHANGE: warn if no Discogs release ID (record will not be postable) =====
+            const warnBadge = hasReleaseId ? '' : `<span style="background:#fff3cd;color:#856404;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:6px;">no release ID</span>`;
+
             html += `
-                <div style="display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid #f0f0f0; hover:background:#f8f9fa;">
+                <div style="display: flex; align-items: center; gap: 10px; padding: 8px; border-bottom: 1px solid #f0f0f0;">
                     <div style="flex: 0 0 50px;">${imgHtml}</div>
                     <div style="flex: 1;">
-                        <div style="font-weight: 600; color: #333; font-size: 14px;">${artist}</div>
+                        <div style="font-weight: 600; color: #333; font-size: 14px;">${artist}${warnBadge}</div>
                         <div style="color: #666; font-size: 13px;">${title}</div>
-                        <div style="color: #999; font-size: 11px;">Catalog: ${catalog}</div>
+                        <div style="color: #999; font-size: 11px;">Catalog: ${catalog}${record.discogs_id ? ` · Discogs #${record.discogs_id}` : ''}</div>
                         ${!showPrice ? `<div style="color: #28a745; font-size: 11px; font-weight: 600;">Default Price: $${parseFloat(defaultPrice).toFixed(2)}</div>` : ''}
                         ${!showSleeve ? `<div style="color: #888; font-size: 10px;">Sleeve: ${conditions.find(c => c.id == defaultSleeve)?.display_name || ''}</div>` : ''}
                         ${!showDisc ? `<div style="color: #888; font-size: 10px;">Disc: ${conditions.find(c => c.id == defaultDisc)?.display_name || ''}</div>` : ''}
@@ -381,6 +383,9 @@
 
         const now = new Date().toISOString();
 
+        // ===== CHANGE: capture the Discogs release ID from the search result =====
+        const discogsReleaseId = record.discogs_id || null;
+
         const data = {
             artist: record.artist || 'Unknown',
             title: record.title || 'Unknown',
@@ -394,7 +399,8 @@
             format_id: formatId,
             batch_id: parseInt(purchaseId),
             status_id: 1,
-            last_seen: now
+            last_seen: now,
+            discogs_release_id: discogsReleaseId   // <-- NEW
         };
 
         try {
@@ -407,10 +413,10 @@
             const result = await response.json();
 
             if (result.status === 'success') {
-                showStatus(`✅ Added: ${record.artist} - ${record.title}`, 'success');
+                const releaseNote = discogsReleaseId ? ` (Discogs #${discogsReleaseId})` : ' (no release ID — will need manual resolve before posting)';
+                showStatus(`✅ Added: ${record.artist} - ${record.title}${releaseNote}`, discogsReleaseId ? 'success' : 'warning');
                 addToRecent(record.artist || 'Unknown', record.title || 'Unknown', price);
 
-                // ===== CLEAR ALL SEARCH RESULTS AFTER ADD =====
                 searchResults = [];
                 lastSearchTerm = '';
                 document.getElementById('add-results').innerHTML =
@@ -422,7 +428,6 @@
                     if (select) select.value = purchaseId;
                 }, 100);
 
-                // Clear the search box and return focus
                 const searchInput = document.getElementById('add-search-input');
                 if (searchInput) {
                     searchInput.value = '';

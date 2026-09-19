@@ -1298,7 +1298,9 @@
                         sleeve_condition: record.sleeve_condition_name || 'Very Good Plus (VG+)',
                         price: discogsPrice,
                         notes: record.notes || '',
-                        location: locationDisplay
+                        location: locationDisplay,
+                        discogs_release_id: record.discogs_release_id || null,
+                        format_id: record.format_id || null
                     }
                 };
 

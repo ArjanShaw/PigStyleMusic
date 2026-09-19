@@ -122,10 +122,31 @@ CORS(app,
 # Database configuration
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "records.db")
 
-# Spotify configuration
-SPOTIFY_CLIENT_ID = os.environ.get('SPOTIFY_CLIENT_ID', '1a2b3c4d5e6f7g8h9i0j')
-SPOTIFY_CLIENT_SECRET = os.environ.get('SPOTIFY_CLIENT_SECRET', 'k1l2m3n4o5p6q7r8s9t0')
-SPOTIFY_REDIRECT_URI = '/spotify/callback'
+
+# ===== LOCAL format name -> Discogs format string mapping =====
+# Keys are lowercased formats.name values from the local DB.
+# Used as a fallback when a record has no stored discogs_release_id
+# and the backend must search Discogs by catno + format.
+FORMAT_TO_DISCOGS = {
+    'vinyl': 'Vinyl',
+    '7"': 'Vinyl',
+    '10"': 'Vinyl',
+    '12"': 'Vinyl',
+    'lp': 'Vinyl',
+    'single': 'Vinyl',
+    'ep': 'Vinyl',
+    '8-track': '8-Track Cartridge',
+    '8 track': '8-Track Cartridge',
+    '8track': '8-Track Cartridge',
+    'cassette': 'Cassette',
+    'tape': 'Cassette',
+    'cd': 'CD',
+    'shellac': 'Shellac',
+    'flexi': 'Flexi-disc',
+    'flexi-disc': 'Flexi-disc',
+    'box set': 'Box Set',
+}
+ 
  
 
 # Token storage and background job storage
@@ -742,14 +763,16 @@ def require_discogs_auth(f):
     return decorated_function
 
 
-
-
 @app.route('/api/discogs/create-listing-single', methods=['POST'])
 def create_discogs_listing_single():
     """
     Create a single listing on Discogs.
-    The price MUST be supplied by the client (record.price).
-    No fallback markup calculation — the frontend is the single source of truth.
+
+    Resolution order:
+      1. If the payload carries discogs_release_id, use it directly. No search.
+      2. Otherwise, fall back to a Discogs search constrained by
+         catalog_number + format (mapped through FORMAT_TO_DISCOGS).
+    Price is always client-supplied. No fallback markup.
     """
     try:
         data = request.json
@@ -780,11 +803,15 @@ def create_discogs_listing_single():
         if not TOKEN:
             return jsonify({'success': False, 'error': 'Discogs token not configured'}), 500
 
-        # Verify the record exists in the DB
+        # Verify the record exists in the DB and read its stored fields
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute('SELECT id FROM records WHERE id = ?', (record['id'],))
-        if not cursor.fetchone():
+        cursor.execute(
+            'SELECT id, catalog_number, format_id, discogs_release_id FROM records WHERE id = ?',
+            (record['id'],)
+        )
+        db_record = cursor.fetchone()
+        if not db_record:
             conn.close()
             return jsonify({'success': False, 'error': f'Record #{record["id"]} not found'}), 404
         conn.close()
@@ -794,70 +821,170 @@ def create_discogs_listing_single():
             'User-Agent': 'PigStyleMusic/1.0'
         }
 
-        # Search for release
-        search_url = "https://api.discogs.com/database/search"
-        target_catalog = record.get('catalog_number', '')
-        target_artist = record.get('artist', '')
-        target_title = record.get('title', '')
+        release_id = None
 
-        if not target_catalog:
-            return jsonify({'success': False, 'error': 'catalog_number is required for search'}), 400
+        # ===== PATH 1: Use stored discogs_release_id =====
+        # Prefer the payload value, fall back to the DB column if the payload
+        # didn't include it.
+        payload_release_id = record.get('discogs_release_id')
+        stored_release_id = db_record['discogs_release_id']
 
-        search_query_parts = []
-        if target_artist:
-            search_query_parts.append(target_artist)
-        if target_title:
-            search_query_parts.append(target_title)
-        if target_catalog:
-            search_query_parts.append(target_catalog)
-        search_query = ' '.join(search_query_parts)
+        if payload_release_id:
+            try:
+                release_id = int(payload_release_id)
+                app.logger.info(
+                    f"Using payload discogs_release_id={release_id} for record #{record['id']}"
+                )
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'discogs_release_id must be an integer'}), 400
+        elif stored_release_id:
+            try:
+                release_id = int(stored_release_id)
+                app.logger.info(
+                    f"Using stored discogs_release_id={release_id} for record #{record['id']}"
+                )
+            except (TypeError, ValueError):
+                release_id = None
 
-        search_params = {'q': search_query, 'type': 'release', 'per_page': 50}
-        search_response = requests.get(search_url, headers=headers, params=search_params)
+        if release_id is None:
+            # ===== PATH 2: Fallback search by catno + format =====
+            app.logger.info(
+                f"No stored release ID for record #{record['id']} — falling back to catno+format search"
+            )
 
-        if search_response.status_code != 200:
-            app.logger.error(f"Search failed: {search_response.status_code}")
-            return jsonify({'success': False, 'error': f'Search failed: {search_response.status_code}'}), search_response.status_code
+            target_catalog = record.get('catalog_number', '') or (db_record['catalog_number'] or '')
+            target_artist = record.get('artist', '')
+            target_title = record.get('title', '')
 
-        search_data = search_response.json()
-        all_releases = search_data.get('results', [])
+            if not target_catalog:
+                return jsonify({
+                    'success': False,
+                    'error': 'No discogs_release_id and no catalog_number — cannot resolve release. '
+                             'Add a release ID to the record or supply a catalog number.'
+                }), 400
 
-        target_normalized_catno = target_catalog.replace(' ', '').replace('-', '').replace('–', '').strip().lower()
-        target_artist_lower = target_artist.strip().lower() if target_artist else ''
-        target_title_lower = target_title.strip().lower() if target_title else ''
+            # Map local format_id to a Discogs format string
+            format_id = record.get('format_id') or db_record['format_id']
+            discogs_format = None
+            if format_id:
+                conn2 = get_db()
+                cur2 = conn2.cursor()
+                cur2.execute('SELECT name FROM formats WHERE id = ?', (format_id,))
+                fmt_row = cur2.fetchone()
+                conn2.close()
+                if fmt_row and fmt_row['name']:
+                    local_name = fmt_row['name'].strip().lower()
+                    discogs_format = FORMAT_TO_DISCOGS.get(local_name)
+                    app.logger.info(
+                        f"Mapped local format '{fmt_row['name']}' -> Discogs '{discogs_format}'"
+                    )
 
-        exact_matches = []
-        for release in all_releases:
-            release_catno = release.get('catno', '')
-            release_title = release.get('title', '')
-            release_artist = release.get('artist', '')
+            # Build a constrained search: catno + format
+            search_url = "https://api.discogs.com/database/search"
+            search_params = {
+                'type': 'release',
+                'catno': target_catalog,
+                'per_page': 50
+            }
+            if discogs_format:
+                search_params['format'] = discogs_format
 
-            release_normalized_catno = release_catno.replace(' ', '').replace('-', '').replace('–', '').strip().lower()
-            catalog_matches = release_normalized_catno == target_normalized_catno
+            search_response = requests.get(
+                search_url, headers=headers, params=search_params, timeout=15
+            )
 
-            artist_matches = False
-            if target_artist_lower:
-                artist_matches = (target_artist_lower in release_artist.lower() or
-                                  target_artist_lower in release_title.lower())
+            if search_response.status_code != 200:
+                app.logger.error(f"Search failed: {search_response.status_code}")
+                return jsonify({
+                    'success': False,
+                    'error': f'Search failed: {search_response.status_code}'
+                }), search_response.status_code
 
-            title_matches = False
-            if target_title_lower:
-                title_matches = target_title_lower in release_title.lower()
+            search_data = search_response.json()
+            all_releases = search_data.get('results', [])
 
-            if catalog_matches and (artist_matches or title_matches):
-                exact_matches.append(release)
+            # Normalize and filter
+            target_normalized_catno = (
+                target_catalog.replace(' ', '').replace('-', '').replace('–', '').strip().lower()
+            )
+            target_artist_lower = target_artist.strip().lower() if target_artist else ''
+            target_title_lower = target_title.strip().lower() if target_title else ''
 
-        if not exact_matches:
-            return jsonify({
-                'success': False,
-                'error': f'No exact match found for catalog number "{target_catalog}".'
-            }), 400
+            exact_matches = []
+            for release in all_releases:
+                release_catno = release.get('catno', '')
+                release_title = release.get('title', '')
+                release_artist = release.get('artist', '')
+                release_formats = release.get('format', [])  # list of format strings
 
-        selected_release = exact_matches[0]
-        release_id = selected_release.get('id')
+                release_normalized_catno = (
+                    release_catno.replace(' ', '').replace('-', '').replace('–', '').strip().lower()
+                )
+                if release_normalized_catno != target_normalized_catno:
+                    continue
 
-        listing_url_endpoint = "https://api.discogs.com/marketplace/listings"
+                # Format must match (case-insensitive substring) if we have a target format
+                if discogs_format:
+                    format_matches = any(
+                        discogs_format.lower() in rf.lower()
+                        for rf in release_formats
+                    )
+                    if not format_matches:
+                        continue
 
+                artist_matches = False
+                if target_artist_lower:
+                    artist_matches = (
+                        target_artist_lower in release_artist.lower()
+                        or target_artist_lower in release_title.lower()
+                    )
+
+                title_matches = False
+                if target_title_lower:
+                    title_matches = target_title_lower in release_title.lower()
+
+                if artist_matches or title_matches:
+                    exact_matches.append(release)
+
+            if not exact_matches:
+                fmt_label = discogs_format or 'any format'
+                return jsonify({
+                    'success': False,
+                    'error': f'No {fmt_label} release found for catalog number "{target_catalog}". '
+                             f'Record #{record["id"]} has no stored discogs_release_id and the '
+                             f'fallback search did not find a format-matching release.'
+                }), 400
+
+            # Prefer releases whose format array exactly mentions the target format first
+            if discogs_format:
+                exact_matches.sort(
+                    key=lambda r: 0 if any(
+                        discogs_format.lower() == rf.lower() for rf in r.get('format', [])
+                    ) else 1
+                )
+
+            release_id = exact_matches[0].get('id')
+            app.logger.info(
+                f"Fallback search matched release {release_id} for record #{record['id']}"
+            )
+
+            # Persist the resolved ID so future posts don't re-search
+            try:
+                conn3 = get_db()
+                cur3 = conn3.cursor()
+                cur3.execute(
+                    'UPDATE records SET discogs_release_id = ? WHERE id = ?',
+                    (release_id, record['id'])
+                )
+                conn3.commit()
+                conn3.close()
+                app.logger.info(
+                    f"Saved discogs_release_id={release_id} on record #{record['id']}"
+                )
+            except Exception as e:
+                app.logger.warning(f"Could not persist resolved release_id: {e}")
+
+        # ===== Create the listing against release_id =====
         comments = f"[PIGSTYLE ID: {record['id']}]"
         if record.get('location'):
             comments += f" | Location: {record.get('location')}"
@@ -873,11 +1000,18 @@ def create_discogs_listing_single():
             "comments": comments
         }
 
-        app.logger.info(f"Creating listing for release {release_id} at client-supplied price ${discogs_price} (Record #{record['id']})")
+        app.logger.info(
+            f"Creating listing for release {release_id} at ${discogs_price} (Record #{record['id']})"
+        )
 
-        listing_response = requests.post(listing_url_endpoint, headers=headers, json=listing_data)
+        listing_response = requests.post(
+            "https://api.discogs.com/marketplace/listings",
+            headers=headers,
+            json=listing_data,
+            timeout=15
+        )
 
-        if listing_response.status_code in [200, 201]:
+        if listing_response.status_code in (200, 201):
             listing_result = listing_response.json()
             listing_id = listing_result.get('listing_id')
             discogs_url = f"https://www.discogs.com/sell/item/{listing_id}"
@@ -901,7 +1035,6 @@ def create_discogs_listing_single():
         app.logger.error(f"Error creating listing: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @app.route('/api/admin/orders', methods=['GET', 'OPTIONS'])
 def get_admin_orders():
@@ -2603,6 +2736,7 @@ def get_artists():
     conn.close()
     return jsonify({'status': 'success', 'artists': [dict(artist) for artist in artists]})
 
+
 @app.route('/records', methods=['POST'])
 def create_record():
     data = request.get_json()
@@ -2644,6 +2778,9 @@ def create_record():
         location_index = data.get('location_index')
         format_id = data.get('format_id')
         
+        # ===== NEW: Discogs release ID (nullable) =====
+        discogs_release_id = data.get('discogs_release_id')
+        
         # ===== GET last_seen from request or use CURRENT_TIMESTAMP =====
         last_seen = data.get('last_seen')
         if last_seen:
@@ -2659,8 +2796,9 @@ def create_record():
                 condition_sleeve_id, condition_disc_id, store_price,
                 consignor_id, commission_rate, status_id, discogs_genre_raw, notes,
                 batch_id, format_id, location_id, location_index,
+                discogs_release_id,
                 created_at, last_seen
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
         ''', (
             data.get('artist'), 
             data.get('title'), 
@@ -2679,6 +2817,7 @@ def create_record():
             format_id,
             location_id,
             location_index,
+            discogs_release_id,
             last_seen_value
         ))
         
@@ -2806,7 +2945,6 @@ def create_record():
         conn.rollback()
         conn.close()
         return jsonify({'status': 'error', 'error': f"Database error: {str(e)}"}), 500
-
 
 @app.route('/records', methods=['GET'])
 def get_records():
@@ -4563,7 +4701,13 @@ def discogs_search_proxy():
         'vinyl': 'Vinyl',
         'cd': 'CD',
         'tape': 'Cassette',
-        'shellac': 'Shellac'
+        'cassette': 'Cassette',
+        'shellac': 'Shellac',
+        '8-track': '8-Track Cartridge',
+        '8 track': '8-Track Cartridge',
+        '8track': '8-Track Cartridge',
+        'flexi': 'Flexi-disc',
+        'flexi-disc': 'Flexi-disc'
     }
     
     params = {'q': search_term, 'type': 'release', 'per_page': 20}
@@ -4608,7 +4752,7 @@ def discogs_search_proxy():
         genre_list = item.get('genre', [])
         raw_genre = ', '.join(genre_list) if genre_list else ''
         
-        # Get format
+        # ===== NEW: return full format array alongside first format =====
         format_list = item.get('format', [])
         format_str = format_list[0] if format_list else ''
         
@@ -4618,6 +4762,7 @@ def discogs_search_proxy():
             'year': item.get('year'),
             'genre_raw': raw_genre,
             'format': format_str,
+            'formats': format_list,
             'country': item.get('country'),
             'image_url': item.get('thumb', ''),
             'catalog_number': item.get('catno', ''),
@@ -4626,7 +4771,6 @@ def discogs_search_proxy():
         })
     
     return jsonify({'status': 'success', 'results': results, 'count': len(results)})
-
   
 
 # ==================== COMMISSION RATE ENDPOINT ====================
