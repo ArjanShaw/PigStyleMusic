@@ -52,18 +52,6 @@
         }
     }
 
-    // ===== CHECK IF RECORD SHOULD BE VISIBLE =====
-    function isRecordVisible(record, cutoffDate) {
-        if (!cutoffDate) return true;
-        if (!record.last_seen) return false;
-        
-        let lastSeenDate = record.last_seen;
-        if (typeof lastSeenDate === 'string' && lastSeenDate.includes('T')) {
-            lastSeenDate = lastSeenDate.split('T')[0];
-        }
-        return lastSeenDate >= cutoffDate;
-    }
-
     // ===== GET CONDITION DISPLAY NAME =====
     function getConditionDisplay(record) {
         if (record.sleeve_condition_name) return record.sleeve_condition_name;
@@ -434,7 +422,7 @@
                 totalRecords: 0,
                 totalPages: 0,
                 locationIds: config.locationIds || null,
-                statusId: config.statusId || null,
+                statusId: config.statusId || 2,
                 genreIds: config.genreIds || null,
                 formatIds: config.formatIds || null,
                 maxPrice: config.maxPrice || null,
@@ -469,6 +457,7 @@
             console.log(`📀 Genre filter: ${this.selectedGenreId || 'None'}`);
             console.log(`📀 Format filter: ${this.selectedFormatIds.length ? this.selectedFormatIds.join(',') : 'None'}`);
             console.log(`📀 Max price: ${this.currentMaxPrice || 'None'}`);
+            console.log(`📀 Status: ${this.config.statusId}`);
             
             const genreSelectId = `${this.config.idPrefix}GenreSelect`;
             const genreSelect = document.getElementById(genreSelectId);
@@ -552,70 +541,16 @@
             }
         }
 
+        // Search now hits the server (no client-side filtering, no limit)
         applySearch() {
-            if (!this.searchTerm) {
-                this.filteredData = [...this.allData];
-            } else {
-                const term = this.searchTerm.toLowerCase().trim();
-                const isNumeric = /^\d+$/.test(term);
-                
-                this.filteredData = this.allData.filter(record => {
-                    if (isNumeric && record.id && record.id.toString() === term) return true;
-                    if (record.barcode && record.barcode.toLowerCase() === term) return true;
-                    if (record.artist && record.artist.toLowerCase().includes(term)) return true;
-                    if (record.title && record.title.toLowerCase().includes(term)) return true;
-                    return false;
-                });
-            }
-            
-            this.totalRecords = this.filteredData.length;
             this.currentPage = 1;
-            this.totalPages = Math.ceil(this.totalRecords / this.config.pageSize) || 1;
-            this.renderPage();
-            this.updatePagination();
+            this.loadRecords();
         }
 
+        // Filters now hit the server (no client-side filtering, no limit)
         applyFilters() {
-            let filtered = [...this.allData];
-            
-            if (this.selectedGenreId) {
-                filtered = filtered.filter(record => {
-                    return record.genre_id && parseInt(record.genre_id) === parseInt(this.selectedGenreId);
-                });
-            }
-            
-            if (this.selectedFormatIds && this.selectedFormatIds.length > 0) {
-                const fmtSet = new Set(this.selectedFormatIds.map(x => parseInt(x)));
-                filtered = filtered.filter(record => {
-                    return record.format_id && fmtSet.has(parseInt(record.format_id));
-                });
-            }
-            
-            if (this.currentMaxPrice && this.currentMaxPrice > 0) {
-                filtered = filtered.filter(record => {
-                    const price = parseFloat(record.store_price) || 0;
-                    return price <= this.currentMaxPrice;
-                });
-            }
-            
-            if (this.searchTerm) {
-                const term = this.searchTerm.toLowerCase().trim();
-                const isNumeric = /^\d+$/.test(term);
-                filtered = filtered.filter(record => {
-                    if (isNumeric && record.id && record.id.toString() === term) return true;
-                    if (record.barcode && record.barcode.toLowerCase() === term) return true;
-                    if (record.artist && record.artist.toLowerCase().includes(term)) return true;
-                    if (record.title && record.title.toLowerCase().includes(term)) return true;
-                    return false;
-                });
-            }
-            
-            this.filteredData = filtered;
-            this.totalRecords = this.filteredData.length;
             this.currentPage = 1;
-            this.totalPages = Math.ceil(this.totalRecords / this.config.pageSize) || 1;
-            this.renderPage();
-            this.updatePagination();
+            this.loadRecords();
         }
 
         setGenre(genreId) {
@@ -661,16 +596,25 @@
             `;
 
             try {
-                const params = new URLSearchParams({ limit: 1000 });
-                
+                // No limit — fetch everything matching the current filters.
+                const params = new URLSearchParams();
+
+                // Always Active unless config says otherwise
+                const statusToSend = this.config.statusId || 2;
+                params.append('status_ids', statusToSend);
+
                 if (this.config.locationIds) params.append('location_ids', this.config.locationIds);
-                if (this.config.statusId) params.append('status_ids', this.config.statusId);
                 if (this.cutoffDate) params.append('last_seen_after', this.cutoffDate);
                 if (this.selectedGenreId) params.append('genre_ids', this.selectedGenreId);
                 if (this.selectedFormatIds && this.selectedFormatIds.length > 0) {
                     params.append('format_ids', this.selectedFormatIds.join(','));
                 }
-                if (this.currentMaxPrice && this.currentMaxPrice > 0) params.append('max_price', this.currentMaxPrice);
+                if (this.currentMaxPrice && this.currentMaxPrice > 0) {
+                    params.append('max_price', this.currentMaxPrice);
+                }
+                if (this.searchTerm) {
+                    params.append('search', this.searchTerm);
+                }
 
                 const url = `${API_BASE}/records?${params.toString()}`;
                 console.log('📡 FETCHING RECORDS FROM:', url);
@@ -681,24 +625,18 @@
                 });
 
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                
+
                 const data = await response.json();
 
                 if (data.status === 'success' && data.records) {
-                    let records = data.records || [];
-                    
-                    if (this.cutoffDate) {
-                        const beforeFilter = records.length;
-                        records = records.filter(record => isRecordVisible(record, this.cutoffDate));
-                        console.log(`📅 Client-side cutoff filter: ${beforeFilter} → ${records.length} records`);
-                    }
-                    
-                    this.allData = records;
+                    // Server already applied cutoff + status + format filters.
+                    // Do NOT re-filter client-side.
+                    this.allData = data.records;
                     this.filteredData = [...this.allData];
                     this.totalRecords = this.filteredData.length;
                     this.totalPages = Math.ceil(this.totalRecords / this.config.pageSize) || 1;
                     this.currentPage = 1;
-                    
+
                     this.renderPage();
                     this.updatePagination();
                 } else {

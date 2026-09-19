@@ -76,8 +76,8 @@
                 const opts = '<option value="">Select...</option>' + conditions.map(c => 
                     `<option value="${c.id}">${c.display_name || c.condition_name}</option>`
                 ).join('');
-                sleeveSelect.innerHTML = opts;
-                discSelect.innerHTML = opts;
+                if (sleeveSelect) sleeveSelect.innerHTML = opts;
+                if (discSelect) discSelect.innerHTML = opts;
             }
         } catch (err) {
             console.error('Failed to load conditions:', err);
@@ -95,11 +95,13 @@
             if (data.status === 'success') {
                 formats = data.formats || [];
                 const select = document.getElementById('add-search-format');
-                // Keep a placeholder so the user actively picks, then list all formats from DB
+                if (!select) {
+                    console.warn('⚠️ add-search-format not in DOM — skipping format dropdown populate');
+                    return;
+                }
                 select.innerHTML = '<option value="">All Formats</option>' + formats.map(f =>
                     `<option value="${f.name.toLowerCase()}">${f.name}</option>`
                 ).join('');
-                // Default to Vinyl if present
                 const vinylOpt = Array.from(select.options).find(o => o.value === 'vinyl');
                 if (vinylOpt) select.value = 'vinyl';
             }
@@ -119,9 +121,11 @@
             if (data.status === 'success') {
                 consignors = (data.users || []).filter(u => u.role === 'consignor');
                 const select = document.getElementById('add-default-consignor');
-                select.innerHTML = '<option value="none">None (store)</option>' + consignors.map(c => 
-                    `<option value="${c.id}">${c.username}${c.full_name ? ' (' + c.full_name + ')' : ''}</option>`
-                ).join('');
+                if (select) {
+                    select.innerHTML = '<option value="none">None (store)</option>' + consignors.map(c => 
+                        `<option value="${c.id}">${c.username}${c.full_name ? ' (' + c.full_name + ')' : ''}</option>`
+                    ).join('');
+                }
             }
         } catch (err) {
             console.error('Failed to load consignors:', err);
