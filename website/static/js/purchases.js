@@ -66,7 +66,8 @@
         showStatus('📄 Fetching records for purchase #' + purchaseId + '...', 'info');
 
         try {
-            var url = API_BASE + '/records?batch_id=' + purchaseId + '&limit=1000';
+            // FIX: status_ids=1,2,3,4 so draft (1) and active (2) records are both included
+            var url = API_BASE + '/records?batch_id=' + purchaseId + '&status_ids=1,2,3,4&limit=1000';
             var response = await fetch(url, {
                 credentials: 'include',
                 mode: 'cors',
@@ -508,6 +509,7 @@
         }
         
         try {
+            // FIX: include status_ids so drafts are seen here too
             const response = await fetch(`${API_BASE}/records?batch_id=${selectedPurchaseId}&status_ids=1,2,3,4&limit=500`, {
                 credentials: 'include',
                 mode: 'cors',
