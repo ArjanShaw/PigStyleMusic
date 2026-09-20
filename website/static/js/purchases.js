@@ -306,6 +306,8 @@
     };
 
     // ===== LOAD PURCHASE RECORDS =====
+    // FIX: explicitly pass status_ids so draft records (status_id = 1) are included.
+    // Without this, /records defaults to status_id = 2 and hides drafts.
     async function loadPurchaseRecords(purchaseId) {
         const list = document.getElementById('purchases-list');
         if (!list) return;
@@ -319,7 +321,7 @@
         }
         
         try {
-            const response = await fetch(`${API_BASE}/records?batch_id=${purchaseId}&limit=500`, {
+            const response = await fetch(`${API_BASE}/records?batch_id=${purchaseId}&status_ids=1,2,3,4&limit=500`, {
                 credentials: 'include',
                 mode: 'cors',
                 headers: { 'Content-Type': 'application/json' }
@@ -506,7 +508,7 @@
         }
         
         try {
-            const response = await fetch(`${API_BASE}/records?batch_id=${selectedPurchaseId}&limit=500`, {
+            const response = await fetch(`${API_BASE}/records?batch_id=${selectedPurchaseId}&status_ids=1,2,3,4&limit=500`, {
                 credentials: 'include',
                 mode: 'cors',
                 headers: { 'Content-Type': 'application/json' }
