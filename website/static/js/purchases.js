@@ -60,7 +60,8 @@
         showStatus('📄 Fetching records for purchase #' + purchaseId + '...', 'info');
 
         try {
-            var url = API_BASE + '/records?batch_id=' + purchaseId + '&limit=1000';
+            // FIX: status_ids=1,2,3,4 so draft (1) and active (2) records are both included
+            var url = API_BASE + '/records?batch_id=' + purchaseId + '&status_ids=1,2,3,4&limit=1000';
             var response = await fetch(url, {
                 credentials: 'include',
                 mode: 'cors',
@@ -507,6 +508,8 @@
     };
 
     // ===== LOAD PURCHASE RECORDS =====
+    // FIX: explicitly pass status_ids so draft records (status_id = 1) are included.
+    // Without this, /records defaults to status_id = 2 and hides drafts.
     async function loadPurchaseRecords(purchaseId) {
         const list = document.getElementById('purchases-list');
         if (!list) return;
@@ -521,7 +524,7 @@
         }
 
         try {
-            const response = await fetch(`${API_BASE}/records?batch_id=${purchaseId}&limit=500`, {
+            const response = await fetch(`${API_BASE}/records?batch_id=${purchaseId}&status_ids=1,2,3,4&limit=500`, {
                 credentials: 'include',
                 mode: 'cors',
                 headers: { 'Content-Type': 'application/json' }
@@ -644,6 +647,76 @@
     window.purchasesRefresh = function() {
         loadPurchases();
         showStatus('✅ Refreshed', 'success');
+    };
+
+    // ===== ACCEPT DRAFT =====
+    window.purchasesAcceptDraft = async function() {
+        if (!selectedPurchaseId) {
+            showStatus('Please select a purchase first.', 'warning');
+            return;
+        }
+        
+        const amount = prompt('Enter offer amount ($):');
+        if (amount === null) return;
+        const offerAmount = parseFloat(amount);
+        if (isNaN(offerAmount) || offerAmount <= 0) {
+            showStatus('Please enter a valid amount.', 'warning');
+            return;
+        }
+        
+        try {
+            // FIX: include status_ids so drafts are seen here too
+            const response = await fetch(`${API_BASE}/records?batch_id=${selectedPurchaseId}&status_ids=1,2,3,4&limit=500`, {
+                credentials: 'include',
+                mode: 'cors',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            const records = data.records || [];
+            
+            if (records.length === 0) {
+                showStatus('No records linked to this purchase.', 'warning');
+                return;
+            }
+            
+            const signatureMethod = confirm('Square POS signature? Click OK for Square POS, Cancel for Print & Upload.');
+            
+            const result = await fetch(`${API_BASE}/api/purchases/${selectedPurchaseId}`, {
+                method: 'PUT',
+                credentials: 'include',
+                mode: 'cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    offer_amount: offerAmount,
+                    signature_method: signatureMethod ? 'square' : 'upload',
+                    record_ids: records.map(r => r.id)
+                })
+            });
+            
+            if (!result.ok) {
+                throw new Error(`HTTP ${result.status}`);
+            }
+            
+            const resultData = await result.json();
+            
+            if (resultData.status === 'success') {
+                showStatus('✅ Draft accepted! Offer: $' + offerAmount.toFixed(2), 'success');
+                loadPurchases();
+                if (selectedPurchaseId) {
+                    setTimeout(() => purchasesSelect(selectedPurchaseId), 300);
+                }
+            } else {
+                showStatus('❌ Error: ' + (resultData.error || 'Failed to accept draft'), 'error');
+            }
+        } catch (err) {
+            console.error('Error accepting draft:', err);
+            showStatus('❌ Error: ' + err.message, 'error');
+        }
     };
 
     // ===== DELETE PURCHASE =====
