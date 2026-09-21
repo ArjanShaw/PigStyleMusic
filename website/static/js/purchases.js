@@ -3,8 +3,8 @@
     'use strict';
 
     // ===== API BASE URL =====
-    const API_BASE = window.location.hostname === 'localhost' 
-        ? 'http://localhost:5000' 
+    const API_BASE = window.location.hostname === 'localhost'
+        ? 'http://localhost:5000'
         : 'https://www.pigstylemusic.com';
 
     let selectedPurchaseId = null;
@@ -21,7 +21,6 @@
         return false;
     }
 
-    // Check periodically until dependencies are loaded
     var checkInterval = setInterval(function() {
         if (checkDependencies()) {
             clearInterval(checkInterval);
@@ -29,18 +28,14 @@
         }
     }, 500);
 
-    // Also check when DOM is ready
     document.addEventListener('DOMContentLoaded', function() {
         setTimeout(checkDependencies, 500);
     });
 
     // ===== PRINT LABELS =====
     window.printPurchaseLabels = async function(purchaseId) {
-        const statusDiv = document.getElementById('purchases-status');
-        
         if (!dependenciesLoaded) {
             showStatus('⏳ Loading label printer dependencies...', 'info');
-            
             await new Promise(function(resolve) {
                 var waitInterval = setInterval(function() {
                     if (dependenciesLoaded) {
@@ -53,7 +48,6 @@
                     resolve();
                 }, 10000);
             });
-            
             if (!dependenciesLoaded) {
                 showStatus('❌ Label printer dependencies failed to load. Please refresh the page.', 'error');
                 return;
@@ -109,10 +103,10 @@
         }
     };
 
-    // ===== SHOW STATUS =====
+    // ===== SHOW STATUS TOAST =====
     function showStatus(message, type = 'info') {
         let statusDiv = document.getElementById('purchases-status');
-        
+
         if (!statusDiv) {
             const container = document.querySelector('.purchases-container') || document.body;
             const div = document.createElement('div');
@@ -132,7 +126,7 @@
             container.appendChild(div);
             statusDiv = div;
         }
-        
+
         const colors = {
             success: '#d4edda',
             error: '#f8d7da',
@@ -145,12 +139,12 @@
             warning: '#856404',
             info: '#004085'
         };
-        
+
         statusDiv.style.display = 'block';
         statusDiv.style.background = colors[type] || '#f8f9fa';
         statusDiv.style.color = textColors[type] || '#333';
         statusDiv.textContent = message;
-        
+
         setTimeout(() => { statusDiv.style.display = 'none'; }, 5000);
     }
 
@@ -158,16 +152,16 @@
     async function loadPurchases() {
         const list = document.getElementById('purchases-list');
         if (!list) return;
-        
+
         list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading...</div>';
-        
+
         try {
             const response = await fetch(`${API_BASE}/api/inventory-purchases`, {
                 credentials: 'include',
                 mode: 'cors',
                 headers: { 'Content-Type': 'application/json' }
             });
-            
+
             if (response.status === 401) {
                 list.innerHTML = `
                     <div style="text-align: center; padding: 40px; color: #dc3545;">
@@ -180,13 +174,13 @@
                 `;
                 return;
             }
-            
+
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
-            
+
             const data = await response.json();
-            
+
             if (data.status === 'success') {
                 purchases = data.purchases || [];
                 renderPurchases(purchases);
@@ -204,52 +198,99 @@
     function renderPurchases(purchasesList) {
         const list = document.getElementById('purchases-list');
         if (!list) return;
-        
+
         if (!purchasesList || purchasesList.length === 0) {
             list.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">No purchases found. Click "New Purchase" to create one.</div>';
             return;
         }
-        
+
+        // Remember which rows were expanded
+        const expandedRows = new Set();
+        document.querySelectorAll('#purchases-list tr.purchase-details').forEach(row => {
+            const prev = row.previousElementSibling;
+            if (prev && prev.dataset.id) expandedRows.add(prev.dataset.id);
+        });
+
+        // Columns: ID, Seller, Contact, Description, Records, Amount, Bill, Created, Updated, Actions
         let html = `<table style="width: 100%; border-collapse: collapse; font-size: 13px;">
             <thead>
                 <tr style="background: #f8f9fa; border-bottom: 2px solid #ddd;">
                     <th style="padding: 8px 10px; text-align: left; color: #333;">ID</th>
                     <th style="padding: 8px 10px; text-align: left; color: #333;">Seller</th>
-                    <th style="padding: 8px 10px; text-align: left; color: #333;">Status</th>
+                    <th style="padding: 8px 10px; text-align: left; color: #333;">Contact</th>
+                    <th style="padding: 8px 10px; text-align: left; color: #333;">Description</th>
                     <th style="padding: 8px 10px; text-align: center; color: #333;">Records</th>
                     <th style="padding: 8px 10px; text-align: right; color: #333;">Amount</th>
-                    <th style="padding: 8px 10px; text-align: left; color: #333;">Date</th>
                     <th style="padding: 8px 10px; text-align: center; color: #333;">Bill</th>
+                    <th style="padding: 8px 10px; text-align: left; color: #333;">Created</th>
+                    <th style="padding: 8px 10px; text-align: left; color: #333;">Updated</th>
                     <th style="padding: 8px 10px; text-align: center; color: #333;">Actions</th>
                 </tr>
             </thead>
             <tbody>`;
-        
+
         purchasesList.forEach(p => {
             const isSelected = (p.id === selectedPurchaseId);
-            const statusColor = p.status === 'complete' ? '#28a745' : '#ffc107';
-            const statusText = p.status === 'complete' ? '✅ Complete' : '📝 Draft';
             const recordCount = p.record_count || 0;
-            
+            const createdAt = p.created_at ? new Date(p.created_at).toLocaleString() : '—';
+            const updatedAt = p.updated_at ? new Date(p.updated_at).toLocaleString() : '—';
+
+            // Editable-cell styling
+            const editStyle = 'padding: 8px 10px; border-bottom: 1px solid #eee; color: #333; background: #fffbe6; outline: none; cursor: text;';
+
             html += `<tr ${isSelected ? 'style="background: #e3f2fd;"' : ''} data-id="${p.id}">
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333; font-weight: 600;">${p.id}</td>
-                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333;">${p.seller_name || 'Unknown'}</td>
-                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: ${statusColor};">${statusText}</td>
+
+                <td contenteditable="true"
+                    data-field="seller_name"
+                    data-purchase-id="${p.id}"
+                    style="${editStyle} min-width: 120px;"
+                    onblur="purchasesInlineEdit(this)"
+                    onkeydown="purchasesCellKeydown(event, this)">${p.seller_name || ''}</td>
+
+                <td contenteditable="true"
+                    data-field="seller_contact"
+                    data-purchase-id="${p.id}"
+                    style="${editStyle} min-width: 120px;"
+                    onblur="purchasesInlineEdit(this)"
+                    onkeydown="purchasesCellKeydown(event, this)">${p.seller_contact || ''}</td>
+
+                <td contenteditable="true"
+                    data-field="description"
+                    data-purchase-id="${p.id}"
+                    style="${editStyle} min-width: 180px; max-width: 320px;"
+                    onblur="purchasesInlineEdit(this)"
+                    onkeydown="purchasesCellKeydown(event, this)">${p.description || ''}</td>
+
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center; color: #333;">${recordCount}</td>
-                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: right; color: #333;">${p.amount_spent && p.amount_spent > 0 ? '$' + p.amount_spent.toFixed(2) : '—'}</td>
-                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333;">${p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</td>
-                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center; color: #333;">${p.bill_of_sale_path ? '📄 Yes' : '—'}</td>
+
+                <td contenteditable="true"
+                    data-field="amount_spent"
+                    data-purchase-id="${p.id}"
+                    style="${editStyle} text-align: right;"
+                    onblur="purchasesInlineEdit(this)"
+                    onkeydown="purchasesCellKeydown(event, this)">${p.amount_spent && p.amount_spent > 0 ? p.amount_spent.toFixed(2) : ''}</td>
+
+                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center; color: #333;">
+                    ${p.bill_of_sale_path
+                        ? `<a href="${API_BASE}${p.bill_of_sale_path}" target="_blank" style="color: #007bff; text-decoration: none;" title="View bill">📄</a>`
+                        : '<span style="color: #999;">—</span>'}
+                </td>
+
+                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #666; white-space: nowrap; font-size: 12px;">${createdAt}</td>
+                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #666; white-space: nowrap; font-size: 12px;">${updatedAt}</td>
+
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">
                     <div style="display: flex; gap: 4px; flex-wrap: wrap; justify-content: center;">
-                        <button onclick="purchasesSelect(${p.id})" style="padding: 4px 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                        <button onclick="purchasesSelect(${p.id})" style="padding: 4px 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;" title="View records">
                             <i class="fas fa-eye"></i>
                         </button>
-                        <button onclick="editPurchasePrice(${p.id})" style="padding: 4px 10px; background: #ffc107; color: #333; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;" title="Edit purchase price">
-                            <i class="fas fa-dollar-sign"></i>
+                        <button onclick="uploadPurchaseBill(${p.id})" style="padding: 4px 10px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;" title="Upload bill of sale">
+                            <i class="fas fa-file-upload"></i>
                         </button>
                         ${recordCount > 0 ? `
-                            <button class="btn-print" data-purchase-id="${p.id}" onclick="printPurchaseLabels(${p.id})" 
-                                    style="padding: 4px 10px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;" 
+                            <button class="btn-print" data-purchase-id="${p.id}" onclick="printPurchaseLabels(${p.id})"
+                                    style="padding: 4px 10px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;"
                                     title="Print ${recordCount} labels">
                                 <i class="fas fa-print"></i> ${recordCount}
                             </button>
@@ -258,23 +299,190 @@
                 </td>
             </tr>`;
         });
-        
+
         html += '</tbody></table>';
         list.innerHTML = html;
+
+        // Restore expanded rows
+        expandedRows.forEach(id => {
+            const row = list.querySelector(`tr[data-id="${id}"]`);
+            if (row) {
+                loadPurchaseRecords(id);
+            }
+        });
     }
+
+    // ===== CELL KEYBOARD HANDLER (commit on Enter, cancel on Escape) =====
+    window.purchasesCellKeydown = function(event, cell) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            cell.blur(); // triggers onblur -> purchasesInlineEdit
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            // Revert: re-render from purchases array
+            const purchaseId = cell.dataset.purchaseId;
+            const field = cell.dataset.field;
+            const purchase = purchases.find(p => String(p.id) === String(purchaseId));
+            if (purchase) {
+                if (field === 'amount_spent') {
+                    cell.textContent = purchase.amount_spent && purchase.amount_spent > 0
+                        ? purchase.amount_spent.toFixed(2)
+                        : '';
+                } else {
+                    cell.textContent = purchase[field] || '';
+                }
+            }
+            cell.blur();
+        }
+    };
+
+    // ===== INLINE EDIT HANDLER =====
+    window.purchasesInlineEdit = async function(cell) {
+        const purchaseId = cell.dataset.purchaseId;
+        const field = cell.dataset.field;
+        const rawValue = cell.textContent.trim();
+
+        const purchase = purchases.find(p => String(p.id) === String(purchaseId));
+        if (!purchase) return;
+
+        // Normalize for comparison
+        let oldValue;
+        let newValue;
+
+        if (field === 'amount_spent') {
+            oldValue = (purchase.amount_spent || 0);
+            newValue = parseFloat(rawValue) || 0;
+            if (newValue < 0) {
+                showStatus('Amount cannot be negative', 'warning');
+                cell.textContent = oldValue > 0 ? oldValue.toFixed(2) : '';
+                return;
+            }
+            if (Math.abs(oldValue - newValue) < 0.001) {
+                cell.textContent = newValue > 0 ? newValue.toFixed(2) : '';
+                return;
+            }
+        } else {
+            oldValue = (purchase[field] || '').toString().trim();
+            newValue = rawValue;
+            if (oldValue === newValue) return;
+        }
+
+        // Visual feedback
+        cell.style.background = '#fff3cd';
+
+        // Build the request payload
+        const payload = {};
+        if (field === 'amount_spent') {
+            // amount_spent edits go through the price endpoint
+            payload.total_purchase_price = newValue;
+        } else {
+            payload[field] = newValue;
+        }
+
+        // Choose the endpoint: price edits use /api/inventory-purchases, others use /api/purchases
+        const url = field === 'amount_spent'
+            ? `${API_BASE}/api/inventory-purchases/${purchaseId}`
+            : `${API_BASE}/api/purchases/${purchaseId}`;
+
+        try {
+            const response = await fetch(url, {
+                method: 'PUT',
+                credentials: 'include',
+                mode: 'cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                // Update local model
+                purchase[field] = newValue;
+
+                // Normalize display
+                if (field === 'amount_spent') {
+                    cell.textContent = newValue > 0 ? newValue.toFixed(2) : '';
+                }
+
+                cell.style.background = '#d4edda';
+                setTimeout(() => { cell.style.background = '#fffbe6'; }, 800);
+
+                // Refresh updated_at display by re-fetching in background (optional)
+                showStatus(`✅ Updated ${field.replace('_', ' ')}`, 'success');
+            } else {
+                // Revert
+                if (field === 'amount_spent') {
+                    cell.textContent = oldValue > 0 ? oldValue.toFixed(2) : '';
+                } else {
+                    cell.textContent = oldValue;
+                }
+                cell.style.background = '#f8d7da';
+                setTimeout(() => { cell.style.background = '#fffbe6'; }, 800);
+                showStatus(`❌ ${data.error || 'Update failed'}`, 'error');
+            }
+        } catch (err) {
+            console.error('Inline edit error:', err);
+            if (field === 'amount_spent') {
+                cell.textContent = oldValue > 0 ? oldValue.toFixed(2) : '';
+            } else {
+                cell.textContent = oldValue;
+            }
+            cell.style.background = '#f8d7da';
+            setTimeout(() => { cell.style.background = '#fffbe6'; }, 800);
+            showStatus('❌ Error: ' + err.message, 'error');
+        }
+    };
+
+    // ===== UPLOAD BILL =====
+    window.uploadPurchaseBill = function(purchaseId) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*,.pdf';
+        input.onchange = async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('bill_image', file);
+
+            showStatus('📤 Uploading bill...', 'info');
+
+            try {
+                const response = await fetch(`${API_BASE}/api/purchases/${purchaseId}/bill`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    mode: 'cors',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    showStatus('✅ Bill uploaded', 'success');
+                    loadPurchases();
+                } else {
+                    showStatus('❌ ' + (data.error || 'Upload failed'), 'error');
+                }
+            } catch (err) {
+                console.error('Upload error:', err);
+                showStatus('❌ Error: ' + err.message, 'error');
+            }
+        };
+        input.click();
+    };
 
     // ===== UPDATE STATS =====
     function updateStats(purchasesList) {
         const total = purchasesList.length;
-        const complete = purchasesList.filter(p => p.status === 'complete').length;
-        const draft = purchasesList.filter(p => p.status === 'draft').length;
+        const complete = purchasesList.filter(p => (p.record_count || 0) > 0).length;
+        const draft = total - complete;
         const totalRecords = purchasesList.reduce((sum, p) => sum + (p.record_count || 0), 0);
-        
+
         const totalEl = document.getElementById('purchases-total-count');
         const completeEl = document.getElementById('purchases-complete-count');
         const draftEl = document.getElementById('purchases-draft-count');
         const recordsEl = document.getElementById('purchases-total-records');
-        
+
         if (totalEl) totalEl.textContent = total;
         if (completeEl) completeEl.textContent = complete;
         if (draftEl) draftEl.textContent = draft;
@@ -284,24 +492,17 @@
     // ===== SELECT PURCHASE =====
     window.purchasesSelect = async function(id) {
         selectedPurchaseId = id;
-        
+
         document.querySelectorAll('#purchases-list tr[data-id]').forEach(row => {
             row.style.background = row.dataset.id == id ? '#e3f2fd' : '';
         });
-        
+
+        const deleteBtn = document.getElementById('purchases-delete-btn');
         const purchase = purchases.find(p => p.id === id);
-        if (purchase) {
-            const deleteBtn = document.getElementById('purchases-delete-btn');
-            const acceptBtn = document.getElementById('purchases-accept-draft-btn');
-            
-            if (deleteBtn) {
-                deleteBtn.style.display = purchase.status === 'complete' ? 'none' : 'inline-block';
-            }
-            if (acceptBtn) {
-                acceptBtn.style.display = (purchase.status === 'draft' && purchase.record_count > 0) ? 'inline-block' : 'none';
-            }
+        if (deleteBtn && purchase) {
+            deleteBtn.style.display = (purchase.record_count || 0) === 0 ? 'inline-block' : 'none';
         }
-        
+
         await loadPurchaseRecords(id);
     };
 
@@ -309,28 +510,29 @@
     async function loadPurchaseRecords(purchaseId) {
         const list = document.getElementById('purchases-list');
         if (!list) return;
-        
+
         const row = list.querySelector(`tr[data-id="${purchaseId}"]`);
         if (!row) return;
-        
+
         const existingDetails = row.nextElementSibling;
         if (existingDetails && existingDetails.classList && existingDetails.classList.contains('purchase-details')) {
             existingDetails.remove();
+            return; // toggle off
         }
-        
+
         try {
             const response = await fetch(`${API_BASE}/records?batch_id=${purchaseId}&limit=500`, {
                 credentials: 'include',
                 mode: 'cors',
                 headers: { 'Content-Type': 'application/json' }
             });
-            
+
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
-            
+
             const data = await response.json();
-            
+
             if (data.status === 'success') {
                 purchaseRecords = data.records || [];
                 renderPurchaseRecords(purchaseId, purchaseRecords);
@@ -345,15 +547,15 @@
     function renderPurchaseRecords(purchaseId, records) {
         const list = document.getElementById('purchases-list');
         if (!list) return;
-        
+
         const row = list.querySelector(`tr[data-id="${purchaseId}"]`);
         if (!row) return;
-        
+
         let html = `<tr class="purchase-details" style="background: #f8f9fa;">
-            <td colspan="8" style="padding: 10px;">
+            <td colspan="10" style="padding: 10px;">
                 <div style="font-weight: 600; color: #333; margin-bottom: 8px;">📀 Records (${records.length})</div>
                 <div style="max-height: 200px; overflow-y: auto;">`;
-        
+
         if (records.length === 0) {
             html += '<div style="text-align: center; padding: 20px; color: #999;">No records linked to this purchase</div>';
         } else {
@@ -370,10 +572,9 @@
                     </tr>
                 </thead>
                 <tbody>`;
-            
+
             records.forEach(r => {
-                const statusMap = { 1: 'New', 2: 'Active', 3: 'Sold', 4: 'Discogs' };
-                const status = statusMap[r.status_id] || 'Unknown';
+                const status = r.status_name || 'Unknown';
                 const sleeve = r.sleeve_condition_name || r.sleeve_display || '—';
                 const disc = r.disc_condition_name || r.disc_display || '—';
                 html += `<tr>
@@ -386,59 +587,14 @@
                     <td style="padding: 4px 8px; border-bottom: 1px solid #eee; text-align: center; color: #333;">${status}</td>
                 </tr>`;
             });
-            
+
             html += '</tbody></table>';
         }
-        
+
         html += `</div></td></tr>`;
-        
+
         row.insertAdjacentHTML('afterend', html);
     }
-
-    // ===== EDIT PURCHASE PRICE =====
-    window.editPurchasePrice = async function(purchaseId) {
-        // Find the purchase in the data
-        const purchase = purchases.find(p => p.id === purchaseId);
-        if (!purchase) {
-            showStatus('❌ Purchase not found', 'error');
-            return;
-        }
-        
-        const currentPrice = purchase.amount_spent || 0;
-        
-        const newPrice = prompt(`Enter new total purchase price for batch #${purchaseId}:`, currentPrice.toFixed(2));
-        
-        if (newPrice === null) return; // Cancelled
-        
-        const priceValue = parseFloat(newPrice);
-        if (isNaN(priceValue) || priceValue < 0) {
-            showStatus('Please enter a valid positive number.', 'warning');
-            return;
-        }
-        
-        try {
-            const response = await fetch(`${API_BASE}/api/inventory-purchases/${purchaseId}`, {
-                method: 'PUT',
-                credentials: 'include',
-                mode: 'cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ total_purchase_price: priceValue })
-            });
-            
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                showStatus(`✅ Purchase price updated to $${priceValue.toFixed(2)}`, 'success');
-                // Refresh the purchases list
-                loadPurchases();
-            } else {
-                showStatus(`❌ Error: ${data.error || 'Failed to update price'}`, 'error');
-            }
-        } catch (err) {
-            console.error('Error updating purchase price:', err);
-            showStatus('❌ Error updating price: ' + err.message, 'error');
-        }
-    };
 
     // ===== CREATE NEW PURCHASE =====
     window.purchasesCreate = async function() {
@@ -448,25 +604,25 @@
         const description = prompt('Enter description [optional]:') || '';
         const amount = prompt('Enter total purchase price ($) [optional, default 0]:') || '0';
         const amountValue = parseFloat(amount) || 0;
-        
+
         try {
             const response = await fetch(`${API_BASE}/api/inventory-purchases`, {
                 method: 'POST',
                 credentials: 'include',
                 mode: 'cors',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    seller_name: sellerName, 
-                    seller_contact: contact, 
+                body: JSON.stringify({
+                    seller_name: sellerName,
+                    seller_contact: contact,
                     description: description,
                     amount_spent: amountValue
                 })
             });
-            
+
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
-            
+
             const data = await response.json();
             if (data.status === 'success') {
                 showStatus('✅ Purchase created successfully!', 'success');
@@ -490,92 +646,23 @@
         showStatus('✅ Refreshed', 'success');
     };
 
-    // ===== ACCEPT DRAFT =====
-    window.purchasesAcceptDraft = async function() {
-        if (!selectedPurchaseId) {
-            showStatus('Please select a purchase first.', 'warning');
-            return;
-        }
-        
-        const amount = prompt('Enter offer amount ($):');
-        if (amount === null) return;
-        const offerAmount = parseFloat(amount);
-        if (isNaN(offerAmount) || offerAmount <= 0) {
-            showStatus('Please enter a valid amount.', 'warning');
-            return;
-        }
-        
-        try {
-            const response = await fetch(`${API_BASE}/records?batch_id=${selectedPurchaseId}&limit=500`, {
-                credentials: 'include',
-                mode: 'cors',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            
-            const data = await response.json();
-            const records = data.records || [];
-            
-            if (records.length === 0) {
-                showStatus('No records linked to this purchase.', 'warning');
-                return;
-            }
-            
-            const signatureMethod = confirm('Square POS signature? Click OK for Square POS, Cancel for Print & Upload.');
-            
-            const result = await fetch(`${API_BASE}/api/purchases/${selectedPurchaseId}`, {
-                method: 'PUT',
-                credentials: 'include',
-                mode: 'cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    offer_amount: offerAmount,
-                    signature_method: signatureMethod ? 'square' : 'upload',
-                    record_ids: records.map(r => r.id)
-                })
-            });
-            
-            if (!result.ok) {
-                throw new Error(`HTTP ${result.status}`);
-            }
-            
-            const resultData = await result.json();
-            
-            if (resultData.status === 'success') {
-                showStatus('✅ Draft accepted! Offer: $' + offerAmount.toFixed(2), 'success');
-                loadPurchases();
-                if (selectedPurchaseId) {
-                    setTimeout(() => purchasesSelect(selectedPurchaseId), 300);
-                }
-            } else {
-                showStatus('❌ Error: ' + (resultData.error || 'Failed to accept draft'), 'error');
-            }
-        } catch (err) {
-            console.error('Error accepting draft:', err);
-            showStatus('❌ Error: ' + err.message, 'error');
-        }
-    };
-
     // ===== DELETE PURCHASE =====
     window.purchasesDelete = async function() {
         if (!selectedPurchaseId) {
             showStatus('Please select a purchase first.', 'warning');
             return;
         }
-        
-        if (!confirm('Are you sure you want to delete purchase #' + selectedPurchaseId + ' and all its linked records? This cannot be undone.')) {
+
+        if (!confirm('Are you sure you want to delete purchase #' + selectedPurchaseId + '? Records will be unlinked (not deleted).')) {
             return;
         }
-        
+
         const deleteBtn = document.getElementById('purchases-delete-btn');
         if (deleteBtn) {
             deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
             deleteBtn.disabled = true;
         }
-        
+
         try {
             const response = await fetch(`${API_BASE}/api/inventory-purchases/${selectedPurchaseId}`, {
                 method: 'DELETE',
@@ -583,19 +670,17 @@
                 mode: 'cors',
                 headers: { 'Content-Type': 'application/json' }
             });
-            
+
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
-            
+
             const data = await response.json();
             if (data.status === 'success') {
                 showStatus('✅ Purchase deleted.', 'success');
                 selectedPurchaseId = null;
                 const deleteBtn2 = document.getElementById('purchases-delete-btn');
-                const acceptBtn = document.getElementById('purchases-accept-draft-btn');
                 if (deleteBtn2) deleteBtn2.style.display = 'none';
-                if (acceptBtn) acceptBtn.style.display = 'none';
                 loadPurchases();
             } else {
                 showStatus('❌ Error: ' + (data.error || 'Failed to delete'), 'error');

@@ -3898,8 +3898,6 @@ def get_inventory_purchase(purchase_id):
         app.logger.error(f"Error getting inventory purchase: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
-
 @app.route('/api/inventory-purchases/<int:purchase_id>', methods=['PUT'])
 @login_required
 @role_required(['admin'])
@@ -3907,6 +3905,7 @@ def update_inventory_purchase(purchase_id):
     """
     Update a purchase's seller info or price.
     Price updates go directly to journal_entries_simple (amount stored in cents).
+    No status field — purchases.status was removed.
     """
     try:
         data = request.get_json()
@@ -3923,71 +3922,59 @@ def update_inventory_purchase(purchase_id):
             conn.close()
             return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
 
-        # 2. Build UPDATE query for purchases table
+        # 2. Build UPDATE query for purchases table (NO status field)
         update_fields = []
         params = []
-        
+
         if 'seller_name' in data:
             update_fields.append('seller_name = ?')
             params.append(data['seller_name'].strip())
-        
+
         if 'seller_contact' in data:
             update_fields.append('seller_contact = ?')
             params.append(data['seller_contact'].strip())
-        
+
         if 'description' in data:
             update_fields.append('description = ?')
             params.append(data['description'].strip())
-        
-        if 'status' in data:
-            update_fields.append('status = ?')
-            params.append(data['status'].strip())
-        
+
         if update_fields:
             update_fields.append('updated_at = CURRENT_TIMESTAMP')
             params.append(purchase_id)
             cursor.execute(f"UPDATE purchases SET {', '.join(update_fields)} WHERE id = ?", params)
-        
+
         # 3. If total_purchase_price was provided, update journal_entries_simple
         if 'total_purchase_price' in data:
             new_price = float(data['total_purchase_price'])
             if new_price < 0:
                 conn.close()
                 return jsonify({'status': 'error', 'error': 'Price cannot be negative'}), 400
-            
+
             new_amount_cents = int(round(new_price * 100))
-            
-            # Get current purchase data for description
+
             cursor.execute('SELECT seller_name, seller_contact, description FROM purchases WHERE id = ?', (purchase_id,))
             updated_purchase = cursor.fetchone()
-            
-            # Check if journal_entries_simple entry exists
+
             cursor.execute('''
                 SELECT id, amount FROM journal_entries_simple 
                 WHERE source_type = 'purchase' AND source_id = ?
             ''', (str(purchase_id),))
-            
+
             entry = cursor.fetchone()
-            
+
             if entry:
-                # Update existing entry
                 desc = f"Inventory purchase | seller: {updated_purchase['seller_name']} | contact: {updated_purchase['seller_contact'] or ''} | amount: {new_price:.2f} | desc: {updated_purchase['description'] or ''}"
                 cursor.execute('''
                     UPDATE journal_entries_simple 
                     SET amount = ?, description = ?
                     WHERE id = ?
-                ''', (
-                    new_amount_cents,
-                    desc,
-                    entry['id']
-                ))
+                ''', (new_amount_cents, desc, entry['id']))
             elif new_price > 0:
-                # Create new entry if one doesn't exist (shouldn't happen, but just in case)
                 cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1050',))
                 inventory = cursor.fetchone()
                 cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1017',))
                 cash = cursor.fetchone()
-                
+
                 if inventory and cash:
                     desc = f"Inventory purchase | seller: {updated_purchase['seller_name']} | contact: {updated_purchase['seller_contact'] or ''} | amount: {new_price:.2f} | desc: {updated_purchase['description'] or ''}"
                     cursor.execute('''
@@ -4006,28 +3993,28 @@ def update_inventory_purchase(purchase_id):
                     ))
 
         conn.commit()
-        
+
         # 4. Fetch updated purchase for response
         cursor.execute('''
             SELECT 
                 id, seller_name, seller_contact, description, 
-                bill_of_sale_path, status,
+                bill_of_sale_path,
                 created_at, updated_at,
                 COALESCE(
                     (SELECT amount / 100.0 
                      FROM journal_entries_simple jes
                      WHERE jes.source_type = 'purchase'
-                       AND jes.source_id = purchases.id
+                       AND jes.source_id = CAST(purchases.id AS TEXT)
                      LIMIT 1), 
                     0
                 ) as total_purchase_price
             FROM purchases 
             WHERE id = ?
         ''', (purchase_id,))
-        
+
         updated_purchase = cursor.fetchone()
         conn.close()
-        
+
         return jsonify({
             'status': 'success',
             'message': 'Purchase updated successfully',
@@ -4038,7 +4025,6 @@ def update_inventory_purchase(purchase_id):
                 'description': updated_purchase['description'] or '',
                 'bill_of_sale_path': updated_purchase['bill_of_sale_path'],
                 'total_purchase_price': float(updated_purchase['total_purchase_price'] or 0),
-                'status': updated_purchase['status'],
                 'created_at': updated_purchase['created_at'],
                 'updated_at': updated_purchase['updated_at']
             }
@@ -4567,52 +4553,6 @@ def get_statuses():
 
 
 
-@app.route('/api/consignor/records', methods=['GET'])
-@role_required(['consignor', 'admin'])
-def get_consignor_records():
-    conn = get_db()
-    cursor = conn.cursor()
-    if session.get('role') == 'admin':
-        cursor.execute('''
-            SELECT r.*, s.status_name, u.username as consignor_name,
-            cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name,
-            f.name as format_name,
-            l.name as location_name
-            FROM records r
-            LEFT JOIN d_status s ON r.status_id = s.id
-            LEFT JOIN users u ON r.consignor_id = u.id
-            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-            LEFT JOIN formats f ON r.format_id = f.id
-            LEFT JOIN locations l ON r.location_id = l.id
-            WHERE r.consignor_id IS NOT NULL
-            ORDER BY r.created_at DESC
-        ''')
-    else:
-        cursor.execute('''
-            SELECT r.*, s.status_name,
-            cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name,
-            f.name as format_name,
-            l.name as location_name
-            FROM records r
-            LEFT JOIN d_status s ON r.status_id = s.id
-            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-            LEFT JOIN formats f ON r.format_id = f.id
-            LEFT JOIN locations l ON r.location_id = l.id
-            WHERE r.consignor_id = ?
-            ORDER BY r.created_at DESC
-        ''', (session['user_id'],))
-    records = cursor.fetchall()
-    conn.close()
-    records_list = []
-    for record in records:
-        record_dict = dict(record)
-        if record_dict.get('sleeve_condition_name'):
-            record_dict['condition'] = record_dict['sleeve_condition_name']
-        records_list.append(record_dict)
-    return jsonify({'status': 'success', 'count': len(records_list), 'records': records_list})
-
 @app.route('/api/genres', methods=['GET'])
 def get_genres():
     """Get all genres from the genres table"""
@@ -4622,66 +4562,6 @@ def get_genres():
     genres = cursor.fetchall()
     conn.close()
     return jsonify({'status': 'success', 'genres': [dict(g) for g in genres]})
-
-
-@app.route('/consignment/records', methods=['GET'])
-def get_consignment_records():
-    user_id = request.args.get('user_id')
-    conn = get_db()
-    cursor = conn.cursor()
-    if user_id:
-        cursor.execute('''
-            SELECT r.*, s.status_name, u.username as consignor_name,
-            cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name,
-            f.name as format_name,
-            l.name as location_name
-            FROM records r
-            LEFT JOIN d_status s ON r.status_id = s.id
-            LEFT JOIN users u ON r.consignor_id = u.id
-            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-            LEFT JOIN formats f ON r.format_id = f.id
-            LEFT JOIN locations l ON r.location_id = l.id
-            WHERE r.consignor_id = ?
-            ORDER BY CASE r.status_id WHEN 1 THEN 1 WHEN 2 THEN 2 WHEN 3 THEN 3 WHEN 4 THEN 4 ELSE 5 END, r.artist, r.title
-        ''', (user_id,))
-    else:
-        cursor.execute('''
-            SELECT r.*, s.status_name, u.username as consignor_name,
-            cs.condition_name as sleeve_condition_name, cd.condition_name as disc_condition_name,
-            f.name as format_name,
-            l.name as location_name
-            FROM records r
-            LEFT JOIN d_status s ON r.status_id = s.id
-            LEFT JOIN users u ON r.consignor_id = u.id
-            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
-            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-            LEFT JOIN formats f ON r.format_id = f.id
-            LEFT JOIN locations l ON r.location_id = l.id
-            WHERE r.consignor_id IS NOT NULL
-            ORDER BY CASE r.status_id WHEN 1 THEN 1 WHEN 2 THEN 2 WHEN 3 THEN 3 WHEN 4 THEN 4 ELSE 5 END, r.consignor_id, r.artist, r.title
-        ''')
-    records = cursor.fetchall()
-    conn.close()
-    records_list = []
-    for record in records:
-        record_dict = dict(record)
-        barcode = record_dict.get('barcode')
-        status_id = record_dict.get('status_id')
-        if status_id == 1:
-            record_dict['display_status'] = 'New' if not barcode or barcode in [None, '', 'None'] else 'Active'
-        elif status_id == 2:
-            record_dict['display_status'] = 'Active'
-        elif status_id == 3:
-            record_dict['display_status'] = 'Sold'
-        elif status_id == 4:
-            record_dict['display_status'] = 'Removed'
-        else:
-            record_dict['display_status'] = 'Unknown'
-        if record_dict.get('sleeve_condition_name'):
-            record_dict['condition'] = record_dict['sleeve_condition_name']
-        records_list.append(record_dict)
-    return jsonify({'status': 'success', 'count': len(records_list), 'records': records_list})
 
 
 @app.route('/api/discogs/search', methods=['GET'])
@@ -10475,28 +10355,28 @@ def process_refund():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
 @app.route('/api/purchases', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def create_purchase():
-    """Create a new purchase draft (alias for /api/purchases/draft)"""
+    """Create a new purchase draft (no status column)."""
     try:
         data = request.get_json() or {}
         seller_name = data.get('seller_name', 'New Purchase')
         seller_contact = data.get('seller_contact', '')
         description = data.get('description', 'New inventory purchase')
-        
+
         conn = get_db()
         cursor = conn.cursor()
-        
-        # Insert into purchases table
+
         cursor.execute('''
-            INSERT INTO purchases (seller_name, seller_contact, description, status)
-            VALUES (?, ?, ?, 'draft')
+            INSERT INTO purchases (seller_name, seller_contact, description, created_at, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         ''', (seller_name, seller_contact, description))
         purchase_id = cursor.lastrowid
-        
-        # Insert into journal_entries
+
+        # Companion journal entry
         from datetime import datetime
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
@@ -10507,20 +10387,20 @@ def create_purchase():
             'purchase',
             str(purchase_id)
         ))
-        
+
         conn.commit()
         conn.close()
-        
+
         return jsonify({
             'status': 'success',
             'message': 'Purchase created',
-            'draft_id': purchase_id
+            'draft_id': purchase_id,
+            'purchase_id': purchase_id
         })
-        
+
     except Exception as e:
         app.logger.error(f"Error creating purchase: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
- 
 
 @app.route('/api/square/bill-of-sale', methods=['POST'])
 @login_required
@@ -11601,15 +11481,13 @@ def accounting_reconcile_init():
         'unmatched': final_unmatched
     })
 
-# ============================================================
-# PURCHASE METADATA UPDATE (PUT)
-# ============================================================
 @app.route('/api/purchases/<int:purchase_id>', methods=['PUT'])
 @login_required
 @role_required(['admin'])
 def update_purchase(purchase_id):
     """
-    Update purchase metadata: seller_name, seller_contact, description, status.
+    Update purchase metadata: seller_name, seller_contact, description.
+    No status field — purchases.status was removed.
     """
     try:
         data = request.get_json()
@@ -11619,13 +11497,12 @@ def update_purchase(purchase_id):
         conn = get_db()
         cursor = conn.cursor()
 
-        # Check if purchase exists
         cursor.execute('SELECT id FROM purchases WHERE id = ?', (purchase_id,))
         if not cursor.fetchone():
             conn.close()
             return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
 
-        allowed_fields = ['seller_name', 'seller_contact', 'description', 'status']
+        allowed_fields = ['seller_name', 'seller_contact', 'description']
         updates = []
         values = []
 
@@ -11650,15 +11527,16 @@ def update_purchase(purchase_id):
         app.logger.error(f"Error updating purchase: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
 @app.route('/api/purchases/<int:purchase_id>', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def get_purchase_by_id(purchase_id):
-    """Get a single purchase by ID"""
+    """Get a single purchase by ID (no status field)."""
     try:
         conn = get_db()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             SELECT 
                 p.id,
@@ -11666,8 +11544,6 @@ def get_purchase_by_id(purchase_id):
                 p.seller_contact,
                 p.description,
                 p.bill_of_sale_path,
-                p.status,
-                p.total_purchase_price,
                 p.created_at,
                 p.updated_at,
                 COUNT(r.id) as record_count,
@@ -11684,13 +11560,13 @@ def get_purchase_by_id(purchase_id):
             WHERE p.id = ?
             GROUP BY p.id
         ''', (purchase_id,))
-        
+
         purchase = cursor.fetchone()
         conn.close()
-        
+
         if not purchase:
             return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
-        
+
         return jsonify({
             'status': 'success',
             'purchase': {
@@ -11699,19 +11575,16 @@ def get_purchase_by_id(purchase_id):
                 'seller_contact': purchase['seller_contact'] or '',
                 'description': purchase['description'] or '',
                 'bill_of_sale_path': purchase['bill_of_sale_path'],
-                'status': purchase['status'],
-                'total_purchase_price': float(purchase['total_purchase_price'] or 0),
                 'amount_spent': float(purchase['amount_spent'] or 0),
                 'created_at': purchase['created_at'],
                 'updated_at': purchase['updated_at'],
                 'record_count': purchase['record_count'] or 0
             }
         })
-        
+
     except Exception as e:
         app.logger.error(f"Error getting purchase: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 @app.route('/api/purchases/<int:purchase_id>/bill', methods=['POST'])
 @login_required
