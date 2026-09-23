@@ -205,7 +205,7 @@
         document.getElementById('gc-value').value = '';
         document.getElementById('gc-recipient').value = '';
         document.getElementById('gc-notes').value = '';
-        document.getElementById('gc-payment-method').value = 'cash';
+        // REMOVED: document.getElementById('gc-payment-method').value = 'cash';
         document.getElementById('gc-status').style.display = 'none';
         document.getElementById('gc-barcode-status').textContent = '';
         document.getElementById('gc-record-info').style.display = 'none';
@@ -339,7 +339,7 @@
         const value = parseFloat(document.getElementById('gc-value').value);
         const recipient = document.getElementById('gc-recipient').value.trim();
         const notes = document.getElementById('gc-notes').value.trim();
-        const paymentMethod = document.getElementById('gc-payment-method').value;
+        // REMOVED: const paymentMethod = document.getElementById('gc-payment-method').value;
         
         // Validation
         if (!barcode || barcode.length < 3) {
@@ -394,8 +394,8 @@
                     card_value: value,
                     charge_amount: value,
                     recipient_name: recipient,
-                    notes: notes || null,
-                    payment_method: paymentMethod
+                    notes: notes || null
+                    // REMOVED: payment_method: paymentMethod
                 })
             });
             

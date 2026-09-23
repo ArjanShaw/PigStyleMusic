@@ -2,12 +2,15 @@
 // CUSTOM CHECKOUT - Admin checkout with integrated payments
 // ADMIN ONLY - Restricted to admin/manager roles
 // Integrates with the global cart singleton
+// MERGED: Single unified view (records + custom + cart)
+// NO gift-card-specific logic — the cart treats every item generically.
+// Gift card balance redemption is handled by the Gift Cards page.
 // ============================================================
 
 (function() {
     'use strict';
 
-    console.log('🚀 Custom Checkout module loaded');
+    console.log('🚀 Custom Checkout module loaded (merged single-view, no gift-card logic)');
 
     // ===== API BASE URL =====
     const API_BASE = window.location.hostname === 'localhost' 
@@ -35,18 +38,12 @@
     }
 
     // ===== CHECKOUT STATE =====
-    let checkoutItems = [];
-    let checkoutTotal = 0;
-    let checkoutRemaining = 0;
     let squareAvailable = false;
     let availableTerminals = [];
-    let squareCheckoutId = null;
-    let squarePollInterval = null;
     let currentUserId = null;
     let currentUserName = 'Admin';
     let recordSearchResults = [];
     let recordSearchTimeout = null;
-    let currentTab = 'records';
     let recordSearchLoading = false;
     let selectedPaymentMethod = 'cash';
     let posCheckoutId = null;
@@ -60,9 +57,6 @@
     let outstandingBalance = 0;
     let paymentEntries = [];
     let isPaymentComplete = false;
-    let storeCreditBarcode = '';
-    let storeCreditRecipient = '';
-    let storeCreditBalance = 0;
     let isProcessingPayment = false;
 
     // ===== GET USER =====
@@ -115,9 +109,6 @@
         posCheckoutId = null;
         posPendingAmount = 0;
         posAwaitingManualComplete = false;
-        storeCreditBarcode = '';
-        storeCreditRecipient = '';
-        storeCreditBalance = 0;
         isProcessingPayment = false;
 
         container.innerHTML = customCheckoutTemplate();
@@ -128,13 +119,10 @@
         }, 100);
     };
 
-    // ========== TEMPLATE ==========
+    // ========== TEMPLATE (UNIFIED SINGLE VIEW) ==========
     function customCheckoutTemplate() {
-        const itemCount = window.cart ? window.cart.getItemCount() : 0;
-        const total = window.cart ? window.cart.getTotal() : 0;
-        
         return `
-            <div style="display: flex; flex-direction: column; gap: 16px; padding: 20px; max-width: 1100px; margin: 0 auto; width: 100%;">
+            <div style="display: flex; flex-direction: column; gap: 16px; padding: 20px; max-width: 1400px; margin: 0 auto; width: 100%;">
                 <div style="background: #28a745; color: white; padding: 8px 16px; border-radius: 8px; text-align: center; font-size: 13px; font-weight: 600;">
                     <i class="fas fa-shield-alt"></i> Admin Mode - Custom Checkout
                 </div>
@@ -151,80 +139,25 @@
 
                 <div id="custom-checkout-status" style="display: none; padding: 12px; border-radius: 8px; font-weight: 500; text-align: center;"></div>
 
-                <div style="display: flex; gap: 4px; border-bottom: 2px solid #ddd; padding-bottom: 0;">
-                    <button onclick="switchTab('records')" id="tab-records" class="custom-tab" style="padding: 10px 24px; background: #6f42c1; color: white; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; font-size: 14px;">
-                        <i class="fas fa-search"></i> Find Records
-                    </button>
-                    <button onclick="switchTab('custom')" id="tab-custom" class="custom-tab" style="padding: 10px 24px; background: #e9ecef; color: #333; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; font-size: 14px;">
-                        <i class="fas fa-plus-circle"></i> Custom Items
-                    </button>
-                    <button onclick="switchTab('checkout')" id="tab-checkout" class="custom-tab" style="padding: 10px 24px; background: #e9ecef; color: #333; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; font-size: 14px;">
-                        <i class="fas fa-shopping-cart"></i> Cart (<span id="tab-cart-count">${itemCount}</span>)
-                    </button>
-                </div>
+                <!-- ========== UNIFIED TWO-COLUMN LAYOUT ========== -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start;">
+                    
+                    <!-- ===== LEFT COLUMN: Add Items ===== -->
+                    <div style="display: flex; flex-direction: column; gap: 16px;">
+                        ${recordsSectionTemplate()}
+                        ${customSectionTemplate()}
+                    </div>
 
-                <div id="tab-content" style="min-height: 400px;">
-                    <div id="tab-records-content" style="display: block;">
-                        ${recordsTabTemplate()}
-                    </div>
-                    <div id="tab-custom-content" style="display: none;">
-                        ${customTabTemplate()}
-                    </div>
-                    <div id="tab-checkout-content" style="display: none;">
-                        ${checkoutTabTemplate()}
+                    <!-- ===== RIGHT COLUMN: Cart / Checkout (sticky) ===== -->
+                    <div style="position: sticky; top: 16px;">
+                        <div id="checkout-panel">
+                            ${checkoutPanelTemplate()}
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div id="giftcard-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10002; align-items: center; justify-content: center;">
-                <div style="background: white; border-radius: 16px; max-width: 400px; width: 95%; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
-                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
-                        <h2 style="margin: 0; color: #333;"><i class="fas fa-gift" style="color: #28a745;"></i> Add Gift Card</h2>
-                        <button onclick="closeGiftCardModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
-                    </div>
-                    <div style="margin-bottom: 15px;">
-                        <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Amount ($)</label>
-                        <input type="number" id="giftcard-modal-amount" placeholder="25.00" step="0.01" min="0.01" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; box-sizing: border-box;">
-                    </div>
-                    <div style="margin-bottom: 15px;">
-                        <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Recipient Name (optional)</label>
-                        <input type="text" id="giftcard-modal-recipient" placeholder="For: John" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box;">
-                    </div>
-                    <div id="giftcard-modal-status" style="display: none; padding: 10px; border-radius: 8px; font-size: 13px; margin-bottom: 10px;"></div>
-                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                        <button onclick="closeGiftCardModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Cancel</button>
-                        <button onclick="addGiftCardItem()" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                            <i class="fas fa-plus"></i> Add to Cart
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div id="store-credit-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10005; align-items: center; justify-content: center;">
-                <div style="background: white; border-radius: 16px; max-width: 450px; width: 95%; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
-                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
-                        <h2 style="margin: 0; color: #333;"><i class="fas fa-wallet" style="color: #28a745;"></i> Apply Store Credit</h2>
-                        <button onclick="closeStoreCreditModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
-                    </div>
-                    <div style="margin-bottom: 15px;">
-                        <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Scan or Enter Barcode *</label>
-                        <input type="text" id="store-credit-barcode" placeholder="Scan or enter barcode..." style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; font-family: monospace; text-transform: uppercase; box-sizing: border-box;">
-                        <div id="store-credit-info" style="display: none; margin-top: 8px; padding: 10px; border-radius: 8px; font-size: 13px;"></div>
-                    </div>
-                    <div style="margin-bottom: 15px;">
-                        <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Amount to Apply ($)</label>
-                        <input type="number" id="store-credit-amount" placeholder="0.00" step="0.01" min="0.01" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; box-sizing: border-box;">
-                    </div>
-                    <div id="store-credit-status" style="display: none; padding: 10px; border-radius: 8px; font-size: 13px; margin-bottom: 10px;"></div>
-                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                        <button onclick="closeStoreCreditModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Cancel</button>
-                        <button onclick="applyStoreCredit()" id="store-credit-btn" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                            <i class="fas fa-check"></i> Apply
-                        </button>
-                    </div>
-                </div>
-            </div>
-
+            <!-- ===== MODALS ===== -->
             <div id="pos-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10003; align-items: center; justify-content: center;">
                 <div style="background: white; border-radius: 16px; max-width: 450px; width: 95%; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center;">
                     <div style="font-size: 48px; margin-bottom: 16px;">📟</div>
@@ -279,8 +212,8 @@
         `;
     }
 
-    // ===== RECORDS TAB TEMPLATE =====
-    function recordsTabTemplate() {
+    // ===== RECORDS SECTION TEMPLATE =====
+    function recordsSectionTemplate() {
         return `
             <div style="background: white; border-radius: 12px; padding: 20px; border: 2px solid #6f42c1;">
                 <h3 style="color: #6f42c1; margin: 0 0 15px 0;"><i class="fas fa-search"></i> Find Records</h3>
@@ -298,15 +231,15 @@
                 <div id="record-search-loading" style="display: none; text-align: center; padding: 20px; color: #666;">
                     <i class="fas fa-spinner fa-spin"></i> Searching...
                 </div>
-                <div id="record-search-results" style="max-height: 400px; overflow-y: auto; margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px;">
+                <div id="record-search-results" style="max-height: 300px; overflow-y: auto; margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px;">
                     <div style="color: #999; text-align: center; padding: 20px; font-size: 13px;">Enter a search term above</div>
                 </div>
             </div>
         `;
     }
 
-    // ===== CUSTOM TAB TEMPLATE =====
-    function customTabTemplate() {
+    // ===== CUSTOM ITEMS SECTION TEMPLATE =====
+    function customSectionTemplate() {
         return `
             <div style="display: flex; flex-direction: column; gap: 12px;">
                 <div style="background: white; border-radius: 12px; padding: 20px; border: 2px solid #17a2b8;">
@@ -330,16 +263,11 @@
                     </button>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                    <button onclick="addBernieItem()" style="padding: 16px; background: #ffc107; color: #333; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 16px;">
+                <div>
+                    <button onclick="addBernieItem()" style="width: 100%; padding: 16px; background: #ffc107; color: #333; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 16px;">
                         <i class="fas fa-donate" style="font-size: 24px; display: block; margin-bottom: 5px;"></i>
                         Bernie ($0.99)
                         <div style="font-size: 12px; font-weight: normal; color: #666;">Adds to Bernie fund</div>
-                    </button>
-                    <button onclick="showGiftCardModal()" style="padding: 16px; background: #28a745; color: white; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 16px;">
-                        <i class="fas fa-gift" style="font-size: 24px; display: block; margin-bottom: 5px;"></i>
-                        Gift Card
-                        <div style="font-size: 12px; font-weight: normal; color: #d4edda;">Add gift card to cart</div>
                     </button>
                 </div>
             </div>
@@ -364,25 +292,8 @@
         return Math.max(0, totalWithTax);
     }
 
-    // ===== GET DISCOUNT AMOUNT =====
-    function getDiscountAmountTotal() {
-        const items = window.cart ? window.cart.getItems() : [];
-        if (!items || items.length === 0) return 0;
-        
-        const subtotal = window.cart.getTotal();
-        const taxAmount = calculateTax(subtotal);
-        const totalWithTax = subtotal + taxAmount;
-        
-        if (discountPercent > 0) {
-            return totalWithTax * (discountPercent / 100);
-        } else if (discountAmount > 0) {
-            return Math.min(discountAmount, totalWithTax);
-        }
-        return 0;
-    }
-
-    // ===== CHECKOUT TAB TEMPLATE =====
-    function checkoutTabTemplate() {
+    // ===== CHECKOUT PANEL TEMPLATE =====
+    function checkoutPanelTemplate() {
         const items = window.cart ? window.cart.getItems() : [];
         const subtotal = window.cart ? window.cart.getTotal() : 0;
         const taxAmount = calculateTax(subtotal);
@@ -404,7 +315,7 @@
                 <div style="background: #f8f9fa; border-radius: 12px; padding: 40px; text-align: center; border: 1px solid #e9ecef;">
                     <div style="font-size: 48px; margin-bottom: 16px;">🛒</div>
                     <h3 style="color: #333; margin: 0 0 8px 0;">Cart is Empty</h3>
-                    <p style="color: #666;">Add items from the Records or Custom tabs first.</p>
+                    <p style="color: #666;">Add items from the left panel first.</p>
                 </div>
             `;
         }
@@ -416,7 +327,6 @@
             const totalPrice = price * qty;
             let icon = '📦';
             if (item.type === 'bernie') icon = '🌹';
-            else if (item.type === 'giftcard') icon = '🎁';
             else if (item.type === 'custom') icon = '🛍️';
             else if (item.type === 'record') icon = '🎵';
             
@@ -438,20 +348,8 @@
         });
 
         const taxDisplay = taxAmount > 0 ? taxAmount.toFixed(2) : '0.00';
-        const totalDisplay = finalTotal > 0 ? finalTotal.toFixed(2) : '0.00';
-
-        let storeCreditDisplay = '';
-        if (storeCreditBarcode && storeCreditRecipient) {
-            storeCreditDisplay = `
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0; color: #28a745;">
-                    <span style="font-weight: 600;">Store Credit Applied:</span>
-                    <span style="font-weight: 600;">${storeCreditRecipient} - $${storeCreditBalance.toFixed(2)}</span>
-                </div>
-            `;
-        }
 
         const showCash = selectedPaymentMethod === 'cash';
-        const showStoreCredit = selectedPaymentMethod === 'store_credit';
         const showCard = selectedPaymentMethod === 'card';
         const showPos = selectedPaymentMethod === 'pos';
 
@@ -461,7 +359,7 @@
                     <span style="font-weight: 600; font-size: 15px;"><i class="fas fa-shopping-cart"></i> Cart Summary</span>
                     <span style="font-weight: 600; font-size: 15px;">${items.length} items</span>
                 </div>
-                <div style="max-height: 200px; overflow-y: auto;">
+                <div style="max-height: 220px; overflow-y: auto;">
                     ${itemsHtml}
                 </div>
                 <div style="padding: 16px 20px; border-top: 2px solid #eee; background: #f8f9fa;">
@@ -483,7 +381,6 @@
                         <span style="font-weight: 600;">Cash Paid:</span>
                         <span style="font-weight: 600;">-$${cashReceived.toFixed(2)}</span>
                     </div>` : ''}
-                    ${storeCreditDisplay}
                     <div style="border-bottom: 1px solid #e9ecef; padding-bottom: 8px; margin-bottom: 8px;"></div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                         <span style="font-weight: 600; color: #333; font-size: 16px;">${cashReceived > 0 && outstandingBalance <= 0.01 ? 'Paid in Full' : 'Remaining Balance:'}</span>
@@ -509,9 +406,6 @@
                             <button onclick="selectPaymentMethod('pos')" id="pm-pos" class="payment-method-btn" style="padding: 8px 16px; background: white; color: #333; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s;">
                                 📟 POS Terminal
                             </button>
-                            <button onclick="selectPaymentMethod('store_credit')" id="pm-store_credit" class="payment-method-btn" style="padding: 8px 16px; background: white; color: #333; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s;">
-                                🏦 Store Credit
-                            </button>
                         </div>
                     </div>
 
@@ -521,26 +415,6 @@
                         <input type="number" id="cash-amount" placeholder="0.00" step="0.01" min="0" 
                                style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; box-sizing: border-box;">
                         <div id="cash-change-display" style="margin-top: 6px; font-size: 14px; color: #666; text-align: center;"></div>
-                    </div>` : ''}
-
-                    ${showStoreCredit ? `
-                    <div id="store-credit-section" style="margin-bottom: 12px;">
-                        ${storeCreditBarcode ? `
-                        <div style="padding: 10px; background: #d4edda; border-radius: 8px; border: 1px solid #c3e6cb; margin-bottom: 8px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                    <span style="font-weight: 600; color: #155724;">✅ Store Credit Applied</span>
-                                    <div style="font-size: 12px; color: #155724;">${storeCreditRecipient} - ${storeCreditBarcode}</div>
-                                    <div style="font-size: 12px; color: #155724;">Amount: $${storeCreditBalance.toFixed(2)}</div>
-                                </div>
-                                <button onclick="removeStoreCredit()" style="padding: 4px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Remove</button>
-                            </div>
-                        </div>
-                        ` : `
-                        <button onclick="showStoreCreditModal()" style="width: 100%; padding: 10px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px;">
-                            <i class="fas fa-wallet"></i> Apply Store Credit / Gift Card
-                        </button>
-                        `}
                     </div>` : ''}
 
                     ${showCard ? `
@@ -623,13 +497,14 @@
             activeBtn.style.border = '2px solid #28a745';
         }
         
-        document.getElementById('pos-controls').style.display = 'none';
+        const posControls = document.getElementById('pos-controls');
+        if (posControls) posControls.style.display = 'none';
         
         if (method === 'pos') {
             checkSquareAvailability();
         }
         
-        renderCheckoutTab();
+        renderCheckoutPanel();
         setTimeout(() => {
             const btn = document.getElementById('pm-' + method);
             if (btn) {
@@ -783,12 +658,9 @@
         
         cashReceived = 0;
         paymentEntries = [];
-        storeCreditBarcode = '';
-        storeCreditRecipient = '';
-        storeCreditBalance = 0;
         
         closeDiscountModal();
-        renderCheckoutTab();
+        renderCheckoutPanel();
         setTimeout(() => selectPaymentMethod(selectedPaymentMethod), 50);
     };
 
@@ -797,56 +669,17 @@
         discountAmount = 0;
         cashReceived = 0;
         paymentEntries = [];
-        storeCreditBarcode = '';
-        storeCreditRecipient = '';
-        storeCreditBalance = 0;
         closeDiscountModal();
-        renderCheckoutTab();
+        renderCheckoutPanel();
         setTimeout(() => selectPaymentMethod(selectedPaymentMethod), 50);
         showToast('Discount removed.', 'info');
     };
 
-    // ===== SWITCH TAB =====
-    window.switchTab = function(tab) {
-        currentTab = tab;
-        
-        document.querySelectorAll('.custom-tab').forEach(btn => {
-            btn.style.background = '#e9ecef';
-            btn.style.color = '#333';
-        });
-        
-        const activeTab = document.getElementById('tab-' + tab);
-        if (activeTab) {
-            activeTab.style.background = '#6f42c1';
-            activeTab.style.color = 'white';
-        }
-        
-        document.querySelectorAll('#tab-content > div').forEach(div => {
-            div.style.display = 'none';
-        });
-        
-        const content = document.getElementById('tab-' + tab + '-content');
-        if (content) {
-            content.style.display = 'block';
-        }
-        
-        if (tab === 'checkout') {
-            renderCheckoutTab();
-        }
-        
-        if (tab === 'records') {
-            setTimeout(() => {
-                document.getElementById('record-search-input')?.focus();
-            }, 100);
-        }
-    };
-
-    // ===== RENDER CHECKOUT TAB =====
-    function renderCheckoutTab() {
-        const container = document.getElementById('tab-checkout-content');
+    // ===== RENDER CHECKOUT PANEL =====
+    function renderCheckoutPanel() {
+        const container = document.getElementById('checkout-panel');
         if (!container) return;
-        container.innerHTML = checkoutTabTemplate();
-        updateTabCartCount();
+        container.innerHTML = checkoutPanelTemplate();
         
         updateCashDisplay();
         
@@ -862,19 +695,11 @@
         if (errorEl) errorEl.style.display = 'none';
     }
 
-    // ===== UPDATE TAB CART COUNT =====
-    function updateTabCartCount() {
-        const count = window.cart ? window.cart.getItemCount() : 0;
-        const el = document.getElementById('tab-cart-count');
-        if (el) el.textContent = count;
-    }
-
     // ========== INIT EVENTS ==========
     function initCustomCheckoutEvents() {
         console.log('🔧 initCustomCheckoutEvents called');
-        
-        switchTab('records');
 
+        // Custom item keyboard navigation
         document.getElementById('custom-item-name')?.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 document.getElementById('custom-item-price')?.focus();
@@ -891,6 +716,7 @@
             }
         });
 
+        // Record search keyboard navigation
         document.getElementById('record-search-input')?.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -898,6 +724,7 @@
             }
         });
 
+        // Record search auto-search on typing
         document.getElementById('record-search-input')?.addEventListener('input', function(e) {
             clearTimeout(recordSearchTimeout);
             const query = e.target.value.trim();
@@ -910,13 +737,9 @@
             }
         });
 
+        // Listen for cart updates
         document.addEventListener('cartUpdated', function() {
-            updateCartPreview();
-            updateCartCount();
-            updateTabCartCount();
-            if (currentTab === 'checkout') {
-                renderCheckoutTab();
-            }
+            renderCheckoutPanel();
         });
     }
 
@@ -1118,13 +941,7 @@
         const total = price * quantity;
         showToast(`✅ Added ${quantity}x "${record.artist} - ${record.title}" to cart ($${total.toFixed(2)})`, 'success');
         
-        updateCartPreview();
-        updateCartCount();
-        updateTabCartCount();
-        
-        if (currentTab === 'checkout') {
-            renderCheckoutTab();
-        }
+        renderCheckoutPanel();
         
         if (typeof window.updateCartBadge === 'function') {
             window.updateCartBadge();
@@ -1186,13 +1003,7 @@
         if (qtyInput) qtyInput.value = '1';
         nameInput?.focus();
 
-        updateCartPreview();
-        updateCartCount();
-        updateTabCartCount();
-        
-        if (currentTab === 'checkout') {
-            renderCheckoutTab();
-        }
+        renderCheckoutPanel();
         
         if (typeof window.updateCartBadge === 'function') {
             window.updateCartBadge();
@@ -1223,13 +1034,7 @@
         };
         
         window.cart.addItem(item);
-        updateCartPreview();
-        updateCartCount();
-        updateTabCartCount();
-        
-        if (currentTab === 'checkout') {
-            renderCheckoutTab();
-        }
+        renderCheckoutPanel();
         
         if (typeof window.updateCartBadge === 'function') {
             window.updateCartBadge();
@@ -1238,85 +1043,11 @@
         showToast('🌹 Added Bernie donation ($0.99) to cart!');
     };
 
-    // ========== GIFT CARD (for adding to cart) ==========
-    window.showGiftCardModal = function() {
-        if (!isAdmin()) {
-            showToast('🔒 Admin access required to add gift cards.');
-            return;
-        }
-        document.getElementById('giftcard-modal').style.display = 'flex';
-        document.getElementById('giftcard-modal-amount').focus();
-    };
-
-    window.closeGiftCardModal = function() {
-        document.getElementById('giftcard-modal').style.display = 'none';
-    };
-
-    window.addGiftCardItem = function() {
-        if (!isAdmin()) {
-            showToast('🔒 Admin access required to add gift cards.');
-            closeGiftCardModal();
-            return;
-        }
-
-        const amountInput = document.getElementById('giftcard-modal-amount');
-        const recipientInput = document.getElementById('giftcard-modal-recipient');
-        const statusEl = document.getElementById('giftcard-modal-status');
-
-        const amount = parseFloat(amountInput?.value);
-        const recipient = recipientInput?.value?.trim() || 'Bearer';
-
-        if (!amount || amount <= 0) {
-            showStatus(statusEl, '⚠️ Please enter a valid amount.', 'warning');
-            amountInput?.focus();
-            return;
-        }
-
-        if (typeof window.cart === 'undefined' || !window.cart.addItem) {
-            showStatus(statusEl, '❌ Cart system not available.', 'error');
-            return;
-        }
-
-        const item = {
-            id: 'giftcard_' + Date.now(),
-            type: 'giftcard',
-            title: `Gift Card - ${recipient}`,
-            artist: 'Gift Card',
-            price: amount,
-            quantity: 1,
-            options: { isGiftCard: true, recipient: recipient }
-        };
-        
-        window.cart.addItem(item);
-        updateCartPreview();
-        updateCartCount();
-        updateTabCartCount();
-        
-        if (currentTab === 'checkout') {
-            renderCheckoutTab();
-        }
-        
-        if (typeof window.updateCartBadge === 'function') {
-            window.updateCartBadge();
-        }
-        
-        showToast(`🎁 Added gift card ($${amount.toFixed(2)}) to cart!`);
-        closeGiftCardModal();
-        
-        if (amountInput) amountInput.value = '';
-        if (recipientInput) recipientInput.value = '';
-    };
-
     // ========== REMOVE CART ITEM ==========
     window.removeCartItem = function(itemId) {
         if (typeof window.cart !== 'undefined') {
             window.cart.removeItem(itemId);
-            updateCartPreview();
-            updateCartCount();
-            updateTabCartCount();
-            if (currentTab === 'checkout') {
-                renderCheckoutTab();
-            }
+            renderCheckoutPanel();
         }
     };
 
@@ -1330,69 +1061,12 @@
                 paymentEntries = [];
                 discountPercent = 0;
                 discountAmount = 0;
-                storeCreditBarcode = '';
-                storeCreditRecipient = '';
-                storeCreditBalance = 0;
                 posPendingAmount = 0;
                 posAwaitingManualComplete = false;
-                updateCartPreview();
-                updateCartCount();
-                updateTabCartCount();
-                if (currentTab === 'checkout') {
-                    renderCheckoutTab();
-                }
+                renderCheckoutPanel();
             }
         }
     };
-
-    // ========== UPDATE CART PREVIEW ==========
-    function updateCartPreview() {
-        const items = window.cart ? window.cart.getItems() : [];
-        const container = document.getElementById('custom-cart-preview');
-        const countEl = document.getElementById('custom-cart-preview-count');
-        const totalEl = document.getElementById('custom-cart-preview-total');
-        
-        if (countEl) countEl.textContent = items.length + ' items';
-        if (totalEl) totalEl.textContent = '$' + (window.cart ? window.cart.getTotal().toFixed(2) : '0.00');
-
-        if (!container) return;
-
-        if (!items || items.length === 0) {
-            container.innerHTML = `<div style="color: #999; text-align: center; padding: 20px; font-size: 14px;">No items in cart yet</div>`;
-            return;
-        }
-
-        let html = '';
-        items.forEach((item) => {
-            const price = item.price || 0;
-            const qty = item.quantity || 1;
-            const itemTotal = price * qty;
-            
-            let icon = '📦';
-            if (item.type === 'bernie') icon = '🌹';
-            else if (item.type === 'giftcard') icon = '🎁';
-            else if (item.type === 'custom') icon = '🛍️';
-            else if (item.type === 'record') icon = '🎵';
-            
-            const displayTitle = item.type === 'record' ? `${item.artist || ''} - ${item.title || ''}` : item.title || 'Item';
-            
-            html += `
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 13px; color: #333;">
-                    <span>${icon} ${displayTitle}</span>
-                    <span>${qty}× $${price.toFixed(2)} = $${itemTotal.toFixed(2)}</span>
-                </div>
-            `;
-        });
-        container.innerHTML = html;
-    }
-
-    // ========== UPDATE CART COUNT ==========
-    function updateCartCount() {
-        const count = window.cart ? window.cart.getItemCount() : 0;
-        const el = document.getElementById('custom-cart-count');
-        if (el) el.textContent = count;
-        updateTabCartCount();
-    }
 
     // ========== CHECK SQUARE AVAILABILITY ==========
     async function checkSquareAvailability() {
@@ -1446,293 +1120,6 @@
             return false;
         }
     }
-
-    // ========== STORE CREDIT MODAL FUNCTIONS ==========
-    window.showStoreCreditModal = function() {
-        document.getElementById('store-credit-modal').style.display = 'flex';
-        document.getElementById('store-credit-barcode').value = '';
-        document.getElementById('store-credit-amount').value = '';
-        document.getElementById('store-credit-info').style.display = 'none';
-        document.getElementById('store-credit-status').style.display = 'none';
-        setTimeout(() => document.getElementById('store-credit-barcode').focus(), 100);
-    };
-
-    window.closeStoreCreditModal = function() {
-        document.getElementById('store-credit-modal').style.display = 'none';
-    };
-
-    async function lookupStoreCredit(barcode) {
-        if (!barcode || barcode.length < 3) {
-            return null;
-        }
-        
-        try {
-            const response = await fetch(`${API_BASE}/api/gift-card/balance/${encodeURIComponent(barcode.trim().toUpperCase())}`, {
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                if (data.status === 'success') {
-                    return {
-                        type: 'gift_card',
-                        code: barcode.trim().toUpperCase(),
-                        balance: data.balance || 0,
-                        recipient: data.recipient || 'Gift Card Holder',
-                        source_type: 'gift_card'
-                    };
-                }
-            }
-            
-            const lookupResponse = await fetch(`${API_BASE}/api/debtor/lookup`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: barcode.trim().toUpperCase() })
-            });
-            
-            if (lookupResponse.ok) {
-                const lookupData = await lookupResponse.json();
-                if (lookupData.status === 'success') {
-                    return {
-                        type: 'debtor',
-                        code: barcode.trim().toUpperCase(),
-                        balance: lookupData.balance || 0,
-                        recipient: lookupData.debtor || barcode.trim().toUpperCase(),
-                        source_type: 'debtor'
-                    };
-                }
-            }
-            
-            return null;
-        } catch (err) {
-            console.error('Store credit lookup error:', err);
-            return null;
-        }
-    }
-
-    document.addEventListener('DOMContentLoaded', function() {
-        const barcodeInput = document.getElementById('store-credit-barcode');
-        if (barcodeInput) {
-            barcodeInput.addEventListener('input', async function(e) {
-                const barcode = this.value.trim().toUpperCase();
-                const infoDiv = document.getElementById('store-credit-info');
-                const statusDiv = document.getElementById('store-credit-status');
-                
-                if (!barcode || barcode.length < 3) {
-                    infoDiv.style.display = 'none';
-                    statusDiv.style.display = 'none';
-                    return;
-                }
-                
-                statusDiv.style.display = 'block';
-                statusDiv.style.background = '#cce5ff';
-                statusDiv.style.color = '#004085';
-                statusDiv.textContent = '⏳ Looking up store credit...';
-                
-                const result = await lookupStoreCredit(barcode);
-                
-                if (result) {
-                    infoDiv.style.display = 'block';
-                    infoDiv.style.background = '#d4edda';
-                    infoDiv.style.color = '#155724';
-                    infoDiv.style.border = '1px solid #c3e6cb';
-                    infoDiv.innerHTML = `
-                        <strong>✅ Store Credit Found</strong><br>
-                        Code: <strong>${result.code}</strong><br>
-                        Recipient: <strong>${result.recipient}</strong><br>
-                        Balance: <strong>$${result.balance.toFixed(2)}</strong><br>
-                        Type: ${result.type === 'gift_card' ? 'Gift Card' : 'Store Credit'}
-                    `;
-                    
-                    statusDiv.style.display = 'none';
-                    
-                    const amountInput = document.getElementById('store-credit-amount');
-                    if (amountInput) {
-                        amountInput.max = result.balance;
-                        amountInput.placeholder = `Max: $${result.balance.toFixed(2)}`;
-                        const remaining = Math.max(0, getTotalWithDiscount() - cashReceived);
-                        amountInput.value = Math.min(result.balance, remaining);
-                    }
-                } else {
-                    infoDiv.style.display = 'block';
-                    infoDiv.style.background = '#f8d7da';
-                    infoDiv.style.color = '#721c24';
-                    infoDiv.style.border = '1px solid #f5c6cb';
-                    infoDiv.innerHTML = `
-                        <strong>❌ Store Credit Not Found</strong><br>
-                        Barcode/Name: <strong>${barcode}</strong><br>
-                        Please check and try again.
-                    `;
-                    statusDiv.style.display = 'none';
-                }
-            });
-            
-            barcodeInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    document.getElementById('store-credit-amount').focus();
-                }
-            });
-        }
-        
-        const amountInput = document.getElementById('store-credit-amount');
-        if (amountInput) {
-            amountInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    applyStoreCredit();
-                }
-            });
-        }
-    });
-
-    window.applyStoreCredit = async function() {
-        const barcodeInput = document.getElementById('store-credit-barcode');
-        const amountInput = document.getElementById('store-credit-amount');
-        const statusDiv = document.getElementById('store-credit-status');
-        const btn = document.getElementById('store-credit-btn');
-        
-        const barcode = barcodeInput?.value?.trim()?.toUpperCase();
-        const amount = parseFloat(amountInput?.value);
-        
-        if (!barcode) {
-            showStatus(statusDiv, '⚠️ Please scan or enter a barcode.', 'warning');
-            return;
-        }
-        
-        if (!amount || amount <= 0) {
-            showStatus(statusDiv, '⚠️ Please enter a valid amount.', 'warning');
-            return;
-        }
-        
-        const result = await lookupStoreCredit(barcode);
-        if (!result) {
-            showStatus(statusDiv, '❌ Store credit not found. Please check the barcode.', 'error');
-            return;
-        }
-        
-        const total = getTotalWithDiscount();
-        const remaining = Math.max(0, total - cashReceived);
-        
-        if (amount > result.balance) {
-            showStatus(statusDiv, `⚠️ Insufficient balance. Available: $${result.balance.toFixed(2)}`, 'warning');
-            return;
-        }
-        
-        if (amount > remaining) {
-            showStatus(statusDiv, `⚠️ Amount exceeds remaining balance of $${remaining.toFixed(2)}`, 'warning');
-            return;
-        }
-        
-        if (btn) {
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-        }
-        
-        showStatus(statusDiv, '⏳ Processing store credit...', 'info');
-        
-        try {
-            if (result.source_type === 'gift_card') {
-                const redeemResponse = await fetch(`${API_BASE}/api/gift-card/redeem`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        code: barcode,
-                        purchase_amount: amount,
-                        order_id: 'custom_checkout_' + Date.now()
-                    })
-                });
-                
-                if (!redeemResponse.ok) {
-                    const errData = await redeemResponse.json().catch(() => ({}));
-                    throw new Error(errData.error || 'Gift card redemption failed.');
-                }
-                
-                const redeemData = await redeemResponse.json();
-                
-                if (redeemData.status !== 'success') {
-                    throw new Error(redeemData.error || 'Gift card redemption failed.');
-                }
-                
-            } else {
-                const redeemResponse = await fetch(`${API_BASE}/api/debtor/redeem`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        name: barcode,
-                        amount: amount,
-                        description: `Purchase by ${currentUserName}`
-                    })
-                });
-                
-                if (!redeemResponse.ok) {
-                    const errData = await redeemResponse.json().catch(() => ({}));
-                    throw new Error(errData.error || 'Store credit redemption failed.');
-                }
-                
-                const redeemData = await redeemResponse.json();
-                
-                if (redeemData.status !== 'success') {
-                    throw new Error(redeemData.error || 'Store credit redemption failed.');
-                }
-            }
-            
-            storeCreditBarcode = barcode;
-            storeCreditRecipient = result.recipient;
-            storeCreditBalance = amount;
-            
-            paymentEntries.push({
-                method: result.type === 'gift_card' ? `Gift Card (${barcode})` : `Store Credit (${barcode})`,
-                amount: amount,
-                recipient: result.recipient,
-                source_type: result.source_type,
-                source_id: barcode
-            });
-            
-            cashReceived += amount;
-            
-            closeStoreCreditModal();
-            
-            renderCheckoutTab();
-            setTimeout(() => selectPaymentMethod(selectedPaymentMethod), 50);
-            
-            const newRemaining = Math.max(0, total - cashReceived);
-            if (newRemaining <= 0.01) {
-                showToast(`✅ Fully paid! Click Complete Payment.`, 'success');
-            } else {
-                showToast(`✅ Applied $${amount.toFixed(2)} from ${result.recipient}. Remaining: $${newRemaining.toFixed(2)}`, 'success');
-            }
-            
-        } catch (err) {
-            console.error('Store credit error:', err);
-            showStatus(statusDiv, `❌ Error: ${err.message}`, 'error');
-        } finally {
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-check"></i> Apply';
-            }
-        }
-    };
-
-    window.removeStoreCredit = function() {
-        paymentEntries = paymentEntries.filter(
-            entry => entry.source_id !== storeCreditBarcode
-        );
-        
-        cashReceived = Math.max(0, cashReceived - storeCreditBalance);
-        
-        storeCreditBarcode = '';
-        storeCreditRecipient = '';
-        storeCreditBalance = 0;
-        
-        renderCheckoutTab();
-        setTimeout(() => selectPaymentMethod(selectedPaymentMethod), 50);
-        showToast('Store credit removed.', 'info');
-    };
 
     // ========== SEND TO POS ==========
     window.sendToPos = async function() {
@@ -1846,7 +1233,7 @@
                         if (newRemaining <= 0.01) {
                             submitOrderWithPayments(getTotalWithDiscount(), items);
                         } else {
-                            renderCheckoutTab();
+                            renderCheckoutPanel();
                             setTimeout(() => selectPaymentMethod(selectedPaymentMethod), 50);
                         }
                     }
@@ -1961,8 +1348,7 @@
             const methodLabel = {
                 cash: 'Cash',
                 card: 'Card (Square)',
-                pos: 'POS Terminal (forced)',
-                store_credit: 'Store Credit'
+                pos: 'POS Terminal (forced)'
             }[selectedPaymentMethod] || 'Other';
             
             if (selectedPaymentMethod !== 'cash') {
@@ -1999,8 +1385,7 @@
             const methodLabel = {
                 cash: 'Cash',
                 card: 'Card (Square)',
-                pos: 'POS Terminal (forced)',
-                store_credit: 'Store Credit'
+                pos: 'POS Terminal (forced)'
             }[selectedPaymentMethod] || 'Other';
             entries.push({ method: methodLabel, amount: shortfall });
         }
@@ -2050,17 +1435,11 @@
                 paymentEntries = [];
                 discountPercent = 0;
                 discountAmount = 0;
-                storeCreditBarcode = '';
-                storeCreditRecipient = '';
-                storeCreditBalance = 0;
                 posPendingAmount = 0;
                 posAwaitingManualComplete = false;
                 isPaymentComplete = true;
                 
-                updateCartPreview();
-                updateCartCount();
-                updateTabCartCount();
-                renderCheckoutTab();
+                renderCheckoutPanel();
                 
                 if (statusEl) {
                     statusEl.style.background = '#d4edda';
@@ -2102,81 +1481,6 @@
             btn.innerHTML = '<i class="fas fa-check-circle"></i> Complete Payment';
         }
         isProcessingPayment = false;
-    }
-
-    // ===== PROCESS CARD PAYMENT (Square) =====
-    async function processCardPayment(amount, items, total) {
-        console.log('💳 Processing card payment:', amount);
-        
-        isProcessingPayment = true;
-        
-        const recordIds = items
-            .filter(item => item.type === 'record' && item.original_id)
-            .map(item => item.original_id);
-        
-        const payload = {
-            amount: amount,
-            purpose: 'checkout',
-            item_name: `PigStyle Music Order - ${currentUserName}`,
-            metadata: {
-                order_id: 'order_' + Date.now(),
-                admin: currentUserName,
-                items: JSON.stringify(items.map(i => ({ title: i.title, price: i.price }))),
-                discount_percent: discountPercent,
-                discount_amount: discountAmount,
-                cash_received: cashReceived,
-                store_credit_applied: storeCreditBarcode ? `${storeCreditRecipient} - $${storeCreditBalance.toFixed(2)}` : 'None'
-            },
-            redirect_path: '/?status=completed'
-        };
-        
-        try {
-            const response = await fetch(`${API_BASE}/api/square/create-payment-link`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `HTTP ${response.status}`);
-            }
-            
-            const data = await response.json();
-            
-            if (data.status === 'success' && data.checkout_url) {
-                const checkoutWindow = window.open(data.checkout_url, '_blank');
-                if (checkoutWindow) {
-                    showToast('💳 Square checkout opened. Complete payment in the new window.', 'info');
-                    
-                    paymentEntries.push({
-                        method: 'Card (Square)',
-                        amount: amount
-                    });
-                    cashReceived += amount;
-                    
-                    setTimeout(async () => {
-                        const newRemaining = Math.max(0, getTotalWithDiscount() - cashReceived);
-                        if (newRemaining <= 0.01) {
-                            await submitOrderWithPayments(getTotalWithDiscount(), items);
-                        }
-                    }, 2000);
-                    
-                    return true;
-                } else {
-                    window.location.href = data.checkout_url;
-                    return true;
-                }
-            } else {
-                throw new Error(data.error || 'Failed to create Square payment link');
-            }
-        } catch (err) {
-            console.error('Square payment error:', err);
-            throw new Error(`Square payment failed: ${err.message}`);
-        } finally {
-            isProcessingPayment = false;
-        }
     }
 
     // ===== SHOW POS MODAL =====
@@ -2260,7 +1564,7 @@
             showToast('POS payment cancelled.', 'warning');
         }
         
-        renderCheckoutTab();
+        renderCheckoutPanel();
         setTimeout(() => selectPaymentMethod(selectedPaymentMethod), 50);
     };
 
@@ -2452,26 +1756,14 @@
 
     // ========== LISTEN FOR CART UPDATES ==========
     document.addEventListener('cartUpdated', function() {
-        updateCartPreview();
-        updateCartCount();
-        updateTabCartCount();
-        if (currentTab === 'checkout') {
-            renderCheckoutTab();
-            setTimeout(() => selectPaymentMethod(selectedPaymentMethod), 50);
-        }
+        renderCheckoutPanel();
     });
 
     document.addEventListener('visibilitychange', function() {
         if (!document.hidden) {
-            updateCartPreview();
-            updateCartCount();
-            updateTabCartCount();
-            if (currentTab === 'checkout') {
-                renderCheckoutTab();
-                setTimeout(() => selectPaymentMethod(selectedPaymentMethod), 50);
-            }
+            renderCheckoutPanel();
         }
     });
 
-    console.log('✅ Custom Checkout module initialized');
+    console.log('✅ Custom Checkout module initialized (merged single-view, no gift-card logic)');
 })();
