@@ -5,20 +5,31 @@
 // MERGED: Single unified view (records + custom + cart)
 // NO gift-card-specific logic — the cart treats every item generically.
 // Gift card balance redemption is handled by the Gift Cards page.
+// + RECEIPT: Auto-generates and downloads a .txt receipt on success.
 // ============================================================
 
 (function() {
     'use strict';
 
-    console.log('🚀 Custom Checkout module loaded (merged single-view, no gift-card logic)');
+    console.log('🚀 Custom Checkout module loaded (merged single-view, no gift-card logic, receipt enabled)');
 
     // ===== API BASE URL =====
     const API_BASE = window.location.hostname === 'localhost' 
         ? 'http://localhost:5000' 
         : 'https://www.pigstylemusic.com';
 
-    // ===== TAX RATE =====
-    const TAX_RATE = 0.07; // 7% sales tax
+    // ===== TAX RATE (fallback; overridden by store settings) =====
+    let TAX_RATE = 0.07; // 7% default sales tax
+
+    // ===== STORE SETTINGS (populated from /config/<key>) =====
+    const storeSettings = {
+        STORE_NAME: 'PigStyle Music',
+        STORE_ADDRESS: '100 E 3rd St, Loveland, CO 80537',
+        STORE_PHONE: '(970) 492-5630',
+        RECEIPT_FOOTER: 'Thank you for shopping at PigStyle Music!',
+        TAX_RATE: 7.5,
+        TAX_ENABLED: 'true'
+    };
 
     // ===== CHECK ADMIN ACCESS =====
     function isAdmin() {
@@ -34,7 +45,35 @@
 
     // ===== CALCULATE TAX =====
     function calculateTax(subtotal) {
+        if (storeSettings.TAX_ENABLED === 'false') return 0;
         return Math.round(subtotal * TAX_RATE * 100) / 100;
+    }
+
+    // ===== LOAD STORE SETTINGS =====
+    async function loadStoreSettings() {
+        const keys = ['STORE_NAME', 'STORE_ADDRESS', 'STORE_PHONE', 'RECEIPT_FOOTER', 'TAX_RATE', 'TAX_ENABLED'];
+        for (const key of keys) {
+            try {
+                const response = await fetch(`${API_BASE}/config/${key}`, {
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.config_value !== null && data.config_value !== undefined) {
+                        storeSettings[key] = data.config_value;
+                    }
+                }
+            } catch (e) {
+                console.warn(`⚠️ Could not load store setting ${key}:`, e.message);
+            }
+        }
+        // Sync TAX_RATE
+        const parsed = parseFloat(storeSettings.TAX_RATE);
+        if (!isNaN(parsed) && parsed > 0) {
+            TAX_RATE = parsed / 100;
+        }
+        console.log('🏪 Store settings loaded:', storeSettings, 'TAX_RATE =', TAX_RATE);
     }
 
     // ===== CHECKOUT STATE =====
@@ -58,6 +97,7 @@
     let paymentEntries = [];
     let isPaymentComplete = false;
     let isProcessingPayment = false;
+    let lastOrderId = null;
 
     // ===== GET USER =====
     function getUser() {
@@ -113,10 +153,14 @@
 
         container.innerHTML = customCheckoutTemplate();
         
-        setTimeout(() => {
-            initCustomCheckoutEvents();
-            checkSquareAvailability();
-        }, 100);
+        // Load store settings (for receipt + tax) then wire up events
+        loadStoreSettings().then(() => {
+            setTimeout(() => {
+                initCustomCheckoutEvents();
+                checkSquareAvailability();
+                renderCheckoutPanel();
+            }, 100);
+        });
     };
 
     // ========== TEMPLATE (UNIFIED SINGLE VIEW) ==========
@@ -368,7 +412,7 @@
                         <span style="font-weight: 500; color: #333;">$${subtotal.toFixed(2)}</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0;">
-                        <span style="color: #666;">Tax (7%):</span>
+                        <span style="color: #666;">Tax (${(TAX_RATE * 100).toFixed(2)}%):</span>
                         <span style="font-weight: 500; color: #333;">$${taxDisplay}</span>
                     </div>
                     ${discountAmountTotal > 0 ? `
@@ -1426,9 +1470,23 @@
                 remaining_balance: 0
             };
             
-            const success = await submitOrder(orderData);
+            const result = await submitOrder(orderData);
             
-            if (success) {
+            if (result.success) {
+                lastOrderId = result.orderId;
+                
+                // ===== GENERATE + DOWNLOAD RECEIPT =====
+                try {
+                    const receiptText = buildReceiptText(items, entries, total, result.orderId);
+                    const filename = buildReceiptFilename();
+                    downloadReceipt(receiptText, filename);
+                    console.log('✅ Receipt downloaded:', filename);
+                } catch (receiptErr) {
+                    console.error('❌ Receipt generation failed:', receiptErr);
+                    showToast('⚠️ Receipt could not be downloaded: ' + receiptErr.message, 'warning');
+                }
+                
+                // Reset checkout state
                 window.cart.clear();
                 cashReceived = 0;
                 outstandingBalance = 0;
@@ -1448,7 +1506,7 @@
                     if (statusText) statusText.textContent = '✅ Payment successful! Order complete.';
                 }
                 
-                showToast('🎉 Payment successful! Order complete.', 'success');
+                showToast('🎉 Payment successful! Receipt downloaded.', 'success');
             }
             
         } catch (err) {
@@ -1462,6 +1520,152 @@
             }
             isProcessingPayment = false;
         }
+    }
+
+    // ============================================================
+    // RECEIPT GENERATION
+    // ============================================================
+    function buildReceiptText(items, entries, grandTotal, orderId) {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+        const storeName = storeSettings.STORE_NAME || 'PigStyle Music';
+        const storeAddress = storeSettings.STORE_ADDRESS || '';
+        const storePhone = storeSettings.STORE_PHONE || '';
+        const footer = storeSettings.RECEIPT_FOOTER || 'Thank you!';
+
+        // ---- Calculate subtotal from items ----
+        let subtotal = 0;
+        items.forEach(it => {
+            subtotal += (it.price || 0) * (it.quantity || 1);
+        });
+
+        // ---- Compute discount applied (to the total) ----
+        const taxAmount = calculateTax(subtotal);
+        const grossTotal = subtotal + taxAmount;
+
+        let discountApplied = 0;
+        if (discountPercent > 0) {
+            discountApplied = grossTotal * (discountPercent / 100);
+        } else if (discountAmount > 0) {
+            discountApplied = Math.min(discountAmount, grossTotal);
+        }
+
+        const netTotal = Math.max(0, grossTotal - discountApplied);
+
+        // Use actual passed-in total (should equal netTotal)
+        const finalTotal = typeof grandTotal === 'number' ? grandTotal : netTotal;
+
+        // ---- Build receipt ----
+        let r = '';
+        r += `${storeName}\n`;
+        if (storeAddress) r += `${storeAddress}\n`;
+        if (storePhone) r += `${storePhone}\n`;
+        r += '====================================\n';
+        r += `${dateStr}  ${timeStr}\n`;
+        if (orderId) r += `Order: ${orderId}\n`;
+        r += '\n';
+        r += 'ITEMS:\n';
+        r += '------------------------------------\n';
+
+        // Items
+        items.forEach(item => {
+            const qty = item.quantity || 1;
+            const price = item.price || 0;
+            const lineTotal = qty * price;
+            let desc;
+            let tag = '';
+            if (item.type === 'bernie') {
+                tag = '[Bernie] ';
+                desc = item.title || 'Bernie Donation';
+            } else if (item.type === 'custom') {
+                tag = '[Custom] ';
+                desc = item.title || 'Custom Item';
+            } else if (item.type === 'record') {
+                desc = `${item.artist || 'Unknown'} - ${item.title || 'Unknown'}`;
+            } else {
+                desc = item.title || 'Item';
+            }
+
+            // Truncate long descriptions
+            const maxDescLen = 38;
+            let displayDesc = tag + desc;
+            if (displayDesc.length > maxDescLen) {
+                displayDesc = displayDesc.substring(0, maxDescLen - 1) + '…';
+            }
+
+            const qtyStr = qty > 1 ? `${qty}x ` : '';
+            const priceStr = qty > 1 ? `  ${qty} x $${price.toFixed(2)}` : '';
+
+            // Line: description left, line total right
+            r += `${displayDesc}\n`;
+            r += `    ${qtyStr}@ $${price.toFixed(2)}${' '.repeat(Math.max(1, 30 - qtyStr.length - price.toFixed(2).length))}$${lineTotal.toFixed(2)}\n`;
+        });
+
+        r += '------------------------------------\n';
+        r += `Subtotal:${' '.repeat(20)}$${subtotal.toFixed(2)}\n`;
+        if (taxAmount > 0) {
+            r += `Tax (${(TAX_RATE * 100).toFixed(2)}%):${' '.repeat(Math.max(1, 20 - (TAX_RATE * 100).toFixed(2).length))}$${taxAmount.toFixed(2)}\n`;
+        }
+        if (discountApplied > 0) {
+            const discLabel = discountPercent > 0 ? `Discount (${discountPercent}%):` : 'Discount:';
+            r += `${discLabel}${' '.repeat(Math.max(1, 20 - discLabel.length + 10))}-$${discountApplied.toFixed(2)}\n`;
+        }
+        r += `TOTAL:${' '.repeat(23)}$${finalTotal.toFixed(2)}\n`;
+        r += '\n';
+        r += 'PAYMENT:\n';
+        r += '------------------------------------\n';
+
+        let totalPaid = 0;
+        entries.forEach(entry => {
+            const label = entry.method || 'Payment';
+            r += `${label}${' '.repeat(Math.max(1, 28 - label.length))}$${entry.amount.toFixed(2)}\n`;
+            totalPaid += entry.amount;
+        });
+
+        if (Math.abs(totalPaid - finalTotal) > 0.01) {
+            if (totalPaid < finalTotal) {
+                r += `Unpaid:${' '.repeat(21)}$${(finalTotal - totalPaid).toFixed(2)}\n`;
+            } else {
+                r += `Change:${' '.repeat(21)}$${(totalPaid - finalTotal).toFixed(2)}\n`;
+            }
+        }
+
+        r += '------------------------------------\n';
+        r += '\n';
+        r += `${footer}\n`;
+        r += '\n';
+        r += `Served by: ${currentUserName}\n`;
+        r += '\n\n\n';
+
+        return r;
+    }
+
+    function buildReceiptFilename() {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        return `receipt_${y}${m}${d}_${hh}${mm}${ss}.txt`;
+    }
+
+    function downloadReceipt(text, filename) {
+        filename = filename || 'receipt.txt';
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // Revoke after a small delay to ensure the download starts
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
     function showPaymentError(message) {
@@ -1690,7 +1894,7 @@
                         console.warn('Could not mark records as sold:', err);
                     }
                 }
-                return true;
+                return { success: true, orderId: data.order_id };
             } else {
                 throw new Error(data.error || 'Order submission failed.');
             }
@@ -1742,7 +1946,6 @@
             z-index: 10000;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             max-width: 400px;
-            animation: slideIn 0.3s ease;
         `;
         toast.textContent = message;
         document.body.appendChild(toast);
@@ -1765,5 +1968,5 @@
         }
     });
 
-    console.log('✅ Custom Checkout module initialized (merged single-view, no gift-card logic)');
+    console.log('✅ Custom Checkout module initialized (merged single-view, no gift-card logic, receipt enabled)');
 })();
