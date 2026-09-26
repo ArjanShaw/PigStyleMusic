@@ -14,6 +14,12 @@
 // CONFIG SAVES INDEPENDENTLY OF LOADED RECORDS.
 // CONFIG LOADS ON INIT AND POPULATES THE INPUTS.
 // DISCOGS POSTING: 3-second delay between listings to respect rate limits.
+//
+// FEATURE 1: Records are fetched with visible_only=true (per-bin last_seen).
+// FEATURE 2: Locations are hierarchical. Display uses location_display
+//            (composed "Bin 20/RT" on the server).
+// FEATURE 3: Consigned records (consignor_id IS NOT NULL) are excluded
+//            from the posting pipeline entirely.
 // ================================================================
 
 (function() {
@@ -25,15 +31,12 @@
         : 'https://www.pigstylemusic.com';
 
     // ===== DISCOGS RATE LIMIT DELAY =====
-    // Discogs marketplace listings must be spaced out; too-fast posting
-    // returns "You are posting requests too quickly" and fails the listing.
     const DISCOGS_POST_DELAY_MS = 3000;
 
     let records = [];
-    let cutoffDate = null;
-    let discogsMarkupPercent = null;    // Initial markup — loaded from config, no default
-    let discogsPriceStep = null;        // Weekly step    — loaded from config, no default
-    let discogsMaxMarkdown = null;      // Max markdown   — loaded from config, no default
+    let discogsMarkupPercent = null;
+    let discogsPriceStep = null;
+    let discogsMaxMarkdown = null;
     let isUpdating = false;
     let isPosting = false;
     let cancelPosting = false;
@@ -53,9 +56,10 @@
     }
 
     // ===== HELPER: BUILD LOCATION DISPLAY STRING WITH INDEX =====
-    // Produces "Bin 36/3 (#2)" — same format as the shop page.
+    // Uses the server-composed `location_display` field ("Bin 20/RT").
+    // Falls back to `location_name` for safety.
     function buildLocationDisplay(record) {
-        const name = record.location_name || 'Unknown Location';
+        const name = record.location_display || record.location_name || 'Unknown Location';
         const idx = record.location_index;
         if (idx === null || idx === undefined || idx === '') {
             return name;
@@ -64,8 +68,6 @@
     }
 
     // ===== HELPER: INTERNAL FLOOR (negative markup) =====
-    // Max Markdown is stored as a positive number (0-100).
-    // The floor used in the formula is its negative.
     function getMarkdownFloor() {
         return -Math.abs(discogsMaxMarkdown);
     }
@@ -76,7 +78,6 @@
     }
 
     // ===== FETCH A SINGLE REQUIRED CONFIG VALUE =====
-    // Throws on any failure — missing key, network error, bad payload.
     async function fetchRequiredConfig(key) {
         const response = await fetch(`${API_BASE}/config/${key}`, {
             credentials: 'include',
@@ -106,8 +107,6 @@
     }
 
     // ===== FETCH CONFIG PARAMETERS =====
-    // No fallbacks. Throws if any value is missing or invalid.
-    // Populates the three input fields on success.
     async function fetchDiscogsConfig() {
         const markup = await fetchRequiredConfig('DISCOGS_MARKUP_PERCENT');
         const step = await fetchRequiredConfig('DISCOGS_PRICE_STEP');
@@ -139,8 +138,6 @@
     }
 
     // ===== SAVE CONFIG PARAMETERS =====
-    // Each key is saved individually. If the server echoes the stored value,
-    // we verify it; otherwise we trust the 200/success response.
     async function saveDiscogsConfig() {
         await saveOneConfig('DISCOGS_MARKUP_PERCENT', discogsMarkupPercent);
         await saveOneConfig('DISCOGS_PRICE_STEP', discogsPriceStep);
@@ -166,7 +163,6 @@
             throw new Error(`Failed to save ${key}: ${data.error || 'unknown error'}`);
         }
 
-        // If the server echoes the stored value, verify it. Otherwise trust the 200.
         if (data.config_value !== undefined && data.config_value !== null) {
             const stored = parseFloat(data.config_value);
             if (isNaN(stored) || Math.abs(stored - value) > 0.001) {
@@ -178,44 +174,16 @@
         }
     }
 
-    // ===== FETCH LAST_SEEN_CUTOFF_DATE =====
-    async function fetchLastSeenCutoff() {
-        try {
-            const response = await fetch(`${API_BASE}/config/LAST_SEEN_CUTOFF_DATE`, {
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            if (!response.ok) {
-                console.warn('Could not fetch LAST_SEEN_CUTOFF_DATE, using default');
-                return null;
-            }
-            const data = await response.json();
-            if (data.status === 'success' && data.config_value) {
-                console.log('📅 LAST_SEEN_CUTOFF_DATE:', data.config_value);
-                return data.config_value;
-            }
-            return null;
-        } catch (err) {
-            console.warn('Error fetching LAST_SEEN_CUTOFF_DATE:', err);
-            return null;
-        }
-    }
-
-    // ===== CHECK IF RECORD SHOULD BE VISIBLE =====
-    function isRecordVisible(record) {
-        if (!cutoffDate) return true;
-        if (!record.last_seen) return false;
-        let lastSeenDate = record.last_seen;
-        if (typeof lastSeenDate === 'string' && lastSeenDate.includes('T')) {
-            lastSeenDate = lastSeenDate.split('T')[0];
-        }
-        return lastSeenDate >= cutoffDate;
-    }
-
     // ===== CALCULATE DISCOGS PRICE =====
     // The ONLY place markup is calculated. Backend trusts this price.
+    // Feature 3: returns null if record is consigned.
     function calculateDiscogsPrice(record) {
         if (!record || !record.created_at || !record.store_price || record.store_price <= 0) {
+            return null;
+        }
+
+        // Feature 3: consigned records are never postable
+        if (record.consignor_id !== null && record.consignor_id !== undefined) {
             return null;
         }
 
@@ -235,7 +203,7 @@
         const daysOld = Math.floor((today - createdDate) / (1000 * 60 * 60 * 24));
         const weeksOld = Math.floor(daysOld / 7);
 
-        const floor = getMarkdownFloor();   // e.g. -50
+        const floor = getMarkdownFloor();
         let markup = discogsMarkupPercent - (weeksOld * discogsPriceStep);
         markup = Math.max(floor, markup);
 
@@ -289,7 +257,6 @@
     }
 
     // ===== UPDATE PRICES =====
-    // Always saves config. Only recomputes/re-renders if records are loaded.
     window.updateDiscogsPrices = async function() {
         if (isUpdating) return;
         if (isLoadingRecords) {
@@ -325,10 +292,8 @@
             discogsPriceStep = newStep;
             discogsMaxMarkdown = Math.abs(newMax);
 
-            // --- Always save the config, regardless of whether records are loaded ---
             await saveDiscogsConfig();
 
-            // --- Only recompute prices if we actually have records in memory ---
             if (records.length > 0) {
                 records = calculateDiscogsPricesForRecords(records);
                 renderRecords();
@@ -362,10 +327,9 @@
         console.log('📊 Fetching all records with pagination...');
 
         while (hasMore) {
-            let url = `${API_BASE}/records?status_ids=2&limit=${perPage}&offset=${(page - 1) * perPage}`;
-            if (cutoffDate) {
-                url += `&last_seen_after=${cutoffDate}`;
-            }
+            // Feature 1: only visible records
+            // Feature 3: hide consigned records
+            let url = `${API_BASE}/records?status_ids=2&visible_only=true&hide_consigned=true&limit=${perPage}&offset=${(page - 1) * perPage}`;
 
             const response = await fetch(url, {
                 credentials: 'include',
@@ -470,32 +434,24 @@
         try {
             showLoadProgressBar('⚙️ Loading configuration...', 0, 0, '');
             await fetchDiscogsConfig();
-            cutoffDate = await fetchLastSeenCutoff();
 
             const fetched = await fetchAllRecords(({ page, loaded, total, finished }) => {
                 const label = finished ? '✅ Records fetched' : `📥 Fetching page ${page}...`;
-                showLoadProgressBar(label, loaded, total, cutoffDate ? `Cutoff: ${cutoffDate}` : 'No cutoff');
+                showLoadProgressBar(label, loaded, total, '');
             });
 
             if (fetched.length === 0) {
                 list.innerHTML = `<div style="text-align:center;padding:20px;color:#999;">
-                    No records found${cutoffDate ? ` (seen after ${cutoffDate})` : ''}
+                    No records found
                 </div>`;
                 showLoadProgressBar('✅ Loaded (empty)', 0, 0, '');
                 return;
             }
 
-            let filtered = fetched;
-            if (cutoffDate) {
-                const before = fetched.length;
-                filtered = fetched.filter(record => isRecordVisible(record));
-                console.log(`📅 Client-side cutoff filter: ${before} → ${filtered.length}`);
-            }
-
-            showLoadProgressBar('💰 Calculating prices...', filtered.length, filtered.length, '');
+            showLoadProgressBar('💰 Calculating prices...', fetched.length, fetched.length, '');
             await sleep(30);
 
-            records = calculateDiscogsPricesForRecords(filtered);
+            records = calculateDiscogsPricesForRecords(fetched);
             renderRecords();
             updatePriceInfo();
 
@@ -571,7 +527,8 @@
 
         for (const r of recordsArray) {
             const locationId = r.location_id || 0;
-            const locationName = r.location_name || 'Unknown Location';
+            // Prefer server-composed display string for grouping labels
+            const locationName = r.location_display || r.location_name || 'Unknown Location';
 
             if (!groups[locationId]) {
                 groups[locationId] = { location_id: locationId, location_name: locationName, records: [] };
@@ -668,7 +625,7 @@
 
         if (records.length === 0) {
             list.innerHTML = `<div style="text-align:center;padding:20px;color:#999;">
-                No records found${cutoffDate ? ` (seen after ${cutoffDate})` : ''}
+                No records found
             </div>`;
             return;
         }
@@ -1328,10 +1285,6 @@
                 console.error('Error posting record:', err);
             }
 
-            // ===== RATE LIMIT DELAY =====
-            // Discogs rejects listings that come in too fast. Wait between
-            // every record, including after the last successful post, unless
-            // the user cancelled.
             if (i < recordsToPost.length - 1 && !cancelPosting) {
                 await sleep(DISCOGS_POST_DELAY_MS);
             }
@@ -1412,7 +1365,6 @@
         updateLoadButtonState(false);
         updateButtons();
 
-        // --- Load config from server and populate the three inputs ---
         fetchDiscogsConfig()
             .then(() => {
                 console.log('✅ Config loaded into inputs');
@@ -1421,12 +1373,6 @@
                 console.error('❌ Failed to load config on init:', err);
                 showStatus(`❌ Could not load config: ${err.message}`, 'error');
             });
-
-        // --- Load cutoff date (independent) ---
-        fetchLastSeenCutoff().then(date => {
-            cutoffDate = date;
-            console.log('📅 Using cutoff date:', cutoffDate || 'None (showing all)');
-        });
 
         updatePriceInfo();
     };

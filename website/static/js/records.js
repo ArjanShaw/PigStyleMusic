@@ -27,37 +27,21 @@
     const API_BASE = getApiBase();
     console.log('🔧 Records API_BASE:', API_BASE || '(same origin)');
 
-    // ===== FETCH LAST_SEEN_CUTOFF_DATE FROM CONFIG =====
-    async function fetchLastSeenCutoff() {
-        try {
-            const response = await fetch(`${API_BASE}/config/LAST_SEEN_CUTOFF_DATE`, {
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            
-            if (!response.ok) {
-                console.warn('Could not fetch LAST_SEEN_CUTOFF_DATE, using default');
-                return null;
-            }
-            
-            const data = await response.json();
-            if (data.status === 'success' && data.config_value) {
-                console.log('📅 LAST_SEEN_CUTOFF_DATE:', data.config_value);
-                return data.config_value;
-            }
-            return null;
-        } catch (err) {
-            console.warn('Error fetching LAST_SEEN_CUTOFF_DATE:', err);
-            return null;
-        }
-    }
-
     // ===== GET CONDITION DISPLAY NAME =====
     function getConditionDisplay(record) {
         if (record.sleeve_condition_name) return record.sleeve_condition_name;
         if (record.condition) return record.condition;
         if (record.sleeve_display) return record.sleeve_display;
         return 'Unknown';
+    }
+
+    // ===== GET LOCATION DISPLAY =====
+    // Prefers server-composed `location_display` (e.g. "Bin 20/RT").
+    // Falls back to leaf name, then to empty string.
+    function getLocationDisplay(record) {
+        if (record.location_display) return record.location_display;
+        if (record.location_name) return record.location_name;
+        return '';
     }
 
     // ===== FETCH GENRES THAT HAVE ACTIVE RECORDS =====
@@ -130,24 +114,20 @@
     }
 
     // ===== POPULATE FORMAT MULTI-SELECT DROPDOWN =====
-    // If 0 or 1 formats exist, hide the entire wrapper (label + container).
     async function populateFormatDropdown(containerId, selectedFormatIds, locationIds, statusId) {
         const container = document.getElementById(containerId);
         if (!container) return;
         
-        // The wrapper is the parent element created in HTML (contains label + container)
         const wrapper = container.parentElement;
         
         const formats = await fetchFormatsWithRecords(locationIds, statusId);
         
-        // If 0 or 1 formats, hide the whole filter wrapper and bail out
         if (!formats || formats.length <= 1) {
             if (wrapper) wrapper.style.display = 'none';
             console.log(`🎚️ Format filter hidden (only ${formats ? formats.length : 0} format(s) available)`);
             return;
         }
         
-        // Otherwise show the wrapper
         if (wrapper) wrapper.style.display = 'flex';
         
         const selectedSet = new Set(
@@ -212,7 +192,6 @@
             document.removeEventListener('click', outsideHandler);
         };
         
-        // Allow the component to refresh the checkbox state without full re-render
         container._formatRefresh = (newSelectedIds) => {
             const set = new Set((newSelectedIds || []).map(x => parseInt(x)));
             menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -244,7 +223,7 @@
         const inStock = record.status_id === 2 || record.status_id === 1;
         const imageUrl = record.image_url || '';
         const condition = getConditionDisplay(record);
-        const location = record.location_name || '';
+        const locationDisplay = getLocationDisplay(record);
         const locationIndex = record.location_index || '';
         const lastSeen = record.last_seen ? new Date(record.last_seen).toLocaleString('en-US', {
             year: 'numeric',
@@ -272,9 +251,9 @@
         
         const recordData = JSON.stringify(record).replace(/"/g, '&quot;');
         
-        let locationDisplay = '';
-        if (location) {
-            locationDisplay = locationIndex ? `📍 ${location} (#${locationIndex})` : `📍 ${location}`;
+        let locationLine = '';
+        if (locationDisplay) {
+            locationLine = locationIndex ? `📍 ${locationDisplay} (#${locationIndex})` : `📍 ${locationDisplay}`;
         }
         
         modal.innerHTML = `
@@ -295,7 +274,7 @@
                         <div style="font-size: 18px; font-weight: bold; color: #333;">${record.title || 'Untitled'}</div>
                         <div style="color: #666; margin: 4px 0;">${condition}</div>
                         <div style="color: #666; font-size: 14px;">${record.format_name || 'Unknown Format'}</div>
-                        ${locationDisplay ? `<div style="color: #888; font-size: 12px; margin-top: 4px;">${locationDisplay}</div>` : ''}
+                        ${locationLine ? `<div style="color: #888; font-size: 12px; margin-top: 4px;">${locationLine}</div>` : ''}
                         ${record.last_seen ? `<div style="color: #888; font-size: 11px; margin-top: 2px;">Last seen: ${lastSeen}</div>` : ''}
                     </div>
                 </div>
@@ -443,7 +422,6 @@
             this.allData = [];
             this.filteredData = [];
             this.searchTerm = '';
-            this.cutoffDate = null;
             this.selectedGenreId = config.genreIds || null;
             this.selectedFormatIds = Array.isArray(config.formatIds) ? config.formatIds : (config.formatIds ? [config.formatIds] : []);
             this.currentMaxPrice = config.maxPrice || null;
@@ -491,11 +469,7 @@
                 });
             }
             
-            fetchLastSeenCutoff().then(date => {
-                this.cutoffDate = date;
-                console.log(`📅 ${this.config.title} using cutoff date:`, this.cutoffDate || 'None (showing all)');
-                this.loadRecords();
-            });
+            this.loadRecords();
             
             this.bindEvents();
             this.bindSearchEvents();
@@ -541,13 +515,11 @@
             }
         }
 
-        // Search now hits the server (no client-side filtering, no limit)
         applySearch() {
             this.currentPage = 1;
             this.loadRecords();
         }
 
-        // Filters now hit the server (no client-side filtering, no limit)
         applyFilters() {
             this.currentPage = 1;
             this.loadRecords();
@@ -596,15 +568,15 @@
             `;
 
             try {
-                // No limit — fetch everything matching the current filters.
                 const params = new URLSearchParams();
 
-                // Always Active unless config says otherwise
                 const statusToSend = this.config.statusId || 2;
                 params.append('status_ids', statusToSend);
 
+                // Feature 1: only return records that are "current" for their bin
+                params.append('visible_only', 'true');
+
                 if (this.config.locationIds) params.append('location_ids', this.config.locationIds);
-                if (this.cutoffDate) params.append('last_seen_after', this.cutoffDate);
                 if (this.selectedGenreId) params.append('genre_ids', this.selectedGenreId);
                 if (this.selectedFormatIds && this.selectedFormatIds.length > 0) {
                     params.append('format_ids', this.selectedFormatIds.join(','));
@@ -629,8 +601,6 @@
                 const data = await response.json();
 
                 if (data.status === 'success' && data.records) {
-                    // Server already applied cutoff + status + format filters.
-                    // Do NOT re-filter client-side.
                     this.allData = data.records;
                     this.filteredData = [...this.allData];
                     this.totalRecords = this.filteredData.length;
@@ -679,11 +649,11 @@
                     const imageUrl = record.image_url || '';
                     const recordData = JSON.stringify(record).replace(/"/g, '&quot;');
                     const condition = getConditionDisplay(record);
-                    const location = record.location_name || '';
+                    const locationDisplay = getLocationDisplay(record);
                     const locationIndex = record.location_index || '';
-                    let locationDisplay = '';
-                    if (location && this.config.showLocation) {
-                        locationDisplay = locationIndex ? `📍 ${location} (#${locationIndex})` : `📍 ${location}`;
+                    let locationLine = '';
+                    if (locationDisplay && this.config.showLocation) {
+                        locationLine = locationIndex ? `📍 ${locationDisplay} (#${locationIndex})` : `📍 ${locationDisplay}`;
                     }
                     
                     html += `
@@ -703,7 +673,7 @@
                             <div style="font-weight: bold; color: #333; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${record.artist || 'Unknown Artist'}</div>
                             <div style="color: #666; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${record.title || 'Untitled'}</div>
                             ${this.config.showCondition ? `<div style="color: #555; font-size: 10px; margin-top: 2px;">📦 ${condition}</div>` : ''}
-                            ${this.config.showLocation && locationDisplay ? `<div style="color: #888; font-size: 10px; margin-top: 1px;">${locationDisplay}</div>` : ''}
+                            ${this.config.showLocation && locationLine ? `<div style="color: #888; font-size: 10px; margin-top: 1px;">${locationLine}</div>` : ''}
                             <div style="color: #ff6b6b; font-size: 16px; font-weight: bold; margin-top: 4px;">$${price.toFixed(2)}</div>
                             ${record.barcode ? `<div style="font-size: 8px; color: #999; margin-top: 2px; font-family: monospace;">${record.barcode}</div>` : ''}
                         </div>
@@ -774,10 +744,7 @@
         }
 
         reload() {
-            fetchLastSeenCutoff().then(date => {
-                this.cutoffDate = date;
-                this.loadRecords();
-            });
+            this.loadRecords();
         }
     };
 
