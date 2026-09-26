@@ -430,6 +430,46 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
+
+# ==================== FEATURE 2 HELPERS ====================
+
+def build_location_display(parent_name, leaf_name):
+    """Compose 'Bin 20/RT' from a parent row and a leaf row.
+    Standalone rows (parent_name is None) return the leaf name as-is.
+    """
+    if not leaf_name:
+        return ''
+    if not parent_name:
+        return leaf_name
+    return f"{parent_name}/{leaf_name}"
+
+
+def effective_genre_cte():
+    """Return the SQL fragment for a recursive CTE that resolves each
+    location's effective genre_id by walking up the parent chain.
+    The first non-NULL genre_id wins.
+
+    Yields a CTE named `location_genres(location_id, effective_genre_id, depth)`.
+
+    Usage:
+        WITH RECURSIVE {effective_genre_cte()}
+        SELECT ...
+    """
+    return """
+        location_genres(location_id, effective_genre_id, depth) AS (
+            SELECT id, genre_id, 0
+            FROM locations
+            WHERE parent_id IS NULL
+            UNION ALL
+            SELECT l.id,
+                   COALESCE(l.genre_id, lg.effective_genre_id),
+                   lg.depth + 1
+            FROM locations l
+            JOIN location_genres lg ON l.parent_id = lg.location_id
+        )
+    """
+
+
 # ==================== EMAIL HELPER FUNCTIONS ====================
 
 def send_email(to_email, subject, body, from_name="PigStyle Music"):
@@ -780,6 +820,8 @@ def create_discogs_listing_single():
     No search, no fallback. If the ID is missing, the post fails with a
     clear error so the record can be resolved manually.
 
+    Feature 3: consigned records (consignor_id NOT NULL) are rejected.
+
     Price is client-supplied. No fallback markup.
     """
     try:
@@ -813,7 +855,7 @@ def create_discogs_listing_single():
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute(
-            'SELECT id, discogs_release_id FROM records WHERE id = ?',
+            'SELECT id, discogs_release_id, consignor_id FROM records WHERE id = ?',
             (record['id'],)
         )
         db_record = cursor.fetchone()
@@ -821,6 +863,13 @@ def create_discogs_listing_single():
 
         if not db_record:
             return jsonify({'success': False, 'error': f'Record #{record["id"]} not found'}), 404
+
+        # --- Feature 3: consignor gate ---
+        if db_record['consignor_id'] is not None:
+            return jsonify({
+                'success': False,
+                'error': f'Record #{record["id"]} is consigned and cannot be posted to Discogs.'
+            }), 400
 
         release_id = db_record['discogs_release_id']
         if not release_id:
@@ -2137,62 +2186,7 @@ def login2():
         response.headers.add('Access-Control-Allow-Credentials', 'true')
         return response, 500
  
-    """
-    Subscribe an email to the email_list table.
-    Expects: {"email": "user@example.com"}
-    Returns: success or error message
-    """
-    try:
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
-        
-        email = data.get('email', '').strip().lower()
-        
-        if not email:
-            return jsonify({'status': 'error', 'error': 'Email is required'}), 400
-        
-        # Validate email format
-        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
-            return jsonify({'status': 'error', 'error': 'Invalid email address'}), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Check if already subscribed
-        cursor.execute('SELECT email FROM email_list WHERE email = ?', (email,))
-        if cursor.fetchone():
-            conn.close()
-            return jsonify({
-                'status': 'success',
-                'message': 'Email already subscribed',
-                'already_subscribed': True
-            }), 200
-        
-        # Insert new email
-        cursor.execute('INSERT INTO email_list (email) VALUES (?)', (email,))
-        conn.commit()
-        conn.close()
-        
-        app.logger.info(f"New email list subscription: {email}")
-        
-        return jsonify({
-            'status': 'success',
-            'message': 'You are subscribed!',
-            'already_subscribed': False
-        }), 201
-        
-    except sqlite3.IntegrityError:
-        # Duplicate email (shouldn't happen since we check above, but just in case)
-        return jsonify({
-            'status': 'success',
-            'message': 'Email already subscribed',
-            'already_subscribed': True
-        }), 200
-    except Exception as e:
-        app.logger.error(f"Email list subscription error: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 50
+
 @app.route('/api/login', methods=['POST', 'OPTIONS'])
 def login():
     """Authenticate user and return user data with session"""
@@ -2794,25 +2788,55 @@ def create_record():
         conn.close()
         return jsonify({'status': 'error', 'error': f"Database error: {str(e)}"}), 500
  
+
 @app.route('/records', methods=['GET'])
 def get_records():
     """Get records with filtering, pagination, and a generic search.
-    Format filtering uses records.format_id. Status defaults to 2 (Active) when not specified.
-    No default limit — returns all matching records unless limit is explicitly passed.
+
+    Query params:
+        status_ids         Comma-separated. Defaults to 2 (Active).
+        artist             Partial match on artist.
+        title              Partial match on title.
+        catalog_number     Partial match on catalog_number.
+        barcode            Exact match on barcode.
+        id, ids            Exact match on id.
+        search             LIKE across id/barcode/artist/title/catalog_number.
+        location_ids       Comma-separated location ids.
+        format_ids         Comma-separated format ids (matches records.format_id).
+        genre_ids          Comma-separated genre ids (matches effective genre,
+                           resolved through the location chain).
+        genres             Legacy string filter on discogs_genre_raw.
+        max_price          Upper bound on store_price.
+        require_image      true/false.
+        created_after      YYYY-MM-DD.
+        last_seen_after    YYYY-MM-DD. Deprecated.
+        last_seen_before   YYYY-MM-DD.
+        batch_id           Integer, or -1 for NULL.
+        visible_only       true/false. When true, apply Feature 1 bin-max rule.
+        hide_consigned     true/false. When true, exclude consignor_id NOT NULL.
+        order_by           Column name (whitelisted).
+        order_dir          ASC/DESC.
+        limit, offset      Pagination.
+
+    Response rows include:
+        location_name         Leaf name only (e.g. "RT")
+        location_parent_name  Parent name or None (e.g. "Bin 20")
+        location_display      Composed display string (e.g. "Bin 20/RT")
     """
     try:
         conn = get_db()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        # ---------- Base query (all joins) ----------
         base_query = """
             SELECT 
                 r.*,
                 f.name AS format_name,
                 s.status_name AS status_name,
-                l.name AS location_name,
-                l.genre_id,
+                l.name  AS location_name,
+                lp.name AS location_parent_name,
+                l.genre_id AS location_genre_id,
+                lg.effective_genre_id AS location_effective_genre_id,
                 cd.condition_name AS disc_condition_name,
                 cd.abbreviation AS disc_abbr,
                 cd.quality_index AS disc_quality,
@@ -2829,17 +2853,18 @@ def get_records():
             FROM records r
             LEFT JOIN formats f ON r.format_id = f.id
             LEFT JOIN d_status s ON r.status_id = s.id
-            LEFT JOIN locations l ON r.location_id = l.id
+            LEFT JOIN locations l  ON r.location_id = l.id
+            LEFT JOIN locations lp ON l.parent_id = lp.id
+            LEFT JOIN location_genres lg ON lg.location_id = r.location_id
             LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
             WHERE 1=1
         """
 
-        # ---------- Collect filter conditions and parameters ----------
         where_clauses = []
         params = []
 
-        # --- Status filter (comma-separated). Default to Active (2) if not specified. ---
+        # --- Status filter ---
         status_ids = request.args.get('status_ids')
         if status_ids:
             ids = [int(x.strip()) for x in status_ids.split(',') if x.strip()]
@@ -2848,35 +2873,30 @@ def get_records():
                 where_clauses.append(f"r.status_id IN ({placeholders})")
                 params.extend(ids)
         else:
-            # Enforce Active by default
             where_clauses.append("r.status_id = ?")
             params.append(2)
 
-        # --- Artist (partial match) ---
+        # --- Simple column filters ---
         artist = request.args.get('artist')
         if artist:
             where_clauses.append("r.artist LIKE ?")
             params.append(f'%{artist}%')
 
-        # --- Title (partial match) ---
         title = request.args.get('title')
         if title:
             where_clauses.append("r.title LIKE ?")
             params.append(f'%{title}%')
 
-        # --- Catalog Number (partial match) ---
         catalog_number = request.args.get('catalog_number')
         if catalog_number:
             where_clauses.append("r.catalog_number LIKE ?")
             params.append(f'%{catalog_number}%')
 
-        # --- Barcode (exact match) ---
         barcode = request.args.get('barcode')
         if barcode:
             where_clauses.append("r.barcode = ?")
             params.append(barcode)
 
-        # --- ID (exact match, single or comma-separated) ---
         ids_param = request.args.get('id') or request.args.get('ids')
         if ids_param:
             ids = [int(x.strip()) for x in ids_param.split(',') if x.strip()]
@@ -2885,7 +2905,6 @@ def get_records():
                 where_clauses.append(f"r.id IN ({placeholders})")
                 params.extend(ids)
 
-        # --- Generic search (LIKE on id, barcode, artist, title, catalog_number) ---
         search = request.args.get('search')
         if search:
             search_like = f'%{search}%'
@@ -2894,7 +2913,6 @@ def get_records():
             )
             params.extend([search_like, search_like, search_like, search_like, search_like])
 
-        # --- Location (multiple, comma-separated) ---
         location_ids = request.args.get('location_ids')
         if location_ids:
             ids = [int(x.strip()) for x in location_ids.split(',') if x.strip()]
@@ -2905,7 +2923,6 @@ def get_records():
             else:
                 where_clauses.append("1=0")
 
-        # --- Formats (comma-separated) — uses records.format_id ---
         format_ids = request.args.get('format_ids')
         if format_ids:
             ids = [int(x.strip()) for x in format_ids.split(',') if x.strip()]
@@ -2914,16 +2931,15 @@ def get_records():
                 where_clauses.append(f"r.format_id IN ({placeholders})")
                 params.extend(ids)
 
-        # --- genre_ids filter (numeric IDs via locations.genre_id) ---
+        # --- genre_ids: match against effective genre through location chain ---
         genre_ids_param = request.args.get('genre_ids')
         if genre_ids_param:
             ids = [int(x.strip()) for x in genre_ids_param.split(',') if x.strip()]
             if ids:
                 placeholders = ','.join(['?'] * len(ids))
-                where_clauses.append(f"l.genre_id IN ({placeholders})")
+                where_clauses.append(f"lg.effective_genre_id IN ({placeholders})")
                 params.extend(ids)
 
-        # --- max_price filter ---
         max_price = request.args.get('max_price')
         if max_price:
             try:
@@ -2934,7 +2950,6 @@ def get_records():
             except ValueError:
                 pass
 
-        # --- Legacy 'genres' filter (string-based, OR LIKE on discogs_genre_raw) ---
         genres = request.args.get('genres')
         if genres:
             genre_list = [x.strip() for x in genres.split(',') if x.strip()]
@@ -2945,18 +2960,15 @@ def get_records():
                     params.append(f'%{genre}%')
                 where_clauses.append(f"({' OR '.join(or_conditions)})")
 
-        # --- Require image ---
         require_image = request.args.get('require_image', 'false').lower() == 'true'
         if require_image:
             where_clauses.append("r.image_url IS NOT NULL AND r.image_url != ''")
 
-        # --- Created after (date) ---
         created_after = request.args.get('created_after')
         if created_after:
             where_clauses.append("date(r.created_at) >= date(?)")
             params.append(created_after)
 
-        # --- Last seen filters ---
         last_seen_after = request.args.get('last_seen_after')
         if last_seen_after:
             where_clauses.append("date(r.last_seen) >= date(?)")
@@ -2967,7 +2979,6 @@ def get_records():
             where_clauses.append("date(r.last_seen) <= date(?)")
             params.append(last_seen_before)
 
-        # --- Batch filter ---
         batch_id = request.args.get('batch_id')
         if batch_id is not None:
             batch_id_int = int(batch_id)
@@ -2977,29 +2988,61 @@ def get_records():
                 where_clauses.append("r.batch_id = ?")
                 params.append(batch_id_int)
 
-        # ---------- Assemble WHERE clause ----------
-        if where_clauses:
-            where_sql = " AND " + " AND ".join(where_clauses)
-        else:
-            where_sql = ""
+        # --- Feature 1: per-bin last_seen visibility ---
+        visible_only = request.args.get('visible_only', 'false').lower() == 'true'
+        if visible_only:
+            where_clauses.append("""
+                (
+                    r.location_id IS NULL
+                    OR NOT EXISTS (
+                        SELECT 1 FROM records x
+                        WHERE x.location_id = r.location_id
+                          AND x.status_id = 2
+                          AND x.last_seen IS NOT NULL
+                    )
+                    OR (
+                        r.last_seen IS NOT NULL
+                        AND date(r.last_seen) = (
+                            SELECT MAX(date(y.last_seen))
+                            FROM records y
+                            WHERE y.location_id = r.location_id
+                              AND y.status_id = 2
+                        )
+                    )
+                )
+            """)
 
-        # ---------- Count query ----------
-        count_query = f"SELECT COUNT(*) AS total FROM records r LEFT JOIN locations l ON r.location_id = l.id WHERE 1=1 {where_sql}"
+        # --- Feature 3: hide consigned records ---
+        hide_consigned = request.args.get('hide_consigned', 'false').lower() == 'true'
+        if hide_consigned:
+            where_clauses.append("r.consignor_id IS NULL")
+
+        where_sql = (" AND " + " AND ".join(where_clauses)) if where_clauses else ""
+
+        # --- Count query ---
+        count_query = f"""
+            WITH RECURSIVE {effective_genre_cte()}
+            SELECT COUNT(*) AS total
+            FROM records r
+            LEFT JOIN locations l  ON r.location_id = l.id
+            LEFT JOIN locations lp ON l.parent_id = lp.id
+            LEFT JOIN location_genres lg ON lg.location_id = r.location_id
+            WHERE 1=1 {where_sql}
+        """
         cursor.execute(count_query, params)
         total = cursor.fetchone()['total']
 
-        # ---------- Ordering ----------
+        # --- Ordering ---
         order_by = request.args.get('order_by', 'created_at')
         allowed_order_columns = ['id', 'created_at', 'last_seen', 'artist', 'title', 'store_price', 'status_id', 'format_id']
         if order_by not in allowed_order_columns:
             order_by = 'created_at'
-
         order_dir = request.args.get('order_dir', 'DESC').upper()
         if order_dir not in ['ASC', 'DESC']:
             order_dir = 'DESC'
         order_sql = f" ORDER BY r.{order_by} {order_dir}"
 
-        # ---------- Pagination (only if explicitly requested) ----------
+        # --- Pagination ---
         limit = request.args.get('limit')
         offset = request.args.get('offset')
         pagination_sql = ""
@@ -3010,10 +3053,21 @@ def get_records():
             pagination_sql += " OFFSET ?"
             params.append(int(offset))
 
-        # ---------- Final query ----------
-        final_query = base_query + where_sql + order_sql + pagination_sql
+        final_query = f"""
+            WITH RECURSIVE {effective_genre_cte()}
+            {base_query} {where_sql} {order_sql} {pagination_sql}
+        """
         cursor.execute(final_query, params)
-        records = [dict(row) for row in cursor.fetchall()]
+        rows = cursor.fetchall()
+
+        records = []
+        for row in rows:
+            rec = dict(row)
+            rec['location_display'] = build_location_display(
+                rec.get('location_parent_name'),
+                rec.get('location_name'),
+            )
+            records.append(rec)
 
         conn.close()
 
@@ -3021,98 +3075,19 @@ def get_records():
             'status': 'success',
             'total': total,
             'count': len(records),
-            'records': records
+            'records': records,
         })
 
     except Exception as e:
-        print(f"❌ Error in get_records: {e}")
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
-
-@app.route('/api/genres-with-records', methods=['GET'])
-def get_genres_with_records():
-    """
-    Get genres that have active records in the specified locations.
-    Automatically applies LAST_SEEN_CUTOFF_DATE from app_config.
-    """
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        location_ids = request.args.get('location_ids')
-        status_ids = request.args.get('status_ids')
-        
-        # Fetch cutoff date from app_config
-        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'LAST_SEEN_CUTOFF_DATE'")
-        row = cursor.fetchone()
-        cutoff_date = row['config_value'] if row else None
-        
-        query = '''
-            SELECT 
-                g.id,
-                g.name,
-                COUNT(r.id) as record_count
-            FROM genres g
-            INNER JOIN locations l ON l.genre_id = g.id
-            INNER JOIN records r ON r.location_id = l.id
-            WHERE 1=1
-        '''
-        params = []
-        
-        if location_ids:
-            ids = [int(x.strip()) for x in location_ids.split(',') if x.strip()]
-            if ids:
-                placeholders = ','.join(['?'] * len(ids))
-                query += f' AND l.id IN ({placeholders})'
-                params.extend(ids)
-        
-        if status_ids:
-            ids = [int(x.strip()) for x in status_ids.split(',') if x.strip()]
-            if ids:
-                placeholders = ','.join(['?'] * len(ids))
-                query += f' AND r.status_id IN ({placeholders})'
-                params.extend(ids)
-        
-        # Apply cutoff date if it exists
-        if cutoff_date:
-            query += ' AND date(r.last_seen) >= date(?)'
-            params.append(cutoff_date)
-        
-        query += ' GROUP BY g.id, g.name HAVING COUNT(r.id) > 0 ORDER BY g.name'
-        
-        cursor.execute(query, params)
-        results = cursor.fetchall()
-        conn.close()
-        
-        genres = []
-        for row in results:
-            genres.append({
-                'id': row['id'],
-                'name': row['name'],
-                'record_count': row['record_count']
-            })
-        
-        return jsonify({
-            'status': 'success',
-            'genres': genres,
-            'cutoff_applied': cutoff_date is not None,
-            'cutoff_date': cutoff_date
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error getting genres with records: {str(e)}")
+        app.logger.error(f"Error in get_records: {e}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
-@app.route('/api/formats-with-records', methods=['GET'])
-def get_formats_with_records():
-    """
-    Get formats that have active records (status_id = 2 by default).
-    Counts are derived strictly from records.format_id.
-    Automatically applies LAST_SEEN_CUTOFF_DATE from app_config.
-    No limit — returns every format that has at least one matching record.
+@app.route('/api/genres-with-records', methods=['GET'])
+def get_genres_with_records():
+    """Genres that have visible Active records. Applies Feature 1 (per-bin
+    last_seen) unconditionally, plus the effective-genre resolution.
     """
     try:
         conn = get_db()
@@ -3121,36 +3096,28 @@ def get_formats_with_records():
         location_ids = request.args.get('location_ids')
         status_ids = request.args.get('status_ids')
 
-        # Default status to Active (2) if not given
         if status_ids:
             status_id_list = [int(x.strip()) for x in status_ids.split(',') if x.strip()]
         else:
             status_id_list = [2]
 
-        # Fetch cutoff date from app_config
-        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'LAST_SEEN_CUTOFF_DATE'")
-        row = cursor.fetchone()
-        cutoff_date = row['config_value'] if row else None
-
-        # Count records per format directly off records.format_id
-        query = '''
-            SELECT 
-                f.id,
-                f.name,
-                COUNT(r.id) as record_count
-            FROM formats f
-            INNER JOIN records r ON r.format_id = f.id
+        query = f"""
+            WITH RECURSIVE {effective_genre_cte()}
+            SELECT
+                g.id,
+                g.name,
+                COUNT(r.id) AS record_count
+            FROM genres g
+            INNER JOIN location_genres lg ON lg.effective_genre_id = g.id
+            INNER JOIN records r ON r.location_id = lg.location_id
             WHERE 1=1
-        '''
+        """
         params = []
 
-        # Status filter
-        if status_id_list:
-            placeholders = ','.join(['?'] * len(status_id_list))
-            query += f' AND r.status_id IN ({placeholders})'
-            params.extend(status_id_list)
+        placeholders = ','.join(['?'] * len(status_id_list))
+        query += f' AND r.status_id IN ({placeholders})'
+        params.extend(status_id_list)
 
-        # Location filter (optional)
         if location_ids:
             ids = [int(x.strip()) for x in location_ids.split(',') if x.strip()]
             if ids:
@@ -3158,10 +3125,107 @@ def get_formats_with_records():
                 query += f' AND r.location_id IN ({placeholders})'
                 params.extend(ids)
 
-        # Cutoff date (same rule as /records)
-        if cutoff_date:
-            query += ' AND date(r.last_seen) >= date(?)'
-            params.append(cutoff_date)
+        # Feature 1: per-bin visibility
+        query += '''
+            AND (
+                r.location_id IS NULL
+                OR NOT EXISTS (
+                    SELECT 1 FROM records x
+                    WHERE x.location_id = r.location_id
+                      AND x.status_id = 2
+                      AND x.last_seen IS NOT NULL
+                )
+                OR (
+                    r.last_seen IS NOT NULL
+                    AND date(r.last_seen) = (
+                        SELECT MAX(date(y.last_seen))
+                        FROM records y
+                        WHERE y.location_id = r.location_id
+                          AND y.status_id = 2
+                    )
+                )
+            )
+        '''
+
+        query += ' GROUP BY g.id, g.name HAVING COUNT(r.id) > 0 ORDER BY g.name'
+
+        cursor.execute(query, params)
+        results = cursor.fetchall()
+        conn.close()
+
+        genres = [{'id': row['id'], 'name': row['name'], 'record_count': row['record_count']} for row in results]
+
+        return jsonify({
+            'status': 'success',
+            'genres': genres,
+            'visibility_applied': True,
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error getting genres with records: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/formats-with-records', methods=['GET'])
+def get_formats_with_records():
+    """Formats that have visible Active records. Applies Feature 1 (per-bin
+    last_seen) unconditionally. Format comes from records.format_id only.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        location_ids = request.args.get('location_ids')
+        status_ids = request.args.get('status_ids')
+
+        if status_ids:
+            status_id_list = [int(x.strip()) for x in status_ids.split(',') if x.strip()]
+        else:
+            status_id_list = [2]
+
+        query = '''
+            SELECT
+                f.id,
+                f.name,
+                COUNT(r.id) AS record_count
+            FROM formats f
+            INNER JOIN records r ON r.format_id = f.id
+            WHERE 1=1
+        '''
+        params = []
+
+        placeholders = ','.join(['?'] * len(status_id_list))
+        query += f' AND r.status_id IN ({placeholders})'
+        params.extend(status_id_list)
+
+        if location_ids:
+            ids = [int(x.strip()) for x in location_ids.split(',') if x.strip()]
+            if ids:
+                placeholders = ','.join(['?'] * len(ids))
+                query += f' AND r.location_id IN ({placeholders})'
+                params.extend(ids)
+
+        # Feature 1: per-bin visibility
+        query += '''
+            AND (
+                r.location_id IS NULL
+                OR NOT EXISTS (
+                    SELECT 1 FROM records x
+                    WHERE x.location_id = r.location_id
+                      AND x.status_id = 2
+                      AND x.last_seen IS NOT NULL
+                )
+                OR (
+                    r.last_seen IS NOT NULL
+                    AND date(r.last_seen) = (
+                        SELECT MAX(date(y.last_seen))
+                        FROM records y
+                        WHERE y.location_id = r.location_id
+                          AND y.status_id = 2
+                    )
+                )
+            )
+        '''
 
         query += ' GROUP BY f.id, f.name HAVING COUNT(r.id) > 0 ORDER BY f.name'
 
@@ -3169,24 +3233,19 @@ def get_formats_with_records():
         results = cursor.fetchall()
         conn.close()
 
-        formats = []
-        for row in results:
-            formats.append({
-                'id': row['id'],
-                'name': row['name'],
-                'record_count': row['record_count']
-            })
+        formats = [{'id': row['id'], 'name': row['name'], 'record_count': row['record_count']} for row in results]
 
         return jsonify({
             'status': 'success',
             'formats': formats,
-            'cutoff_applied': cutoff_date is not None,
-            'cutoff_date': cutoff_date
+            'visibility_applied': True,
         })
 
     except Exception as e:
         app.logger.error(f"Error getting formats with records: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
 
 @app.route('/api/stats/last-seen-distribution', methods=['GET'])
 def get_last_seen_distribution_stats():
@@ -3194,7 +3253,6 @@ def get_last_seen_distribution_stats():
     conn = get_db()
     cursor = conn.cursor()
     
-    # Get active records (status_id = 2) with non-null last_seen
     cursor.execute('''
         SELECT last_seen
         FROM records
@@ -3205,44 +3263,26 @@ def get_last_seen_distribution_stats():
     conn.close()
     
     today = datetime.now().date()
-    
-    # Dictionary to store counts by week number
     week_counts = {}
     
     for record in records:
         last_seen_str = record['last_seen']
         try:
-            # Parse last_seen date
             if isinstance(last_seen_str, str):
                 last_seen = datetime.strptime(last_seen_str.split('T')[0], '%Y-%m-%d').date()
             else:
                 last_seen = last_seen_str
-            
-            # Calculate days since last seen
             days_ago = (today - last_seen).days
-            
-            # Calculate weeks since last seen (floor division)
             weeks_ago = days_ago // 7
-            
-            # Increment count for this week number
             week_counts[weeks_ago] = week_counts.get(weeks_ago, 0) + 1
-            
         except Exception as e:
             app.logger.error(f"Error parsing last_seen date {last_seen_str}: {e}")
             continue
     
-    # If no data, return empty
     if not week_counts:
-        return jsonify({
-            'status': 'success',
-            'week_numbers': [],
-            'counts': []
-        })
+        return jsonify({'status': 'success', 'week_numbers': [], 'counts': []})
     
-    # Get the maximum week number
     max_week = max(week_counts.keys())
-    
-    # Build complete arrays from week 0 to max_week
     week_numbers = list(range(max_week + 1))
     counts = [week_counts.get(week, 0) for week in week_numbers]
     
@@ -3262,7 +3302,6 @@ def get_markup_analysis():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get markup rules
         cursor.execute('SELECT days_old, markup_percent FROM markup_rules ORDER BY days_old ASC')
         rules = cursor.fetchall()
         rules_list = [(r['days_old'], r['markup_percent']) for r in rules]
@@ -3402,14 +3441,13 @@ def parse_purchase_from_journal(entry):
     Given a journal entry row (sqlite3.Row), parse the description
     to extract purchase fields. Returns a dict.
     """
-    row = dict(entry)  # Convert to dict for safe .get()
+    row = dict(entry)
     
-    # Handle description being NULL
     desc = row.get('description')
     if desc is None:
         desc = ''
     else:
-        desc = str(desc)  # ensure string
+        desc = str(desc)
     
     purchase = {
         'id': row.get('id'),
@@ -3422,7 +3460,6 @@ def parse_purchase_from_journal(entry):
         'created_at': row.get('created_at') or row.get('transaction_date', '')
     }
     
-    # Parse pipe‑separated format
     parts = desc.split('|')
     for part in parts:
         part = part.strip()
@@ -3442,7 +3479,6 @@ def parse_purchase_from_journal(entry):
         elif part.startswith('bill:'):
             purchase['bill_of_sale_path'] = part.split(':', 1)[1].strip()
     
-    # Fallback for old format "Inventory purchase from <seller>"
     if purchase['seller_name'] == 'Unknown':
         import re
         match = re.search(r'Inventory purchase from (.*?)(?:\||$)', desc)
@@ -3560,7 +3596,6 @@ def create_inventory_purchase():
         if not seller_name or not str(seller_name).strip():
             return jsonify({'status': 'error', 'error': 'Seller name is required'}), 400
 
-        # Allow $0 for donations
         amount_spent = float(data.get('amount_spent', 0))
         if amount_spent < 0:
             return jsonify({'status': 'error', 'error': 'amount_spent cannot be negative'}), 400
@@ -3572,7 +3607,6 @@ def create_inventory_purchase():
         conn = get_db()
         cursor = conn.cursor()
 
-        # 1. INSERT INTO purchases table
         cursor.execute('''
             INSERT INTO purchases (seller_name, seller_contact, description, created_at, updated_at)
             VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -3580,7 +3614,6 @@ def create_inventory_purchase():
         
         purchase_id = cursor.lastrowid
         
-        # 2. INSERT INTO journal_entries_simple (if amount > 0)
         if amount_spent > 0:
             desc = f"Inventory purchase | seller: {seller_name} | contact: {seller_contact} | amount: {amount_spent:.2f} | date: {purchase_date} | desc: {description_text}"
             
@@ -3610,8 +3643,8 @@ def create_inventory_purchase():
                 desc,
                 'purchase',
                 str(purchase_id),
-                cash_id,          # post_from = credit (cash - purchases register)
-                inventory_id,     # post_to = debit (inventory)
+                cash_id,
+                inventory_id,
                 int(round(amount_spent * 100))
             ))
 
@@ -3638,15 +3671,12 @@ def delete_purchase(purchase_id):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get all records linked to this purchase
         cursor.execute('SELECT id FROM records WHERE batch_id = ?', (purchase_id,))
         records = cursor.fetchall()
         
-        # Unlink records (set batch_id to NULL) - don't delete them
         cursor.execute('UPDATE records SET batch_id = NULL WHERE batch_id = ?', (purchase_id,))
         unlinked_count = cursor.rowcount
         
-        # Delete the purchase
         cursor.execute('DELETE FROM purchases WHERE id = ?', (purchase_id,))
         
         conn.commit()
@@ -3660,8 +3690,6 @@ def delete_purchase(purchase_id):
     except Exception as e:
         app.logger.error(f"Error deleting purchase: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
-
 
 
 @app.route('/api/inventory-purchases/<int:purchase_id>', methods=['GET'])
@@ -3745,11 +3773,6 @@ def get_inventory_purchase(purchase_id):
 @login_required
 @role_required(['admin'])
 def update_inventory_purchase(purchase_id):
-    """
-    Update a purchase's seller info or price.
-    Price updates go directly to journal_entries_simple (amount stored in cents).
-    No status field — purchases.status was removed.
-    """
     try:
         data = request.get_json()
         if not data:
@@ -3758,14 +3781,12 @@ def update_inventory_purchase(purchase_id):
         conn = get_db()
         cursor = conn.cursor()
 
-        # 1. Check if purchase exists
         cursor.execute('SELECT id, seller_name, seller_contact, description FROM purchases WHERE id = ?', (purchase_id,))
         purchase = cursor.fetchone()
         if not purchase:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
 
-        # 2. Build UPDATE query for purchases table (NO status field)
         update_fields = []
         params = []
 
@@ -3786,7 +3807,6 @@ def update_inventory_purchase(purchase_id):
             params.append(purchase_id)
             cursor.execute(f"UPDATE purchases SET {', '.join(update_fields)} WHERE id = ?", params)
 
-        # 3. If total_purchase_price was provided, update journal_entries_simple
         if 'total_purchase_price' in data:
             new_price = float(data['total_purchase_price'])
             if new_price < 0:
@@ -3837,7 +3857,6 @@ def update_inventory_purchase(purchase_id):
 
         conn.commit()
 
-        # 4. Fetch updated purchase for response
         cursor.execute('''
             SELECT 
                 id, seller_name, seller_contact, description, 
@@ -3882,30 +3901,22 @@ def update_inventory_purchase(purchase_id):
 @login_required
 @role_required(['admin'])
 def delete_inventory_purchase(purchase_id):
-    """
-    Delete a purchase and all its associated data.
-    Handles both legacy (journal_entries + journal_lines) and new (journal_entries_simple).
-    """
     try:
         conn = get_db()
         cursor = conn.cursor()
         
-        # 1. Check if purchase exists
         cursor.execute('SELECT id, bill_of_sale_path FROM purchases WHERE id = ?', (purchase_id,))
         purchase = cursor.fetchone()
         if not purchase:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Purchase not found'}), 404
 
-        # 2. Delete from journal_entries_simple (new system)
         cursor.execute('''
             DELETE FROM journal_entries_simple 
             WHERE source_type = 'purchase' AND source_id = ?
         ''', (str(purchase_id),))
         simple_deleted = cursor.rowcount
 
-        # 3. Delete from journal_entries + journal_lines (legacy system)
-        # Get legacy journal entry
         cursor.execute('''
             SELECT id FROM journal_entries 
             WHERE source_type = 'purchase' AND source_id = ?
@@ -3913,15 +3924,12 @@ def delete_inventory_purchase(purchase_id):
         entry = cursor.fetchone()
         
         if entry:
-            # Delete journal lines
             cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (entry['id'],))
-            # Delete journal entry
             cursor.execute('DELETE FROM journal_entries WHERE id = ?', (entry['id'],))
             legacy_deleted = True
         else:
             legacy_deleted = False
 
-        # 4. Unlink records from this purchase (set batch_id to NULL)
         cursor.execute('''
             UPDATE records 
             SET batch_id = NULL 
@@ -3929,7 +3937,6 @@ def delete_inventory_purchase(purchase_id):
         ''', (purchase_id,))
         unlinked_count = cursor.rowcount
 
-        # 5. Delete bill file if exists
         if purchase['bill_of_sale_path']:
             file_path = os.path.join(os.path.dirname(__file__), 'static', purchase['bill_of_sale_path'].lstrip('/'))
             if os.path.exists(file_path):
@@ -3938,7 +3945,6 @@ def delete_inventory_purchase(purchase_id):
                 except Exception as e:
                     app.logger.warning(f"Could not delete bill image file: {e}")
 
-        # 6. Delete the purchase
         cursor.execute('DELETE FROM purchases WHERE id = ?', (purchase_id,))
         
         conn.commit()
@@ -3968,11 +3974,6 @@ def delete_inventory_purchase(purchase_id):
 def get_purchase_cost():
     """
     Get the purchase cost for a specific batch or record.
-    Used by the UI to display cost information.
-    
-    Query params:
-        batch_id: (optional) Get cost for entire batch
-        record_id: (optional) Get cost for specific record
     """
     try:
         batch_id = request.args.get('batch_id', type=int)
@@ -3984,7 +3985,6 @@ def get_purchase_cost():
         conn = get_db()
         cursor = conn.cursor()
         
-        # If record_id provided, get its batch_id first
         if record_id and not batch_id:
             cursor.execute('SELECT batch_id FROM records WHERE id = ?', (record_id,))
             row = cursor.fetchone()
@@ -4006,7 +4006,6 @@ def get_purchase_cost():
                 'message': 'No batch found for this record'
             })
         
-        # Get batch cost from purchases.total_purchase_price (new system)
         cursor.execute('''
             SELECT 
                 p.id as purchase_id,
@@ -4032,7 +4031,6 @@ def get_purchase_cost():
         
         total_cost = float(purchase['total_purchase_price'] or 0)
         
-        # If no cost in purchases table, check legacy journal_entries_simple
         if total_cost == 0:
             cursor.execute('''
                 SELECT amount / 100.0 as cost
@@ -4043,11 +4041,9 @@ def get_purchase_cost():
             if legacy:
                 total_cost = float(legacy['cost'] or 0)
         
-        # Calculate average cost per record
         record_count = purchase['record_count'] or 0
         avg_cost = total_cost / record_count if record_count > 0 else 0
         
-        # If record_id provided, calculate its specific cost
         record_cost = None
         if record_id and total_cost > 0:
             total_store_price = float(purchase['total_store_price'] or 0)
@@ -4083,7 +4079,6 @@ def get_purchase_cost():
 def upload_bill_of_sale():
     """Upload a bill of sale image for an inventory purchase"""
     try:
-        # Log what's being received
         app.logger.info(f"Files in request: {request.files}")
         app.logger.info(f"Form data: {request.form}")
         
@@ -4097,26 +4092,22 @@ def upload_bill_of_sale():
             app.logger.error("Empty filename")
             return jsonify({'status': 'error', 'error': 'No file selected'}), 400
         
-        # Check file extension
         allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf'}
         file_ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
         
         if file_ext not in allowed_extensions:
             return jsonify({'status': 'error', 'error': f'File type not allowed. Allowed: {", ".join(allowed_extensions)}'}), 400
         
-        # Generate unique filename
         import uuid
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         unique_id = uuid.uuid4().hex[:8]
         filename = f"bill_{timestamp}_{unique_id}.{file_ext}"
         
-        # Make sure the directory exists
         os.makedirs(BILLS_UPLOAD_FOLDER, exist_ok=True)
         
         filepath = os.path.join(BILLS_UPLOAD_FOLDER, filename)
         file.save(filepath)
         
-        # Return the relative URL path
         file_url = f"/static/uploads/bills/{filename}"
         app.logger.info(f"File saved to: {filepath}")
         
@@ -4149,7 +4140,6 @@ def update_record(record_id):
     update_fields = []
     update_values = []
     
-    # Allowed fields for update
     allowed_fields = [
         'artist', 'title', 'barcode', 'image_url', 'catalog_number',
         'condition_sleeve_id', 'condition_disc_id', 'store_price',
@@ -4317,8 +4307,6 @@ def get_user_records(user_id):
     return jsonify({'status': 'success', 'records': records_list})
 
 
- 
-
 # ==================== CONDITIONS ENDPOINTS ====================
 
 @app.route('/api/conditions', methods=['GET'])
@@ -4424,7 +4412,6 @@ def discogs_search_proxy():
         'User-Agent': 'PigStyleMusic/1.0'
     }
     
-    # Map format filter to Discogs format parameter
     format_map = {
         'vinyl': 'Vinyl',
         'cd': 'CD',
@@ -4456,11 +4443,9 @@ def discogs_search_proxy():
     results = []
     
     for item in data.get('results', []):
-        # Get artist from response or extract from title
         artist = item.get('artist', '')
         title = item.get('title', '')
         
-        # If artist is missing or "Unknown", try to extract from title
         if not artist or artist == 'Unknown':
             if title and ' - ' in title:
                 parts = title.split(' - ', 1)
@@ -4468,19 +4453,15 @@ def discogs_search_proxy():
                 title = parts[1].strip() if len(parts) > 1 else title
                 print(f"Extracted artist '{artist}' from title")
         
-        # Handle artist being a list
         if isinstance(artist, list):
             artist = artist[0] if artist else 'Unknown'
         
-        # Final fallback
         if not artist or artist == 'Unknown':
             artist = 'Unknown Artist'
         
-        # Get raw genre string
         genre_list = item.get('genre', [])
         raw_genre = ', '.join(genre_list) if genre_list else ''
         
-        # ===== NEW: return full format array alongside first format =====
         format_list = item.get('format', [])
         format_str = format_list[0] if format_list else ''
         
@@ -4946,14 +4927,12 @@ def submit_feedback():
         contact_info = data.get('contact_info', '').strip()
         name = data.get('name', '').strip()
         
-        # Validate
         if not content:
             return jsonify({'status': 'error', 'error': 'Feedback content is required'}), 400
         
         conn = get_db()
         cursor = conn.cursor()
         
-        # Insert new feedback with notified = 0 (unread)
         cursor.execute('''
             INSERT INTO feedback (content, contact_info, name, notified)
             VALUES (?, ?, ?, 0)
@@ -5127,7 +5106,6 @@ def create_sticky_note():
         conn = get_db()
         cursor = conn.cursor()
         
-        # If position provided, shift existing positions
         if position is not None:
             cursor.execute('''
                 UPDATE sticky_notes 
@@ -5143,7 +5121,6 @@ def create_sticky_note():
         note_id = cursor.lastrowid
         conn.commit()
         
-        # Fetch the created note
         cursor.execute('SELECT id, note_text, position, is_active, created_at, updated_at FROM sticky_notes WHERE id = ?', (note_id,))
         note = cursor.fetchone()
         conn.close()
@@ -5173,7 +5150,6 @@ def update_sticky_note(note_id):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if note exists
         cursor.execute('SELECT id FROM sticky_notes WHERE id = ?', (note_id,))
         if not cursor.fetchone():
             conn.close()
@@ -5196,28 +5172,23 @@ def update_sticky_note(note_id):
         if 'position' in data:
             position = data['position']
             
-            # Get current position
             cursor.execute('SELECT position FROM sticky_notes WHERE id = ?', (note_id,))
             old_position = cursor.fetchone()['position']
             
-            # Adjust positions if needed
             if old_position != position:
                 if position is None:
-                    # Removing position - shift others down
                     cursor.execute('''
                         UPDATE sticky_notes 
                         SET position = position - 1 
                         WHERE position > ? AND position IS NOT NULL
                     ''', (old_position,))
                 elif old_position is None:
-                    # Adding position - shift others up
                     cursor.execute('''
                         UPDATE sticky_notes 
                         SET position = position + 1 
                         WHERE position >= ? AND position IS NOT NULL
                     ''', (position,))
                 else:
-                    # Moving to new position
                     if position > old_position:
                         cursor.execute('''
                             UPDATE sticky_notes 
@@ -5248,7 +5219,6 @@ def update_sticky_note(note_id):
         cursor.execute(f"UPDATE sticky_notes SET {', '.join(update_fields)} WHERE id = ?", update_values)
         conn.commit()
         
-        # Fetch updated note
         cursor.execute('SELECT id, note_text, position, is_active, created_at, updated_at FROM sticky_notes WHERE id = ?', (note_id,))
         note = cursor.fetchone()
         conn.close()
@@ -5273,7 +5243,6 @@ def delete_sticky_note(note_id):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get the position before deleting
         cursor.execute('SELECT position FROM sticky_notes WHERE id = ?', (note_id,))
         note = cursor.fetchone()
         
@@ -5283,10 +5252,8 @@ def delete_sticky_note(note_id):
         
         old_position = note['position']
         
-        # Delete the note
         cursor.execute('DELETE FROM sticky_notes WHERE id = ?', (note_id,))
         
-        # Shift remaining positions down
         if old_position is not None:
             cursor.execute('''
                 UPDATE sticky_notes 
@@ -5312,7 +5279,6 @@ def delete_sticky_note(note_id):
 @app.route('/api/admin/db-schema', methods=['GET', 'OPTIONS'])
 def admin_db_schema():
     """Get database schema information for admin query tool"""
-    # Handle preflight OPTIONS request
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
         response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
@@ -5322,14 +5288,12 @@ def admin_db_schema():
         return response, 200
     
     try:
-        # Check login
         if 'user_id' not in session or not session.get('logged_in'):
             return jsonify({
                 'status': 'error',
                 'message': 'Authentication required'
             }), 401
         
-        # Check admin role
         if session.get('role') != 'admin':
             return jsonify({
                 'status': 'error',
@@ -5339,7 +5303,6 @@ def admin_db_schema():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get all tables (exclude sqlite internal tables)
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
         tables = cursor.fetchall()
         
@@ -5348,17 +5311,16 @@ def admin_db_schema():
         for table in tables:
             table_name = table['name']
             
-            # Use double quotes to handle table names with special characters
             cursor.execute(f'PRAGMA table_info("{table_name}")')
             columns = cursor.fetchall()
             
             column_list = []
             for col in columns:
                 column_list.append({
-                    'column_name': col[1],  # name is at index 1
-                    'data_type': col[2],     # type is at index 2
-                    'is_primary': col[5] == 1,  # pk is at index 5
-                    'is_nullable': 'YES' if col[3] == 0 else 'NO'  # notnull is at index 3 (0=nullable, 1=not null)
+                    'column_name': col[1],
+                    'data_type': col[2],
+                    'is_primary': col[5] == 1,
+                    'is_nullable': 'YES' if col[3] == 0 else 'NO'
                 })
             
             schema['tables'][table_name] = column_list
@@ -5388,7 +5350,6 @@ def admin_db_schema():
 @app.route('/api/admin/execute-query', methods=['POST', 'OPTIONS'])
 def admin_execute_query():
     """Execute SQL query (admin only)"""
-    # Handle preflight OPTIONS request
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
         response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
@@ -5398,7 +5359,6 @@ def admin_execute_query():
         return response, 200
     
     try:
-        # Check login
         if 'user_id' not in session or not session.get('logged_in'):
             response = jsonify({
                 'status': 'error',
@@ -5408,7 +5368,6 @@ def admin_execute_query():
             response.headers.add('Access-Control-Allow-Credentials', 'true')
             return response, 401
         
-        # Check admin role
         if session.get('role') != 'admin':
             response = jsonify({
                 'status': 'error',
@@ -5427,10 +5386,8 @@ def admin_execute_query():
             response.headers.add('Access-Control-Allow-Credentials', 'true')
             return response, 400
         
-        # Basic security: prevent dangerous operations
         query_upper = query.upper()
         
-        # Block certain dangerous commands
         dangerous_keywords = ['DROP DATABASE', 'DROP TABLE', 'TRUNCATE', 'ALTER DATABASE']
         for keyword in dangerous_keywords:
             if keyword in query_upper:
@@ -5442,7 +5399,6 @@ def admin_execute_query():
                 response.headers.add('Access-Control-Allow-Credentials', 'true')
                 return response, 403
         
-        # Log the query for audit
         app.logger.info(f"Admin user {session.get('username')} executing query: {query[:200]}")
         
         conn = get_db()
@@ -5450,7 +5406,6 @@ def admin_execute_query():
         
         start_time = datetime.now()
         
-        # Determine query type
         query_type = 'UNKNOWN'
         if query_upper.startswith('SELECT'):
             query_type = 'SELECT'
@@ -5467,7 +5422,6 @@ def admin_execute_query():
             if query_type == 'SELECT':
                 cursor.execute(query)
                 results = cursor.fetchall()
-                # Convert to list of dicts
                 results_list = [dict(row) for row in results]
                 
                 execution_time = (datetime.now() - start_time).total_seconds() * 1000
@@ -5500,7 +5454,6 @@ def admin_execute_query():
                     'message': f'{query_type} executed successfully'
                 }
                 
-                # For INSERT, also return the last insert ID if available
                 if query_type == 'INSERT' and cursor.lastrowid:
                     response_data['last_insert_id'] = cursor.lastrowid
                 
@@ -5525,7 +5478,6 @@ def admin_execute_query():
                 return response
                 
             else:
-                # Try to execute anyway for other query types
                 cursor.execute(query)
                 conn.commit()
                 
@@ -5571,7 +5523,6 @@ def get_top_artists_stats():
     conn = get_db()
     cursor = conn.cursor()
     
-    # Get top 10 artists by number of sold copies (status_id = 3)
     cursor.execute('''
         SELECT artist, COUNT(*) as copies_sold
         FROM records
@@ -5600,7 +5551,6 @@ def get_sales_over_time_stats():
     conn = get_db()
     cursor = conn.cursor()
     
-    # Get monthly sales data for the last 12 months
     cursor.execute('''
         SELECT 
             strftime('%Y-%m', date_sold) as month,
@@ -5635,7 +5585,6 @@ def get_top_genres_stats():
     conn = get_db()
     cursor = conn.cursor()
     
-    # Get genres from sold records
     cursor.execute('''
         SELECT 
             CASE 
@@ -5675,7 +5624,6 @@ def get_sales_over_time_daily_stats():
     conn = get_db()
     cursor = conn.cursor()
     
-    # Get daily sales data for ALL available dates
     cursor.execute('''
         SELECT 
             date_sold as date,
@@ -5701,38 +5649,48 @@ def get_sales_over_time_daily_stats():
 
 @app.route('/api/locations', methods=['GET'])
 def get_locations():
-    """Get all locations from the locations table"""
+    """Get all locations with hierarchy info and a composed display name."""
     try:
         conn = get_db()
         cursor = conn.cursor()
-        
-        # Check if locations table exists
+
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='locations'")
         if not cursor.fetchone():
             conn.close()
-            return jsonify({
-                'status': 'success',
-                'locations': [],
-                'count': 0
-            })
-        
-        cursor.execute('SELECT id, name FROM locations ORDER BY name')
-        locations = cursor.fetchall()
+            return jsonify({'status': 'success', 'locations': [], 'count': 0})
+
+        cursor.execute('''
+            SELECT
+                l.id,
+                l.name,
+                l.parent_id,
+                p.name AS parent_name
+            FROM locations l
+            LEFT JOIN locations p ON l.parent_id = p.id
+            ORDER BY
+                COALESCE(p.name, l.name),
+                CASE WHEN l.parent_id IS NULL THEN 0 ELSE 1 END,
+                l.name
+        ''')
+        rows = cursor.fetchall()
         conn.close()
-        
-        locations_list = []
-        for row in locations:
-            locations_list.append({
+
+        locations = []
+        for row in rows:
+            locations.append({
                 'id': row['id'],
-                'name': row['name']
+                'name': row['name'],
+                'parent_id': row['parent_id'],
+                'parent_name': row['parent_name'],
+                'display_name': build_location_display(row['parent_name'], row['name']),
             })
-        
+
         return jsonify({
             'status': 'success',
-            'locations': locations_list,
-            'count': len(locations_list)
+            'locations': locations,
+            'count': len(locations),
         })
-        
+
     except Exception as e:
         app.logger.error(f"Error getting locations: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
@@ -5746,7 +5704,6 @@ def get_created_at_distribution_stats():
     conn = get_db()
     cursor = conn.cursor()
     
-    # Get all records grouped by month of creation
     cursor.execute('''
         SELECT 
             strftime('%Y-%m', created_at) as month,
@@ -5784,7 +5741,6 @@ def bulk_mark_paid_orders_sold():
 
         handler = DiscogsHandler(TOKEN)
 
-        # Fetch all orders, filter to Payment Received
         all_orders = handler.get_all_orders(status='Payment Received')
         if not all_orders:
             return jsonify({'status': 'success', 'message': 'No Payment Received orders found',
@@ -5794,9 +5750,9 @@ def bulk_mark_paid_orders_sold():
         cursor = conn.cursor()
 
         marked = 0
-        skipped = 0          # already sold
-        not_found = 0        # PIGSTYLE ID not in DB
-        no_pigstyle = 0      # item has no [PIGSTYLE ID: N] comment
+        skipped = 0
+        not_found = 0
+        no_pigstyle = 0
         details = []
 
         today = datetime.now().strftime('%Y-%m-%d')
@@ -5821,7 +5777,6 @@ def bulk_mark_paid_orders_sold():
                     details.append({'pigstyle_id': pid, 'order_id': order_id, 'result': 'not_found'})
                     continue
 
-                # Already sold?
                 if rec['status_id'] in (3, 4):
                     skipped += 1
                     details.append({'pigstyle_id': pid, 'order_id': order_id,
@@ -5878,7 +5833,6 @@ def price_estimate_v3():
     media_condition = data.get('media_condition', '').strip()
     sleeve_condition = data.get('sleeve_condition', '').strip()
     
-    # Validation
     if not catalog_number:
         return jsonify({'status': 'error', 'error': 'catalog_number is required'}), 400
     if not media_condition:
@@ -5886,7 +5840,6 @@ def price_estimate_v3():
     if not sleeve_condition:
         return jsonify({'status': 'error', 'error': 'sleeve_condition is required'}), 400
     
-    # Get Discogs token
     discogs_token = os.environ.get('DISCOGS_USER_TOKEN')
     if not discogs_token:
         return jsonify({'status': 'error', 'error': 'DISCOGS_USER_TOKEN not configured'}), 500
@@ -5896,7 +5849,6 @@ def price_estimate_v3():
         'Authorization': f'Discogs token={discogs_token}'
     }
     
-    # Step 1: Search for release
     app.logger.info(f"🔍 Searching for catalog: {catalog_number}")
     search_url = "https://api.discogs.com/database/search"
     params = {'q': catalog_number, 'type': 'release', 'per_page': 10}
@@ -5912,7 +5864,6 @@ def price_estimate_v3():
     if not results:
         return jsonify({'status': 'error', 'error': f'No release found for catalog: {catalog_number}'}), 404
     
-    # Find exact catalog match
     release = None
     catalog_normalized = catalog_number.lower().replace(' ', '').replace('-', '')
     
@@ -5932,7 +5883,6 @@ def price_estimate_v3():
     release_id = release['id']
     app.logger.info(f"✅ Found release ID: {release_id}")
     
-    # Step 2: Get price suggestions - THIS RETURNS CONDITION-SPECIFIC PRICES!
     app.logger.info(f"💰 Getting price suggestions for release: {release_id}")
     price_url = f"https://api.discogs.com/marketplace/price_suggestions/{release_id}"
     
@@ -5952,8 +5902,6 @@ def price_estimate_v3():
             'error': f'No price data available for release {release_id}'
         }), 404
     
-    # Step 3: Get the price for the specific condition
-    # Map user-friendly condition names to Discogs condition names
     condition_map = {
         'mint': 'Mint (M)',
         'near mint': 'Near Mint (NM or M-)',
@@ -5965,11 +5913,9 @@ def price_estimate_v3():
         'poor': 'Poor (P)'
     }
     
-    # Clean the media condition input
     media_clean = media_condition.lower().strip()
     media_clean = re.sub(r'\s*\([^)]*\)', '', media_clean).strip()
     
-    # Find matching condition key
     condition_key = None
     for key in condition_map:
         if key in media_clean:
@@ -5983,7 +5929,6 @@ def price_estimate_v3():
             'valid_conditions': list(condition_map.values())
         }), 400
     
-    # Get the price for the condition
     if condition_key not in price_data:
         return jsonify({
             'status': 'error',
@@ -6002,7 +5947,6 @@ def price_estimate_v3():
     
     app.logger.info(f"💰 Price for {condition_key}: ${estimated_price}")
     
-    # Step 4: Get community stats for confidence
     stats_url = f"https://api.discogs.com/releases/{release_id}/stats"
     stats_response = requests.get(stats_url, headers=headers, timeout=10)
     stats = stats_response.json() if stats_response.status_code == 200 else {}
@@ -6010,8 +5954,7 @@ def price_estimate_v3():
     wants = stats.get('community', {}).get('want', 0)
     haves = stats.get('community', {}).get('have', 0)
     
-    # Calculate confidence based on community data
-    confidence = 50  # Base confidence
+    confidence = 50
     if wants > 0:
         confidence += 10
     if haves > 0:
@@ -6021,7 +5964,6 @@ def price_estimate_v3():
     if haves > 100:
         confidence += 10
     
-    # Get min and max prices from all conditions
     all_prices = [data.get('value', 0) for data in price_data.values() if data.get('value')]
     min_price = min(all_prices) if all_prices else estimated_price
     max_price = max(all_prices) if all_prices else estimated_price
@@ -6035,11 +5977,11 @@ def price_estimate_v3():
         'price_range_low': round(min_price, 2),
         'price_range_high': round(max_price, 2),
         'confidence_score': min(confidence, 100),
-        'condition_multiplier': 1.0,  # Not needed since Discogs gives condition-specific prices
-        'demand_adjustment': 1.0,  # Not needed
+        'condition_multiplier': 1.0,
+        'demand_adjustment': 1.0,
         'base_median_price': round(estimated_price, 2),
         'want_have_ratio': round(wants / haves, 2) if haves > 0 else 0,
-        'num_sales': 0  # Not available from price_suggestions
+        'num_sales': 0
     }
     
     app.logger.info(f"✅ Returning price: ${result['estimated_price']}")
@@ -6090,7 +6032,6 @@ def update_subscription(subscription_id):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if subscription exists
         cursor.execute('SELECT id, email FROM email_subscriptions WHERE id = ?', (subscription_id,))
         existing = cursor.fetchone()
         if not existing:
@@ -6124,12 +6065,10 @@ def update_subscription(subscription_id):
             updates.append('is_active = ?')
             params.append(1 if data['is_active'] else 0)
         
-        # Support marking as read by setting notified = 1
         if 'mark_read' in data:
             updates.append('notified = ?')
             params.append(1 if data['mark_read'] else 0)
         
-        # Support marking as unread by setting notified = 0
         if 'mark_unread' in data:
             updates.append('notified = ?')
             params.append(0 if data['mark_unread'] else 1)
@@ -6168,7 +6107,6 @@ def delete_subscription(subscription_id):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if subscription exists
         cursor.execute('SELECT id, email FROM email_subscriptions WHERE id = ?', (subscription_id,))
         sub = cursor.fetchone()
         
@@ -6176,7 +6114,6 @@ def delete_subscription(subscription_id):
             conn.close()
             return jsonify({'status': 'error', 'error': 'Subscription not found'}), 404
         
-        # Delete the subscription
         cursor.execute('DELETE FROM email_subscriptions WHERE id = ?', (subscription_id,))
         
         conn.commit()
@@ -6312,15 +6249,13 @@ def get_subscriptions():
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 50, type=int)
         
-        # Filter by notified status (unread/read)
-        notified_filter = request.args.get('notified')  # '0' for unread, '1' for read, None for all
+        notified_filter = request.args.get('notified')
         
         offset = (page - 1) * per_page
         
         conn = get_db()
         cursor = conn.cursor()
         
-        # Build query with filters
         query = '''
             SELECT id, email, artist, title, catalog_number, created_at, is_active, notified
             FROM email_subscriptions
@@ -6347,7 +6282,6 @@ def get_subscriptions():
             query += ' AND notified = ?'
             params.append(int(notified_filter))
         
-        # Get total count
         count_query = query.replace(
             'SELECT id, email, artist, title, catalog_number, created_at, is_active, notified',
             'SELECT COUNT(*) as total'
@@ -6373,7 +6307,7 @@ def get_subscriptions():
                 'created_at': row['created_at'],
                 'is_active': bool(row['is_active']),
                 'notified': bool(row['notified']),
-                'is_new': row['notified'] == 0  # Not notified = new/unread
+                'is_new': row['notified'] == 0
             }
             subscriptions.append(sub)
         
@@ -6403,7 +6337,6 @@ def unsubscribe(subscription_id):
             conn.close()
             return jsonify({'status': 'error', 'error': 'Subscription not found'}), 404
         
-        # Soft delete - set is_active to 0
         cursor.execute('UPDATE email_subscriptions SET is_active = 0 WHERE id = ?', (subscription_id,))
         conn.commit()
         conn.close()
@@ -6460,7 +6393,6 @@ def accounting_get_journal():
         conn = get_db()
         cursor = conn.cursor()
 
-        # Base query for journal entries
         entry_query = '''
             SELECT id, transaction_date, description, source_type, source_id
             FROM journal_entries
@@ -6468,14 +6400,12 @@ def accounting_get_journal():
         '''
         params = []
 
-        # Search filter
         if search:
             entry_query += ' AND (description LIKE ? OR source_id LIKE ?)'
             search_term = f'%{search}%'
             params.append(search_term)
             params.append(search_term)
 
-        # Account filter
         if account_id:
             entry_query += ''' AND EXISTS (
                 SELECT 1 FROM journal_lines jl 
@@ -6484,7 +6414,6 @@ def accounting_get_journal():
             )'''
             params.append(account_id)
 
-        # NEW: Unbalanced only filter
         if unbalanced_only:
             entry_query += ''' AND journal_entries.id IN (
                 SELECT je2.id
@@ -6494,7 +6423,6 @@ def accounting_get_journal():
                 HAVING COALESCE(SUM(jl2.debit_amount), 0) != COALESCE(SUM(jl2.credit_amount), 0)
             )'''
 
-        # Get total count
         count_query = entry_query.replace(
             'SELECT id, transaction_date, description, source_type, source_id',
             'SELECT COUNT(*) as total'
@@ -6502,13 +6430,11 @@ def accounting_get_journal():
         cursor.execute(count_query, params)
         total = cursor.fetchone()['total']
 
-        # Get paginated entries - newest first
         entry_query += ' ORDER BY transaction_date DESC, id DESC LIMIT ? OFFSET ?'
         params.extend([per_page, offset])
         cursor.execute(entry_query, params)
         entries_rows = cursor.fetchall()
 
-        # For each entry, fetch its lines
         entries = []
         for entry in entries_rows:
             lines_query = '''
@@ -6536,7 +6462,6 @@ def accounting_get_journal():
                     if line['code']:
                         credit_account = f"{line['code']} - {line['name']}"
 
-            # Calculate difference
             difference = debit_total - credit_total
             
             entries.append({
@@ -6549,7 +6474,7 @@ def accounting_get_journal():
                 'debit_amount': debit_total,
                 'credit_account': credit_account,
                 'credit_amount': credit_total,
-                'difference': round(difference, 2)  # NEW: include difference
+                'difference': round(difference, 2)
             })
 
         conn.close()
@@ -6631,12 +6556,10 @@ def accounting_post_manual():
 
 def process_order_for_accounting(order, conn, cursor):
     """Helper function to create journal entries for a single order."""
-    # Convert sqlite3.Row to dict for safe .get() usage
     order = dict(order)
     order_id = order['id']
     app.logger.info(f"  → Processing order {order_id}")
     
-    # Get order items with inventory COGS
     cursor.execute('''
         SELECT oi.id, oi.record_id, oi.price_at_time, r.cogs
         FROM order_items oi
@@ -6646,7 +6569,6 @@ def process_order_for_accounting(order, conn, cursor):
     items = cursor.fetchall()
     app.logger.info(f"    Found {len(items)} order items")
     
-    # Get payments (table may be missing)
     try:
         cursor.execute('SELECT id, source, gross_amount FROM payments WHERE order_id = ?', (order_id,))
         payments = cursor.fetchall()
@@ -6654,7 +6576,6 @@ def process_order_for_accounting(order, conn, cursor):
         app.logger.warning("    Payments table missing – using cash default")
         payments = []
     
-    # Get fees (table may be missing)
     try:
         cursor.execute('SELECT id, fee_type, amount, source FROM fees WHERE order_id = ?', (order_id,))
         fees = cursor.fetchall()
@@ -6662,48 +6583,40 @@ def process_order_for_accounting(order, conn, cursor):
         app.logger.warning("    Fees table missing – skipping fees")
         fees = []
     
-    # Get shipping info – handle missing table gracefully
     shipping = None
     try:
         cursor.execute('SELECT shipping_charged, postage_cost FROM shipments WHERE order_id = ?', (order_id,))
         shipping = cursor.fetchone()
         if shipping:
-            # Convert to dict if needed
             shipping = dict(shipping)
     except sqlite3.OperationalError:
         app.logger.warning("    Shipments table missing – using order shipping_cost")
         shipping = None
     
-    # Determine payment source
     payment_source = payments[0]['source'] if payments else 'cash'
     app.logger.info(f"    Payment source: {payment_source}")
     
-    # Map payment source to account code
     account_map = {
-        'cash': '1015',  # Cash - Register (NEW)
-        'paypal': '1020', # PayPal
-        'square': '1030', # Square Asset (NEW)
-        'discogs': '1020', # PayPal (Discogs payments)
-        'giftcard': '1015' # Cash - Register (or gift card liability if you have one)
+        'cash': '1015',
+        'paypal': '1020',
+        'square': '1030',
+        'discogs': '1020',
+        'giftcard': '1015'
     }
-    debit_account_code = account_map.get(payment_source, '1015') # fallback to register
+    debit_account_code = account_map.get(payment_source, '1015')
     
-    # Get account IDs
     cursor.execute('SELECT id, code FROM accounts')
     accounts = {row['code']: row['id'] for row in cursor.fetchall()}
     
-    # Verify required accounts exist
-    required = ['4000', '1050', '5000', '4010', '5010', '5020', '2010'] # revenue accounts will be mapped separately
-    # Revenue account mapping
+    required = ['4000', '1050', '5000', '4010', '5010', '5020', '2010']
     revenue_map = {
-        'cash': '4001',  # Sales Revenue - Cash
-        'paypal': '4003', # Sales Revenue - PayPal
-        'square': '4000', # Sales Revenue - Square
-        'discogs': '4003' # Sales Revenue - PayPal (or create a separate Discogs revenue account)
+        'cash': '4001',
+        'paypal': '4003',
+        'square': '4000',
+        'discogs': '4003'
     }
     revenue_account_code = revenue_map.get(payment_source, '4000')
     
-    # Verify all required accounts exist
     for code in required + [debit_account_code, revenue_account_code, '1015', '1050', '5000']:
         if code not in accounts:
             raise KeyError(f"Missing account code: {code}")
@@ -6712,7 +6625,6 @@ def process_order_for_accounting(order, conn, cursor):
     total_cogs = sum(item['cogs'] or 0 for item in items) if items else 0
     app.logger.info(f"    Total sales: {total_sales}, Total COGS: {total_cogs}")
     
-    # Shipping – use shipment record if available, else fallback to order
     if shipping:
         shipping_charged = shipping.get('shipping_charged', 0) or 0
         postage_cost = shipping.get('postage_cost', 0) or 0
@@ -6724,7 +6636,6 @@ def process_order_for_accounting(order, conn, cursor):
     tax_total = order.get('tax_total', 0) or 0
     total_fees = sum(fee['amount'] or 0 for fee in fees) if fees else 0
     
-    # Create journal entry
     cursor.execute('''
         INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
         VALUES (?, ?, ?, ?)
@@ -6732,22 +6643,19 @@ def process_order_for_accounting(order, conn, cursor):
     entry_id = cursor.lastrowid
     app.logger.info(f"    Created journal entry {entry_id}")
     
-    # Revenue entry (debit asset, credit revenue)
-    debit_amount = total_sales  # only the item sales, shipping separate
+    debit_amount = total_sales
     if debit_amount > 0:
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, accounts[debit_account_code], int(round(debit_amount * 100)), 0))
     
-    # Credit Sales Revenue
     if total_sales > 0:
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, accounts[revenue_account_code], 0, int(round(total_sales * 100))))
     
-    # COGS entry (debit COGS, credit Inventory)
     if total_cogs > 0:
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
@@ -6758,10 +6666,7 @@ def process_order_for_accounting(order, conn, cursor):
             VALUES (?, ?, ?, ?)
         ''', (entry_id, accounts['1050'], 0, int(round(total_cogs * 100))))
     
-    # Shipping Revenue (credit) and Shipping Expense (debit), but shipping may be charged separately
     if shipping_charged > 0:
-        # Debit the same asset account? Actually, shipping is part of total revenue.
-        # We'll credit Shipping Revenue (4010) and debit the asset.
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
@@ -6771,7 +6676,6 @@ def process_order_for_accounting(order, conn, cursor):
             VALUES (?, ?, ?, ?)
         ''', (entry_id, accounts['4010'], 0, int(round(shipping_charged * 100))))
     
-    # Shipping expense (if postage cost incurred)
     if postage_cost > 0:
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
@@ -6782,7 +6686,6 @@ def process_order_for_accounting(order, conn, cursor):
             VALUES (?, ?, ?, ?)
         ''', (entry_id, accounts[debit_account_code], 0, int(round(postage_cost * 100))))
     
-    # Sales Tax
     if tax_total > 0:
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
@@ -6793,7 +6696,6 @@ def process_order_for_accounting(order, conn, cursor):
             VALUES (?, ?, ?, ?)
         ''', (entry_id, accounts['2010'], 0, int(round(tax_total * 100))))
     
-    # Fees (e.g., PayPal, Square)
     if total_fees > 0:
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
@@ -7055,11 +6957,6 @@ def accounting_reports():
         cursor = conn.cursor()
         
         if report_type == 'pll':
-            # ============================================================
-            # P&L from bank_transactions
-            # ============================================================
-            
-            # Aggregated P&L
             query = '''
                 SELECT 
                     a.type,
@@ -7101,7 +6998,7 @@ def accounting_reports():
                     'Balance': balance
                 })
             
-            net_profit = total_revenue + total_expenses  # expenses are negative
+            net_profit = total_revenue + total_expenses
             summary = f"Total Revenue: ${total_revenue:.2f} | Total Expenses: ${abs(total_expenses):.2f} | Net Profit: ${net_profit:.2f}"
             
             return jsonify({
@@ -7113,9 +7010,6 @@ def accounting_reports():
             })
         
         elif report_type == 'balance-sheet':
-            # ============================================================
-            # Balance Sheet from bank_transactions
-            # ============================================================
             query = '''
                 SELECT 
                     a.type,
@@ -7193,11 +7087,6 @@ def get_balances():
         conn = get_db()
         cursor = conn.cursor()
         
-        # ============================================================
-        # Cash / bank asset accounts — show running balance
-        # Includes: Bluevine (1), FNBO (21), and the two new
-        # Cash Register accounts (Sales and Purchases).
-        # ============================================================
         cursor.execute('''
             SELECT 
                 a.code,
@@ -7213,10 +7102,10 @@ def get_balances():
             LEFT JOIN bank_transactions bt 
                 ON bt.post_from = a.id OR bt.post_to = a.id
             WHERE a.id IN (
-                1,           -- Bluevine
-                21,          -- FNBO
-                (SELECT id FROM accounts WHERE code = '1015'),  -- Cash - Register (Sales)
-                (SELECT id FROM accounts WHERE code = '1017')   -- Cash - Register (Purchases)
+                1,
+                21,
+                (SELECT id FROM accounts WHERE code = '1015'),
+                (SELECT id FROM accounts WHERE code = '1017')
             )
             GROUP BY a.id, a.code, a.name
             ORDER BY a.code
@@ -7232,9 +7121,6 @@ def get_balances():
             })
         conn.close()
         
-        # ============================================================
-        # Private Account balance (account 53)
-        # ============================================================
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute('''
@@ -7257,9 +7143,6 @@ def get_balances():
             'balance': row['private_account_balance'] if row and row['private_account_balance'] is not None else 0
         })
         
-        # ============================================================
-        # Prepaid Rent balance (account 52 / code 1055)
-        # ============================================================
         conn = get_db()
         cursor = conn.cursor()
         
@@ -7298,27 +7181,21 @@ def get_balances():
 def monthly_pl():
     """
     Get monthly P&L data from BOTH bank_transactions AND journal_entries_simple (manual only).
-    NOTE: post_from and post_to in journal_entries_simple store account IDs (e.g., 51, 52)
     """
     try:
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get asset account IDs for exclusion from bank transactions
         cursor.execute('SELECT id FROM accounts WHERE type = "asset"')
         asset_rows = cursor.fetchall()
         asset_ids = [str(row['id']) for row in asset_rows]
         asset_ids_str = ','.join(asset_ids) if asset_ids else '0'
         
-        # Get Private Account ID for exclusion
         cursor.execute('SELECT id FROM accounts WHERE code = "1016"')
         private_row = cursor.fetchone()
         private_id = str(private_row['id']) if private_row else '0'
         
         query = f'''
-            -- ============================================================
-            -- PART 1: Bank Transactions (excluding asset-to-asset)
-            -- ============================================================
             SELECT 
                 strftime('%Y-%m', bt.transaction_date) AS month,
                 a.type,
@@ -7332,16 +7209,11 @@ def monthly_pl():
               AND NOT (f.type = 'asset' AND a.type = 'asset')
               AND bt.post_from != {private_id}
               AND bt.post_to != {private_id}
-              -- EXCLUDE Prepaid Rent (account ID 52)
               AND bt.post_to != 52
             GROUP BY strftime('%Y-%m', bt.transaction_date), a.id
             
             UNION ALL
             
-            -- ============================================================
-            -- PART 2: Manual Journal Entries (source_type = 'manual')
-            -- post_from and post_to store account IDs (e.g., 51, 52)
-            -- ============================================================
             SELECT 
                 strftime('%Y-%m', je.transaction_date) AS month,
                 a.type,
@@ -7357,7 +7229,6 @@ def monthly_pl():
             FROM journal_entries_simple je
             JOIN accounts a ON a.id = je.post_from OR a.id = je.post_to
             WHERE je.source_type = 'manual'
-              -- EXCLUDE Prepaid Rent (account ID 52)
               AND a.id != 52
             GROUP BY strftime('%Y-%m', je.transaction_date), a.id
         '''
@@ -7366,7 +7237,6 @@ def monthly_pl():
         rows = cursor.fetchall()
         conn.close()
         
-        # Aggregate by month and account (combine same accounts from different sources)
         from collections import defaultdict
         aggregated = defaultdict(lambda: defaultdict(float))
         
@@ -7377,7 +7247,6 @@ def monthly_pl():
             key = f"{row['code']}_{row['name']}"
             aggregated[month][key] += float(row['balance'] or 0)
         
-        # Build result
         result = []
         for month, accounts in sorted(aggregated.items()):
             for key, balance in accounts.items():
@@ -7419,7 +7288,6 @@ def bank_assign_single():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if transaction exists and is unposted
         cursor.execute('SELECT id, post_to FROM bank_transactions WHERE id = ?', (transaction_id,))
         tx = cursor.fetchone()
         if not tx:
@@ -7430,12 +7298,10 @@ def bank_assign_single():
             conn.close()
             return jsonify({'status': 'error', 'error': 'Transaction already posted'}), 400
         
-        # Get account name for response
         cursor.execute('SELECT name FROM accounts WHERE id = ?', (post_to,))
         account = cursor.fetchone()
         account_name = account['name'] if account else None
         
-        # Update the transaction
         cursor.execute('UPDATE bank_transactions SET post_to = ? WHERE id = ?', (post_to, transaction_id))
         conn.commit()
         conn.close()
@@ -7477,7 +7343,6 @@ def bank_bulk_assign():
                 errors.append(f"Missing data for transaction {transaction_id}")
                 continue
             
-            # Check if transaction exists and is unposted
             cursor.execute('SELECT post_to FROM bank_transactions WHERE id = ?', (transaction_id,))
             tx = cursor.fetchone()
             if not tx:
@@ -7557,10 +7422,7 @@ def get_categorisation_rules(active_only=True):
     return rules
 
 def apply_rule(rule_id, dry_run=False):
-    """Apply a single rule to unprocessed bank transactions.
-    If dry_run=True, only return matching transactions without posting.
-    Returns dict with transactions and count.
-    """
+    """Apply a single rule to unprocessed bank transactions."""
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM categorisation_rules WHERE id = ?', (rule_id,))
@@ -7571,7 +7433,6 @@ def apply_rule(rule_id, dry_run=False):
     pattern = rule['pattern'].upper()
     account_id = rule['account_id']
 
-    # Get unprocessed withdrawals (amount > 0) from historic bank_transactions
     cursor.execute('''
         SELECT id, transaction_date, amount, description
         FROM bank_transactions
@@ -7589,32 +7450,26 @@ def apply_rule(rule_id, dry_run=False):
         conn.close()
         return {'transactions': matched, 'count': len(matched)}
 
-    # Process matched transactions
     processed_count = 0
-    # Get cash account for historic transactions
     cash_id = get_cash_account_id('historic')
     for tx in matched:
         amount_cents = int(round(tx['amount'] * 100))
-        # Create journal entry with source_type 'historic'
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
         ''', (tx['transaction_date'], f"Bank expense: {tx['description']}", 'historic', str(tx['id'])))
         entry_id = cursor.lastrowid
 
-        # Debit expense account
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, account_id, amount_cents, 0))
 
-        # Credit cash account (specific to historic)
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, cash_id, 0, amount_cents))
 
-        # Mark processed
         cursor.execute('UPDATE bank_transactions SET processed = 1 WHERE id = ?', (tx['id'],))
         processed_count += 1
 
@@ -7640,7 +7495,6 @@ def fetch_bank_transactions(date_from=None, date_to=None):
         end_date = datetime.strptime(date_to, '%Y-%m-%d').date()
 
     if not date_from:
-        # ✅ Fetch as far back as Plaid allows (2 years)
         start_date = end_date - timedelta(days=730)
     else:
         start_date = datetime.strptime(date_from, '%Y-%m-%d').date()
@@ -7674,7 +7528,7 @@ def accounting_get_bank_transactions():
     try:
         search = request.args.get('search', '').strip()
         unprocessed_only = request.args.get('unprocessed_only', 'false').lower() == 'true'
-        source_type = request.args.get('source_type')  # 'plaid' or 'historic' or None
+        source_type = request.args.get('source_type')
         if source_type == 'all':
             source_type = None
 
@@ -7700,15 +7554,8 @@ def accounting_get_bank_transactions():
 def get_discogs_orders():
     """
     Get orders from Discogs API.
-    
-    Query params:
-        status: Filter by status (New, Paid, Shipped, etc.)
-        page: Page number (default: 1)
-        per_page: Items per page (default: 50, max: 100)
-        all: If 'true', fetch all pages (default: false)
     """
     try:
-        # Check if Discogs token exists
         TOKEN = os.environ.get('DISCOGS_USER_TOKEN')
         if not TOKEN:
             return jsonify({
@@ -7716,17 +7563,14 @@ def get_discogs_orders():
                 'error': 'Discogs token not configured'
             }), 500
         
-        # Get query parameters
         status = request.args.get('status')
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 50, type=int)
         fetch_all = request.args.get('all', 'false').lower() == 'true'
         
-        # Initialize Discogs handler
         handler = DiscogsHandler(TOKEN)
         
         if fetch_all:
-            # Fetch all orders (handles pagination internally)
             orders = handler.get_all_orders(status=status)
             
             return jsonify({
@@ -7741,7 +7585,6 @@ def get_discogs_orders():
                 }
             })
         else:
-            # Fetch a single page
             result = handler.get_orders(status=status, page=page, per_page=per_page)
             
             if not result['success']:
@@ -7793,12 +7636,10 @@ def get_discogs_order_detail(order_id):
         order = result['order']
         items = order.get('items', [])
         
-        # Connect to DB to lookup record status by PigStyle ID
         conn = get_db()
         cursor = conn.cursor()
         
         for item in items:
-            # Extract PigStyle ID from condition_comments
             condition_comments = item.get('condition_comments', '')
             pigstyle_id = None
             if condition_comments:
@@ -7838,13 +7679,6 @@ def get_discogs_order_detail(order_id):
 def mark_sold_on_discogs():
     """
     Mark a record as sold on Discogs.
-    Updates status_id to 4, sets actual_sale_price, and date_sold.
-    
-    Request body:
-    {
-        "record_id": 9976,
-        "sale_price": 34.99
-    }
     """
     try:
         data = request.json
@@ -7860,7 +7694,6 @@ def mark_sold_on_discogs():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if record exists
         cursor.execute('SELECT id, artist, title, status_id FROM records WHERE id = ?', (record_id,))
         record = cursor.fetchone()
         
@@ -7868,7 +7701,6 @@ def mark_sold_on_discogs():
             conn.close()
             return jsonify({'status': 'error', 'error': f'Record #{record_id} not found'}), 404
         
-        # Check if already sold
         if record['status_id'] == 3 or record['status_id'] == 4:
             conn.close()
             return jsonify({
@@ -7876,7 +7708,6 @@ def mark_sold_on_discogs():
                 'error': f'Record #{record_id} is already marked as sold (status_id: {record["status_id"]})'
             }), 400
         
-        # Update the record - NO discogs_order_id
         cursor.execute('''
             UPDATE records 
             SET status_id = 4, 
@@ -7887,7 +7718,6 @@ def mark_sold_on_discogs():
         
         conn.commit()
         
-        # Get updated record
         cursor.execute('''
             SELECT id, artist, title, status_id, actual_sale_price, date_sold
             FROM records 
@@ -7925,7 +7755,6 @@ def mark_sold_on_discogs():
 def monthly_account_transactions():
     """
     Return transactions for a given month directly from bank_transactions.
-    If account_id is provided, filter by that account (post_to).
     """
     month = request.args.get('month')
     account_id = request.args.get('account_id', type=int)
@@ -7955,9 +7784,6 @@ def monthly_account_transactions():
     if account_id is not None:
         query += ' AND bt.post_to = ?'
         params.append(account_id)
-
-    # Note: exclude_orders is removed since source_type doesn't exist
-    # If you need this, add source_type column to bank_transactions
 
     query += ' ORDER BY bt.transaction_date DESC, bt.id DESC'
 
@@ -7991,7 +7817,6 @@ def unpost_bank_transaction(transaction_id):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if transaction exists
         cursor.execute('SELECT id, post_to FROM bank_transactions WHERE id = ?', (transaction_id,))
         transaction = cursor.fetchone()
         
@@ -7999,7 +7824,6 @@ def unpost_bank_transaction(transaction_id):
             conn.close()
             return jsonify({'status': 'error', 'error': 'Transaction not found'}), 404
         
-        # Check if there's a journal entry for this transaction
         cursor.execute('''
             SELECT id FROM journal_entries 
             WHERE source_type = 'bank_transaction' AND source_id = ?
@@ -8008,11 +7832,9 @@ def unpost_bank_transaction(transaction_id):
         journal_entry = cursor.fetchone()
         
         if journal_entry:
-            # Delete journal lines and entry
             cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (journal_entry['id'],))
             cursor.execute('DELETE FROM journal_entries WHERE id = ?', (journal_entry['id'],))
         
-        # Unpost the bank transaction (set post_to = NULL)
         cursor.execute('''
             UPDATE bank_transactions 
             SET post_to = NULL 
@@ -8047,12 +7869,10 @@ def delete_journal_entry(entry_id):
             conn.close()
             return jsonify({'status': 'error', 'error': 'Journal entry not found'}), 404
         
-        # If it's a bank transaction, unpost it
         if entry['source_type'] == 'bank_transaction':
             transaction_id = int(entry['source_id'])
             cursor.execute('UPDATE bank_transactions SET post_to = NULL, processed = 0 WHERE id = ?', (transaction_id,))
         
-        # Delete journal lines and entry
         cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (entry_id,))
         cursor.execute('DELETE FROM journal_entries WHERE id = ?', (entry_id,))
         
@@ -8076,7 +7896,6 @@ def delete_journal_entry(entry_id):
 def accounting_get_account_transactions():
     """
     Get all journal lines for a specific account with pagination.
-    Returns transactions with debit/credit amounts and running balance.
     """
     try:
         account_id = request.args.get('account_id', type=int)
@@ -8092,15 +7911,12 @@ def accounting_get_account_transactions():
         conn = get_db()
         cursor = conn.cursor()
 
-        # Verify account exists
         cursor.execute('SELECT id, code, name, type FROM accounts WHERE id = ?', (account_id,))
         account = cursor.fetchone()
         if not account:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Account not found'}), 404
 
-        # Build the query for journal lines with this account
-        # Use date() function to handle date comparisons regardless of format
         query = '''
             SELECT 
                 jl.id,
@@ -8121,7 +7937,6 @@ def accounting_get_account_transactions():
         '''
         params = [account_id]
 
-        # Handle date filters - use date() function to normalize
         if date_from:
             query += ' AND date(je.transaction_date) >= date(?)'
             params.append(date_from)
@@ -8129,7 +7944,6 @@ def accounting_get_account_transactions():
             query += ' AND date(je.transaction_date) <= date(?)'
             params.append(date_to)
 
-        # Get total count
         count_query = '''
             SELECT COUNT(*) as total
             FROM journal_lines jl
@@ -8148,13 +7962,11 @@ def accounting_get_account_transactions():
         result = cursor.fetchone()
         total = result['total'] if result else 0
 
-        # Get paginated results
         query += ' ORDER BY je.transaction_date DESC, je.id DESC LIMIT ? OFFSET ?'
         params.extend([per_page, offset])
         cursor.execute(query, params)
         rows = cursor.fetchall()
 
-        # Get running balance
         balance_query = '''
             SELECT 
                 COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) as balance
@@ -8174,12 +7986,10 @@ def accounting_get_account_transactions():
         balance_row = cursor.fetchone()
         balance = balance_row['balance'] / 100.0 if balance_row and balance_row['balance'] is not None else 0
 
-        # Format results
         transactions = []
         for row in rows:
             row_dict = dict(row) if row else {}
             
-            # Get debit and credit amounts
             debit = row_dict.get('debit_amount') or 0
             credit = row_dict.get('credit_amount') or 0
             
@@ -8226,10 +8036,6 @@ def accounting_get_account_transactions():
 def mark_discogs_sold(record_id):
     """
     Mark a record as sold on Discogs.
-    1. Look for PIGSTYLE ID in the record's notes
-    2. Search Discogs orders for that PIGSTYLE ID
-    3. If found, update status to 4 and set store_price to the sale price
-    4. If not found, return an error
     """
     app.logger.info("=" * 60)
     app.logger.info(f"📝 [DISOOGS_SOLD] Starting mark_discogs_sold for record_id: {record_id}")
@@ -8238,7 +8044,6 @@ def mark_discogs_sold(record_id):
         conn = get_db()
         cursor = conn.cursor()
         
-        # 1. Get the record
         app.logger.info(f"📡 [DISOOGS_SOLD] Fetching record #{record_id} from database")
         cursor.execute('SELECT id, artist, title, notes, store_price, status_id FROM records WHERE id = ?', (record_id,))
         record = cursor.fetchone()
@@ -8255,7 +8060,6 @@ def mark_discogs_sold(record_id):
         app.logger.info(f"📊 [DISOOGS_SOLD] Current status: {record['status_id']}, Store price: ${record['store_price']}")
         app.logger.info(f"📝 [DISOOGS_SOLD] Notes: {record['notes']}")
         
-        # 2. Check if already sold
         if record['status_id'] in [3, 4]:
             app.logger.warning(f"⚠️ [DISOOGS_SOLD] Record #{record_id} is already marked as sold (status_id: {record['status_id']})")
             conn.close()
@@ -8264,7 +8068,6 @@ def mark_discogs_sold(record_id):
                 'error': f'Record #{record_id} is already marked as sold (status_id: {record["status_id"]})'
             }), 400
         
-        # 3. Extract PIGSTYLE ID from notes
         app.logger.info(f"🔍 [DISOOGS_SOLD] Looking for PIGSTYLE ID in notes...")
         pigstyle_id = None
         if record['notes']:
@@ -8275,15 +8078,12 @@ def mark_discogs_sold(record_id):
             else:
                 app.logger.warning(f"⚠️ [DISOOGS_SOLD] No PIGSTYLE ID pattern found in notes")
         
-        # If no PIGSTYLE ID in notes, use the record ID itself
         if not pigstyle_id:
             pigstyle_id = record_id
             app.logger.info(f"🔄 [DISOOGS_SOLD] No PIGSTYLE ID in notes, using record ID as fallback: {pigstyle_id}")
-            app.logger.info(f"💡 [DISOOGS_SOLD] This is for later additions where barcode = record ID")
         
         app.logger.info(f"🎯 [DISOOGS_SOLD] Final PIGSTYLE ID: {pigstyle_id}")
         
-        # 4. Get Discogs token
         token = os.environ.get('DISCOGS_USER_TOKEN')
         if not token:
             app.logger.error(f"❌ [DISOOGS_SOLD] DISCOGS_USER_TOKEN not configured in environment")
@@ -8295,11 +8095,9 @@ def mark_discogs_sold(record_id):
         
         app.logger.info(f"🔑 [DISOOGS_SOLD] Discogs token found: {token[:10]}...")
         
-        # 5. Initialize Discogs handler
         app.logger.info(f"📡 [DISOOGS_SOLD] Initializing DiscogsHandler")
         handler = DiscogsHandler(token)
         
-        # 6. Search for the record in ALL Discogs orders
         app.logger.info(f"🔍 [DISOOGS_SOLD] Searching for PIGSTYLE ID {pigstyle_id} in Discogs orders...")
         orders_result = handler.get_all_orders()
         
@@ -8313,7 +8111,6 @@ def mark_discogs_sold(record_id):
         
         app.logger.info(f"✅ [DISOOGS_SOLD] Fetched {len(orders_result)} orders from Discogs")
         
-        # 7. Find the order with this PIGSTYLE ID
         app.logger.info(f"🔍 [DISOOGS_SOLD] Searching {len(orders_result)} orders for PIGSTYLE ID {pigstyle_id}")
         sale_price = None
         found_order_id = None
@@ -8329,7 +8126,6 @@ def mark_discogs_sold(record_id):
             app.logger.debug(f"   📦 [DISOOGS_SOLD] Checking order {order_count}: {order_id} ({len(order.get('items', []))} items)")
                 
             for item in order.get('items', []):
-                # Check condition_comments
                 if 'condition_comments' in item:
                     match = re.search(r'\[PIGSTYLE ID:\s*(\d+)\]', item['condition_comments'], re.IGNORECASE)
                     if match and int(match.group(1)) == pigstyle_id:
@@ -8338,10 +8134,8 @@ def mark_discogs_sold(record_id):
                         found_item = item
                         app.logger.info(f"✅ [DISOOGS_SOLD] Found PIGSTYLE ID {pigstyle_id} in order {found_order_id}")
                         app.logger.info(f"💰 [DISOOGS_SOLD] Sale price: ${sale_price}")
-                        app.logger.info(f"📝 [DISOOGS_SOLD] Item comments: {item.get('condition_comments', '')}")
                         break
                 
-                # Check private_comments
                 if 'private_comments' in item:
                     match = re.search(r'\[PIGSTYLE ID:\s*(\d+)\]', item['private_comments'], re.IGNORECASE)
                     if match and int(match.group(1)) == pigstyle_id:
@@ -8352,7 +8146,6 @@ def mark_discogs_sold(record_id):
                         app.logger.info(f"💰 [DISOOGS_SOLD] Sale price: ${sale_price}")
                         break
                 
-                # Check release description
                 if 'release' in item and 'description' in item['release']:
                     match = re.search(r'\[PIGSTYLE ID:\s*(\d+)\]', item['release']['description'], re.IGNORECASE)
                     if match and int(match.group(1)) == pigstyle_id:
@@ -8366,7 +8159,6 @@ def mark_discogs_sold(record_id):
             if sale_price is not None:
                 break
         
-        # 8. If not found, raise error
         if sale_price is None:
             app.logger.error(f"❌ [DISOOGS_SOLD] Could not find PIGSTYLE ID {pigstyle_id} in any Discogs order")
             app.logger.info(f"📋 [DISOOGS_SOLD] Searched through {order_count} orders")
@@ -8377,7 +8169,6 @@ def mark_discogs_sold(record_id):
                          f'Make sure the record has been sold on Discogs and the PIGSTYLE ID is correct.'
             }), 404
         
-        # 9. Update the record - removed actual_sale_price
         app.logger.info(f"🔄 [DISOOGS_SOLD] Updating record #{record_id} with sale price ${sale_price}")
         cursor.execute('''
             UPDATE records 
@@ -8390,7 +8181,6 @@ def mark_discogs_sold(record_id):
         conn.commit()
         app.logger.info(f"✅ [DISOOGS_SOLD] Record #{record_id} updated in database")
         
-        # 10. Get updated record
         cursor.execute('''
             SELECT id, artist, title, store_price, date_sold, status_id
             FROM records 
@@ -8444,7 +8234,6 @@ def accounting_create_account():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if code already exists
         cursor.execute('SELECT id FROM accounts WHERE code = ?', (code,))
         if cursor.fetchone():
             conn.close()
@@ -8487,13 +8276,11 @@ def accounting_update_account(account_id):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if account exists
         cursor.execute('SELECT id FROM accounts WHERE id = ?', (account_id,))
         if not cursor.fetchone():
             conn.close()
             return jsonify({'status': 'error', 'error': 'Account not found'}), 404
         
-        # Check if code conflicts with another account
         cursor.execute('SELECT id FROM accounts WHERE code = ? AND id != ?', (code, account_id))
         if cursor.fetchone():
             conn.close()
@@ -8525,14 +8312,12 @@ def accounting_delete_account(account_id):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if account exists
         cursor.execute('SELECT id, code, name FROM accounts WHERE id = ?', (account_id,))
         account = cursor.fetchone()
         if not account:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Account not found'}), 404
         
-        # Find all journal entries for this account
         cursor.execute('''
             SELECT DISTINCT je.id as entry_id, je.source_type, je.source_id
             FROM journal_lines jl
@@ -8543,23 +8328,18 @@ def accounting_delete_account(account_id):
         
         unposted_count = 0
         
-        # Unpost each entry
         for entry in entries:
             source_type = entry['source_type']
             source_id = entry['source_id']
             
-            # If it's a bank transaction (plaid or historic), mark as unprocessed
             if source_type in ['plaid', 'historic']:
                 if source_type == 'historic':
                     cursor.execute('UPDATE bank_transactions SET processed = 0 WHERE id = ?', (int(source_id),))
-                # For plaid, we just delete the journal entry (plaid transactions are not stored in bank_transactions)
                 unposted_count += 1
             
-            # Delete the journal lines and entry
             cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (entry['entry_id'],))
             cursor.execute('DELETE FROM journal_entries WHERE id = ?', (entry['entry_id'],))
         
-        # Delete the account
         cursor.execute('DELETE FROM accounts WHERE id = ?', (account_id,))
         
         conn.commit()
@@ -8581,7 +8361,6 @@ def accounting_delete_account(account_id):
 def cogs_calculation():
     """
     Returns the detailed COGS calculation for a given month.
-    Calculates COGS dynamically from records sold, using batch allocation or assumption rates.
     """
     month = request.args.get('month')
     if not month:
@@ -8602,13 +8381,11 @@ def cogs_calculation():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get COGS assumption rates from app_config
         try:
             new_rate, used_rate = get_cogs_rates()
         except ValueError as e:
             return jsonify({'status': 'error', 'error': str(e)}), 400
         
-        # Get records sold in this month
         cursor.execute('''
             SELECT 
                 r.id,
@@ -8633,12 +8410,10 @@ def cogs_calculation():
         for rec in records:
             rec_dict = dict(rec)
             
-            # Calculate COGS dynamically
             if rec_dict['batch_id']:
                 batch_ids.add(rec_dict['batch_id'])
-                cogs_value = None  # Will be calculated later
+                cogs_value = None
             else:
-                # Use assumption rates
                 if rec_dict['condition_sleeve_id'] == 1 and rec_dict['condition_disc_id'] == 1:
                     cogs_value = rec_dict['sale_price'] * new_rate
                 else:
@@ -8656,10 +8431,8 @@ def cogs_calculation():
                 'date_sold': rec_dict['date_sold']
             })
         
-        # Get batch allocations for records with batch_id
         batch_allocations = []
         for batch_id in batch_ids:
-            # Get batch total cost - NEW: from purchases.total_purchase_price
             cursor.execute('''
                 SELECT total_purchase_price as total_cost
                 FROM purchases
@@ -8667,7 +8440,6 @@ def cogs_calculation():
             ''', (batch_id,))
             batch_row = cursor.fetchone()
             
-            # Fallback to legacy journal_lines if not found
             if not batch_row or batch_row['total_cost'] is None:
                 cursor.execute('''
                     SELECT jl.debit_amount / 100.0 as total_cost
@@ -8681,7 +8453,6 @@ def cogs_calculation():
             if batch_row and batch_row['total_cost']:
                 total_cost = float(batch_row['total_cost'])
                 
-                # Get total store price of all records in this batch
                 cursor.execute('''
                     SELECT SUM(store_price) as total_store_price
                     FROM records
@@ -8692,7 +8463,6 @@ def cogs_calculation():
                 if price_row and price_row['total_store_price'] and price_row['total_store_price'] > 0:
                     total_store_price = float(price_row['total_store_price'])
                     
-                    # Get records from this batch that were sold in this month
                     cursor.execute('''
                         SELECT r.id, r.store_price
                         FROM records r
@@ -8701,18 +8471,15 @@ def cogs_calculation():
                     ''', (batch_id, start_str, end_str))
                     sold_records = cursor.fetchall()
                     
-                    # Calculate allocated COGS for each sold record in this batch
                     for sold_rec in sold_records:
                         sold_price = float(sold_rec['store_price'])
                         allocated_cogs = (sold_price / total_store_price) * total_cost
                         
-                        # Update the record in records_list with the calculated COGS
                         for rec in records_list:
                             if rec['id'] == sold_rec['id']:
                                 rec['cogs'] = allocated_cogs
                                 break
                     
-                    # Get total sold store price for this batch
                     cursor.execute('''
                         SELECT SUM(store_price) as sold_store_price
                         FROM records
@@ -8733,7 +8500,6 @@ def cogs_calculation():
                         'source': 'purchases.total_purchase_price' if batch_row.get('total_cost') is not None else 'journal_lines'
                     })
         
-        # Recalculate total COGS from records_list
         total_cogs = sum(r['cogs'] for r in records_list if r['cogs'] is not None)
         
         conn.close()
@@ -8760,7 +8526,6 @@ def cogs_calculation():
 def balance_sheet():
     """
     Returns balance sheet data - cumulative balances for asset, liability, and equity accounts over time.
-    Each month shows the running balance up to that point in time.
     """
     start = request.args.get('start')
     end = request.args.get('end')
@@ -8770,11 +8535,9 @@ def balance_sheet():
     try:
         from datetime import datetime, timedelta
         
-        # Parse start and end dates
         start_date = datetime.strptime(start, '%Y-%m-%d')
         end_date = datetime.strptime(end, '%Y-%m-%d')
         
-        # Build month list
         months = []
         current = start_date
         while current <= end_date:
@@ -8787,7 +8550,6 @@ def balance_sheet():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get all asset, liability, and equity accounts
         cursor.execute('''
             SELECT id, code, name, type 
             FROM accounts 
@@ -8796,7 +8558,6 @@ def balance_sheet():
         ''')
         accounts = cursor.fetchall()
         
-        # For each account, get the running balance at the end of each month
         account_breakdown = {}
         
         for account in accounts:
@@ -8807,7 +8568,6 @@ def balance_sheet():
             running_balance = 0
             
             for month in months:
-                # Get the last day of this month
                 month_date = datetime.strptime(month + '-01', '%Y-%m-%d')
                 if month_date.month == 12:
                     last_day = month_date.replace(year=month_date.year+1, month=1, day=1) - timedelta(days=1)
@@ -8815,7 +8575,6 @@ def balance_sheet():
                     last_day = month_date.replace(month=month_date.month+1, day=1) - timedelta(days=1)
                 last_day_str = last_day.strftime('%Y-%m-%d')
                 
-                # Get all transactions up to this point
                 cursor.execute('''
                     SELECT 
                         COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) as balance
@@ -8828,13 +8587,11 @@ def balance_sheet():
                 row = cursor.fetchone()
                 balance = row['balance'] / 100.0 if row and row['balance'] else 0
                 
-                # For liability accounts, invert the sign (liabilities are credit balances)
                 if account_type == 'liability':
                     balance = -balance
                 
                 running_balance = balance
                 
-                # Only store if non-zero or if it's the first month
                 if abs(balance) > 0.01 or month == months[0]:
                     if month not in account_breakdown:
                         account_breakdown[month] = {}
@@ -8842,24 +8599,19 @@ def balance_sheet():
         
         conn.close()
         
-        # Ensure every month has an entry
         for month in months:
             if month not in account_breakdown:
                 account_breakdown[month] = {}
         
-        # Calculate Net Assets (Total Assets - Total Liabilities) for each month
-        # Also add account type totals
         for month in months:
             if month in account_breakdown:
                 month_data = account_breakdown[month]
                 
-                # Calculate totals by type
                 total_assets = 0
                 total_liabilities = 0
                 total_equity = 0
                 net_assets = 0
                 
-                # We need account types, so re-query accounts
                 conn2 = get_db()
                 cur2 = conn2.cursor()
                 cur2.execute('SELECT id, code, name, type FROM accounts WHERE type IN ("asset", "liability", "equity")')
@@ -8881,7 +8633,6 @@ def balance_sheet():
                 
                 net_assets = total_assets + total_liabilities + total_equity
                 
-                # Add total rows
                 if abs(total_assets) > 0.01:
                     month_data['Total Assets'] = total_assets
                 if abs(total_liabilities) > 0.01:
@@ -8928,7 +8679,6 @@ def create_square_payment_link():
         
         item_name = data.get('item_name', f"Payment - {purpose}")
         
-        # ========== CHANGED: Use redirect_url from frontend ==========
         redirect_url = data.get('redirect_url')
         if not redirect_url:
             redirect_path = data.get('redirect_path', '/gift-cards')
@@ -9003,7 +8753,6 @@ def handle_donation_payment(payment_id, amount, metadata):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get accounts
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
         payable = cursor.fetchone()
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
@@ -9016,20 +8765,17 @@ def handle_donation_payment(payment_id, amount, metadata):
         amount_cents = int(round(amount * 100))
         today = datetime.now().strftime('%Y-%m-%d')
         
-        # Create journal entry for donation (Bernie)
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
         ''', (today, f"BERNIE | ISSUE | Donation - ${amount:.2f} ({campaign})", 'bernie_donation', payment_id))
         entry_id = cursor.lastrowid
         
-        # Debit Cash
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, cash['id'], amount_cents, 0))
         
-        # Credit Payable (donation liability)
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
@@ -9061,7 +8807,6 @@ def handle_store_credit_payment(payment_id, amount, metadata):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get accounts
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
         payable = cursor.fetchone()
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
@@ -9071,25 +8816,21 @@ def handle_store_credit_payment(payment_id, amount, metadata):
             conn.close()
             return jsonify({'status': 'error', 'error': 'Required accounts not found'}), 500
         
-        # Store credit is 50% higher than cash value
         credit_value = amount * 1.5
         amount_cents = int(round(credit_value * 100))
         today = datetime.now().strftime('%Y-%m-%d')
         
-        # Create journal entry
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
         ''', (today, f"{debtor_name} | ISSUE | Store credit - ${credit_value:.2f} (cash paid ${amount:.2f})", 'store_credit', payment_id))
         entry_id = cursor.lastrowid
         
-        # Debit Payable
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, payable['id'], amount_cents, 0))
         
-        # Credit Revenue (or Store Credit Issued)
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4050',))
         credit_account = cursor.fetchone()
         if not credit_account:
@@ -9138,7 +8879,6 @@ def debtor_lookup():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Try exact match first
         cursor.execute('''
             SELECT description, source_type FROM journal_entries
             WHERE description LIKE ?
@@ -9148,7 +8888,6 @@ def debtor_lookup():
         row = cursor.fetchone()
         original_name = debtor_name
         
-        # If not found and it's not a GIFT- code, try recipient name
         if not row and not debtor_name.startswith('GIFT-'):
             cursor.execute('''
                 SELECT description, source_type FROM journal_entries
@@ -9162,12 +8901,10 @@ def debtor_lookup():
                 if parts and parts[0].strip():
                     debtor_name = parts[0].strip()
         
-        # If still not found, return error
         if not row:
             conn.close()
             return jsonify({'status': 'error', 'error': f'Debtor not found: {original_name}'}), 404
         
-        # Get balance - only Payable account (2015)
         cursor.execute('''
             SELECT 
                 COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as balance
@@ -9181,15 +8918,12 @@ def debtor_lookup():
         balance_row = cursor.fetchone()
         raw_balance = balance_row['balance'] if balance_row else 0
         
-        # Force positive for liability
         balance = abs(raw_balance)
         
-        # If balance is 0, return not found
         if balance == 0:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Debtor not found (balance is $0)'}), 404
         
-        # Get transactions - only Payable account (2015)
         cursor.execute('''
             SELECT 
                 je.id as journal_entry_id,
@@ -9248,7 +8982,6 @@ def debtor_list():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get all unique debtors with their descriptions
         cursor.execute('''
             SELECT DISTINCT 
                 SUBSTR(description, 1, INSTR(description, ' | ') - 1) as debtor_name,
@@ -9274,7 +9007,6 @@ def debtor_list():
                 continue
             seen_names.add(name)
             
-            # Get balance for this debtor
             conn2 = get_db()
             cur2 = conn2.cursor()
             cur2.execute('''
@@ -9291,13 +9023,11 @@ def debtor_list():
             
             balance = abs(bal['balance']) if bal else 0
             
-            # Skip debtors with $0 balance
             if balance <= 0:
                 continue
             
             display_name = name
             
-            # If it's a gift card, extract the recipient
             if name.startswith('GIFT-'):
                 parts = row['description'].split(' | ')
                 if len(parts) >= 2 and parts[1].strip():
@@ -9312,7 +9042,6 @@ def debtor_list():
                 'balance': balance
             })
         
-        # Sort by balance descending (highest first)
         result.sort(key=lambda x: x['balance'], reverse=True)
         
         return jsonify({
@@ -9344,7 +9073,6 @@ def debtor_redeem():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get current balance - only Payable account (2015)
         cursor.execute('''
             SELECT 
                 COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as balance
@@ -9358,14 +9086,12 @@ def debtor_redeem():
         result = cursor.fetchone()
         raw_balance = result['balance'] if result else 0
         
-        # Force positive (liability accounts)
         balance = abs(raw_balance)
         
         if balance < amount:
             conn.close()
             return jsonify({'status': 'error', 'error': f'Insufficient balance. Available: ${balance:.2f}'}), 400
         
-        # Get accounts
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
         payable = cursor.fetchone()
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4000',))
@@ -9378,20 +9104,17 @@ def debtor_redeem():
         today = datetime.now().strftime('%Y-%m-%d')
         amount_cents = int(round(amount * 100))
         
-        # Create journal entry
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
         ''', (today, f"{debtor_name} | REDEEM | {description}", 'debtor_redeem', debtor_name))
         entry_id = cursor.lastrowid
         
-        # Debit Payable (reduce what we owe)
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, payable['id'], amount_cents, 0))
         
-        # Credit Revenue
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
@@ -9430,19 +9153,17 @@ def debtor_issue():
         if not reason:
             return jsonify({'status': 'error', 'error': 'Reason required'}), 400
         
-        credit_value = cash_value * 1.5  # 50% bonus
+        credit_value = cash_value * 1.5
         
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get Payable account
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
         payable = cursor.fetchone()
         if not payable:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Payable account not found'}), 500
         
-        # Get Store Credit Issued account (or fallback to revenue)
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4050',))
         credit_account = cursor.fetchone()
         if not credit_account:
@@ -9456,20 +9177,17 @@ def debtor_issue():
         today = datetime.now().strftime('%Y-%m-%d')
         amount_cents = int(round(credit_value * 100))
         
-        # Create journal entry
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
         ''', (today, f"{debtor_name} | ISSUE | {reason} (cash value ${cash_value:.2f})", 'store_credit', debtor_name))
         entry_id = cursor.lastrowid
         
-        # Debit Payable (increase what we owe)
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, payable['id'], amount_cents, 0))
         
-        # Credit Store Credit Issued (or revenue)
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
@@ -9507,7 +9225,6 @@ def debtor_cashout():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get current balance
         cursor.execute('''
             SELECT 
                 COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) / 100.0 as balance
@@ -9526,7 +9243,6 @@ def debtor_cashout():
             conn.close()
             return jsonify({'status': 'error', 'error': 'No balance to cash out'}), 400
         
-        # Check if gift card or Bernie (cannot cash out)
         if debtor_name.startswith('GIFT-'):
             conn.close()
             return jsonify({'status': 'error', 'error': 'Gift cards cannot be exchanged for cash'}), 400
@@ -9538,46 +9254,39 @@ def debtor_cashout():
         amount_cents = int(round(cash_amount * 100))
         credit_cents = int(round(balance * 100))
         
-        # Get Payable account
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
         payable = cursor.fetchone()
         if not payable:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Payable account not found'}), 500
         
-        # Get Cash account
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
         cash = cursor.fetchone()
         if not cash:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Cash account not found'}), 500
         
-        # Get Store Credit Discount account (contra-revenue)
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4051',))
         discount = cursor.fetchone()
         
         today = datetime.now().strftime('%Y-%m-%d')
         
-        # Create journal entry
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
         ''', (today, f"{debtor_name} | CASHOUT | Cashed out credit (${balance:.2f} credit = ${cash_amount:.2f} cash)", 'store_credit_cashout', debtor_name))
         entry_id = cursor.lastrowid
         
-        # Debit Payable (remove the full credit)
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, payable['id'], credit_cents, 0))
         
-        # Credit Cash (pay out 2/3)
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, cash['id'], 0, amount_cents))
         
-        # If discount account exists, credit the difference
         if discount:
             discount_cents = credit_cents - amount_cents
             if discount_cents > 0:
@@ -9617,7 +9326,6 @@ def bernie_donate():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get current Bernie balance
         cursor.execute('''
             SELECT 
                 COALESCE(SUM(
@@ -9638,14 +9346,12 @@ def bernie_donate():
             conn.close()
             return jsonify({'status': 'error', 'error': f'Insufficient Bernie balance. Available: ${balance:.2f}'}), 400
         
-        # Get Payable account
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
         payable = cursor.fetchone()
         if not payable:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Payable account not found'}), 500
         
-        # Get Cash account
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
         cash = cursor.fetchone()
         if not cash:
@@ -9655,20 +9361,17 @@ def bernie_donate():
         today = datetime.now().strftime('%Y-%m-%d')
         amount_cents = int(round(amount * 100))
         
-        # Create journal entry
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
         ''', (today, f"BERNIE | REDEEM | Donation to Bernie Sanders campaign", 'bernie_donate', 'BERNIE'))
         entry_id = cursor.lastrowid
         
-        # Debit Payable (reduce what we owe)
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, payable['id'], amount_cents, 0))
         
-        # Credit Cash (pay the donation)
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
@@ -9720,7 +9423,6 @@ def account_balance():
         
         raw_balance = result['balance'] if result else 0
         
-        # For liability accounts (2015), force positive
         if account_code == '2015':
             balance = abs(raw_balance)
         else:
@@ -9839,7 +9541,6 @@ def confirm_payment():
         if not payment_id:
             return jsonify({'status': 'error', 'error': 'payment_id required'}), 400
         
-        # Verify payment with Square
         headers = {
             'Authorization': f'Bearer {os.environ.get("SQUARE_ACCESS_TOKEN")}',
             'Content-Type': 'application/json',
@@ -9862,10 +9563,8 @@ def confirm_payment():
         
         amount = payment.get('amount_money', {}).get('amount', 0) / 100
         
-        # Get purpose from metadata or payment
         purpose = metadata.get('purpose')
         if not purpose:
-            # Try to get from order metadata
             order_id = payment.get('order_id')
             if order_id:
                 order_response = requests.get(
@@ -9878,7 +9577,6 @@ def confirm_payment():
                     metadata = order.get('metadata', {})
                     purpose = metadata.get('purpose')
         
-        # Route to the appropriate handler
         if purpose == 'gift_card':
             return handle_gift_card_payment(payment_id, amount, metadata, gift_card_id)
         elif purpose == 'donation':
@@ -9904,14 +9602,12 @@ def handle_gift_card_payment(payment_id, amount, metadata, gift_card_id=None):
     try:
         import random, string
         
-        # Use provided gift card ID or generate one
         if not gift_card_id:
             gift_card_id = metadata.get('gift_card_id')
         if not gift_card_id:
             random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
             gift_card_id = f"GIFT-{random_part}"
         
-        # Get recipient info from metadata
         recipient = metadata.get('recipient', '')
         sender = metadata.get('sender', '')
         message = metadata.get('message', '')
@@ -9919,7 +9615,6 @@ def handle_gift_card_payment(payment_id, amount, metadata, gift_card_id=None):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get accounts
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
         payable = cursor.fetchone()
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
@@ -9932,24 +9627,20 @@ def handle_gift_card_payment(payment_id, amount, metadata, gift_card_id=None):
         amount_cents = int(round(amount * 100))
         today = datetime.now().strftime('%Y-%m-%d')
         
-        # Description format: GIFT-XXXXX | RECIPIENT | amount
         recipient_display = recipient if recipient else 'Bearer'
         desc = f"{gift_card_id} | {recipient_display} | ${amount:.2f} gift card purchased online"
         
-        # Create journal entry
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
         ''', (today, desc, 'gift_card', gift_card_id))
         entry_id = cursor.lastrowid
         
-        # Debit Cash (money received)
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, cash['id'], amount_cents, 0))
         
-        # Credit Payable (owe gift card)
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
@@ -9981,7 +9672,6 @@ def handle_donation_payment(payment_id, amount, metadata):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get accounts
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
         payable = cursor.fetchone()
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
@@ -9994,20 +9684,17 @@ def handle_donation_payment(payment_id, amount, metadata):
         amount_cents = int(round(amount * 100))
         today = datetime.now().strftime('%Y-%m-%d')
         
-        # Create journal entry for donation (Bernie)
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
         ''', (today, f"BERNIE | ISSUE | Donation - ${amount:.2f} ({campaign})", 'bernie_donation', payment_id))
         entry_id = cursor.lastrowid
         
-        # Debit Cash
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, cash['id'], amount_cents, 0))
         
-        # Credit Payable (donation liability)
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
@@ -10039,7 +9726,6 @@ def handle_store_credit_payment(payment_id, amount, metadata):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get accounts
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
         payable = cursor.fetchone()
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
@@ -10049,25 +9735,21 @@ def handle_store_credit_payment(payment_id, amount, metadata):
             conn.close()
             return jsonify({'status': 'error', 'error': 'Required accounts not found'}), 500
         
-        # Store credit is 50% higher than cash value
         credit_value = amount * 1.5
         amount_cents = int(round(credit_value * 100))
         today = datetime.now().strftime('%Y-%m-%d')
         
-        # Create journal entry
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
         ''', (today, f"{debtor_name} | ISSUE | Store credit - ${credit_value:.2f} (cash paid ${amount:.2f})", 'store_credit', payment_id))
         entry_id = cursor.lastrowid
         
-        # Debit Payable
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, payable['id'], amount_cents, 0))
         
-        # Credit Revenue (or Store Credit Issued)
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4050',))
         credit_account = cursor.fetchone()
         if not credit_account:
@@ -10113,7 +9795,6 @@ def handle_store_credit_payment(payment_id, amount, metadata):
             code = f"GIFT-{random_part}"
             codes.append(code)
         
-        # Print barcodes for all codes (PDF with multiple barcodes)
         return jsonify({
             'status': 'success',
             'codes': codes,
@@ -10124,13 +9805,12 @@ def handle_store_credit_payment(payment_id, amount, metadata):
         app.logger.error(f"Generate blank gift cards error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-import time  # if not already imported
+import time
 
 @app.route('/api/refund/process', methods=['POST', 'OPTIONS'])
 @login_required
 @role_required(['admin'])
 def process_refund():
-    # Handle OPTIONS preflight
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
         response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
@@ -10143,7 +9823,7 @@ def process_refund():
         data = request.json
         record_ids = data.get('record_ids', [])
         reason = data.get('reason', 'Customer refund')
-        mode = data.get('mode', 'restock')   # 'restock' or 'writeoff'
+        mode = data.get('mode', 'restock')
 
         if not record_ids:
             return jsonify({'status': 'error', 'error': 'No records selected'}), 400
@@ -10151,7 +9831,6 @@ def process_refund():
         conn = get_db()
         cursor = conn.cursor()
 
-        # Validate records exist and are sold
         placeholders = ','.join('?' for _ in record_ids)
         cursor.execute(f'''
             SELECT id, status_id FROM records WHERE id IN ({placeholders})
@@ -10168,7 +9847,6 @@ def process_refund():
                 return jsonify({'status': 'error', 'error': f'Record {rec["id"]} is not sold'}), 400
 
         if mode == 'restock':
-            # Set status back to Active, clear sale fields
             cursor.execute(f'''
                 UPDATE records 
                 SET status_id = 2, date_sold = NULL, actual_sale_price = NULL
@@ -10176,7 +9854,6 @@ def process_refund():
             ''', record_ids)
             message = f'Restocked {len(record_ids)} record(s)'
         elif mode == 'writeoff':
-            # Delete the records (write-off)
             cursor.execute(f'DELETE FROM records WHERE id IN ({placeholders})', record_ids)
             message = f'Written off {len(record_ids)} record(s)'
         else:
@@ -10219,7 +9896,6 @@ def create_purchase():
         ''', (seller_name, seller_contact, description))
         purchase_id = cursor.lastrowid
 
-        # Companion journal entry
         from datetime import datetime
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
@@ -10335,7 +10011,6 @@ def send_bill_of_sale_to_square():
 def serve_bill_image(filename):
     """Serve bill of sale images"""
     try:
-        # Security: Prevent directory traversal
         if '..' in filename or '/' in filename or '\\' in filename:
             return jsonify({'status': 'error', 'error': 'Invalid filename'}), 400
         
@@ -10345,7 +10020,6 @@ def serve_bill_image(filename):
         if not os.path.exists(filepath):
             return jsonify({'status': 'error', 'error': 'File not found'}), 404
         
-        # Determine content type
         ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
         content_type = {
             'jpg': 'image/jpeg',
@@ -10382,7 +10056,6 @@ def reconcile_timeline():
     conn = get_db()
     cursor = conn.cursor()
 
-    # Fetch account names for display
     cursor.execute('SELECT id, name FROM accounts WHERE id IN (?, ?)', (account1, account2))
     accounts = cursor.fetchall()
     account_names = {row['id']: row['name'] for row in accounts}
@@ -10390,7 +10063,6 @@ def reconcile_timeline():
         conn.close()
         return jsonify({'status': 'error', 'error': 'One or both accounts not found'}), 404
 
-    # Query for both accounts in one go (no intersect, just OR)
     query = '''
         SELECT 
             je.transaction_date AS date,
@@ -10446,7 +10118,6 @@ def bank_fnbo():
     except Exception as e:
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-    # Flip sign to match Square convention (positive = revenue, negative = expense)
     for tx in plaid_tx:
         tx['amount'] = -tx['amount']
 
@@ -10454,7 +10125,6 @@ def bank_fnbo():
         search_lower = search.lower()
         plaid_tx = [t for t in plaid_tx if search_lower in t['description'].lower()]
 
-    # Determine processed status and get account_id
     conn = get_db()
     cursor = conn.cursor()
     for tx in plaid_tx:
@@ -10464,9 +10134,6 @@ def bank_fnbo():
         tx['source_type'] = 'plaid'
         tx['account_id'] = None
         if entry:
-            # Get the non-cash account (debit for expenses, credit for revenue)
-            # For expenses: debit_amount > 0
-            # For revenue: credit_amount > 0
             cursor.execute('''
                 SELECT jl.account_id
                 FROM journal_lines jl
@@ -10483,7 +10150,6 @@ def bank_fnbo():
                 tx['account_id'] = line['account_id']
     conn.close()
 
-    # Apply view filter
     if unprocessed_only is not None:
         filter_unprocessed = unprocessed_only.lower() == 'true'
         if filter_unprocessed:
@@ -10507,7 +10173,7 @@ def bank_fnbo():
 def bank_bluevine():
     """Fetch Bluevine (historic) transactions with filtering - FLIP SIGN to match Square convention."""
     search = request.args.get('search', '').strip()
-    unprocessed_only = request.args.get('unprocessed_only')  # 'true', 'false', or None
+    unprocessed_only = request.args.get('unprocessed_only')
 
     conn = get_db()
     cursor = conn.cursor()
@@ -10523,7 +10189,6 @@ def bank_bluevine():
         query += ' AND description LIKE ?'
         params.append(f'%{search}%')
 
-    # Apply view filter
     if unprocessed_only is not None:
         filter_unprocessed = unprocessed_only.lower() == 'true'
         if filter_unprocessed:
@@ -10541,10 +10206,8 @@ def bank_bluevine():
         source_val = row['source'] if row['source'] else 'csv_import'
         mapped_source = 'historic' if source_val in ('csv_import', 'historic') else source_val
         amount = row['amount'] / 100.0
-        # Flip sign to match Square convention (positive = revenue, negative = expense)
         flipped_amount = -amount
         
-        # Check if posted and get account_id
         processed = bool(row['processed']) if row['processed'] is not None else False
         account_id = None
         if processed:
@@ -10588,7 +10251,7 @@ def bank_bluevine():
 @login_required
 @role_required(['admin'])
 def bank_square():
-    """Fetch Square transactions with filtering. Square already uses positive = revenue, negative = expense."""
+    """Fetch Square transactions with filtering."""
     search = request.args.get('search', '').strip()
     unprocessed_only = request.args.get('unprocessed_only')
 
@@ -10637,13 +10300,11 @@ def bank_square():
         settled_at = p.get('updated_at') or p.get('created_at', '')
         date_str = settled_at.split('T')[0] if settled_at else datetime.now().strftime('%Y-%m-%d')
 
-        # Check if already posted - source_type is 'square'
         cursor.execute('SELECT id FROM journal_entries WHERE source_type = ? AND source_id = ?', ('square', p['id']))
         entry = cursor.fetchone()
         processed = entry is not None
         account_id = None
         if processed:
-            # Get the non-cash account
             cursor.execute('''
                 SELECT jl.account_id
                 FROM journal_lines jl
@@ -10662,7 +10323,7 @@ def bank_square():
         transactions.append({
             'id': p['id'],
             'date': date_str,
-            'amount': amount,  # Square already uses positive = revenue, negative = expense
+            'amount': amount,
             'description': f"Square Payment: {p.get('id', '')}",
             'category': 'Payment',
             'processed': processed,
@@ -10676,7 +10337,6 @@ def bank_square():
         search_lower = search.lower()
         transactions = [t for t in transactions if search_lower in t['description'].lower()]
 
-    # Apply view filter
     if unprocessed_only is not None:
         filter_unprocessed = unprocessed_only.lower() == 'true'
         if filter_unprocessed:
@@ -10706,7 +10366,6 @@ def accounting_create_sale():
         if not data:
             return jsonify({'status': 'error', 'error': 'No data provided'}), 400
         
-        # Required fields
         order_id = data.get('order_id')
         payment_method = data.get('payment_method', 'cash')
         total_amount = float(data.get('total_amount', 0))
@@ -10723,7 +10382,6 @@ def accounting_create_sale():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Map payment method to accounts
         account_map = {
             'cash': {'debit': '1015', 'credit': '4001'},
             'square': {'debit': '1030', 'credit': '4000'},
@@ -10735,7 +10393,6 @@ def accounting_create_sale():
         
         mapping = account_map.get(payment_method, account_map['cash'])
         
-        # Get account IDs
         cursor.execute('SELECT id FROM accounts WHERE code = ?', (mapping['debit'],))
         debit_account = cursor.fetchone()
         cursor.execute('SELECT id FROM accounts WHERE code = ?', (mapping['credit'],))
@@ -10747,20 +10404,17 @@ def accounting_create_sale():
         
         amount_cents = int(round(total_amount * 100))
         
-        # Create journal entry
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
         ''', (transaction_date, f"Sale - Order {order_id} - {payment_method}", 'order', str(order_id)))
         entry_id = cursor.lastrowid
         
-        # Debit (asset/cash account)
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, debit_account['id'], amount_cents, 0))
         
-        # Credit (revenue account)
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
@@ -10779,6 +10433,7 @@ def accounting_create_sale():
     except Exception as e:
         app.logger.error(f"Sale entry error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
  
   
  
@@ -10793,7 +10448,6 @@ def accounting_reconciliation_report():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get all reconciliation records
         query = '''
             SELECT 
                 r.*,
@@ -10840,7 +10494,6 @@ def accounting_reconciliation_report():
                 'batch_source_id': row['batch_source_id']
             })
         
-        # Get summary stats
         cursor.execute('''
             SELECT 
                 COUNT(*) as total_reconciled,
@@ -10849,7 +10502,6 @@ def accounting_reconciliation_report():
         ''')
         stats = cursor.fetchone()
         
-        # Get unreconciled sales
         cursor.execute('''
             SELECT COUNT(*) as count, COALESCE(SUM(jl.debit_amount) / 100.0, 0) as amount
             FROM journal_entries je
@@ -10860,7 +10512,6 @@ def accounting_reconciliation_report():
         ''')
         unreconciled_sales = cursor.fetchone()
         
-        # Get unreconciled square batches
         cursor.execute('''
             SELECT COUNT(*) as count, COALESCE(SUM(jl.debit_amount) / 100.0, 0) as amount
             FROM journal_entries je
@@ -10911,9 +10562,6 @@ def accounting_reconcile_init():
     conn = get_db()
     cursor = conn.cursor()
     
-    # ============================================================
-    # 1. FETCH SQUARE TRANSACTIONS
-    # ============================================================
     access_token = os.environ.get('SQUARE_ACCESS_TOKEN')
     if not access_token:
         app.logger.error("[RECONCILE] SQUARE_ACCESS_TOKEN not configured")
@@ -10926,7 +10574,7 @@ def accounting_reconcile_init():
     }
     
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=730)  # Fetch 2 years of Square transactions
+    start_date = end_date - timedelta(days=730)
     
     url = 'https://connect.squareup.com/v2/payments'
     params = {
@@ -10955,7 +10603,6 @@ def accounting_reconcile_init():
     
     app.logger.info(f"[SQUARE] Found {square_found} payments")
     
-    # Get accounts
     cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1030',))
     square_account = cursor.fetchone()
     if not square_account:
@@ -10977,7 +10624,6 @@ def accounting_reconcile_init():
         if not batch_id:
             continue
         
-        # Check if already imported
         cursor.execute('SELECT id FROM journal_entries WHERE source_type = "square_batch" AND source_id = ?', (batch_id,))
         if cursor.fetchone():
             continue
@@ -10992,20 +10638,17 @@ def accounting_reconcile_init():
         
         amount_cents = int(round(amount * 100))
         
-        # Create journal entry
         cursor.execute('''
             INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
             VALUES (?, ?, ?, ?)
         ''', (date_str, f"Square Batch {batch_id}", 'square_batch', str(batch_id)))
         entry_id = cursor.lastrowid
         
-        # Debit Square Asset
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
         ''', (entry_id, square_account['id'], amount_cents, 0))
         
-        # Credit Revenue
         cursor.execute('''
             INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
             VALUES (?, ?, ?, ?)
@@ -11016,24 +10659,18 @@ def accounting_reconcile_init():
     conn.commit()
     app.logger.info(f"[RECONCILE] ✅ Imported {square_imported} Square batches")
     
-    # ============================================================
-    # 2. FETCH BANK TRANSACTIONS (DIRECT - Plaid + Historic)
-    # ============================================================
-    
-    # 2a. Get Plaid transactions (live from Plaid)
     plaid_transactions = []
     try:
         plaid_tx = fetch_bank_transactions()
         for tx in plaid_tx:
             tx['source_type'] = 'plaid'
-            tx['processed'] = False  # Plaid transactions are not processed by default
+            tx['processed'] = False
         plaid_transactions = plaid_tx
         app.logger.info(f"[RECONCILE] Fetched {len(plaid_transactions)} Plaid transactions")
     except Exception as e:
         app.logger.warning(f"[RECONCILE] Could not fetch Plaid transactions: {e}")
         plaid_transactions = []
     
-    # 2b. Get Historic transactions (from bank_transactions table)
     conn2 = get_db()
     cur2 = conn2.cursor()
     cur2.execute('''
@@ -11046,13 +10683,12 @@ def accounting_reconcile_init():
     
     historic_transactions = []
     for row in historic_rows:
-        # Map source column to source_type
         source_val = row['source'] if row['source'] else 'csv_import'
         mapped_source = 'historic' if source_val in ('csv_import', 'historic') else source_val
         historic_transactions.append({
             'id': row['id'],
             'date': row['date'],
-            'amount': row['amount'] / 100.0,  # stored in cents
+            'amount': row['amount'] / 100.0,
             'description': row['description'],
             'processed': bool(row['processed']) if row['processed'] is not None else False,
             'source_type': mapped_source
@@ -11060,13 +10696,9 @@ def accounting_reconcile_init():
     
     app.logger.info(f"[RECONCILE] Fetched {len(historic_transactions)} Historic transactions")
     
-    # Combine both sources
     all_bank_transactions = plaid_transactions + historic_transactions
     app.logger.info(f"[RECONCILE] Total bank transactions: {len(all_bank_transactions)}")
     
-    # ============================================================
-    # 3. GET SQUARE BATCHES FROM JOURNAL
-    # ============================================================
     cursor.execute('''
         SELECT je.id, je.transaction_date, je.source_id,
                COALESCE(jl.debit_amount, 0) / 100.0 as amount,
@@ -11096,9 +10728,6 @@ def accounting_reconcile_init():
     
     app.logger.info(f"[RECONCILE] Found {len(batches_list)} Square batches in journal_entries")
     
-    # ============================================================
-    # 4. GET EXPECTED PAYMENTS (Sales) - FIXED: includes 'order' AND 'record'
-    # ============================================================
     cursor.execute('''
         SELECT je.id, je.transaction_date, je.source_id, 
                COALESCE(jl.debit_amount, 0) / 100.0 as amount,
@@ -11128,12 +10757,8 @@ def accounting_reconcile_init():
     
     app.logger.info(f"[RECONCILE] Found {len(sales_list)} sales (orders + records)")
     
-    # ============================================================
-    # 5. AUTO-MATCH SQUARE BATCHES TO BANK DEPOSITS
-    # ============================================================
     matched_count = 0
     
-    # Get all unreconciled square batches
     cursor.execute('''
         SELECT je.id, je.transaction_date, 
                COALESCE(jl.debit_amount, 0) / 100.0 as amount,
@@ -11147,12 +10772,9 @@ def accounting_reconcile_init():
     ''')
     unreconciled_batches = cursor.fetchall()
     
-    # Get all unreconciled bank deposits (from combined list)
-    # Filter to only deposits (positive amounts) that are not matched
     unreconciled_deposits = []
     for tx in all_bank_transactions:
         if tx.get('amount', 0) > 0 and not tx.get('processed', False):
-            # Check if already matched via reconciliation_matches
             cursor.execute('SELECT id FROM reconciliation_matches WHERE bank_transaction_id = ?', (tx.get('id'),))
             if not cursor.fetchone():
                 unreconciled_deposits.append({
@@ -11163,7 +10785,6 @@ def accounting_reconcile_init():
     
     app.logger.info(f"[RECONCILE] Found {len(unreconciled_batches)} unreconciled batches and {len(unreconciled_deposits)} unreconciled deposits")
     
-    # Match batches to deposits
     for batch in unreconciled_batches:
         batch_date_str = batch['transaction_date']
         if isinstance(batch_date_str, str):
@@ -11207,21 +10828,13 @@ def accounting_reconcile_init():
     
     conn.commit()
     
-    # ============================================================
-    # 6. GET FINAL RECONCILIATION STATUS
-    # ============================================================
-    
-    # Build deposits list with matched status from combined transactions
     final_deposits = []
     for tx in all_bank_transactions:
-        # Check if matched
         cursor.execute('SELECT id FROM reconciliation_matches WHERE bank_transaction_id = ?', (tx.get('id'),))
         matched = cursor.fetchone() is not None
         
-        # Get the account_id if processed
         account_id = tx.get('account_id')
         if not account_id and tx.get('processed'):
-            # Try to look up the account_id from journal entry
             cursor.execute('''
                 SELECT jl.account_id
                 FROM journal_lines jl
@@ -11243,7 +10856,6 @@ def accounting_reconcile_init():
             'account_id': account_id
         })
     
-    # Get updated square batches
     cursor.execute('''
         SELECT je.id, je.transaction_date, je.source_id,
                COALESCE(jl.debit_amount, 0) / 100.0 as amount,
@@ -11268,7 +10880,6 @@ def accounting_reconcile_init():
             'bank_transaction_id': b['bank_transaction_id']
         })
     
-    # Unmatched items (sales or batches not reconciled)
     cursor.execute('''
         SELECT je.id, je.transaction_date, je.source_type,
                COALESCE(jl.debit_amount, 0) / 100.0 as amount,
@@ -11294,7 +10905,6 @@ def accounting_reconcile_init():
     
     conn.close()
     
-    # Calculate totals
     total_sales_final = sum(s['amount'] for s in sales_list)
     total_batches_final = sum(b['amount'] for b in final_batches)
     total_deposits_final = sum(d['amount'] for d in final_deposits)
@@ -11330,7 +10940,6 @@ def accounting_reconcile_init():
 def update_purchase(purchase_id):
     """
     Update purchase metadata: seller_name, seller_contact, description.
-    No status field — purchases.status was removed.
     """
     try:
         data = request.get_json()
@@ -11459,7 +11068,6 @@ def upload_purchase_bill(purchase_id):
         import uuid
         from werkzeug.utils import secure_filename
         
-        # Use absolute path
         bills_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads', 'bills')
         os.makedirs(bills_folder, exist_ok=True)
         
@@ -11469,7 +11077,6 @@ def upload_purchase_bill(purchase_id):
         
         app.logger.info(f"Bill saved to: {filepath}")
 
-        # Store the URL path (this is what the browser will request)
         bill_path = f"/static/uploads/bills/{filename}"
 
         cursor.execute('''
@@ -11494,20 +11101,16 @@ def upload_purchase_bill(purchase_id):
 def serve_bill_file(filename):
     """Serve bill of sale files from the uploads folder"""
     try:
-        # Security: Prevent directory traversal
         if '..' in filename or '/' in filename or '\\' in filename:
             return jsonify({'error': 'Invalid filename'}), 400
         
-        # Get the bills folder path
         bills_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads', 'bills')
         
-        # Check if file exists
         filepath = os.path.join(bills_folder, filename)
         if not os.path.exists(filepath):
             app.logger.error(f"Bill file not found: {filepath}")
             return jsonify({'error': 'File not found'}), 404
         
-        # Serve the file
         return send_from_directory(bills_folder, filename)
         
     except Exception as e:
@@ -11743,7 +11346,6 @@ def bank_paypal():
     
     app.logger.info(f"[PAYPAL] Fetching transactions, search='{search}', unprocessed_only={unprocessed_only}")
     
-    # Get PayPal Plaid access token
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'plaid_paypal_access_token'")
@@ -11761,7 +11363,6 @@ def bank_paypal():
     access_token = row['config_value']
     app.logger.info("[PAYPAL] Access token found, fetching transactions")
     
-    # Use Plaid to fetch transactions
     client = get_plaid_client()
     
     end_date = datetime.now().date()
@@ -11785,7 +11386,6 @@ def bank_paypal():
             'error': f'Plaid error: {str(e)}'
         }), 500
     
-    # Format transactions for frontend - FLIP SIGN to match Square convention
     all_transactions = []
     for tx in transactions:
         amount = tx['amount']
@@ -11803,7 +11403,6 @@ def bank_paypal():
     
     app.logger.info(f"[PAYPAL] Formatted {len(all_transactions)} transactions, checking processed status")
     
-    # Check which transactions are already posted
     conn = get_db()
     cursor = conn.cursor()
     
@@ -11816,7 +11415,6 @@ def bank_paypal():
         tx['processed'] = entry is not None
         tx['account_id'] = None
         if entry:
-            # Get the non-cash account (debit for expenses, credit for revenue)
             cursor.execute('''
                 SELECT jl.account_id
                 FROM journal_lines jl
@@ -11837,7 +11435,6 @@ def bank_paypal():
     
     conn.close()
     
-    # Apply filters
     if search:
         search_lower = search.lower()
         all_transactions = [t for t in all_transactions if search_lower in t['description'].lower()]
@@ -11867,7 +11464,6 @@ def bank_paypal():
 @app.route('/api/accounting/external/square/balance', methods=['GET', 'OPTIONS'])
 def get_square_balance():
     """Fetch the net available balance from Square (gross - fees - refunds - payouts)."""
-    # Handle preflight CORS
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
         response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
@@ -11876,7 +11472,6 @@ def get_square_balance():
         response.headers.add('Access-Control-Allow-Credentials', 'true')
         return response, 200
 
-    # Authentication check
     if 'user_id' not in session or not session.get('logged_in'):
         response = jsonify({'status': 'error', 'error': 'Authentication required'})
         response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8000')
@@ -11908,7 +11503,6 @@ def get_square_balance():
 
         total_net_credits = 0
 
-        # ---- 1. Fetch all COMPLETED payments ----
         payments_url = f'{base_url}/v2/payments'
         params = {'limit': 200, 'status': 'COMPLETED'}
 
@@ -11931,7 +11525,6 @@ def get_square_balance():
 
         total_payouts = 0
 
-        # ---- 2. Fetch all payouts (no status filter) ----
         payouts_url = f'{base_url}/v2/payouts'
         params = {'limit': 200}
 
@@ -11941,7 +11534,6 @@ def get_square_balance():
             data = resp.json()
 
             for payout in data.get('payouts', []):
-                # Include both SENT and PAID statuses (completed transfers)
                 if payout.get('status') in ('SENT', 'PAID'):
                     total_payouts += payout.get('amount_money', {}).get('amount', 0)
 
@@ -11951,7 +11543,6 @@ def get_square_balance():
             else:
                 break
 
-        # Net available balance in dollars
         available_balance = (total_net_credits - total_payouts) / 100.0
 
         response = jsonify({'status': 'success', 'balance': available_balance})
@@ -12009,7 +11600,6 @@ def get_plaid_balance():
         return jsonify({'status': 'success', 'balance': total_balance})
     
     except ApiException as e:
-        # Parse the response body (which is a JSON string)
         try:
             error_body = json.loads(e.body) if e.body else {}
         except:
@@ -12019,7 +11609,6 @@ def get_plaid_balance():
         error_type = error_body.get('error_type', 'UNKNOWN')
         error_message = error_body.get('error_message', str(e))
         
-        # Return a structured error response with CORS headers
         resp = jsonify({
             'status': 'error',
             'error': error_message,
@@ -12028,18 +11617,17 @@ def get_plaid_balance():
             'plaid_error': error_body
         })
         resp.status_code = 400
-        # Ensure CORS headers are set
         resp.headers['Access-Control-Allow-Origin'] = 'http://localhost:8000'
         resp.headers['Access-Control-Allow-Credentials'] = 'true'
         return resp
     
     except Exception as e:
-        # Any other error
         return jsonify({
             'status': 'error',
             'error': str(e),
             'error_code': 'SERVER_ERROR'
         }), 500
+
 # ==================== GENRES ====================
  
 @app.route('/api/formats', methods=['GET'])
@@ -12087,7 +11675,6 @@ def update_format(format_id):
     conn = get_db()
     cursor = conn.cursor()
     
-    # Check if in use
     cursor.execute('SELECT id FROM records WHERE format_id = ?', (format_id,))
     if cursor.fetchone():
         conn.close()
@@ -12110,7 +11697,6 @@ def delete_format(format_id):
     conn = get_db()
     cursor = conn.cursor()
     
-    # Check if in use
     cursor.execute('SELECT id FROM records WHERE format_id = ?', (format_id,))
     if cursor.fetchone():
         conn.close()
@@ -12142,11 +11728,6 @@ def get_areas():
 def apply_scan_location():
     """
     Apply location to multiple records at once.
-    Expects: {
-        "record_ids": [1, 2, 3],
-        "location_id": 5,
-        "location_index_start": 1
-    }
     """
     data = request.json
     record_ids = data.get('record_ids', [])
@@ -12162,7 +11743,6 @@ def apply_scan_location():
     conn = get_db()
     cursor = conn.cursor()
     
-    # Verify location exists
     cursor.execute('SELECT id FROM locations WHERE id = ?', (location_id,))
     if not cursor.fetchone():
         conn.close()
@@ -12198,12 +11778,6 @@ def apply_scan_location():
 def filter_records():
     """
     Filter records by location and date.
-    Query params:
-        last_seen_after: YYYY-MM-DD
-        location_id: integer
-        format_id: integer (optional)
-        status_id: integer (optional)
-        search: string (optional)
     """
     last_seen_after = request.args.get('last_seen_after')
     location_id = request.args.get('location_id', type=int)
@@ -12273,7 +11847,6 @@ def create_gift_card():
     try:
         data = request.json
         
-        # Validate required fields
         code = data.get('code', '').upper().strip()
         card_value = float(data.get('card_value', 0))
         charge_amount = float(data.get('charge_amount', 0))
@@ -12296,7 +11869,6 @@ def create_gift_card():
         conn = get_db()
         cursor = conn.cursor()
         
-        # ====== Check if code already exists as a gift card ======
         cursor.execute('''
             SELECT id, source_id 
             FROM journal_entries_simple 
@@ -12305,7 +11877,6 @@ def create_gift_card():
         existing = cursor.fetchone()
         
         if existing:
-            # Get current balance
             cursor.execute('''
                 SELECT COALESCE(SUM(amount), 0) as balance
                 FROM journal_entries_simple
@@ -12324,12 +11895,9 @@ def create_gift_card():
                 'can_add_credit': True
             }), 400
         
-        # ====== Check if barcode exists in records table (optional) ======
-        # Only check if it looks like a record barcode (not a gift card code)
         record_info = None
         is_record_barcode = False
         
-        # Gift card barcodes usually start with GC- or GIFT-
         if not code.startswith('GC-') and not code.startswith('GIFT-'):
             cursor.execute('''
                 SELECT id, artist, title, barcode, status_id, store_price
@@ -12352,7 +11920,6 @@ def create_gift_card():
         
         today = datetime.now().strftime('%Y-%m-%d')
         
-        # Build description
         if record_info:
             description = f"{recipient_name} | {code} | ${card_value:.2f} | {record_info}"
         else:
@@ -12361,15 +11928,12 @@ def create_gift_card():
         if notes:
             description += f" | {notes}"
         
-        # ====== INSERT into journal_entries_simple ======
-        # Get account IDs
-        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))  # Store Credit Liability
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
         liability = cursor.fetchone()
         if not liability:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Store Credit Liability account (2015) not found'}), 500
         
-        # Get payment account based on payment method
         account_map = {
             'cash': '1015',
             'square': '1030',
@@ -12385,7 +11949,6 @@ def create_gift_card():
             conn.close()
             return jsonify({'status': 'error', 'error': f'Payment account {payment_account_code} not found'}), 500
         
-        # Create the journal entry
         cursor.execute('''
             INSERT INTO journal_entries_simple (
                 transaction_date, 
@@ -12402,17 +11965,16 @@ def create_gift_card():
             description, 
             'gift_card', 
             code, 
-            payment_account['id'],  # post_from = cash/payment account
-            liability['id'],         # post_to = liability account
-            card_value_cents,        # positive amount = credit to liability
+            payment_account['id'],
+            liability['id'],
+            card_value_cents,
         ))
         
         entry_id = cursor.lastrowid
         
-        # 2. If charge_amount < card_value, record promotional expense (e.g., bonus credit)
         diff_cents = card_value_cents - charge_amount_cents
         if diff_cents > 0:
-            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('6010',))  # Promotional Expense
+            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('6010',))
             promo_account = cursor.fetchone()
             if promo_account:
                 cursor.execute('''
@@ -12431,15 +11993,14 @@ def create_gift_card():
                     f"{description} | PROMO", 
                     'gift_card', 
                     code, 
-                    promo_account['id'],    # post_from = expense account
-                    payment_account['id'],  # post_to = cash account
-                    -diff_cents,            # negative amount = debit
+                    promo_account['id'],
+                    payment_account['id'],
+                    -diff_cents,
                 ))
         
-        # 3. If charge_amount > card_value, record revenue (overpayment)
         if charge_amount_cents > card_value_cents:
             excess_cents = charge_amount_cents - card_value_cents
-            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4000',))  # Revenue
+            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4000',))
             revenue = cursor.fetchone()
             if revenue:
                 cursor.execute('''
@@ -12458,14 +12019,13 @@ def create_gift_card():
                     f"{description} | EXCESS", 
                     'gift_card', 
                     code, 
-                    payment_account['id'],  # post_from = cash account
-                    revenue['id'],           # post_to = revenue account
-                    excess_cents,            # positive amount = credit
+                    payment_account['id'],
+                    revenue['id'],
+                    excess_cents,
                 ))
         
         conn.commit()
         
-        # Get the new balance
         cursor.execute('''
             SELECT COALESCE(SUM(amount), 0) as balance
             FROM journal_entries_simple
@@ -12505,7 +12065,6 @@ def get_gift_card_balance(code):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if card exists
         cursor.execute('''
             SELECT id, source_id, description 
             FROM journal_entries_simple 
@@ -12517,7 +12076,6 @@ def get_gift_card_balance(code):
             conn.close()
             return jsonify({'status': 'error', 'error': 'Gift card not found'}), 404
         
-        # Calculate balance: sum of all credits - sum of all debits
         cursor.execute('''
             SELECT COALESCE(SUM(amount), 0) as balance
             FROM journal_entries_simple
@@ -12530,7 +12088,6 @@ def get_gift_card_balance(code):
         
         balance = float(result['balance']) / 100.0 if result else 0
         
-        # Parse recipient from description
         description = entry['description'] or ''
         recipient = 'Unknown'
         if ' | ' in description:
@@ -12570,7 +12127,6 @@ def redeem_gift_card():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if card exists
         cursor.execute('''
             SELECT id, source_id, description 
             FROM journal_entries_simple 
@@ -12582,7 +12138,6 @@ def redeem_gift_card():
             conn.close()
             return jsonify({'status': 'error', 'error': 'Gift card not found'}), 404
         
-        # Calculate current balance
         cursor.execute('''
             SELECT COALESCE(SUM(amount), 0) as balance
             FROM journal_entries_simple
@@ -12597,19 +12152,16 @@ def redeem_gift_card():
             conn.close()
             return jsonify({'status': 'error', 'error': 'Gift card has no balance'}), 400
         
-        # Amount to apply is the smaller of balance and purchase amount
         apply_amount = min(balance, purchase_amount)
         apply_amount_cents = int(round(apply_amount * 100))
         
-        # Get revenue account
-        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4000',))  # Revenue
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4000',))
         revenue = cursor.fetchone()
         if not revenue:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Revenue account (4000) not found'}), 500
         
-        # Get liability account
-        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))  # Store Credit Liability
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
         liability = cursor.fetchone()
         if not liability:
             conn.close()
@@ -12620,8 +12172,6 @@ def redeem_gift_card():
         if order_id:
             description += f" | Order #{order_id}"
         
-        # For redemption: Debit Liability (negative), Credit Revenue (positive)
-        # Post_from = Liability (debit), Post_to = Revenue (credit)
         cursor.execute('''
             INSERT INTO journal_entries_simple (
                 transaction_date, 
@@ -12638,16 +12188,15 @@ def redeem_gift_card():
             description, 
             'gift_card_redeem', 
             code, 
-            liability['id'],   # post_from = liability account (debit)
-            revenue['id'],     # post_to = revenue account (credit)
-            -apply_amount_cents  # negative amount = debit to liability
+            liability['id'],
+            revenue['id'],
+            -apply_amount_cents
         ))
         
         entry_id = cursor.lastrowid
         
         conn.commit()
         
-        # Get new balance
         cursor.execute('''
             SELECT COALESCE(SUM(amount), 0) as balance
             FROM journal_entries_simple
@@ -12692,12 +12241,10 @@ def print_gift_card_barcodes():
         
         codes = []
         for _ in range(count):
-            # Generate unique code
             while True:
                 random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
                 code = f"GC-{random_part}"
                 
-                # Check if code already exists in database
                 conn = get_db()
                 cursor = conn.cursor()
                 cursor.execute('SELECT id FROM journal_entries WHERE source_type = "gift_card" AND source_id = ?', (code,))
@@ -12708,7 +12255,6 @@ def print_gift_card_barcodes():
                     codes.append(code)
                     break
         
-        # Return codes for rendering barcodes on frontend
         return jsonify({
             'status': 'success',
             'codes': codes,
@@ -12730,7 +12276,6 @@ def list_gift_cards():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get all gift card entries from journal_entries_simple
         query = '''
             SELECT DISTINCT 
                 jes.source_id as code,
@@ -12756,7 +12301,6 @@ def list_gift_cards():
         for entry in entries:
             code = entry['code']
             
-            # Calculate current balance (sum of all gift_card and gift_card_redeem entries)
             cursor.execute('''
                 SELECT COALESCE(SUM(amount), 0) as balance
                 FROM journal_entries_simple
@@ -12767,7 +12311,6 @@ def list_gift_cards():
             balance_result = cursor.fetchone()
             balance = float(balance_result['balance']) / 100.0 if balance_result else 0
             
-            # Extract recipient name and card value from description
             description = entry['description'] or ''
             recipient = 'Unknown'
             card_value = 0
@@ -12778,7 +12321,6 @@ def list_gift_cards():
                 if len(parts) > 0:
                     recipient = parts[0]
                 if len(parts) > 2:
-                    # Try to extract card value
                     value_part = parts[2] if len(parts) > 2 else ''
                     if value_part.startswith('$'):
                         try:
@@ -12788,7 +12330,6 @@ def list_gift_cards():
                 if len(parts) > 3:
                     record_info = parts[3] if len(parts) > 3 else ''
             
-            # Get last redemption date
             cursor.execute('''
                 SELECT transaction_date 
                 FROM journal_entries_simple 
@@ -12810,7 +12351,6 @@ def list_gift_cards():
                 'entry_id': entry['entry_id']
             })
         
-        # Filter out cards with $0 balance if requested
         show_empty = request.args.get('show_empty', 'true').lower() == 'true'
         if not show_empty:
             result = [r for r in result if r['balance'] > 0]
@@ -12942,7 +12482,6 @@ def mark_feedback_read(feedback_id):
         app.logger.error(f"Error marking feedback read: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
  
- 
 
 
 @app.route('/api/orders/<int:order_id>', methods=['GET'])
@@ -12954,7 +12493,6 @@ def get_order_details(order_id):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get order
         cursor.execute('''
             SELECT 
                 id,
@@ -12978,7 +12516,6 @@ def get_order_details(order_id):
             conn.close()
             return jsonify({'status': 'error', 'error': 'Order not found'}), 404
         
-        # Get order items
         cursor.execute('''
             SELECT 
                 oi.id,
@@ -13040,7 +12577,6 @@ def create_order():
     try:
         data = request.json
         
-        # Validate required fields
         required_fields = ['customer_name']
         for field in required_fields:
             if field not in data or not data[field]:
@@ -13056,7 +12592,6 @@ def create_order():
         if not items or len(items) == 0:
             return jsonify({'status': 'error', 'error': 'At least one item is required'}), 400
         
-        # Generate order number
         date_str = datetime.now().strftime('%Y%m%d')
         random_chars = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
         order_number = f"ORD-{date_str}-{random_chars}"
@@ -13064,10 +12599,8 @@ def create_order():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Start transaction
         cursor.execute('BEGIN TRANSACTION')
         
-        # Insert order
         cursor.execute('''
             INSERT INTO record_orders (
                 order_number,
@@ -13085,7 +12618,6 @@ def create_order():
         
         order_id = cursor.lastrowid
         
-        # Insert order items
         total_amount = 0
         for item in items:
             record_id = item.get('record_id')
@@ -13097,7 +12629,6 @@ def create_order():
                 conn.close()
                 return jsonify({'status': 'error', 'error': 'record_id is required for each item'}), 400
             
-            # Get record price if not provided
             if not price_at_time:
                 cursor.execute('SELECT store_price FROM records WHERE id = ?', (record_id,))
                 record = cursor.fetchone()
@@ -13118,7 +12649,6 @@ def create_order():
         conn.commit()
         conn.close()
         
-        # Send admin notification (send email to admins)
         try:
             admin_conn = get_db()
             admin_cursor = admin_conn.cursor()
@@ -13169,10 +12699,6 @@ View in Admin Panel: https://www.pigstylemusic.com/admin#record-orders
  
 
 
-
- 
- 
-
 # ==================== ORDER NOTIFICATION HELPER ====================
 
 def send_order_notification(email, artist, title, action='new'):
@@ -13201,7 +12727,7 @@ https://www.pigstylemusic.com/admin#record-orders
     except Exception as e:
         app.logger.error(f"Error sending order notification email: {str(e)}")
 
-def send_order_notification(email, artist, title, action='new'):
+def send_order_notification_dup(email, artist, title, action='new'):
     """Send admin notification for new order request."""
     try:
         admin_conn = get_db()
@@ -13243,21 +12769,17 @@ def subscribe():
         artist = data.get('artist', '').strip() if data.get('artist') else ''
         title = data.get('title', '').strip() if data.get('title') else ''
         
-        # Validate email
         if not email or '@' not in email or '.' not in email:
             return jsonify({'status': 'error', 'error': 'Valid email address required'}), 400
         
-        # Artist is required
         if not artist:
             return jsonify({'status': 'error', 'error': 'Artist name is required'}), 400
         
-        # Title is optional for alerts
         title_value = title if title else None
         
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if subscription already exists
         if title_value:
             cursor.execute('''
                 SELECT id, is_active, notified 
@@ -13274,7 +12796,6 @@ def subscribe():
         existing = cursor.fetchone()
         
         if existing:
-            # If inactive, reactivate it
             if not existing['is_active']:
                 cursor.execute('''
                     UPDATE email_subscriptions 
@@ -13290,7 +12811,6 @@ def subscribe():
                     'subscription_id': existing['id']
                 }), 200
             
-            # If active and already notified, reset
             if existing['notified'] == 1:
                 cursor.execute('''
                     UPDATE email_subscriptions 
@@ -13314,7 +12834,6 @@ def subscribe():
                 'subscription_id': existing['id']
             }), 200
         
-        # Insert new subscription
         cursor.execute('''
             INSERT INTO email_subscriptions (
                 email, 
@@ -13362,22 +12881,18 @@ def create_record_order():
         artist = data.get('artist', '').strip() if data.get('artist') else ''
         title = data.get('title', '').strip() if data.get('title') else ''
         
-        # Validate email
         if not email or '@' not in email or '.' not in email:
             return jsonify({'status': 'error', 'error': 'Valid email address required'}), 400
         
-        # Validate artist
         if not artist:
             return jsonify({'status': 'error', 'error': 'Artist name is required'}), 400
         
-        # Validate title
         if not title:
             return jsonify({'status': 'error', 'error': 'Record title is required'}), 400
         
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if this order already exists
         cursor.execute('''
             SELECT id, status, notified 
             FROM record_orders 
@@ -13387,7 +12902,6 @@ def create_record_order():
         existing = cursor.fetchone()
         
         if existing:
-            # If cancelled or completed, reactivate it
             if existing['status'] in ('cancelled', 'completed'):
                 cursor.execute('''
                     UPDATE record_orders 
@@ -13403,7 +12917,6 @@ def create_record_order():
                     'already_exists': True
                 }), 200
             
-            # If pending and already notified, reset notified
             if existing['notified'] == 1:
                 cursor.execute('''
                     UPDATE record_orders 
@@ -13427,7 +12940,6 @@ def create_record_order():
                 'already_exists': True
             }), 200
         
-        # Insert new order request
         cursor.execute('''
             INSERT INTO record_orders (
                 email, 
@@ -13510,7 +13022,6 @@ def get_all_orders():
         cursor.execute(query, params)
         rows = cursor.fetchall()
         
-        # Get total count
         count_query = 'SELECT COUNT(*) as total FROM record_orders WHERE 1=1'
         count_params = []
         if status != 'all':
@@ -13671,7 +13182,6 @@ def mark_order_read(order_id):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if order exists
         cursor.execute('SELECT id FROM orders WHERE id = ?', (order_id,))
         if not cursor.fetchone():
             conn.close()
@@ -13712,7 +13222,6 @@ def order_complete():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if order exists
         cursor.execute('SELECT id, order_status, payment_status, square_payment_id FROM orders WHERE id = ?', (order_id,))
         order = cursor.fetchone()
         
@@ -13732,7 +13241,6 @@ def order_complete():
             cursor.execute("BEGIN TRANSACTION")
             app.logger.info("🔄 Transaction started")
             
-            # Update order status
             app.logger.info(f"🔄 Updating order {order_id} to paid/completed")
             cursor.execute('''
                 UPDATE orders 
@@ -13746,7 +13254,6 @@ def order_complete():
             affected = cursor.rowcount
             app.logger.info(f"✅ Order updated, rows affected: {affected}")
             
-            # Get record IDs from order items
             cursor.execute('SELECT record_id FROM order_items WHERE order_id = ?', (order_id,))
             order_items = cursor.fetchall()
             record_ids = [row['record_id'] for row in order_items]
@@ -13763,7 +13270,6 @@ def order_complete():
                 ''', record_ids)
                 app.logger.info(f"✅ {cursor.rowcount} records marked as sold")
                 
-                # Verify the update
                 cursor.execute(f'SELECT id, status_id FROM records WHERE id IN ({placeholders})', record_ids)
                 updated_records = cursor.fetchall()
                 for rec in updated_records:
@@ -13771,7 +13277,6 @@ def order_complete():
             else:
                 app.logger.warning(f"⚠️ No records found in order_items for order {order_id}")
             
-            # Auto-accounting
             app.logger.info("🔄 Processing auto-accounting...")
             try:
                 cursor.execute('SELECT * FROM orders WHERE id = ?', (order_id,))
@@ -13783,12 +13288,10 @@ def order_complete():
                     app.logger.warning(f"⚠️ Order row not found for accounting")
             except Exception as e:
                 app.logger.error(f"❌ Auto-accounting failed: {str(e)}")
-                # Don't rollback - order still completes
             
             conn.commit()
             app.logger.info(f"✅ Transaction committed for order {order_id}")
             
-            # Send confirmation email
             app.logger.info("🔄 Sending confirmation email...")
             try:
                 cursor.execute('SELECT customer_name, customer_email, order_number, total FROM orders WHERE id = ?', (order_id,))
@@ -13955,49 +13458,60 @@ def mark_all_orders_read():
 
 @app.route('/api/records/location-counts', methods=['GET'])
 def get_records_location_counts():
-    """
-    Get count of records by location, based on last_seen after cutoff.
-    Uses LEFT JOIN to include all locations (even those with 0 recent scans).
-    Filters by LAST_SEEN_CUTOFF_DATE from app_config.
+    """Count of records per location, respecting the per-bin visibility rule.
+    Rows include the composed display name (e.g. "Bin 20/RT").
     """
     try:
         conn = get_db()
         cursor = conn.cursor()
 
-        # Fetch cutoff date from app_config
-        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'LAST_SEEN_CUTOFF_DATE'")
-        row = cursor.fetchone()
-        cutoff_date = row['config_value'] if row else None
-
-        # Build query – LEFT JOIN to include all locations
         query = '''
-            SELECT l.name AS location_name, COUNT(r.id) AS record_count
+            SELECT
+                l.id      AS location_id,
+                l.name    AS leaf_name,
+                lp.name   AS parent_name,
+                COUNT(r.id) AS record_count
             FROM locations l
+            LEFT JOIN locations lp ON l.parent_id = lp.id
             LEFT JOIN records r ON r.location_id = l.id
+                AND r.status_id = 2
+                AND (
+                    r.last_seen IS NULL
+                    OR NOT EXISTS (
+                        SELECT 1 FROM records x
+                        WHERE x.location_id = r.location_id
+                          AND x.status_id = 2
+                          AND x.last_seen IS NOT NULL
+                    )
+                    OR date(r.last_seen) = (
+                        SELECT MAX(date(y.last_seen))
+                        FROM records y
+                        WHERE y.location_id = r.location_id
+                          AND y.status_id = 2
+                    )
+                )
+            GROUP BY l.id, l.name, lp.name
+            ORDER BY COALESCE(lp.name, l.name), l.name
         '''
-        params = []
 
-        if cutoff_date:
-            # Move filter into the ON clause to keep all locations
-            query += " AND date(r.last_seen) >= date(?)"
-            params.append(cutoff_date)
-
-        query += ' GROUP BY l.id, l.name ORDER BY l.name'
-
-        cursor.execute(query, params)
+        cursor.execute(query)
         rows = cursor.fetchall()
         conn.close()
 
-        result = [
-            {'location_name': row['location_name'], 'record_count': row['record_count']}
-            for row in rows
-        ]
+        result = []
+        for row in rows:
+            result.append({
+                'location_id': row['location_id'],
+                'location_name': row['leaf_name'],
+                'location_parent_name': row['parent_name'],
+                'location_display': build_location_display(row['parent_name'], row['leaf_name']),
+                'record_count': row['record_count'],
+            })
 
         return jsonify({
             'status': 'success',
             'data': result,
             'count': len(result),
-            'cutoff_applied': cutoff_date is not None
         })
 
     except Exception as e:
@@ -14013,7 +13527,6 @@ def get_events():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get all events - REMOVED updated_at column
         cursor.execute('''
             SELECT id, title, description, event_date, image_url, rsvp_count,
                    repeat_type, created_at
@@ -14028,33 +13541,26 @@ def get_events():
         events = []
         
         for row in rows:
-            # Parse the event date - handle different formats
             event_date_str = row['event_date']
             if isinstance(event_date_str, str):
-                # Handle ISO format with T
                 if 'T' in event_date_str:
                     event_date_str = event_date_str.split('T')[0]
                 try:
                     event_date = datetime.strptime(event_date_str, '%Y-%m-%d').date()
                 except ValueError:
-                    # Try parsing as full datetime
                     try:
                         event_date = datetime.strptime(row['event_date'], '%Y-%m-%d %H:%M:%S').date()
                     except:
-                        # Skip this event if date can't be parsed
                         app.logger.error(f"Could not parse date: {row['event_date']}")
                         continue
             else:
                 event_date = event_date_str
             
-            # For weekly events, calculate the next occurrence
             repeat_type = row['repeat_type'] or 'none'
             if repeat_type == 'weekly':
-                # Keep adding 7 days until the event is in the future
                 while event_date < today:
                     event_date = event_date + timedelta(days=7)
             
-            # Only include events that are today or in the future
             if event_date >= today:
                 events.append({
                     'id': row['id'],
@@ -14067,7 +13573,6 @@ def get_events():
                     'created_at': row['created_at']
                 })
         
-        # Sort by event_date ascending
         events.sort(key=lambda x: x['event_date'])
         
         return jsonify({
@@ -14352,7 +13857,6 @@ def plaid_exchange():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
- 
 # ==================== ACCOUNTING: UNBALANCED ACCOUNTS ====================
 
 @app.route('/api/accounting/unbalanced-accounts', methods=['GET'])
@@ -14361,13 +13865,11 @@ def plaid_exchange():
 def accounting_unbalanced_accounts():
     """
     Get a summary of accounts with unbalanced journal entries.
-    Groups by account and shows the count of unbalanced entries.
     """
     try:
         conn = get_db()
         cursor = conn.cursor()
         
-        # First, find all unbalanced journal entries
         cursor.execute('''
             SELECT 
                 je.id AS entry_id,
@@ -14399,8 +13901,6 @@ def accounting_unbalanced_accounts():
                 'message': 'All accounts are balanced'
             })
         
-        # Extract account IDs from the unbalanced entries to get account details
-        # We need to find which accounts are affected
         entry_ids = [str(e['entry_id']) for e in unbalanced_entries]
         
         if entry_ids:
@@ -14455,14 +13955,12 @@ def accounting_unbalanced_transactions():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Verify account exists
         cursor.execute('SELECT id, code, name FROM accounts WHERE id = ?', (account_id,))
         account = cursor.fetchone()
         if not account:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Account not found'}), 404
         
-        # Find all journal entries for this account that are unbalanced
         cursor.execute('''
             SELECT 
                 je.id,
@@ -14530,13 +14028,11 @@ def accounting_unbalanced_transactions():
 def accounting_delete_journal_entry(entry_id):
     """
     Delete a journal entry and all its lines.
-    If it's a bank transaction, mark it as unprocessed.
     """
     try:
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if entry exists
         cursor.execute('''
             SELECT id, source_type, source_id 
             FROM journal_entries 
@@ -14551,13 +14047,10 @@ def accounting_delete_journal_entry(entry_id):
         source_type = entry['source_type']
         source_id = entry['source_id']
         
-        # If it's a bank transaction, mark as unprocessed
         if source_type in ('plaid', 'historic', 'paypal'):
             if source_type == 'historic':
                 cursor.execute('UPDATE bank_transactions SET processed = 0 WHERE id = ?', (int(source_id),))
-            # Plaid and PayPal transactions are not stored in bank_transactions
         
-        # Delete journal lines and entry
         cursor.execute('DELETE FROM journal_lines WHERE journal_entry_id = ?', (entry_id,))
         cursor.execute('DELETE FROM journal_entries WHERE id = ?', (entry_id,))
         
@@ -14609,14 +14102,11 @@ def bank_transactions_full():
         '''
         params = []
         
-        # Apply filter based on whether post_to is NULL
         if filter_param == 'unposted':
             query += ' AND bt.post_to IS NULL'
         elif filter_param == 'posted':
             query += ' AND bt.post_to IS NOT NULL'
-        # else: 'all' - no filter
         
-        # Apply search filter
         if search_term:
             query += ' AND bt.description LIKE ?'
             params.append(f'%{search_term}%')
@@ -14632,7 +14122,6 @@ def bank_transactions_full():
         total_count = 0
         
         for row in rows:
-            # A transaction is "processed" if it has a post_to value
             processed = row['post_to'] is not None
             if not processed:
                 unprocessed_count += 1
@@ -14674,7 +14163,6 @@ def delete_feedback(feedback_id):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if feedback exists
         cursor.execute('SELECT id, contact_info FROM feedback WHERE id = ?', (feedback_id,))
         feedback = cursor.fetchone()
         
@@ -14682,7 +14170,6 @@ def delete_feedback(feedback_id):
             conn.close()
             return jsonify({'status': 'error', 'error': 'Feedback not found'}), 404
         
-        # Delete the feedback
         cursor.execute('DELETE FROM feedback WHERE id = ?', (feedback_id,))
         
         conn.commit()
@@ -14712,7 +14199,6 @@ def delete_gift_card(code):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if gift card exists
         cursor.execute('''
             SELECT id, source_id 
             FROM journal_entries_simple 
@@ -14724,7 +14210,6 @@ def delete_gift_card(code):
             conn.close()
             return jsonify({'status': 'error', 'error': f'Gift card {code} not found'}), 404
         
-        # Delete all entries for this gift card (gift_card and gift_card_redeem)
         cursor.execute('''
             DELETE FROM journal_entries_simple 
             WHERE source_id = ? 
@@ -14753,7 +14238,6 @@ def delete_gift_card(code):
 def check_barcode():
     """
     Check if a barcode exists in the records table (for gift card linking).
-    This is used by the frontend for real-time validation.
     """
     try:
         data = request.json
@@ -14768,7 +14252,6 @@ def check_barcode():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check in records table
         cursor.execute('''
             SELECT 
                 r.id,
@@ -14812,7 +14295,6 @@ def check_barcode():
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 # ==================== EMAIL LIST MANAGEMENT (ADMIN) ====================
-# ==================== EMAIL LIST MANAGEMENT (ADMIN) ====================
 
 @app.route('/api/admin/email-list', methods=['GET'])
 @login_required
@@ -14829,7 +14311,6 @@ def admin_get_email_list():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Using rowid as id since there's no id column
         query = '''
             SELECT rowid as id, email, datetime('now') as created_at, notified
             FROM email_list
@@ -14841,7 +14322,6 @@ def admin_get_email_list():
             query += ' AND email LIKE ?'
             params.append(f'%{search}%')
         
-        # Get total count
         count_query = query.replace(
             'SELECT rowid as id, email, datetime(\'now\') as created_at, notified',
             'SELECT COUNT(*) as total'
@@ -14888,7 +14368,6 @@ def admin_delete_email_subscriber(subscriber_id):
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get the email before deleting (using rowid)
         cursor.execute('SELECT rowid, email FROM email_list WHERE rowid = ?', (subscriber_id,))
         subscriber = cursor.fetchone()
         
@@ -15039,18 +14518,15 @@ def email_list_subscribe():
         if not email:
             return jsonify({'status': 'error', 'error': 'Email is required'}), 400
         
-        # Validate email format
         if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
             return jsonify({'status': 'error', 'error': 'Invalid email address'}), 400
         
         conn = get_db()
         cursor = conn.cursor()
         
-        # Check if already subscribed
         cursor.execute('SELECT email, notified FROM email_list WHERE email = ?', (email,))
         existing = cursor.fetchone()
         if existing:
-            # If already subscribed but marked as read, keep it
             conn.close()
             return jsonify({
                 'status': 'success',
@@ -15058,7 +14534,6 @@ def email_list_subscribe():
                 'already_subscribed': True
             }), 200
         
-        # Insert new email with notified = 0 (unread)
         cursor.execute('INSERT INTO email_list (email, notified) VALUES (?, 0)', (email,))
         conn.commit()
         conn.close()
