@@ -5695,6 +5695,105 @@ def get_locations():
         app.logger.error(f"Error getting locations: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/locations', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def create_location():
+    """Create a new location.
+
+    Request body:
+        {
+            "name": "LT",              # required
+            "parent_id": 162,          # optional, null for a root
+            "genre_id": 5,             # optional
+            "format_id": 1             # optional
+        }
+
+    Rules:
+        - name is required and cannot be empty
+        - parent_id, if provided, must reference an existing location
+        - (name, parent_id) must be unique
+        - genre_id, if provided, must reference an existing genre
+        - format_id, if provided, must reference an existing format
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+
+        name = (data.get('name') or '').strip()
+        if not name:
+            return jsonify({'status': 'error', 'error': 'name is required'}), 400
+
+        parent_id = data.get('parent_id')
+        genre_id = data.get('genre_id')
+        format_id = data.get('format_id')
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Validate parent if provided
+        if parent_id is not None:
+            cursor.execute('SELECT id FROM locations WHERE id = ?', (parent_id,))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({'status': 'error', 'error': f'parent_id {parent_id} not found'}), 400
+
+        # Validate genre if provided
+        if genre_id is not None:
+            cursor.execute('SELECT id FROM genres WHERE id = ?', (genre_id,))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({'status': 'error', 'error': f'genre_id {genre_id} not found'}), 400
+
+        # Validate format if provided
+        if format_id is not None:
+            cursor.execute('SELECT id FROM formats WHERE id = ?', (format_id,))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({'status': 'error', 'error': f'format_id {format_id} not found'}), 400
+
+        # Insert
+        try:
+            cursor.execute('''
+                INSERT INTO locations (name, genre_id, format_id, parent_id)
+                VALUES (?, ?, ?, ?)
+            ''', (name, genre_id, format_id, parent_id))
+            new_id = cursor.lastrowid
+            conn.commit()
+        except sqlite3.IntegrityError as ie:
+            conn.close()
+            return jsonify({'status': 'error', 'error': f'Duplicate or invalid: {str(ie)}'}), 400
+
+        # Re-read the new row with its parent name for display
+        cursor.execute('''
+            SELECT
+                l.id,
+                l.name,
+                l.parent_id,
+                p.name AS parent_name
+            FROM locations l
+            LEFT JOIN locations p ON l.parent_id = p.id
+            WHERE l.id = ?
+        ''', (new_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'location': {
+                'id': row['id'],
+                'name': row['name'],
+                'parent_id': row['parent_id'],
+                'parent_name': row['parent_name'],
+                'display_name': build_location_display(row['parent_name'], row['name']),
+            }
+        }), 201
+
+    except Exception as e:
+        app.logger.error(f"Error creating location: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 # ==================== MARKUP RULES ENDPOINTS ====================
 

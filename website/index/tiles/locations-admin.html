@@ -1,0 +1,44 @@
+<!-- ================================================================ -->
+<!-- FILE: /tiles/locations-admin.html                                -->
+<!-- Locations admin - tree view + add child / add root.              -->
+<!-- ================================================================ -->
+
+<div style="display: flex; flex-direction: column; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 12px; overflow: hidden; width: 100%; box-sizing: border-box;">
+
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2 style="color: #333; margin: 0;">🗺️ Locations</h2>
+            <p style="color: #666; margin: 4px 0 0 0; font-size: 13px;">
+                Manage the location hierarchy (bins, sub-slots, areas).
+            </p>
+        </div>
+        <div style="display: flex; gap: 8px;">
+            <button onclick="locationsAdminAddRoot()"
+                    style="padding: 8px 18px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                <i class="fas fa-plus"></i> Add Root Location
+            </button>
+            <button onclick="locationsAdminRefresh()"
+                    style="padding: 8px 18px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                <i class="fas fa-sync"></i> Refresh
+            </button>
+        </div>
+    </div>
+
+    <div id="locations-admin-status"
+         style="display: none; padding: 10px 14px; border-radius: 8px; font-size: 13px; box-sizing: border-box;"></div>
+
+    <div style="flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 10px;">
+        <div id="locations-admin-tree">
+            <div style="text-align: center; padding: 30px; color: #999; font-size: 13px;">
+                Loading locations...
+            </div>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 12px; font-size: 12px; color: #999; padding-top: 6px; border-top: 1px solid #eee;">
+        <span>Total: <strong id="locations-admin-count" style="color: #333;">0</strong></span>
+        <span>Roots: <strong id="locations-admin-roots" style="color: #333;">0</strong></span>
+        <span>Leaves: <strong id="locations-admin-leaves" style="color: #333;">0</strong></span>
+    </div>
+
+</div>

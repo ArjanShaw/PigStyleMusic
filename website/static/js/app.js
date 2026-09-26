@@ -2,33 +2,24 @@
 // FILE: /static/js/app.js
 // Page navigation with engagement-style horizontal slide track
 // for CUSTOMER tiles; admin tiles render the old hard-swap way.
-//
-// Admin tile list mirrors admin-dashboard.js — do not change that file.
-//
-// ─── NEW: Menu buttons also auto-rotate every 3s until user interacts.
 // ================================================================
 
 // ==================== STATE ====================
 let currentUser = null;
 
-// Auto-slide config (matches engagement.html)
-const SLIDE_INTERVAL = 4000;      // 4s between auto-advances
-const SLIDE_GRACE    = 3000;      // wait before first auto-advance
-const SLIDE_TRANSITION_MS = 700;  // must match CSS transition duration
+const SLIDE_INTERVAL = 4000;
+const SLIDE_GRACE    = 3000;
+const SLIDE_TRANSITION_MS = 700;
 
-// ─── NEW: menu rotation config ───
-const MENU_ROTATE_INTERVAL = 3000;  // 3s between menu button highlights
+const MENU_ROTATE_INTERVAL = 3000;
 let menuRotateTimer   = null;
 let menuRotateStopped = false;
 
-// Rotation order — these are the tiles that live in the slide track
 const CUSTOMER_TILES = [
     'home', 'shop', 'new', 'new-arrivals', 'merch',
     'events', 'connect', 'alerts', 'order', 'email'
 ];
 
-// Admin tiles — mirror of admin-dashboard.js adminFeatures[].
-// 'login' and 'dashboard' are NOT auth-gated — they are escape hatches.
 const ADMIN_TILES = [
     'admin-dashboard',
     'add-records', 'accounting', 'purchases', 'scan', 'post-discogs',
@@ -36,11 +27,10 @@ const ADMIN_TILES = [
     'custom-checkout', 'email-subscriptions', 'record-orders', 'feedback',
     'email-list', 'online-orders', 'sticky-notes', 'stats', 'creditors',
     'users', 'print-settings', 'store-settings', 'gift-cards',
-    'config-keys', 'cache-management', 'system-info', 'db-query',
+    'config-keys', 'locations-admin', 'cache-management', 'system-info', 'db-query',
     'dashboard', 'login'
 ];
 
-// Runtime state for the slide track
 let slideTrackEl    = null;
 let slideDotsEl     = null;
 let slideCache      = {};
@@ -164,6 +154,7 @@ const INIT_MAP = {
     'store-settings': 'initStoreSettings',
     'gift-cards': 'initGiftCards',
     'config-keys': 'initConfigKeys',
+    'locations-admin': 'initLocationsAdmin',
     'cache-management': 'initCacheManagement',
     'system-info': 'initSystemInfo',
     'db-query': 'initDbQuery',
@@ -180,9 +171,6 @@ function ensureSlideTrack() {
         return;
     }
 
-    // Defensive reset: if our references point to detached DOM
-    // (e.g. admin-dashboard.js wiped page-content via innerHTML),
-    // clear them so we rebuild cleanly.
     if (slideTrackEl && !pageContent.contains(slideTrackEl)) {
         slideTrackEl = null;
         slideDotsEl = null;
@@ -192,7 +180,6 @@ function ensureSlideTrack() {
 
     if (slideTrackEl) return;
 
-    // Inject styles once
     if (!document.getElementById('slide-track-styles')) {
         const style = document.createElement('style');
         style.id = 'slide-track-styles';
@@ -259,7 +246,6 @@ function ensureSlideTrack() {
         document.head.appendChild(style);
     }
 
-    // Clear page-content and build the track
     pageContent.innerHTML = '';
 
     slideTrackEl = document.createElement('div');
@@ -285,7 +271,7 @@ function renderDots() {
         dot.addEventListener('click', function(e) {
             e.stopPropagation();
             userInteractedWithMenu();
-            userInteractedWithMenuRotation();   // ─── NEW
+            userInteractedWithMenuRotation();
             goToSlide(page);
         });
         slideDotsEl.appendChild(dot);
@@ -366,12 +352,12 @@ function userInteractedWithMenu() {
     console.log('⏹️ Auto-slide stopped (user interacted)');
 }
 
-// ==================== MENU AUTO-ROTATION (NEW) ====================
+// ==================== MENU AUTO-ROTATION ====================
 function startMenuRotation() {
     if (menuRotateStopped) return;
     stopMenuRotation();
     menuRotateTimer = setInterval(() => {
-        navigateMenu('next', true);   // isAuto = true
+        navigateMenu('next', true);
     }, MENU_ROTATE_INTERVAL);
     console.log('▶️ Menu rotation started (' + MENU_ROTATE_INTERVAL + 'ms)');
 }
@@ -399,7 +385,7 @@ async function renderCustomerPage(page, btnElement) {
     slideTrackEl.classList.remove('hidden');
     const existingAdminSlot = document.querySelector('.admin-slot.active');
     if (existingAdminSlot) existingAdminSlot.classList.remove('active');
-    if (slideDotsEl) slideDotsEl.style.display = 'flex';   // ─── CHANGED (null-safe)
+    if (slideDotsEl) slideDotsEl.style.display = 'flex';
 
     if (Object.keys(slideCache).length === 0) {
         console.log('📥 Preloading all customer tiles...');
@@ -464,17 +450,13 @@ async function renderCustomerPage(page, btnElement) {
 
 // ==================== RENDER: ADMIN TILE ====================
 async function renderAdminPage(page, btnElement) {
-    // Kill rotation permanently — the user chose an admin tool
     userInteractedWithMenu();
-    userInteractedWithMenuRotation();   // ─── NEW
+    userInteractedWithMenuRotation();
     stopAutoSlide();
 
     const pageContent = document.getElementById('page-content');
     if (!pageContent) return;
 
-    // Defensive reset: if our slide track ref is stale (admin-dashboard.js
-    // wiped #page-content via innerHTML), clear our state so it rebuilds
-    // cleanly on the next customer-page visit.
     if (slideTrackEl && !pageContent.contains(slideTrackEl)) {
         slideTrackEl = null;
         slideDotsEl = null;
@@ -482,15 +464,10 @@ async function renderAdminPage(page, btnElement) {
         currentSlideName = null;
     }
 
-    // Hide the slide track (if it's still in the DOM)
     if (slideTrackEl) slideTrackEl.classList.add('hidden');
     if (slideDotsEl) slideDotsEl.style.display = 'none';
 
     try {
-        // ─── Special case: admin-dashboard ──────────────────────────
-        // admin-dashboard.js writes directly to #page-content.innerHTML,
-        // so it must own the container entirely. Wipe it first so nothing
-        // gets left behind.
         if (page === 'admin-dashboard') {
             pageContent.innerHTML = '';
             if (typeof window.renderAdminDashboard === 'function') {
@@ -507,13 +484,6 @@ async function renderAdminPage(page, btnElement) {
             return;
         }
 
-        // ─── All other admin tiles: use an admin-slot ────────────────
-        // If no admin-slot exists in #page-content, it's because either
-        // (a) we're on our first admin page after a customer page, or
-        // (b) admin-dashboard.js just wiped the container.
-        // In both cases, wipe #page-content first so only the admin-slot
-        // remains — otherwise the tile renders BELOW the leftover content
-        // and is clipped by overflow: hidden.
         let adminSlot = pageContent.querySelector('.admin-slot');
         if (!adminSlot) {
             pageContent.innerHTML = '';
@@ -586,7 +556,7 @@ async function showPage(page, btnElement) {
 }
 
 // ==================== NAVIGATION HELPERS ====================
-function navigateMenu(direction, isAuto = false) {   // ─── CHANGED: added isAuto
+function navigateMenu(direction, isAuto = false) {
     console.log('🔄 Navigating:', direction, isAuto ? '(auto)' : '');
 
     const nav = document.getElementById('menu');
@@ -605,7 +575,6 @@ function navigateMenu(direction, isAuto = false) {   // ─── CHANGED: added
 
         const onclick = btn.getAttribute('onclick');
         if (onclick && onclick.includes('showPage')) {
-            // ─── NEW: when auto-rotating, only rotate through customer tiles
             if (isAuto) {
                 const match = onclick.match(/showPage\(['"]([^'"]+)['"]/);
                 if (!match || !CUSTOMER_TILES.includes(match[1])) return;
@@ -614,7 +583,6 @@ function navigateMenu(direction, isAuto = false) {   // ─── CHANGED: added
         }
     });
 
-    // Cart button only participates in manual navigation, not auto-rotation
     if (!isAuto) {
         const cartBtn = nav.querySelector('[title="Cart"]');
         if (cartBtn && !pageButtons.includes(cartBtn)) {
@@ -639,8 +607,6 @@ function navigateMenu(direction, isAuto = false) {   // ─── CHANGED: added
     if (!target) return;
 
     if (isAuto) {
-        // ─── NEW: bypass real .click() so the capture-phase listener
-        // doesn't treat this as user interaction
         pageButtons.forEach(b => b.classList.remove('active'));
         target.classList.add('active');
 
@@ -654,26 +620,24 @@ function navigateMenu(direction, isAuto = false) {   // ─── CHANGED: added
     }
 }
 
-// Keyboard shortcuts
 document.addEventListener('keydown', function(e) {
     if (e.key === 'ArrowLeft' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const ae = document.activeElement;
         if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return;
         e.preventDefault();
         userInteractedWithMenu();
-        userInteractedWithMenuRotation();   // ─── NEW
+        userInteractedWithMenuRotation();
         navigateMenu('prev');
     } else if (e.key === 'ArrowRight' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const ae = document.activeElement;
         if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return;
         e.preventDefault();
         userInteractedWithMenu();
-        userInteractedWithMenuRotation();   // ─── NEW
+        userInteractedWithMenuRotation();
         navigateMenu('next');
     }
 });
 
-// Menu centering
 (function initNavStyles() {
     const styleId = 'nav-arrow-styles';
     if (document.getElementById(styleId)) return;
@@ -695,30 +659,27 @@ document.addEventListener('keydown', function(e) {
     document.head.appendChild(style);
 })();
 
-// ==================== USER-INTERACTION STOP HOOKS ====================
 (function initStopListeners() {
     document.addEventListener('click', function(e) {
         const btn = e.target.closest('nav button');
         if (btn) {
             userInteractedWithMenu();
-            userInteractedWithMenuRotation();   // ─── NEW
+            userInteractedWithMenuRotation();
         }
         if (e.target.closest('#slides-container')) {
             userInteractedWithMenu();
-            userInteractedWithMenuRotation();   // ─── NEW
+            userInteractedWithMenuRotation();
         }
     }, true);
 })();
 
-// Make globals
 window.navigateMenu = navigateMenu;
 window.updateMenu = updateMenu;
 window.showPage = showPage;
 window.getUser = getUser;
-window.startMenuRotation = startMenuRotation;   // ─── NEW (handy for debugging)
-window.stopMenuRotation  = stopMenuRotation;    // ─── NEW
+window.startMenuRotation = startMenuRotation;
+window.stopMenuRotation  = stopMenuRotation;
 
-// ==================== SQUARE RETURN ====================
 function checkSquareReturnOnStart() {
     console.log('🔵 [APP START] Checking for Square return...');
 
@@ -741,7 +702,6 @@ function checkSquareReturnOnStart() {
 
 window.checkSquareReturnOnStart = checkSquareReturnOnStart;
 
-// ==================== BOOT ====================
 document.addEventListener('DOMContentLoaded', function() {
     const homeBtn = document.querySelector('nav button:first-child');
     if (homeBtn) homeBtn.classList.add('active');
@@ -753,6 +713,5 @@ document.addEventListener('DOMContentLoaded', function() {
         showPage('home');
     }
 
-    // ─── NEW: start rotating menu highlights every 3s ───
     startMenuRotation();
 });
