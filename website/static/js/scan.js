@@ -60,6 +60,14 @@
         }
     }
 
+    // ===== GET LOCATION DISPLAY =====
+    // Prefers server-composed `display_name` ("Bin 20/RT").
+    // Falls back to `name` for standalone locations or older responses.
+    function getLocationDisplay(loc) {
+        if (!loc) return '';
+        return loc.display_name || loc.name || '';
+    }
+
     // ===== LOAD LAST RECORDS BY LAST_SEEN =====
     async function loadLastSeenRecords() {
         const list = document.getElementById('scan-records-list');
@@ -80,12 +88,11 @@
                     artist: r.artist || 'Unknown',
                     title: r.title || 'Unknown',
                     last_seen: r.last_seen,
-                    location_name: r.location_name || 'No location',
+                    location_name: r.location_display || r.location_name || 'No location',
                     location_id: r.location_id,
                     barcode: r.barcode
                 }));
                 
-                // Pre-populate cache with max indices from loaded records
                 data.records.forEach(r => {
                     if (r.location_id) {
                         const currentMax = locationIndexCache[r.location_id] || 0;
@@ -171,9 +178,13 @@
     }
 
     // ===== GET LOCATION ORDER =====
+    // Sorts by display_name so "Bin 1/LB" comes before "Bin 1/LT", and
+    // "Bin 2/..." comes before "Bin 10/...". Falls back to name.
     function getLocationOrder() {
         return [...locations].sort((a, b) => {
-            return a.name.localeCompare(b.name, undefined, { numeric: true });
+            const aKey = getLocationDisplay(a);
+            const bKey = getLocationDisplay(b);
+            return aKey.localeCompare(bKey, undefined, { numeric: true });
         });
     }
 
@@ -249,14 +260,16 @@
                 locations = data.locations || [];
                 
                 locations.sort((a, b) => {
-                    return a.name.localeCompare(b.name, undefined, { numeric: true });
+                    const aKey = getLocationDisplay(a);
+                    const bKey = getLocationDisplay(b);
+                    return aKey.localeCompare(bKey, undefined, { numeric: true });
                 });
                 
                 select.innerHTML = '<option value="">-- Select Location --</option>';
                 locations.forEach(loc => {
                     const opt = document.createElement('option');
                     opt.value = loc.id;
-                    opt.textContent = loc.name;
+                    opt.textContent = getLocationDisplay(loc);
                     select.appendChild(opt);
                 });
                 
@@ -285,7 +298,7 @@
         const loc = locations.find(l => l.id === locationId);
 
         if (loc) {
-            display.textContent = `📍 ${loc.name}`;
+            display.textContent = `📍 ${getLocationDisplay(loc)}`;
             display.style.color = '#28a745';
             input.disabled = false;
             btn.disabled = false;
@@ -302,7 +315,6 @@
 
     // ===== GET NEXT LOCATION INDEX =====
     function getNextLocationIndex(locationId) {
-        // Get from cache, default to 0
         const currentMax = locationIndexCache[locationId] || 0;
         return currentMax + 1;
     }
@@ -325,17 +337,14 @@
             statusDiv.className = 'status-message status-info';
         }
 
-        // Clear input immediately for faster scanning
         const input = document.getElementById('scan-input');
         if (input) {
             input.value = '';
         }
 
         try {
-            // Calculate next index from cache
             const locationIndex = getNextLocationIndex(locationId);
             
-            // SINGLE API CALL - send barcode, location_id, and the calculated index
             const response = await fetch(`${API_BASE}/api/records/scan-update`, {
                 method: 'POST',
                 credentials: 'include',
@@ -350,16 +359,20 @@
             const data = await response.json();
 
             if (data.status === 'success' && data.record) {
-                // Update cache with the new index
                 locationIndexCache[locationId] = locationIndex;
                 
-                // Add to recent scans
+                // Use display_name composed by the server if provided,
+                // otherwise fall back to leaf-only location_name.
+                const composedLocation = data.record.location_display
+                    || data.record.location_name
+                    || 'Unknown';
+
                 const scanEntry = {
                     id: data.record.id,
                     artist: data.record.artist || 'Unknown',
                     title: data.record.title || 'Unknown',
                     last_seen: data.record.last_seen,
-                    location_name: data.record.location_name || 'Unknown',
+                    location_name: composedLocation,
                     location_id: data.record.location_id,
                     barcode: data.record.barcode || ''
                 };
@@ -379,7 +392,7 @@
                 });
 
                 if (statusDiv) {
-                    statusDiv.textContent = `✅ #${data.record.id}: ${data.record.artist} - ${data.record.title} → ${data.record.location_name} (Index: ${locationIndex}) at ${timeStr}`;
+                    statusDiv.textContent = `✅ #${data.record.id}: ${data.record.artist} - ${data.record.title} → ${composedLocation} (Index: ${locationIndex}) at ${timeStr}`;
                     statusDiv.className = 'status-message status-success';
                 }
                 playSound('success');
@@ -399,7 +412,6 @@
             playSound('error');
         }
 
-        // Refocus input for next scan
         if (input) {
             setTimeout(() => input.focus(), 100);
         }
