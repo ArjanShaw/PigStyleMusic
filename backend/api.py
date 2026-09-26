@@ -5646,10 +5646,19 @@ def get_sales_over_time_daily_stats():
         'revenue': revenue
     })
 
-
 @app.route('/api/locations', methods=['GET'])
 def get_locations():
-    """Get all locations with hierarchy info and a composed display name."""
+    """Get all locations with hierarchy info, composed display name,
+    and count of Active records currently assigned to each location.
+
+    Response row fields:
+        id
+        name                       leaf-only name (e.g. "RT")
+        parent_id                  parent's id, or null
+        parent_name                parent's name, or null
+        display_name               "Bin 20/RT" or standalone name
+        record_count               Active records assigned to this exact location
+    """
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -5664,7 +5673,13 @@ def get_locations():
                 l.id,
                 l.name,
                 l.parent_id,
-                p.name AS parent_name
+                p.name AS parent_name,
+                (
+                    SELECT COUNT(*)
+                    FROM records r
+                    WHERE r.location_id = l.id
+                      AND r.status_id = 2
+                ) AS record_count
             FROM locations l
             LEFT JOIN locations p ON l.parent_id = p.id
             ORDER BY
@@ -5683,6 +5698,7 @@ def get_locations():
                 'parent_id': row['parent_id'],
                 'parent_name': row['parent_name'],
                 'display_name': build_location_display(row['parent_name'], row['name']),
+                'record_count': row['record_count'] or 0,
             })
 
         return jsonify({
@@ -5694,7 +5710,7 @@ def get_locations():
     except Exception as e:
         app.logger.error(f"Error getting locations: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
+ 
 @app.route('/api/locations', methods=['POST'])
 @login_required
 @role_required(['admin'])
@@ -5792,6 +5808,130 @@ def create_location():
 
     except Exception as e:
         app.logger.error(f"Error creating location: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/locations/<int:location_id>/clear-records', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def clear_location_records(location_id):
+    """Set records.location_id = NULL for every record at this location
+    and every descendant location. Records themselves are not modified
+    beyond the location fields.
+
+    Also clears location_index, since it is only meaningful when a
+    record is assigned to a leaf location.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Verify the location exists
+        cursor.execute('SELECT id FROM locations WHERE id = ?', (location_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': f'Location #{location_id} not found'}), 404
+
+        # Collect this location's id plus all descendants.
+        # Two-level tree today, but a recursive walk is future-proof.
+        cursor.execute('''
+            WITH RECURSIVE subtree(id) AS (
+                SELECT id FROM locations WHERE id = ?
+                UNION ALL
+                SELECT l.id FROM locations l
+                JOIN subtree s ON l.parent_id = s.id
+            )
+            SELECT id FROM subtree
+        ''', (location_id,))
+        ids = [row['id'] for row in cursor.fetchall()]
+
+        if not ids:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'No locations in subtree'}), 400
+
+        placeholders = ','.join('?' for _ in ids)
+        cursor.execute(f'''
+            UPDATE records
+            SET location_id = NULL,
+                location_index = NULL
+            WHERE location_id IN ({placeholders})
+        ''', ids)
+
+        cleared = cursor.rowcount
+        conn.commit()
+        conn.close()
+
+        app.logger.info(f"Cleared {cleared} records from location subtree of #{location_id}")
+
+        return jsonify({
+            'status': 'success',
+            'cleared': cleared,
+            'location_id': location_id,
+            'subtree_size': len(ids)
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error clearing location records: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/locations/<int:location_id>', methods=['DELETE'])
+@login_required
+@role_required(['admin'])
+def delete_location(location_id):
+    """Delete a location. Refuses if the location has any records
+    pointing at it, or if it has any child locations.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Verify the location exists
+        cursor.execute('SELECT id, name FROM locations WHERE id = ?', (location_id,))
+        loc = cursor.fetchone()
+        if not loc:
+            conn.close()
+            return jsonify({'status': 'error', 'error': f'Location #{location_id} not found'}), 404
+
+        # Refuse if any records point at this location
+        cursor.execute('SELECT COUNT(*) AS n FROM records WHERE location_id = ?', (location_id,))
+        record_count = cursor.fetchone()['n']
+        if record_count > 0:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Cannot delete: {record_count} record(s) still assigned to this location. '
+                         f'Clear them first.'
+            }), 400
+
+        # Refuse if the location has children
+        cursor.execute('SELECT COUNT(*) AS n FROM locations WHERE parent_id = ?', (location_id,))
+        child_count = cursor.fetchone()['n']
+        if child_count > 0:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Cannot delete: {child_count} child location(s) still under this location. '
+                         f'Delete the children first.'
+            }), 400
+
+        # Safe to delete
+        cursor.execute('DELETE FROM locations WHERE id = ?', (location_id,))
+        conn.commit()
+        conn.close()
+
+        app.logger.info(f"Deleted location #{location_id} ({loc['name']})")
+
+        return jsonify({
+            'status': 'success',
+            'deleted_id': location_id,
+            'deleted_name': loc['name']
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error deleting location: {str(e)}")
+        app.logger.traceback = None
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
