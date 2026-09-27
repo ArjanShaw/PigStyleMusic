@@ -1,7 +1,7 @@
 // ================================================================
 // FILE: /static/js/locations-admin.js
 // Locations admin - tree view, add child, add root, clear records,
-// delete location, with per-location record counts.
+// delete location, with per-location record counts and latest last_seen.
 // ================================================================
 
 (function() {
@@ -56,8 +56,9 @@
     }
 
     // Build a nested tree from the flat /api/locations response.
-    // Each node carries `record_count` (own records) and `subtree_count`
-    // (own + all descendants), both populated from the API.
+    // Each node carries `record_count` (own records), `subtree_count`
+    // (own + all descendants), and `latest_last_seen` (most recent
+    // last_seen timestamp at this exact location).
     function buildTree(rows) {
         const byId = {};
         rows.forEach(r => {
@@ -69,6 +70,7 @@
                 parent_name: r.parent_name,
                 record_count: r.record_count || 0,
                 subtree_count: r.record_count || 0,   // updated below
+                latest_last_seen: r.latest_last_seen || null,
                 children: []
             };
         });
@@ -126,8 +128,11 @@
         const directCount = node.record_count;
         // Records at this location + all descendants
         const subtreeCount = node.subtree_count;
-        // For a leaf, directCount === subtreeCount.
-        // For a parent, show both when they differ.
+
+        // Most recent last_seen timestamp at this exact location
+        const latestSeen = node.latest_last_seen
+            ? String(node.latest_last_seen).split('T')[0]
+            : null;
 
         // Delete is disabled if the location has any records assigned
         // (direct) OR any children. The backend enforces the same rule.
@@ -178,6 +183,23 @@
             }
         }
 
+        let seenBadge = '';
+        if (latestSeen) {
+            seenBadge = `
+                <span title="Most recent last_seen for records at this location"
+                      style="background: #fff3e0; padding: 1px 8px; border-radius: 10px; font-size: 10px; color: #e65100; font-weight: 600;">
+                    🕒 ${escapeHtml(latestSeen)}
+                </span>
+            `;
+        } else {
+            seenBadge = `
+                <span title="No last_seen recorded"
+                      style="background: #f5f5f5; padding: 1px 8px; border-radius: 10px; font-size: 10px; color: #999;">
+                    🕒 —
+                </span>
+            `;
+        }
+
         let html = `
             <div data-loc-id="${node.id}"
                  style="padding: 6px 8px 6px ${8 + indent}px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px;">
@@ -193,6 +215,7 @@
                     </span>
                 ` : ''}
                 ${countBadge}
+                ${seenBadge}
                 <span style="margin-left: auto; color: #999; font-size: 11px; font-family: monospace;">
                     id=${node.id}
                 </span>

@@ -5646,10 +5646,13 @@ def get_sales_over_time_daily_stats():
         'revenue': revenue
     })
 
+
+
 @app.route('/api/locations', methods=['GET'])
 def get_locations():
     """Get all locations with hierarchy info, composed display name,
-    and count of Active records currently assigned to each location.
+    count of Active records currently assigned to each location, and
+    the most recent last_seen timestamp among those records.
 
     Response row fields:
         id
@@ -5658,6 +5661,7 @@ def get_locations():
         parent_name                parent's name, or null
         display_name               "Bin 20/RT" or standalone name
         record_count               Active records assigned to this exact location
+        latest_last_seen           Max last_seen among Active records at this location
     """
     try:
         conn = get_db()
@@ -5679,7 +5683,14 @@ def get_locations():
                     FROM records r
                     WHERE r.location_id = l.id
                       AND r.status_id = 2
-                ) AS record_count
+                ) AS record_count,
+                (
+                    SELECT MAX(r.last_seen)
+                    FROM records r
+                    WHERE r.location_id = l.id
+                      AND r.status_id = 2
+                      AND r.last_seen IS NOT NULL
+                ) AS latest_last_seen
             FROM locations l
             LEFT JOIN locations p ON l.parent_id = p.id
             ORDER BY
@@ -5699,6 +5710,7 @@ def get_locations():
                 'parent_name': row['parent_name'],
                 'display_name': build_location_display(row['parent_name'], row['name']),
                 'record_count': row['record_count'] or 0,
+                'latest_last_seen': row['latest_last_seen'],
             })
 
         return jsonify({
@@ -5710,7 +5722,8 @@ def get_locations():
     except Exception as e:
         app.logger.error(f"Error getting locations: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
- 
+
+
 @app.route('/api/locations', methods=['POST'])
 @login_required
 @role_required(['admin'])
