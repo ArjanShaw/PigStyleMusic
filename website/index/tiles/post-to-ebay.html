@@ -1,16 +1,19 @@
 <!-- ================================================================ -->
 <!-- FILE: /tiles/post-to-ebay.html                                   -->
 <!-- Post to eBay page - Location-based UI, mirrors post-discogs      -->
+<!--                                                                  -->
+<!-- The Connect button only opens the OAuth URL in a new tab.       -->
+<!-- No client-side connection state; the backend is the source of   -->
+<!-- truth. Token problems surface as normal posting errors.         -->
 <!-- ================================================================ -->
 
 <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
     <h2 style="color: #333; margin: 0 0 5px 0;">🛒 Post to eBay</h2>
 
-    <!-- Connection Status Row -->
-    <div id="ebay-connection-row" style="width: 100%; display: flex; gap: 12px; align-items: center; background: #f8f9fa; padding: 10px 15px; border-radius: 8px; border: 1px solid #e9ecef;">
-        <span id="ebay-connection-icon" style="font-size: 18px;">⚪</span>
-        <span id="ebay-connection-text" style="font-size: 13px; color: #666; flex: 1;">
-            Checking eBay connection...
+    <!-- Connect Row (OAuth only — no status tracking) -->
+    <div style="width: 100%; display: flex; gap: 12px; align-items: center; background: #f8f9fa; padding: 10px 15px; border-radius: 8px; border: 1px solid #e9ecef;">
+        <span style="font-size: 13px; color: #666; flex: 1;">
+            Need to authorize or re-authorize the store's eBay account?
         </span>
         <button onclick="connectEbay()" id="ebay-connect-btn"
                 style="padding: 6px 18px; background: linear-gradient(135deg, #0064d2 0%, #004a99 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;">

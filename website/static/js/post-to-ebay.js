@@ -3,9 +3,14 @@
 // Post to eBay page - mirrors post-discogs.js structure
 //
 // Differences from Discogs:
-//   - Connect flow (OAuth) is required before posting
+//   - Connect flow (OAuth) opens in a new tab; tokens are stored server-side
 //   - Shorter post delay (eBay's Inventory API is more permissive)
 //   - Backend constructs the listing; frontend sends record_id + price
+//
+// NO FRONTEND CONNECTION STATE:
+//   The backend is the sole source of truth. If tokens are missing or
+//   expired, /api/ebay/list returns an error, which we display like any
+//   other posting failure. The Connect button just triggers OAuth.
 //
 // MARKUP MODEL (single source of truth — shared with Discogs):
 //   Initial Markup  : starting markup %, e.g. 40
@@ -33,7 +38,6 @@
     let ebayMarkupPercent = null;
     let ebayPriceStep = null;
     let ebayMaxMarkdown = null;
-    let ebayConnected = false;
     let isUpdating = false;
     let isPosting = false;
     let cancelPosting = false;
@@ -138,50 +142,9 @@
         console.log(`✅ Saved ${key} = ${value}`);
     }
 
-    // ===== CONNECT STATUS =====
-    async function refreshEbayConnectionStatus() {
-        const iconEl = document.getElementById('ebay-connection-icon');
-        const textEl = document.getElementById('ebay-connection-text');
-        const btnEl  = document.getElementById('ebay-connect-btn');
-
-        try {
-            const response = await fetch(`${API_BASE}/api/ebay/connection-status`, {
-                credentials: 'include',
-                headers: getHeaders()
-            });
-            if (response.ok) {
-                const data = await response.json();
-                ebayConnected = !!data.connected;
-
-                if (ebayConnected) {
-                    if (iconEl) iconEl.textContent = '🟢';
-                    if (textEl) textEl.textContent = data.username
-                        ? `Connected as ${data.username}`
-                        : 'Connected to eBay';
-                    if (btnEl) {
-                        btnEl.textContent = '🔁 Reconnect';
-                        btnEl.style.background = '#6c757d';
-                    }
-                } else {
-                    if (iconEl) iconEl.textContent = '🔴';
-                    if (textEl) textEl.textContent = 'Not connected — click Connect eBay to authorize';
-                    if (btnEl) {
-                        btnEl.textContent = '🔗 Connect eBay';
-                        btnEl.style.background = 'linear-gradient(135deg, #0064d2 0%, #004a99 100%)';
-                    }
-                }
-            } else {
-                // Endpoint missing (older backend) — report but don't break
-                if (iconEl) iconEl.textContent = '⚪';
-                if (textEl) textEl.textContent = 'Connection status unavailable (backend endpoint missing)';
-            }
-        } catch (err) {
-            console.warn('eBay connection status check failed:', err);
-            if (iconEl) iconEl.textContent = '⚪';
-            if (textEl) textEl.textContent = 'Could not reach backend';
-        }
-    }
-
+    // ===== CONNECT (OAuth) =====
+    // No client-side state. Just opens the auth URL. The backend stores
+    // tokens in app_config; whether they work is discovered on first post.
     window.connectEbay = async function() {
         try {
             const response = await fetch(`${API_BASE}/api/ebay/auth/url`, {
@@ -198,9 +161,8 @@
                 showStatus('❌ eBay auth URL missing in response', 'error');
                 return;
             }
-            // Open in new tab so we stay on the SPA
             window.open(data.auth_url, '_blank', 'noopener');
-            showStatus('🔗 Opened eBay authorization in a new tab. Complete consent there, then click "Refresh Status".', 'info');
+            showStatus('🔗 Opened eBay authorization in a new tab. Complete consent there, then return to this tab.', 'info');
         } catch (err) {
             showStatus(`❌ ${err.message}`, 'error');
         }
@@ -210,7 +172,7 @@
     function calculateEbayPrice(record) {
         if (!record || !record.created_at || !record.store_price || record.store_price <= 0) return null;
 
-        // Feature 3 parallel: consigned records excluded
+        // Consigned records are excluded
         if (record.consignor_id !== null && record.consignor_id !== undefined) return null;
 
         if (ebayMarkupPercent === null || ebayPriceStep === null || ebayMaxMarkdown === null) {
@@ -976,9 +938,6 @@
     };
 
     async function confirmAndPost(recordsToPost, locationNames, scopeLabel) {
-        if (!ebayConnected) {
-            if (!confirm('⚠️ eBay is not connected. Continue anyway? (posting will likely fail)')) return;
-        }
         const withMarkdown = recordsToPost.filter(r => r._markupPercent && r._markupPercent < 0);
         const estMinutes = ((recordsToPost.length * EBAY_POST_DELAY_MS) / 60000).toFixed(1);
         let confirmMsg = `Post ${recordsToPost.length} record(s) from ${scopeLabel} to eBay?\n\n`;
@@ -1172,8 +1131,6 @@
 
         updateLoadButtonState(false);
         updateButtons();
-
-        refreshEbayConnectionStatus();
 
         fetchEbayConfig()
             .then(() => console.log('✅ eBay config loaded into inputs'))
