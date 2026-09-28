@@ -47,6 +47,14 @@
             notification: null
         },
         { 
+            page: 'post-to-ebay', 
+            icon: 'fa-shopping-bag', 
+            label: 'Post to eBay', 
+            description: 'Post inventory to eBay marketplace',
+            color: 'info',
+            notification: null
+        },
+        { 
             page: 'discogs-orders', 
             icon: 'fa-shopping-bag', 
             label: 'Discogs Orders', 
