@@ -14810,6 +14810,8 @@ def email_list_subscribe():
 
 # ==================== EBAY ENDPOINTS ====================
 
+# ==================== EBAY ENDPOINTS ====================
+
 @app.route('/api/ebay/auth/url', methods=['GET'])
 @login_required
 @role_required(['admin'])
@@ -14911,9 +14913,6 @@ def ebay_auth_callback():
 def ebay_list_item():
     """
     List a record on eBay. Body: {"record_id": 123, "price": 29.99, "category_id": "176985"}
-
-    Nothing is stored after the call. The offer_id is returned to the caller
-    and that's it — keep it yourself if you want to manage the listing later.
     """
     try:
         data = request.json or {}
@@ -15007,6 +15006,7 @@ def ebay_list_item():
             'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json',
             'Accept': 'application/json',
+            'Content-Language': 'en-US',
         }
 
         # --- Build payload ---
@@ -15041,7 +15041,8 @@ def ebay_list_item():
                     'aspects': {'Artist': [record['artist']]},
                     'imageUrls': image_urls,
                 },
-                'condition': data.get('condition', 'USED_GOOD'),
+                'condition': data.get('condition', 'USED_EXCELLENT'),
+                'conditionDescription': data.get('conditionDescription', 'Pre-owned vinyl record. Sold as described.'),
                 'availability': {
                     'shipToLocationAvailability': {
                         'quantity': int(data.get('quantity', 1))
@@ -15056,7 +15057,23 @@ def ebay_list_item():
                 'error': f'eBay inventory item failed ({inv_resp.status_code}): {inv_resp.text[:500]}'
             }), 400
 
-        # --- 2. Offer ---
+        # --- 2. Delete any existing offer for this SKU ---
+        offers_resp = requests.get(
+            f'{base_url}/sell/inventory/v1/offer?sku={sku}',
+            headers=headers,
+            timeout=30
+        )
+        if offers_resp.status_code == 200:
+            for existing in offers_resp.json().get('offers', []):
+                existing_offer_id = existing.get('offerId')
+                if existing_offer_id:
+                    requests.delete(
+                        f'{base_url}/sell/inventory/v1/offer/{existing_offer_id}',
+                        headers=headers,
+                        timeout=30
+                    )
+
+        # --- 3. Offer ---
         offer_resp = requests.post(
             f'{base_url}/sell/inventory/v1/offer',
             headers=headers,
@@ -15092,7 +15109,7 @@ def ebay_list_item():
         if not offer_id:
             return jsonify({'status': 'error', 'error': 'eBay did not return an offerId'}), 500
 
-        # --- 3. Publish ---
+        # --- 4. Publish ---
         pub_resp = requests.post(
             f'{base_url}/sell/inventory/v1/offer/{offer_id}/publish',
             headers=headers,
