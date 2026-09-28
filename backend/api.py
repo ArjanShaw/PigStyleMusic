@@ -14556,5 +14556,314 @@ def email_list_subscribe():
         app.logger.error(f"Email list subscription error: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+# ==================== EBAY ENDPOINTS ====================
+
+@app.route('/api/ebay/auth/url', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def ebay_auth_url():
+    """Return the eBay consent URL for the admin to visit."""
+    client_id = os.environ.get('EBAY_CLIENT_ID')
+    runame = os.environ.get('EBAY_RUNAME')
+    env = os.environ.get('EBAY_ENVIRONMENT', 'sandbox')
+
+    if not client_id or not runame:
+        return jsonify({'status': 'error', 'error': 'EBAY_CLIENT_ID or EBAY_RUNAME not configured'}), 500
+
+    auth_base = (
+        'https://auth.sandbox.ebay.com/oauth2/authorize'
+        if env == 'sandbox'
+        else 'https://auth.ebay.com/oauth2/authorize'
+    )
+
+    scopes = ' '.join([
+        'https://api.ebay.com/oauth/api_scope/sell.inventory',
+        'https://api.ebay.com/oauth/api_scope/sell.account',
+        'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
+    ])
+
+    params = urllib.parse.urlencode({
+        'client_id': client_id,
+        'redirect_uri': runame,
+        'response_type': 'code',
+        'scope': scopes,
+        'state': 'pigstyle',
+    })
+
+    return jsonify({'status': 'success', 'auth_url': f'{auth_base}?{params}'})
+
+
+@app.route('/api/ebay/auth/callback', methods=['GET'])
+def ebay_auth_callback():
+    """eBay redirects here after consent. Stores access + refresh tokens."""
+    code = request.args.get('code')
+    if not code:
+        return jsonify({'status': 'error', 'error': 'No authorization code received'}), 400
+
+    client_id = os.environ.get('EBAY_CLIENT_ID')
+    client_secret = os.environ.get('EBAY_CLIENT_SECRET')
+    runame = os.environ.get('EBAY_RUNAME')
+    env = os.environ.get('EBAY_ENVIRONMENT', 'sandbox')
+
+    if not client_id or not client_secret or not runame:
+        return jsonify({'status': 'error', 'error': 'eBay credentials not configured'}), 500
+
+    base_url = 'https://api.sandbox.ebay.com' if env == 'sandbox' else 'https://api.ebay.com'
+
+    auth_str = base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
+
+    resp = requests.post(
+        f'{base_url}/identity/v1/oauth2/token',
+        headers={
+            'Authorization': f'Basic {auth_str}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        data={
+            'grant_type': 'authorization_code',
+            'code': urllib.parse.unquote(code),
+            'redirect_uri': runame,
+        },
+        timeout=30
+    )
+
+    if resp.status_code != 200:
+        return jsonify({
+            'status': 'error',
+            'error': f'eBay token exchange failed ({resp.status_code}): {resp.text[:300]}'
+        }), 500
+
+    result = resp.json()
+    access_token = result.get('access_token')
+    refresh_token = result.get('refresh_token')
+    expires_in = result.get('expires_in', 7200)
+
+    if not access_token or not refresh_token:
+        return jsonify({'status': 'error', 'error': 'eBay did not return expected tokens'}), 500
+
+    expires_at = (datetime.now() + timedelta(seconds=expires_in - 60)).isoformat()
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'ebay_access_token'", (access_token,))
+    cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'ebay_refresh_token'", (refresh_token,))
+    cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'ebay_token_expires'", (expires_at,))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'status': 'success', 'message': 'eBay account connected'})
+
+
+@app.route('/api/ebay/list', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def ebay_list_item():
+    """
+    List a record on eBay. Body: {"record_id": 123, "price": 29.99, "category_id": "176985"}
+
+    Nothing is stored after the call. The offer_id is returned to the caller
+    and that's it — keep it yourself if you want to manage the listing later.
+    """
+    try:
+        data = request.json or {}
+        record_id = data.get('record_id')
+        if not record_id:
+            return jsonify({'status': 'error', 'error': 'record_id required'}), 400
+
+        client_id = os.environ.get('EBAY_CLIENT_ID')
+        client_secret = os.environ.get('EBAY_CLIENT_SECRET')
+        env = os.environ.get('EBAY_ENVIRONMENT', 'sandbox')
+
+        if not client_id or not client_secret:
+            return jsonify({'status': 'error', 'error': 'eBay credentials not configured'}), 500
+
+        base_url = 'https://api.sandbox.ebay.com' if env == 'sandbox' else 'https://api.ebay.com'
+
+        # --- Load record + config ---
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, artist, title, barcode, catalog_number, store_price, image_url, consignor_id
+            FROM records WHERE id = ?
+        ''', (record_id,))
+        record = cursor.fetchone()
+
+        if not record:
+            conn.close()
+            return jsonify({'status': 'error', 'error': f'Record {record_id} not found'}), 404
+
+        if record['consignor_id'] is not None:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'Consigned records cannot be listed'}), 400
+
+        cfg = {}
+        for key in ['ebay_refresh_token', 'ebay_access_token', 'ebay_token_expires',
+                    'ebay_merchant_location_key', 'ebay_fulfillment_policy_id',
+                    'ebay_payment_policy_id', 'ebay_return_policy_id']:
+            cursor.execute("SELECT config_value FROM app_config WHERE config_key = ?", (key,))
+            row = cursor.fetchone()
+            cfg[key] = row['config_value'] if row else None
+        conn.close()
+
+        if not cfg['ebay_refresh_token']:
+            return jsonify({'status': 'error', 'error': 'eBay not connected. Visit /api/ebay/auth/url first.'}), 400
+
+        for required in ['ebay_merchant_location_key', 'ebay_fulfillment_policy_id',
+                         'ebay_payment_policy_id', 'ebay_return_policy_id']:
+            if not cfg[required]:
+                return jsonify({'status': 'error', 'error': f'{required} not configured'}), 500
+
+        # --- Refresh access token if expired ---
+        access_token = cfg['ebay_access_token']
+        need_refresh = True
+        if access_token and cfg['ebay_token_expires']:
+            try:
+                if datetime.now() < datetime.fromisoformat(cfg['ebay_token_expires']):
+                    need_refresh = False
+            except Exception:
+                need_refresh = True
+
+        if need_refresh:
+            auth_str = base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
+            refresh_resp = requests.post(
+                f'{base_url}/identity/v1/oauth2/token',
+                headers={
+                    'Authorization': f'Basic {auth_str}',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                data={'grant_type': 'refresh_token', 'refresh_token': cfg['ebay_refresh_token']},
+                timeout=30
+            )
+            if refresh_resp.status_code != 200:
+                return jsonify({
+                    'status': 'error',
+                    'error': f'eBay refresh failed ({refresh_resp.status_code}): {refresh_resp.text[:300]}'
+                }), 500
+
+            refresh_result = refresh_resp.json()
+            access_token = refresh_result.get('access_token')
+            expires_in = refresh_result.get('expires_in', 7200)
+            expires_at = (datetime.now() + timedelta(seconds=expires_in - 60)).isoformat()
+
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'ebay_access_token'", (access_token,))
+            cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'ebay_token_expires'", (expires_at,))
+            conn.commit()
+            conn.close()
+
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        }
+
+        # --- Build payload ---
+        sku = f"PIGSTYLE-{record_id}"
+        title = f"{record['artist']} - {record['title']}"
+        if len(title) > 80:
+            title = title[:77] + '...'
+
+        description = (
+            f"<h3>{record['artist']} - {record['title']}</h3>"
+            f"<p>Barcode: {record['barcode'] or 'N/A'}</p>"
+            f"<p>Catalog #: {record['catalog_number'] or 'N/A'}</p>"
+            f"<p>Condition: Pre-owned, sold as described.</p>"
+            f"<p>PigStyle Music</p>"
+        )
+
+        image_urls = []
+        if record['image_url']:
+            img = record['image_url']
+            if img.startswith('/'):
+                img = f"https://www.pigstylemusic.com{img}"
+            image_urls.append(img)
+
+        # --- 1. Inventory item ---
+        inv_resp = requests.put(
+            f'{base_url}/sell/inventory/v1/inventory_item/{sku}',
+            headers=headers,
+            json={
+                'product': {
+                    'title': title,
+                    'description': description,
+                    'aspects': {'Artist': [record['artist']]},
+                    'imageUrls': image_urls,
+                },
+                'condition': data.get('condition', 'USED_GOOD'),
+                'availability': {
+                    'shipToLocationAvailability': {
+                        'quantity': int(data.get('quantity', 1))
+                    }
+                },
+            },
+            timeout=30
+        )
+        if inv_resp.status_code not in (200, 201, 204):
+            return jsonify({
+                'status': 'error',
+                'error': f'eBay inventory item failed ({inv_resp.status_code}): {inv_resp.text[:500]}'
+            }), 400
+
+        # --- 2. Offer ---
+        offer_resp = requests.post(
+            f'{base_url}/sell/inventory/v1/offer',
+            headers=headers,
+            json={
+                'sku': sku,
+                'marketplaceId': 'EBAY_US',
+                'format': 'FIXED_PRICE',
+                'availableQuantity': int(data.get('quantity', 1)),
+                'categoryId': str(data.get('category_id', '176985')),
+                'listingDescription': description,
+                'listingPolicies': {
+                    'fulfillmentPolicyId': cfg['ebay_fulfillment_policy_id'],
+                    'paymentPolicyId': cfg['ebay_payment_policy_id'],
+                    'returnPolicyId': cfg['ebay_return_policy_id'],
+                },
+                'pricingSummary': {
+                    'price': {
+                        'value': str(data.get('price', record['store_price'])),
+                        'currency': 'USD',
+                    }
+                },
+                'merchantLocationKey': cfg['ebay_merchant_location_key'],
+            },
+            timeout=30
+        )
+        if offer_resp.status_code not in (200, 201):
+            return jsonify({
+                'status': 'error',
+                'error': f'eBay offer failed ({offer_resp.status_code}): {offer_resp.text[:500]}'
+            }), 400
+
+        offer_id = offer_resp.json().get('offerId')
+        if not offer_id:
+            return jsonify({'status': 'error', 'error': 'eBay did not return an offerId'}), 500
+
+        # --- 3. Publish ---
+        pub_resp = requests.post(
+            f'{base_url}/sell/inventory/v1/offer/{offer_id}/publish',
+            headers=headers,
+            timeout=30
+        )
+        if pub_resp.status_code not in (200, 201):
+            return jsonify({
+                'status': 'error',
+                'error': f'eBay publish failed ({pub_resp.status_code}): {pub_resp.text[:500]}'
+            }), 400
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Listed on eBay: {title}',
+            'offer_id': offer_id,
+        })
+
+    except Exception as e:
+        app.logger.error(f'eBay listing error: {str(e)}')
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
