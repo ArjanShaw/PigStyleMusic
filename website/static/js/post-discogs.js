@@ -4,11 +4,16 @@
 // Records are loaded manually via the "Load Records" button.
 // Progress is shown during pagination and price calculation.
 //
-// MARKUP MODEL (single source of truth — frontend only):
+// MARKUP MODEL (single source of truth — shared with eBay):
 //   Initial Markup  : starting markup %, e.g. 20
 //   Weekly Step     : markup drops this many points per week, e.g. 2
 //   Max Markdown    : maximum discount as a POSITIVE % (0-100), e.g. 50
 //                     → internally floor = -MaxMarkdown
+//
+// CONFIG KEYS (shared with post-to-ebay.js):
+//   PRICING_MARKUP_PERCENT
+//   PRICING_PRICE_STEP
+//   PRICING_MAX_MARKDOWN
 //
 // NO FALLBACKS: if a required config value is missing, we throw.
 // CONFIG SAVES INDEPENDENTLY OF LOADED RECORDS.
@@ -56,8 +61,6 @@
     }
 
     // ===== HELPER: BUILD LOCATION DISPLAY STRING WITH INDEX =====
-    // Uses the server-composed `location_display` field ("Bin 20/RT").
-    // Falls back to `location_name` for safety.
     function buildLocationDisplay(record) {
         const name = record.location_display || record.location_name || 'Unknown Location';
         const idx = record.location_index;
@@ -106,19 +109,19 @@
         return parsed;
     }
 
-    // ===== FETCH CONFIG PARAMETERS =====
+    // ===== FETCH CONFIG PARAMETERS (SHARED WITH EBAY) =====
     async function fetchDiscogsConfig() {
-        const markup = await fetchRequiredConfig('DISCOGS_MARKUP_PERCENT');
-        const step = await fetchRequiredConfig('DISCOGS_PRICE_STEP');
-        const maxMd = await fetchRequiredConfig('DISCOGS_MAX_MARKDOWN');
+        const markup = await fetchRequiredConfig('PRICING_MARKUP_PERCENT');
+        const step = await fetchRequiredConfig('PRICING_PRICE_STEP');
+        const maxMd = await fetchRequiredConfig('PRICING_MAX_MARKDOWN');
 
-        console.log(`📥 Loaded config: markup=${markup}, step=${step}, maxMd=${maxMd}`);
+        console.log(`📥 Loaded shared pricing config: markup=${markup}, step=${step}, maxMd=${maxMd}`);
 
         if (maxMd < 0 || maxMd > 100) {
-            throw new Error(`Config DISCOGS_MAX_MARKDOWN must be between 0 and 100 (got ${maxMd})`);
+            throw new Error(`Config PRICING_MAX_MARKDOWN must be between 0 and 100 (got ${maxMd})`);
         }
         if (step < 0) {
-            throw new Error(`Config DISCOGS_PRICE_STEP must be >= 0 (got ${step})`);
+            throw new Error(`Config PRICING_PRICE_STEP must be >= 0 (got ${step})`);
         }
 
         discogsMarkupPercent = markup;
@@ -137,11 +140,11 @@
         updatePriceInfo();
     }
 
-    // ===== SAVE CONFIG PARAMETERS =====
+    // ===== SAVE CONFIG PARAMETERS (SHARED WITH EBAY) =====
     async function saveDiscogsConfig() {
-        await saveOneConfig('DISCOGS_MARKUP_PERCENT', discogsMarkupPercent);
-        await saveOneConfig('DISCOGS_PRICE_STEP', discogsPriceStep);
-        await saveOneConfig('DISCOGS_MAX_MARKDOWN', discogsMaxMarkdown);
+        await saveOneConfig('PRICING_MARKUP_PERCENT', discogsMarkupPercent);
+        await saveOneConfig('PRICING_PRICE_STEP', discogsPriceStep);
+        await saveOneConfig('PRICING_MAX_MARKDOWN', discogsMaxMarkdown);
     }
 
     async function saveOneConfig(key, value) {
@@ -527,7 +530,6 @@
 
         for (const r of recordsArray) {
             const locationId = r.location_id || 0;
-            // Prefer server-composed display string for grouping labels
             const locationName = r.location_display || r.location_name || 'Unknown Location';
 
             if (!groups[locationId]) {

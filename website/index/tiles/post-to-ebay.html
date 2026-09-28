@@ -1,13 +1,91 @@
+<!-- ================================================================ -->
+<!-- FILE: /tiles/post-to-ebay.html                                   -->
+<!-- Post to eBay page - Location-based UI, mirrors post-discogs      -->
+<!-- ================================================================ -->
+
 <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
     <h2 style="color: #333; margin: 0 0 5px 0;">🛒 Post to eBay</h2>
 
-    <div id="ebay-load-status" style="width: 100%; padding: 10px 14px; border-radius: 8px; background: #e7f3ff; color: #004085; font-size: 13px; font-weight: 600;">
-        ⏳ Loading eBay module...
+    <!-- Connection Status Row -->
+    <div id="ebay-connection-row" style="width: 100%; display: flex; gap: 12px; align-items: center; background: #f8f9fa; padding: 10px 15px; border-radius: 8px; border: 1px solid #e9ecef;">
+        <span id="ebay-connection-icon" style="font-size: 18px;">⚪</span>
+        <span id="ebay-connection-text" style="font-size: 13px; color: #666; flex: 1;">
+            Checking eBay connection...
+        </span>
+        <button onclick="connectEbay()" id="ebay-connect-btn"
+                style="padding: 6px 18px; background: linear-gradient(135deg, #0064d2 0%, #004a99 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            🔗 Connect eBay
+        </button>
     </div>
 
-    <div id="ebay-content" style="width: 100%; flex: 1; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #999; gap: 10px;">
-        <div style="font-size: 48px;">🛒</div>
-        <div style="font-size: 15px;">Post to eBay — coming soon</div>
-        <div style="font-size: 12px; color: #bbb;">This tile is a stub. No functionality wired up yet.</div>
+    <!-- Markup Controls -->
+    <div style="width: 100%; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; background: #f8f9fa; padding: 10px 15px; border-radius: 8px; border: 1px solid #e9ecef;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-size: 13px; font-weight: 600; color: #333; white-space: nowrap;">Initial Markup:</label>
+            <input type="number" id="ebay-markup-percent" min="-100" max="200" step="1"
+                   style="width: 60px; padding: 4px 6px; border: 1px solid #ced4da; border-radius: 4px; font-size: 13px; text-align: center;">
+            <span style="font-size: 13px; color: #666;">%</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-size: 13px; font-weight: 600; color: #333; white-space: nowrap;">Weekly Step:</label>
+            <input type="number" id="ebay-price-step" min="0" max="50" step="0.5"
+                   style="width: 60px; padding: 4px 6px; border: 1px solid #ced4da; border-radius: 4px; font-size: 13px; text-align: center;">
+            <span style="font-size: 13px; color: #666;">%/wk</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-size: 13px; font-weight: 600; color: #333; white-space: nowrap;">Max Markdown:</label>
+            <input type="number" id="ebay-max-markdown" min="0" max="100" step="1"
+                   style="width: 60px; padding: 4px 6px; border: 1px solid #ced4da; border-radius: 4px; font-size: 13px; text-align: center;">
+            <span style="font-size: 13px; color: #666;">% (max discount)</span>
+        </div>
+        <button onclick="updateEbayPrices()" id="ebay-update-prices-btn"
+                style="padding: 5px 16px; background: #0064d2; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
+            🔄 Update Prices
+        </button>
+        <span id="ebay-price-calc-info" style="font-size: 12px; color: #888; margin-left: auto;">
+            Ready
+        </span>
+    </div>
+
+    <!-- Load Records Row -->
+    <div style="width: 100%; display: flex; gap: 12px; align-items: center; background: #fff8e1; padding: 10px 15px; border-radius: 8px; border: 1px solid #ffe082;">
+        <button onclick="loadPostEbayRecords()" id="ebay-load-records-btn"
+                style="padding: 8px 24px; background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 700; box-shadow: 0 2px 6px rgba(245,124,0,0.3);">
+            📥 Load Records
+        </button>
+        <span id="ebay-load-records-info" style="font-size: 13px; color: #666;">
+            Click to fetch records from the server. This may take a moment.
+        </span>
+    </div>
+
+    <!-- Selection Controls -->
+    <div style="width: 100%; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; padding: 5px 0;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <label style="font-size: 13px; font-weight: 600; color: #333;">
+                <input type="checkbox" id="ebay-select-all-locations" onchange="ebayToggleAllLocations()"> Select All Locations
+            </label>
+            <span id="ebay-selection-info" style="font-size: 13px; color: #666;">0 locations selected, 0 records</span>
+        </div>
+        <button onclick="postSelectedEbayLocations()" id="ebay-post-selected-btn" disabled
+                style="padding: 6px 20px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            📤 Post Selected
+        </button>
+        <button onclick="cancelEbayPosting()" id="ebay-cancel-post-btn" disabled
+                style="display: none; padding: 6px 20px; background: #dc3545; color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            ⏹️ Cancel
+        </button>
+        <span id="ebay-post-status-badge" style="font-size: 12px; color: #888; margin-left: auto;"></span>
+    </div>
+
+    <!-- Status / Progress -->
+    <div id="ebay-status" style="width: 100%; display: none; padding: 8px 12px; border-radius: 8px; font-size: 13px;"></div>
+
+    <!-- Locations Tree -->
+    <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
+        <div id="ebay-locations" style="width: 100%;">
+            <div style="text-align: center; padding: 30px; color: #666;">
+                Click <strong>📥 Load Records</strong> above to fetch records for posting.
+            </div>
+        </div>
     </div>
 </div>

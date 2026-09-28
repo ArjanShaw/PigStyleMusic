@@ -15132,7 +15132,107 @@ def ebay_list_item():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/ebay/connection-status', methods=['GET'])
+@login_required
+@role_required(['admin'])
+def ebay_connection_status():
+    """Report whether eBay is connected and, if so, the seller's username."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
 
+        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'ebay_refresh_token'")
+        row = cursor.fetchone()
+        refresh_token = row['config_value'] if row else None
+
+        if not refresh_token:
+            conn.close()
+            return jsonify({'status': 'success', 'connected': False, 'username': None})
+
+        # Attempt to fetch the username via /sell/account/v1/privilege
+        access_token = None
+        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'ebay_access_token'")
+        row = cursor.fetchone()
+        access_token = row['config_value'] if row else None
+
+        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'ebay_token_expires'")
+        row = cursor.fetchone()
+        expires_at_str = row['config_value'] if row else None
+
+        conn.close()
+
+        # If access token is expired, refresh it
+        need_refresh = True
+        if access_token and expires_at_str:
+            try:
+                if datetime.now() < datetime.fromisoformat(expires_at_str):
+                    need_refresh = False
+            except Exception:
+                need_refresh = True
+
+        env = os.environ.get('EBAY_ENVIRONMENT', 'sandbox')
+        base_url = 'https://api.sandbox.ebay.com' if env == 'sandbox' else 'https://api.ebay.com'
+        client_id = os.environ.get('EBAY_CLIENT_ID')
+        client_secret = os.environ.get('EBAY_CLIENT_SECRET')
+
+        if need_refresh and client_id and client_secret:
+            auth_str = base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
+            refresh_resp = requests.post(
+                f'{base_url}/identity/v1/oauth2/token',
+                headers={
+                    'Authorization': f'Basic {auth_str}',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                data={'grant_type': 'refresh_token', 'refresh_token': refresh_token},
+                timeout=30
+            )
+            if refresh_resp.status_code == 200:
+                result = refresh_resp.json()
+                access_token = result.get('access_token')
+                expires_in = result.get('expires_in', 7200)
+                expires_at = (datetime.now() + timedelta(seconds=expires_in - 60)).isoformat()
+
+                conn2 = get_db()
+                cur2 = conn2.cursor()
+                cur2.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'ebay_access_token'", (access_token,))
+                cur2.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'ebay_token_expires'", (expires_at,))
+                conn2.commit()
+                conn2.close()
+
+        # If we still don't have an access token, report connected but unknown
+        if not access_token:
+            return jsonify({
+                'status': 'success',
+                'connected': True,
+                'username': None,
+                'note': 'Token present but could not refresh — reauthorize if listings fail'
+            })
+
+        # Fetch seller username
+        username = None
+        try:
+            priv_resp = requests.get(
+                f'{base_url}/sell/account/v1/privilege',
+                headers={
+                    'Authorization': f'Bearer {access_token}',
+                    'Accept': 'application/json',
+                },
+                timeout=15
+            )
+            if priv_resp.status_code == 200:
+                priv = priv_resp.json()
+                username = priv.get('sellerRegistrationCompleted') and priv.get('username')
+                # Some payloads omit username; fall back to any seller id
+                if not username:
+                    username = priv.get('username')
+        except Exception as e:
+            app.logger.warning(f'eBay privilege lookup failed: {e}')
+
+        return jsonify({'status': 'success', 'connected': True, 'username': username})
+
+    except Exception as e:
+        app.logger.error(f'eBay connection status error: {str(e)}')
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
