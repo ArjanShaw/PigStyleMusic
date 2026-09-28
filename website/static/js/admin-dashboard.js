@@ -215,6 +215,14 @@
             notification: null
         },
         { 
+            page: 'locations-admin', 
+            icon: 'fa-sitemap', 
+            label: 'Locations', 
+            description: 'Manage location hierarchy (bins, sub-slots, areas)',
+            color: 'info',
+            notification: null
+        },
+        { 
             page: 'db-query', 
             icon: 'fa-database', 
             label: 'DB Query', 
@@ -224,7 +232,6 @@
         }
     ];
 
-    // Track notification counts
     let notificationCounts = {
         'email-subscriptions': 0,
         'record-orders': 0,
@@ -233,9 +240,8 @@
     };
 
     let pollInterval = null;
-    const POLL_INTERVAL = 30000; // 30 seconds
+    const POLL_INTERVAL = 30000;
 
-    // ========== CHECK ADMIN ACCESS ==========
     function isAdmin() {
         try {
             const userData = localStorage.getItem('pigstyle_user');
@@ -250,14 +256,11 @@
     function getUser() {
         try {
             const data = localStorage.getItem('pigstyle_user');
-            if (data) {
-                return JSON.parse(data);
-            }
+            if (data) return JSON.parse(data);
         } catch {}
         return null;
     }
 
-    // ========== API HELPERS ==========
     function getAPIBase() {
         return window.location.hostname === 'localhost' 
             ? 'http://localhost:5000' 
@@ -271,7 +274,6 @@
         return headers;
     }
 
-    // ========== FETCH NOTIFICATION COUNTS ==========
     async function fetchNotificationCounts() {
         const API_BASE = getAPIBase();
         const results = {
@@ -314,7 +316,6 @@
         return results;
     }
 
-    // ========== UPDATE BADGES ON TILES ==========
     function updateTileBadges(counts) {
         const tiles = document.querySelectorAll('.admin-dashboard-card');
         tiles.forEach(tile => {
@@ -340,7 +341,6 @@
         });
     }
 
-    // ========== RENDER DASHBOARD ==========
     window.renderAdminDashboard = function() {
         console.log('🖥️ Rendering Admin Dashboard');
         const container = document.getElementById('page-content');
@@ -350,7 +350,6 @@
             return;
         }
 
-        // Check admin access
         if (!isAdmin()) {
             container.innerHTML = `
                 <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 40px; text-align: center; background: rgba(255,255,255,0.95); border-radius: 16px;">
@@ -384,7 +383,6 @@
                     </div>
                 </div>
                 
-                <!-- Notification Summary Bar -->
                 <div class="notification-summary" style="
                     display: flex;
                     gap: 20px;
@@ -531,20 +529,16 @@
 
         container.innerHTML = html;
 
-        // Fetch and display notification counts after rendering
         setTimeout(() => {
             refreshNotificationCounts();
         }, 500);
 
-        // Start polling for notifications
         startPolling();
     };
 
-    // ========== REFRESH NOTIFICATION COUNTS ==========
     async function refreshNotificationCounts() {
         const counts = await fetchNotificationCounts();
         
-        // Update summary bar
         const total = counts['email-subscriptions'] + counts['record-orders'] + counts['feedback'] + counts['email-list'];
         
         const summarySubs = document.getElementById('summary-subs');
@@ -562,20 +556,17 @@
             summaryTotal.style.color = total > 0 ? '#dc3545' : '#28a745';
         }
         
-        // Update tile badges
         const tiles = document.querySelectorAll('.admin-dashboard-card');
         tiles.forEach(tile => {
             const page = tile.dataset.page;
             if (page && counts[page] !== undefined) {
                 const count = counts[page];
                 
-                // Update dot
                 const dot = tile.querySelector('.notification-dot');
                 if (dot) {
                     dot.style.display = count > 0 ? 'block' : 'none';
                 }
                 
-                // Update badge
                 const badge = tile.querySelector('.notification-badge');
                 if (badge) {
                     if (count > 0) {
@@ -586,7 +577,6 @@
                     }
                 }
                 
-                // Update count label
                 const countLabel = tile.querySelector('.notification-count');
                 if (countLabel) {
                     countLabel.textContent = count;
@@ -596,7 +586,6 @@
         });
     }
 
-    // ========== MARK ALL NOTIFICATIONS READ ==========
     window.markAllNotificationsRead = async function() {
         const API_BASE = getAPIBase();
         
@@ -643,11 +632,9 @@
             showToast(`⚠️ ${success} marked, ${failed} failed`, 'warning');
         }
         
-        // Refresh counts
         await refreshNotificationCounts();
     };
 
-    // ========== POLLING ==========
     function startPolling() {
         if (pollInterval) {
             clearInterval(pollInterval);
@@ -663,7 +650,6 @@
         }
     }
 
-    // ========== TOAST ==========
     function showToast(message, type = 'success') {
         const existing = document.querySelector('.admin-toast');
         if (existing) existing.remove();
@@ -694,13 +680,11 @@
         }, 5000);
     }
 
-    // ========== INIT ==========
     window.initAdminDashboard = function() {
         console.log('🔧 initAdminDashboard called');
         window.renderAdminDashboard();
     };
 
-    // Clean up polling when page changes
     document.addEventListener('pageChange', function() {
         stopPolling();
     });
