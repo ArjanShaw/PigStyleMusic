@@ -15010,14 +15010,12 @@ def ebay_list_item():
       - record.condition_sleeve_id must be set and resolve to a d_condition row
       - each resolved d_condition row must have an abbreviation
       - each resolved d_condition row must have a non-empty ebay_blurb
-      - record.image_url must be set
+      - record must have image_large_url OR image_url set
 
     Image handling (all in this endpoint):
-      - If the record has a discogs_release_id, fetch the release from the
-        Discogs API and pick the largest image >= 500px (the signed full-size
-        URL). Thumbnails stored in image_url are only signed for their tiny
-        size; bumping h:/w: breaks the signature with a 403, so this is the
-        only way to get a larger source.
+      - Prefer image_large_url (the signed full-size Discogs URL populated at
+        import or by the backfill).
+      - Fall back to image_url if image_large_url is empty.
       - Download with a browser UA + Discogs Referer.
       - If its longest side is < 800px, upscale to 800px with PIL.
       - Save to static/images/ebay/<record_id>_<hex>.jpg.
@@ -15054,7 +15052,7 @@ def ebay_list_item():
         cursor.execute('''
             SELECT
                 r.id, r.artist, r.title, r.barcode, r.catalog_number,
-                r.store_price, r.image_url, r.consignor_id,
+                r.store_price, r.image_url, r.image_large_url, r.consignor_id,
                 r.discogs_release_id,
                 r.condition_disc_id, r.condition_sleeve_id,
                 cd.abbreviation   AS disc_abbr,
@@ -15102,9 +15100,6 @@ def ebay_list_item():
         if not (record['sleeve_blurb'] or '').strip():
             conn.close()
             return jsonify({'status': 'error', 'error': f'Record {record_id} sleeve "{record["sleeve_abbr"]}" has no ebay_blurb'}), 400
-        if not (record['image_url'] or '').strip():
-            conn.close()
-            return jsonify({'status': 'error', 'error': f'Record {record_id} has no image_url'}), 400
 
         cfg = {}
         for key in ['ebay_refresh_token', 'ebay_access_token', 'ebay_token_expires',
@@ -15122,50 +15117,20 @@ def ebay_list_item():
             if not cfg[req]:
                 return jsonify({'status': 'error', 'error': f'{req} not configured'}), 500
 
-        # --- Resolve source image via the Discogs release API ---
-        source_image_url = record['image_url'].strip()
-        if source_image_url.startswith('/'):
-            source_image_url = f"https://www.pigstylemusic.com{source_image_url}"
-
-        if record['discogs_release_id']:
-            try:
-                discogs_resp = requests.get(
-                    f'https://api.discogs.com/releases/{record["discogs_release_id"]}',
-                    headers={
-                        'Authorization': f'Discogs token={os.environ.get("DISCOGS_USER_TOKEN", "")}',
-                        'User-Agent': 'PigStyleMusic/1.0',
-                    },
-                    timeout=15
-                )
-                if discogs_resp.status_code == 200:
-                    release_data = discogs_resp.json()
-                    images = release_data.get('images') or []
-                    usable = [i for i in images if (i.get('width') or 0) >= 500 and i.get('uri')]
-                    if usable:
-                        best = max(usable, key=lambda i: i.get('width') or 0)
-                        source_image_url = best['uri']
-                        app.logger.info(
-                            f"Record {record_id}: using Discogs image "
-                            f"{best.get('width')}x{best.get('height')} for listing"
-                        )
-                    else:
-                        primary = next((i for i in images if i.get('type') == 'primary'), None)
-                        if primary and primary.get('uri'):
-                            source_image_url = primary['uri']
-                            app.logger.warning(
-                                f"Record {record_id}: best Discogs image is only "
-                                f"{primary.get('width')}x{primary.get('height')} (below 500px)"
-                            )
-                else:
-                    app.logger.warning(
-                        f"Record {record_id}: Discogs release API returned "
-                        f"{discogs_resp.status_code}; using stored image_url"
-                    )
-            except Exception as e:
-                app.logger.warning(
-                    f"Record {record_id}: Discogs release API call failed ({e}); "
-                    f"using stored image_url"
-                )
+        # --- Resolve source image: prefer the pre-fetched large URL ---
+        source_image_url = None
+        if record['image_large_url'] and record['image_large_url'].strip():
+            source_image_url = record['image_large_url'].strip()
+            app.logger.info(f"Record {record_id}: using image_large_url")
+        elif record['image_url'] and record['image_url'].strip():
+            source_image_url = record['image_url'].strip()
+            if source_image_url.startswith('/'):
+                source_image_url = f"https://www.pigstylemusic.com{source_image_url}"
+            app.logger.warning(
+                f"Record {record_id}: no image_large_url, falling back to image_url"
+            )
+        else:
+            return jsonify({'status': 'error', 'error': f'Record {record_id} has no image'}), 400
 
         # --- Download, upscale if needed, save to our domain ---
         try:
