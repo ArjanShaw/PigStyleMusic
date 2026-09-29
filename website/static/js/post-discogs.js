@@ -1,21 +1,22 @@
 // ================================================================
 // FILE: /static/js/post-discogs.js
-// Post to Discogs page - Location-based display with section grouping
-// Records are loaded manually via the "Load Records" button.
-// Progress is shown during pagination and price calculation.
+// Post to Discogs page - counts-first, lazy-load records per location
 //
-// MARKUP MODEL (single source of truth — shared with eBay):
-//   Initial Markup  : starting markup %, e.g. 20
-//   Weekly Step     : markup drops this many points per week, e.g. 2
-//   Max Markdown    : maximum discount as a POSITIVE % (0-100), e.g. 50
-//                     → internally floor = -MaxMarkdown
+// FLOW:
+//   1. initPostDiscogs -> GET /api/records/location-counts (auto)
+//                         renders the tree immediately
+//   2. Expand loc      -> GET /records?location_ids=<id>&... (cached)
+//   3. Post loc/bin    -> ensure records loaded, filter by price,
+//                         POST each via /api/discogs/create-listing-single
 //
-// CONFIG KEYS (shared with post-to-ebay.js):
-//   PRICING_MARKUP_PERCENT
-//   PRICING_PRICE_STEP
-//   PRICING_MAX_MARKDOWN
+// MARKUP MODEL (shared with eBay):
+//   PRICING_MARKUP_PERCENT : positive % above store price (e.g. 40)
+//   PRICING_PRICE_STEP     : positive %/wk drop          (e.g. 2)
+//   PRICING_MAX_MARKDOWN   : positive % floor below store(e.g. 50)
+//   Effective markup = markup_start - (weeks_old * step), floored at -max_md.
+//   Price = store_price * (1 + markup/100)
+//   When markup < 0, price is below store price (markdown).
 //
-// NO FALLBACKS: if a required config value is missing, we throw.
 // CONFIG SAVES INDEPENDENTLY OF LOADED RECORDS.
 // CONFIG LOADS ON INIT AND POPULATES THE INPUTS.
 // DISCOGS POSTING: 3-second delay between listings to respect rate limits.
@@ -31,27 +32,33 @@
     'use strict';
 
     // ===== API BASE URL =====
-    const API_BASE = window.location.hostname === 'localhost' 
-        ? 'http://localhost:5000' 
+    const API_BASE = window.location.hostname === 'localhost'
+        ? 'http://localhost:5000'
         : 'https://www.pigstylemusic.com';
 
     // ===== DISCOGS RATE LIMIT DELAY =====
     const DISCOGS_POST_DELAY_MS = 3000;
 
-    let records = [];
+    // ===== STATE =====
+    let locationCounts = [];                 // raw rows from /api/records/location-counts
+    let recordsByLocation = new Map();       // location_id -> priced records[]
+
     let discogsMarkupPercent = null;
     let discogsPriceStep = null;
     let discogsMaxMarkdown = null;
+
     let isUpdating = false;
     let isPosting = false;
     let cancelPosting = false;
-    let isLoadingRecords = false;
+    let isLoadingLocations = false;
     let hasLoadedOnce = false;
 
     // Location display state
     let expandedLocations = new Set();
     let selectedLocations = new Set();
     let expandedSections = new Set();
+
+    // ===== HEADERS / UTIL =====
 
     function getHeaders() {
         const headers = { 'Content-Type': 'application/json' };
@@ -60,7 +67,10 @@
         return headers;
     }
 
-    // ===== HELPER: BUILD LOCATION DISPLAY STRING WITH INDEX =====
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
     function buildLocationDisplay(record) {
         const name = record.location_display || record.location_name || 'Unknown Location';
         const idx = record.location_index;
@@ -70,17 +80,12 @@
         return `${name} (#${idx})`;
     }
 
-    // ===== HELPER: INTERNAL FLOOR (negative markup) =====
     function getMarkdownFloor() {
         return -Math.abs(discogsMaxMarkdown);
     }
 
-    // ===== HELPER: SLEEP =====
-    function sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
+    // ===== CONFIG =====
 
-    // ===== FETCH A SINGLE REQUIRED CONFIG VALUE =====
     async function fetchRequiredConfig(key) {
         const response = await fetch(`${API_BASE}/config/${key}`, {
             credentials: 'include',
@@ -109,14 +114,16 @@
         return parsed;
     }
 
-    // ===== FETCH CONFIG PARAMETERS (SHARED WITH EBAY) =====
     async function fetchDiscogsConfig() {
         const markup = await fetchRequiredConfig('PRICING_MARKUP_PERCENT');
-        const step = await fetchRequiredConfig('PRICING_PRICE_STEP');
-        const maxMd = await fetchRequiredConfig('PRICING_MAX_MARKDOWN');
+        const step   = await fetchRequiredConfig('PRICING_PRICE_STEP');
+        const maxMd  = await fetchRequiredConfig('PRICING_MAX_MARKDOWN');
 
         console.log(`📥 Loaded shared pricing config: markup=${markup}, step=${step}, maxMd=${maxMd}`);
 
+        if (markup < 0 || markup > 200) {
+            throw new Error(`Config PRICING_MARKUP_PERCENT must be between 0 and 200 (got ${markup})`);
+        }
         if (maxMd < 0 || maxMd > 100) {
             throw new Error(`Config PRICING_MAX_MARKDOWN must be between 0 and 100 (got ${maxMd})`);
         }
@@ -125,8 +132,8 @@
         }
 
         discogsMarkupPercent = markup;
-        discogsPriceStep = step;
-        discogsMaxMarkdown = Math.abs(maxMd);
+        discogsPriceStep     = step;
+        discogsMaxMarkdown   = Math.abs(maxMd);
 
         const markupEl = document.getElementById('discogs-markup-percent');
         if (markupEl) markupEl.value = discogsMarkupPercent;
@@ -140,7 +147,6 @@
         updatePriceInfo();
     }
 
-    // ===== SAVE CONFIG PARAMETERS (SHARED WITH EBAY) =====
     async function saveDiscogsConfig() {
         await saveOneConfig('PRICING_MARKUP_PERCENT', discogsMarkupPercent);
         await saveOneConfig('PRICING_PRICE_STEP', discogsPriceStep);
@@ -177,15 +183,18 @@
         }
     }
 
-    // ===== CALCULATE DISCOGS PRICE =====
-    // The ONLY place markup is calculated. Backend trusts this price.
-    // Feature 3: returns null if record is consigned.
+    // ===== PRICE CALCULATION =====
+    //
+    // markup_percent starts at +PRICING_MARKUP_PERCENT (positive).
+    // Each week subtracts PRICING_PRICE_STEP.
+    // Floors at -PRICING_MAX_MARKDOWN.
+    // Final price = store_price * (1 + markup_percent/100).
+    //
     function calculateDiscogsPrice(record) {
         if (!record || !record.created_at || !record.store_price || record.store_price <= 0) {
             return null;
         }
 
-        // Feature 3: consigned records are never postable
         if (record.consignor_id !== null && record.consignor_id !== undefined) {
             return null;
         }
@@ -220,7 +229,27 @@
         };
     }
 
-    // ===== UPDATE PRICE INFO DISPLAY =====
+    function calculateDiscogsPricesForRecords(recordsToCalculate) {
+        if (!recordsToCalculate || recordsToCalculate.length === 0) {
+            return [];
+        }
+        return recordsToCalculate.map(r => {
+            const priceData = calculateDiscogsPrice(r);
+            if (priceData) {
+                r._discogsPrice  = priceData.discogs_price;
+                r._markupPercent = priceData.markup_percent;
+                r._daysOld       = priceData.days_old;
+                r._weeksOld      = priceData.weeks_old;
+            } else {
+                r._discogsPrice  = null;
+                r._markupPercent = null;
+                r._daysOld       = null;
+                r._weeksOld      = null;
+            }
+            return r;
+        });
+    }
+
     function updatePriceInfo() {
         const info = document.getElementById('price-calc-info');
         if (!info) return;
@@ -228,42 +257,20 @@
             info.textContent = 'Config not loaded';
             return;
         }
-        if (records.length === 0) {
-            info.textContent = `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (max markdown: ${discogsMaxMarkdown}%) | no records loaded`;
+        if (locationCounts.length === 0) {
+            info.textContent = `Markup: +${discogsMarkupPercent}% -${discogsPriceStep}%/wk (floor -${discogsMaxMarkdown}%) | no locations loaded`;
             return;
         }
-        const withPrices = records.filter(r => r._discogsPrice && r._discogsPrice > 0);
-        info.textContent = `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (max markdown: ${discogsMaxMarkdown}%) | ${withPrices.length} records have prices`;
-    }
-
-    // ===== CALCULATE PRICES FOR ALL RECORDS =====
-    function calculateDiscogsPricesForRecords(recordsToCalculate) {
-        if (!recordsToCalculate || recordsToCalculate.length === 0) {
-            return [];
-        }
-        console.log(`💰 Calculating Discogs prices for ${recordsToCalculate.length} records...`);
-        return recordsToCalculate.map(r => {
-            const priceData = calculateDiscogsPrice(r);
-            if (priceData) {
-                r._discogsPrice = priceData.discogs_price;
-                r._markupPercent = priceData.markup_percent;
-                r._daysOld = priceData.days_old;
-                r._weeksOld = priceData.weeks_old;
-            } else {
-                r._discogsPrice = null;
-                r._markupPercent = null;
-                r._daysOld = null;
-                r._weeksOld = null;
-            }
-            return r;
-        });
+        const totalEligible = locationCounts.reduce((s, l) => s + (l.record_count || 0), 0);
+        info.textContent = `Markup: +${discogsMarkupPercent}% -${discogsPriceStep}%/wk (floor -${discogsMaxMarkdown}%) | ${totalEligible} eligible records across ${locationCounts.length} locations`;
     }
 
     // ===== UPDATE PRICES =====
+
     window.updateDiscogsPrices = async function() {
         if (isUpdating) return;
-        if (isLoadingRecords) {
-            alert('Please wait — records are still loading.');
+        if (isLoadingLocations) {
+            alert('Please wait — locations are still loading.');
             return;
         }
 
@@ -271,41 +278,41 @@
 
         try {
             const markupInput = document.getElementById('discogs-markup-percent');
-            const stepInput = document.getElementById('discogs-price-step');
-            const maxInput = document.getElementById('discogs-max-markdown');
+            const stepInput   = document.getElementById('discogs-price-step');
+            const maxInput    = document.getElementById('discogs-max-markdown');
 
             const newMarkup = parseFloat(markupInput.value);
-            const newStep = parseFloat(stepInput.value);
-            const newMax = parseFloat(maxInput.value);
+            const newStep   = parseFloat(stepInput.value);
+            const newMax    = parseFloat(maxInput.value);
 
-            if (isNaN(newMarkup) || newMarkup < -100 || newMarkup > 200) {
-                alert('Initial Markup must be a number between -100 and 200');
+            if (isNaN(newMarkup) || newMarkup < 0 || newMarkup > 200) {
+                alert('Initial Markup must be between 0 and 200 (% above store price)');
                 return;
             }
-            if (isNaN(newStep) || newStep < 0) {
-                alert('Weekly Step must be a positive number');
+            if (isNaN(newStep) || newStep < 0 || newStep > 50) {
+                alert('Weekly Step must be between 0 and 50 (%/wk drop)');
                 return;
             }
             if (isNaN(newMax) || newMax < 0 || newMax > 100) {
-                alert('Max Markdown must be a number between 0 and 100');
+                alert('Max Markdown must be between 0 and 100 (% floor below store)');
                 return;
             }
 
             discogsMarkupPercent = newMarkup;
-            discogsPriceStep = newStep;
-            discogsMaxMarkdown = Math.abs(newMax);
+            discogsPriceStep     = newStep;
+            discogsMaxMarkdown   = Math.abs(newMax);
 
             await saveDiscogsConfig();
 
-            if (records.length > 0) {
-                records = calculateDiscogsPricesForRecords(records);
-                renderRecords();
+            for (const [locId, recs] of recordsByLocation.entries()) {
+                recordsByLocation.set(locId, calculateDiscogsPricesForRecords(recs));
+            }
 
-                const withPrices = records.filter(r => r._discogsPrice && r._discogsPrice > 0);
-                const withMarkdown = records.filter(r => r._markupPercent && r._markupPercent < 0);
-                showStatus(`✅ Settings saved. ${withPrices.length} records priced (${withMarkdown.length} on markdown).`, 'info');
+            if (recordsByLocation.size > 0) {
+                renderRecords();
+                showStatus(`✅ Settings saved. Recalculated ${recordsByLocation.size} cached location(s).`, 'info');
             } else {
-                showStatus('✅ Settings saved. Load records to apply.', 'info');
+                showStatus('✅ Settings saved. Expand a location to load records.', 'info');
             }
 
             updatePriceInfo();
@@ -319,59 +326,8 @@
         }
     };
 
-    // ===== FETCH ALL RECORDS WITH PROGRESS CALLBACK =====
-    async function fetchAllRecords(onProgress) {
-        let allRecords = [];
-        let page = 1;
-        const perPage = 100;
-        let hasMore = true;
-        let total = 0;
+    // ===== PROGRESS UI =====
 
-        console.log('📊 Fetching all records with pagination...');
-
-        while (hasMore) {
-            // Feature 1: only visible records
-            // Feature 3: hide consigned records
-            let url = `${API_BASE}/records?status_ids=2&visible_only=true&hide_consigned=true&limit=${perPage}&offset=${(page - 1) * perPage}`;
-
-            const response = await fetch(url, {
-                credentials: 'include',
-                mode: 'cors',
-                headers: getHeaders()
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch page ${page} (HTTP ${response.status})`);
-            }
-
-            const data = await response.json();
-
-            if (data.status !== 'success') {
-                throw new Error(data.error || `API error on page ${page}`);
-            }
-
-            const pageRecords = data.records || [];
-            total = data.total || 0;
-            allRecords = allRecords.concat(pageRecords);
-
-            if (onProgress) {
-                onProgress({ page, loaded: allRecords.length, total, finished: false });
-            }
-
-            if (allRecords.length >= total || pageRecords.length < perPage) {
-                hasMore = false;
-            } else {
-                page++;
-            }
-        }
-
-        if (onProgress) {
-            onProgress({ page, loaded: allRecords.length, total, finished: true });
-        }
-        return allRecords;
-    }
-
-    // ===== PROGRESS UI HELPERS =====
     function showLoadProgressBar(label, loaded, total, extra) {
         const statusDiv = document.getElementById('post-discogs-status');
         if (!statusDiv) return;
@@ -400,479 +356,257 @@
         statusDiv.innerHTML = `❌ ${msg}`;
     }
 
-    // ===== UPDATE LOAD BUTTON STATE =====
-    function updateLoadButtonState(loading) {
-        const btn = document.getElementById('load-records-btn');
-        const info = document.getElementById('load-records-info');
-        if (btn) {
-            btn.disabled = loading;
-            btn.style.opacity = loading ? '0.6' : '1';
-            btn.style.cursor = loading ? 'not-allowed' : 'pointer';
-            btn.textContent = loading ? '⏳ Loading...' : '📥 Load Records';
+    // ===== FETCH LOCATION COUNTS =====
+
+    async function fetchLocationCounts() {
+        const url = `${API_BASE}/api/records/location-counts`;
+        const response = await fetch(url, {
+            credentials: 'include',
+            mode: 'cors',
+            headers: getHeaders()
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to fetch location counts (HTTP ${response.status})`);
         }
-        if (info && loading) {
-            info.textContent = 'Fetching records from the server...';
+        const data = await response.json();
+        if (data.status !== 'success') {
+            throw new Error(data.error || 'Location counts API error');
         }
+        return data.data || [];
     }
 
-    // ===== MAIN LOAD FUNCTION =====
-    window.loadPostDiscogsRecords = async function() {
-        if (isLoadingRecords) {
-            console.log('⏳ Already loading, ignoring click');
-            return;
-        }
+    // ===== LOAD LOCATIONS (auto-called from init) =====
+
+    async function loadLocations() {
+        if (isLoadingLocations) return;
         if (isPosting) {
-            alert('Please wait — a post is in progress.');
+            console.warn('Skipping load — a post is in progress.');
             return;
         }
 
-        isLoadingRecords = true;
-        updateLoadButtonState(true);
+        isLoadingLocations = true;
 
         const list = document.getElementById('post-discogs-locations');
         if (list) {
-            list.innerHTML = '<div style="text-align:center;padding:30px;color:#666;">Fetching records...</div>';
+            list.innerHTML = '<div style="text-align:center;padding:30px;color:#666;">Loading locations...</div>';
         }
 
         try {
             showLoadProgressBar('⚙️ Loading configuration...', 0, 0, '');
             await fetchDiscogsConfig();
 
-            const fetched = await fetchAllRecords(({ page, loaded, total, finished }) => {
-                const label = finished ? '✅ Records fetched' : `📥 Fetching page ${page}...`;
-                showLoadProgressBar(label, loaded, total, '');
-            });
+            showLoadProgressBar('📥 Loading location counts...', 0, 0, '');
+            locationCounts = await fetchLocationCounts();
 
-            if (fetched.length === 0) {
-                list.innerHTML = `<div style="text-align:center;padding:20px;color:#999;">
-                    No records found
-                </div>`;
+            recordsByLocation.clear();
+
+            if (locationCounts.length === 0) {
+                if (list) list.innerHTML = `<div style="text-align:center;padding:20px;color:#999;">No locations found</div>`;
                 showLoadProgressBar('✅ Loaded (empty)', 0, 0, '');
                 return;
             }
 
-            showLoadProgressBar('💰 Calculating prices...', fetched.length, fetched.length, '');
-            await sleep(30);
-
-            records = calculateDiscogsPricesForRecords(fetched);
             renderRecords();
             updatePriceInfo();
 
-            const withPrices = records.filter(r => r._discogsPrice && r._discogsPrice > 0);
-            const withMarkdown = records.filter(r => r._markupPercent && r._markupPercent < 0);
-            const statusMsg = withPrices.length > 0
-                ? `✅ Loaded ${records.length} records (${withPrices.length} with prices, ${withMarkdown.length} on markdown)`
-                : `Loaded ${records.length} records but NONE have Discogs prices`;
-            showStatus(statusMsg, withPrices.length > 0 ? 'info' : 'warning');
-
-            const info = document.getElementById('load-records-info');
-            if (info) {
-                info.textContent = `Loaded ${records.length} records. Click again to refresh.`;
-            }
+            const totalEligible = locationCounts.reduce((s, l) => s + (l.record_count || 0), 0);
+            showStatus(
+                `✅ Loaded ${locationCounts.length} locations (${totalEligible} eligible records). Expand a location to load its records.`,
+                'info'
+            );
 
             hasLoadedOnce = true;
             updateButtons();
 
         } catch (err) {
-            console.error('❌ Error loading records:', err);
-            showLoadError(err.message || 'Failed to load records');
+            console.error('❌ Error loading location counts:', err);
+            showLoadError(err.message || 'Failed to load locations');
             if (list) {
                 list.innerHTML = `<div style="text-align:center;padding:20px;color:#dc3545;">Error: ${err.message}</div>`;
             }
         } finally {
-            isLoadingRecords = false;
-            updateLoadButtonState(false);
+            isLoadingLocations = false;
         }
-    };
+    }
 
-    // ===== EXTRACT BIN NUMBER =====
+    // ===== LAZY-LOAD RECORDS FOR A LOCATION =====
+
+    async function ensureRecordsForLocation(locationId) {
+        if (recordsByLocation.has(locationId)) {
+            return recordsByLocation.get(locationId);
+        }
+
+        // Feature 1: visible_only  |  Feature 3: hide_consigned
+        const url = `${API_BASE}/records?status_ids=2&visible_only=true&hide_consigned=true&location_ids=${locationId}`;
+        const response = await fetch(url, {
+            credentials: 'include',
+            mode: 'cors',
+            headers: getHeaders()
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to fetch records for location ${locationId} (HTTP ${response.status})`);
+        }
+        const data = await response.json();
+        if (data.status !== 'success') {
+            throw new Error(data.error || `API error for location ${locationId}`);
+        }
+
+        const records = calculateDiscogsPricesForRecords(data.records || []);
+        recordsByLocation.set(locationId, records);
+        return records;
+    }
+
+    // ===== TREE HELPERS =====
+
     function extractBinNumber(locationName) {
         const match = locationName.match(/Bin\s*(\d+)/i);
         if (match) return parseInt(match[1], 10);
         return null;
     }
 
-    // ===== EXTRACT BIN SECTION =====
     function extractBinSection(locationName) {
         const match = locationName.match(/Bin\s*\d+\s*([A-Z]{2})/i);
         if (match) return match[1].toUpperCase();
         return null;
     }
 
-    // ===== IS THIS A BIN LOCATION? =====
     function isBinLocation(locationName) {
         return /Bin\s*\d+/i.test(locationName);
     }
 
-    // ===== GET BIN BASE NAME =====
-    function getBinBaseName(locationName) {
-        const match = locationName.match(/(Bin\s*\d+)/i);
-        if (match) return match[1];
-        return locationName;
-    }
-
-    // ===== SORT BIN SECTIONS =====
     function sortBinSections(sections) {
         const order = ['LT', 'RT', 'LB', 'RB'];
         return sections.sort((a, b) => {
-            const indexA = order.indexOf(a.section);
-            const indexB = order.indexOf(b.section);
-            if (indexA === -1) return 1;
-            if (indexB === -1) return -1;
-            return indexA - indexB;
+            const ia = order.indexOf(a.section);
+            const ib = order.indexOf(b.section);
+            if (ia === -1) return 1;
+            if (ib === -1) return -1;
+            return ia - ib;
         });
     }
 
-    // ===== GROUP RECORDS BY LOCATION =====
-    function groupRecordsByLocation(recordsArray) {
-        const groups = {};
+    /**
+     * Build display tree from location-counts rows.
+     * Returns array of nodes:
+     *   { is_bin_section: true,  base_name, total_count, locations: [ {location_id, location_name, location_display, record_count, section} ] }
+     *   { is_bin_section: false, location_id, location_name, location_display, record_count }
+     */
+    function buildTreeFromCounts() {
         const binSections = {};
+        const standalone  = [];
 
-        for (const r of recordsArray) {
-            const locationId = r.location_id || 0;
-            const locationName = r.location_display || r.location_name || 'Unknown Location';
+        for (const row of locationCounts) {
+            const parentName = row.location_parent_name;
+            const leafName   = row.location_name;
 
-            if (!groups[locationId]) {
-                groups[locationId] = { location_id: locationId, location_name: locationName, records: [] };
-            }
-            groups[locationId].records.push(r);
-
-            if (isBinLocation(locationName)) {
-                const baseName = getBinBaseName(locationName);
-                const section = extractBinSection(locationName);
+            if (parentName && isBinLocation(parentName)) {
+                const baseName = parentName;
                 if (!binSections[baseName]) {
-                    binSections[baseName] = { base_name: baseName, sections: [] };
+                    binSections[baseName] = { base_name: baseName, locations: [] };
                 }
-                if (section) {
-                    binSections[baseName].sections.push({
-                        section: section,
-                        location_id: locationId,
-                        location_name: locationName,
-                        record_count: groups[locationId].records.length
-                    });
-                }
-            }
-        }
-
-        for (const baseName in binSections) {
-            binSections[baseName].sections = sortBinSections(binSections[baseName].sections);
-        }
-
-        const result = [];
-        const nonBinGroups = [];
-
-        for (const locationId in groups) {
-            const group = groups[locationId];
-            if (isBinLocation(group.location_name)) {
-                result.push(group);
+                binSections[baseName].locations.push({
+                    location_id:      row.location_id,
+                    location_name:    leafName,
+                    location_display: row.location_display,
+                    record_count:     row.record_count || 0,
+                    section:          extractBinSection(`${baseName}/${leafName}`) || leafName.toUpperCase(),
+                });
             } else {
-                nonBinGroups.push(group);
+                standalone.push({
+                    is_bin_section:   false,
+                    location_id:      row.location_id,
+                    location_name:    row.location_name,
+                    location_display: row.location_display,
+                    record_count:     row.record_count || 0,
+                });
             }
         }
 
-        result.sort((a, b) => {
-            const numA = extractBinNumber(a.location_name);
-            const numB = extractBinNumber(b.location_name);
-            if (numA !== null && numB !== null) return numA - numB;
-            if (numA !== null) return -1;
-            if (numB !== null) return 1;
-            return a.location_name.localeCompare(b.location_name);
-        });
-
-        nonBinGroups.sort((a, b) => a.location_name.localeCompare(b.location_name));
-
-        const groupedBins = {};
-        for (const group of result) {
-            const baseName = getBinBaseName(group.location_name);
-            if (!groupedBins[baseName]) {
-                groupedBins[baseName] = { base_name: baseName, locations: [] };
-            }
-            groupedBins[baseName].locations.push(group);
+        for (const key in binSections) {
+            sortBinSections(binSections[key].locations);
         }
 
-        const sortedBinKeys = Object.keys(groupedBins).sort((a, b) => {
-            const numA = extractBinNumber(a);
-            const numB = extractBinNumber(b);
-            if (numA !== null && numB !== null) return numA - numB;
-            if (numA !== null) return -1;
-            if (numB !== null) return 1;
+        const sortedBinKeys = Object.keys(binSections).sort((a, b) => {
+            const na = extractBinNumber(a);
+            const nb = extractBinNumber(b);
+            if (na !== null && nb !== null) return na - nb;
+            if (na !== null) return -1;
+            if (nb !== null) return 1;
             return a.localeCompare(b);
         });
 
-        const finalResult = [];
+        standalone.sort((a, b) => a.location_display.localeCompare(b.location_display));
+
+        const result = [];
         for (const key of sortedBinKeys) {
-            finalResult.push({
+            const bin = binSections[key];
+            const total = bin.locations.reduce((s, l) => s + (l.record_count || 0), 0);
+            result.push({
                 is_bin_section: true,
-                base_name: key,
-                locations: groupedBins[key].locations
+                base_name:      key,
+                total_count:    total,
+                locations:      bin.locations,
             });
         }
-
-        for (const group of nonBinGroups) {
-            finalResult.push({
-                is_bin_section: false,
-                location_id: group.location_id,
-                location_name: group.location_name,
-                records: group.records
-            });
+        for (const s of standalone) {
+            result.push(s);
         }
-
-        return finalResult;
+        return result;
     }
 
-    // ===== RENDER RECORDS =====
+    function findBinNode(baseName) {
+        const tree = buildTreeFromCounts();
+        return tree.find(n => n.is_bin_section && n.base_name === baseName);
+    }
+
+    function findLocationNode(locationId) {
+        const tree = buildTreeFromCounts();
+        for (const node of tree) {
+            if (node.is_bin_section) {
+                const loc = node.locations.find(l => l.location_id === locationId);
+                if (loc) return { parent: node, loc };
+            } else if (node.location_id === locationId) {
+                return { parent: null, loc: node };
+            }
+        }
+        return null;
+    }
+
+    function getLocationCount(locationId) {
+        const found = findLocationNode(locationId);
+        return found ? (found.loc.record_count || 0) : 0;
+    }
+
+    // ===== RENDER =====
+
     function renderRecords() {
         const list = document.getElementById('post-discogs-locations');
         if (!list) return;
 
-        if (records.length === 0) {
-            list.innerHTML = `<div style="text-align:center;padding:20px;color:#999;">
-                No records found
-            </div>`;
+        if (locationCounts.length === 0) {
+            list.innerHTML = `<div style="text-align:center;padding:20px;color:#999;">No locations loaded</div>`;
             return;
         }
 
-        const locationGroups = groupRecordsByLocation(records);
+        const tree = buildTreeFromCounts();
+        const totalEligible = locationCounts.reduce((s, l) => s + (l.record_count || 0), 0);
 
         let html = `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; margin-bottom: 8px; background: #f8f9fa; border-radius: 4px;">
                 <span style="font-size: 13px; color: #666;">
-                    ${records.length} total records
+                    ${totalEligible} eligible records across ${locationCounts.length} locations
                 </span>
                 <span style="font-size: 12px; color: #888;">
-                    ${records.filter(r => r._discogsPrice && r._discogsPrice > 0).length} priced
+                    ${recordsByLocation.size} location(s) expanded
                 </span>
             </div>
         `;
 
-        for (const group of locationGroups) {
-            if (group.is_bin_section) {
-                const baseName = group.base_name;
-                const locations = group.locations;
-                const totalRecords = locations.reduce((sum, loc) => sum + loc.records.length, 0);
-                const isSectionExpanded = expandedSections.has(baseName);
-                const allSelected = locations.every(loc => selectedLocations.has(loc.location_id));
-                const anySelected = locations.some(loc => selectedLocations.has(loc.location_id));
-
-                html += `
-                    <div style="border: 2px solid #6c757d; border-radius: 8px; margin-bottom: 10px; background: ${anySelected ? '#f0f8ff' : 'white'};">
-                        <div style="display: flex; align-items: center; padding: 10px 14px; cursor: pointer; background: ${isSectionExpanded ? '#e9ecef' : 'white'}; border-radius: ${isSectionExpanded ? '8px 8px 0 0' : '8px'};"
-                             onclick="toggleBinSection('${baseName}')">
-                            <span style="font-size: 16px; margin-right: 10px; color: #333;">
-                                ${isSectionExpanded ? '▼' : '▶'}
-                            </span>
-                            <input type="checkbox" style="margin-right: 12px; cursor: pointer; width: 18px; height: 18px;" 
-                                   ${allSelected ? 'checked' : ''} 
-                                   onclick="event.stopPropagation(); toggleAllLocationsInBin('${baseName}')">
-                            <span style="flex: 1; font-weight: 700; color: #333; font-size: 16px;">
-                                📦 ${baseName}
-                            </span>
-                            <span style="display: flex; gap: 8px; align-items: center; font-size: 12px; margin-right: 8px;">
-                                <span style="background: #e9ecef; padding: 2px 12px; border-radius: 12px; color: #495057; font-weight: 600;">
-                                    ${totalRecords} records
-                                </span>
-                                ${locations.some(l => l.records.some(r => r._discogsPrice && r._discogsPrice > 0)) ? `
-                                    <button onclick="event.stopPropagation(); postBinSection('${baseName}')" 
-                                            style="padding: 4px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 14px; cursor: pointer; font-size: 12px; font-weight: 600;">
-                                        📤 Post This Bin
-                                    </button>
-                                ` : ''}
-                            </span>
-                        </div>
-                `;
-
-                if (isSectionExpanded) {
-                    for (const loc of locations) {
-                        const locationId = loc.location_id;
-                        const locationName = loc.location_name;
-                        const locationRecords = loc.records;
-                        const isExpanded = expandedLocations.has(locationId);
-                        const isLocSelected = selectedLocations.has(locationId);
-                        const withPrices = locationRecords.filter(r => r._discogsPrice && r._discogsPrice > 0);
-
-                        html += `
-                            <div style="border-top: 1px solid #dee2e6; padding-left: 20px; background: ${isLocSelected ? '#f8f9fa' : 'white'};">
-                                <div style="display: flex; align-items: center; padding: 6px 12px; cursor: pointer;"
-                                     onclick="toggleLocation(${locationId})">
-                                    <span style="font-size: 13px; margin-right: 8px; color: ${locationRecords.length > 0 ? '#333' : '#999'};">
-                                        ${isExpanded ? '▼' : '▶'}
-                                    </span>
-                                    <input type="checkbox" style="margin-right: 10px; cursor: pointer;" 
-                                           ${isLocSelected ? 'checked' : ''} 
-                                           onclick="event.stopPropagation(); toggleLocationSelection(${locationId})">
-                                    <span style="flex: 1; font-weight: 500; color: #333; font-size: 13px;">
-                                        ${locationName}
-                                    </span>
-                                    <span style="display: flex; gap: 6px; align-items: center; font-size: 11px; margin-right: 8px;">
-                                        <span style="background: #e9ecef; padding: 1px 10px; border-radius: 10px; color: #495057;">
-                                            ${locationRecords.length} records
-                                        </span>
-                                        ${withPrices.length > 0 ? `
-                                            <button onclick="event.stopPropagation(); postLocation(${locationId})" 
-                                                    style="padding: 2px 12px; background: #28a745; color: white; border: none; border-radius: 10px; cursor: pointer; font-size: 10px; font-weight: 600;">
-                                                Post
-                                            </button>
-                                        ` : ''}
-                                    </span>
-                                </div>
-                        `;
-
-                        if (isExpanded) {
-                            html += `
-                                <div style="padding: 6px 12px 10px 40px; border-top: 1px solid #f0f0f0; overflow-x: auto;">
-                                    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-                                        <thead>
-                                            <tr style="background: #f1f3f5; border-bottom: 2px solid #dee2e6;">
-                                                <th style="padding: 3px 6px; text-align: left; color: #495057; font-weight: 600;">ID</th>
-                                                <th style="padding: 3px 6px; text-align: left; color: #495057; font-weight: 600;">Artist</th>
-                                                <th style="padding: 3px 6px; text-align: left; color: #495057; font-weight: 600;">Title</th>
-                                                <th style="padding: 3px 6px; text-align: right; color: #495057; font-weight: 600;">Store</th>
-                                                <th style="padding: 3px 6px; text-align: right; color: #28a745; font-weight: 600;">Discogs</th>
-                                                <th style="padding: 3px 6px; text-align: center; color: #495057; font-weight: 600;">Markup</th>
-                                                <th style="padding: 3px 6px; text-align: center; color: #495057; font-weight: 600;">Age</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                            `;
-
-                            const sortedRecords = [...locationRecords].sort((a, b) => {
-                                if (a.location_index && b.location_index) return a.location_index - b.location_index;
-                                return (a.artist || '').localeCompare(b.artist || '');
-                            });
-
-                            for (const r of sortedRecords) {
-                                const hasPrice = r._discogsPrice && r._discogsPrice > 0;
-                                const discogsPrice = hasPrice ? r._discogsPrice : '—';
-                                const markup = r._markupPercent || 0;
-                                const isMarkdown = markup < 0;
-                                const markupColor = isMarkdown ? '#dc3545' : (markup > 0 ? '#28a745' : '#ffc107');
-                                const markupText = hasPrice ? (markup > 0 ? `+${markup}%` : markup < 0 ? `${markup}%` : '0%') : '—';
-                                const rowStyle = hasPrice ? (isMarkdown ? 'background: #fff5f5;' : '') : 'opacity: 0.4;';
-                                const ageText = hasPrice ? `${r._daysOld}d` : '—';
-
-                                html += `
-                                    <tr style="${rowStyle} border-bottom: 1px solid #f0f0f0;">
-                                        <td style="padding: 3px 6px; color: #666; font-size: 10px;">${r.id}</td>
-                                        <td style="padding: 3px 6px; color: #333;">${r.artist || 'Unknown'}</td>
-                                        <td style="padding: 3px 6px; color: #333;">${r.title || 'Unknown'}</td>
-                                        <td style="padding: 3px 6px; text-align: right; color: #666;">${r.store_price ? '$' + r.store_price.toFixed(2) : '—'}</td>
-                                        <td style="padding: 3px 6px; text-align: right; color: ${hasPrice ? (isMarkdown ? '#dc3545' : '#28a745') : '#999'}; font-weight: 600;">
-                                            ${hasPrice ? '$' + discogsPrice.toFixed(2) : '—'}
-                                        </td>
-                                        <td style="padding: 3px 6px; text-align: center; color: ${hasPrice ? markupColor : '#999'}; font-weight: 600;">
-                                            ${markupText}
-                                        </td>
-                                        <td style="padding: 3px 6px; text-align: center; color: #999; font-size: 9px;">${ageText}</td>
-                                    </tr>
-                                `;
-                            }
-
-                            html += `
-                                        </tbody>
-                                    </table>
-                                </div>
-                            `;
-                        }
-
-                        html += `</div>`;
-                    }
-                }
-
-                html += `</div>`;
-
+        for (const node of tree) {
+            if (node.is_bin_section) {
+                html += renderBinNode(node);
             } else {
-                const locationId = group.location_id;
-                const locationName = group.location_name;
-                const locationRecords = group.records;
-                const isExpanded = expandedLocations.has(locationId);
-                const isSelected = selectedLocations.has(locationId);
-                const withPrices = locationRecords.filter(r => r._discogsPrice && r._discogsPrice > 0);
-
-                html += `
-                    <div style="border: 1px solid #e9ecef; border-radius: 6px; margin-bottom: 6px; background: ${isSelected ? '#f0f8ff' : 'white'};">
-                        <div style="display: flex; align-items: center; padding: 8px 12px; cursor: pointer; background: ${isExpanded ? '#f8f9fa' : 'white'}; border-radius: ${isExpanded ? '6px 6px 0 0' : '6px'};"
-                             onclick="toggleLocation(${locationId})">
-                            <span style="font-size: 14px; margin-right: 8px; color: ${locationRecords.length > 0 ? '#333' : '#999'};">
-                                ${isExpanded ? '▼' : '▶'}
-                            </span>
-                            <input type="checkbox" style="margin-right: 10px; cursor: pointer;" 
-                                   ${isSelected ? 'checked' : ''} 
-                                   onclick="event.stopPropagation(); toggleLocationSelection(${locationId})">
-                            <span style="flex: 1; font-weight: 600; color: #333; font-size: 14px;">
-                                ${locationName}
-                            </span>
-                            <span style="display: flex; gap: 6px; align-items: center; font-size: 12px; margin-right: 8px;">
-                                <span style="background: #e9ecef; padding: 2px 10px; border-radius: 12px; color: #495057;">
-                                    ${locationRecords.length} records
-                                </span>
-                                ${withPrices.length > 0 ? `
-                                    <button onclick="event.stopPropagation(); postLocation(${locationId})" 
-                                            style="padding: 3px 14px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 14px; cursor: pointer; font-size: 11px; font-weight: 600;">
-                                        📤 Post
-                                    </button>
-                                ` : ''}
-                            </span>
-                        </div>
-                `;
-
-                if (isExpanded) {
-                    html += `
-                        <div style="padding: 10px 12px 12px 36px; border-top: 1px solid #e9ecef; overflow-x: auto;">
-                            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                                <thead>
-                                    <tr style="background: #f1f3f5; border-bottom: 2px solid #dee2e6;">
-                                        <th style="padding: 4px 8px; text-align: left; color: #495057; font-weight: 600; font-size: 11px;">ID</th>
-                                        <th style="padding: 4px 8px; text-align: left; color: #495057; font-weight: 600; font-size: 11px;">Artist</th>
-                                        <th style="padding: 4px 8px; text-align: left; color: #495057; font-weight: 600; font-size: 11px;">Title</th>
-                                        <th style="padding: 4px 8px; text-align: right; color: #495057; font-weight: 600; font-size: 11px;">Store</th>
-                                        <th style="padding: 4px 8px; text-align: right; color: #28a745; font-weight: 600; font-size: 11px;">Discogs</th>
-                                        <th style="padding: 4px 8px; text-align: center; color: #495057; font-weight: 600; font-size: 11px;">Markup</th>
-                                        <th style="padding: 4px 8px; text-align: center; color: #495057; font-weight: 600; font-size: 11px;">Age</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                    `;
-
-                    const sortedRecords = [...locationRecords].sort((a, b) => {
-                        if (a.location_index && b.location_index) return a.location_index - b.location_index;
-                        return (a.artist || '').localeCompare(b.artist || '');
-                    });
-
-                    for (const r of sortedRecords) {
-                        const hasPrice = r._discogsPrice && r._discogsPrice > 0;
-                        const discogsPrice = hasPrice ? r._discogsPrice : '—';
-                        const markup = r._markupPercent || 0;
-                        const isMarkdown = markup < 0;
-                        const markupColor = isMarkdown ? '#dc3545' : (markup > 0 ? '#28a745' : '#ffc107');
-                        const markupText = hasPrice ? (markup > 0 ? `+${markup}%` : markup < 0 ? `${markup}%` : '0%') : '—';
-                        const rowStyle = hasPrice ? (isMarkdown ? 'background: #fff5f5;' : '') : 'opacity: 0.4;';
-                        const ageText = hasPrice ? `${r._daysOld}d` : '—';
-
-                        html += `
-                            <tr style="${rowStyle} border-bottom: 1px solid #f0f0f0;">
-                                <td style="padding: 4px 8px; color: #666; font-size: 11px;">${r.id}</td>
-                                <td style="padding: 4px 8px; color: #333;">${r.artist || 'Unknown'}</td>
-                                <td style="padding: 4px 8px; color: #333;">${r.title || 'Unknown'}</td>
-                                <td style="padding: 4px 8px; text-align: right; color: #666;">${r.store_price ? '$' + r.store_price.toFixed(2) : '—'}</td>
-                                <td style="padding: 4px 8px; text-align: right; color: ${hasPrice ? (isMarkdown ? '#dc3545' : '#28a745') : '#999'}; font-weight: 600;">
-                                    ${hasPrice ? '$' + discogsPrice.toFixed(2) : '—'}
-                                </td>
-                                <td style="padding: 4px 8px; text-align: center; color: ${hasPrice ? markupColor : '#999'}; font-weight: 600;">
-                                    ${markupText}
-                                </td>
-                                <td style="padding: 4px 8px; text-align: center; color: #999; font-size: 10px;">${ageText}</td>
-                            </tr>
-                        `;
-                    }
-
-                    html += `
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
-                }
-
-                html += `</div>`;
+                html += renderStandaloneNode(node);
             }
         }
 
@@ -881,173 +615,273 @@
         updateButtons();
     }
 
-    // ===== TOGGLE BIN SECTION =====
+    function renderBinNode(node) {
+        const baseName = node.base_name;
+        const locations = node.locations;
+        const totalRecords = node.total_count;
+        const isSectionExpanded = expandedSections.has(baseName);
+
+        const allSelected = locations.length > 0 && locations.every(l => selectedLocations.has(l.location_id));
+        const anySelected = locations.some(l => selectedLocations.has(l.location_id));
+        const totalSelected = locations.filter(l => selectedLocations.has(l.location_id))
+                                      .reduce((s, l) => s + (l.record_count || 0), 0);
+
+        let html = `
+            <div style="border: 2px solid #6c757d; border-radius: 8px; margin-bottom: 10px; background: ${anySelected ? '#f0f8ff' : 'white'};">
+                <div style="display: flex; align-items: center; padding: 10px 14px; cursor: pointer; background: ${isSectionExpanded ? '#e9ecef' : 'white'}; border-radius: ${isSectionExpanded ? '8px 8px 0 0' : '8px'};"
+                     onclick="toggleBinSection('${baseName}')">
+                    <span style="font-size: 16px; margin-right: 10px; color: #333;">
+                        ${isSectionExpanded ? '▼' : '▶'}
+                    </span>
+                    <input type="checkbox" style="margin-right: 12px; cursor: pointer; width: 18px; height: 18px;"
+                           ${allSelected ? 'checked' : ''}
+                           onclick="event.stopPropagation(); toggleAllLocationsInBin('${baseName}')">
+                    <span style="flex: 1; font-weight: 700; color: #333; font-size: 16px;">
+                        📦 ${baseName}
+                    </span>
+                    <span style="display: flex; gap: 8px; align-items: center; font-size: 12px; margin-right: 8px;">
+                        <span style="background: #e9ecef; padding: 2px 12px; border-radius: 12px; color: #495057; font-weight: 600;">
+                            ${totalRecords} records
+                        </span>
+                        ${anySelected ? `<span style="color: #667eea; font-weight: 600;">${totalSelected} selected</span>` : ''}
+                        ${totalRecords > 0 ? `
+                            <button onclick="event.stopPropagation(); postBinSection('${baseName}')"
+                                    style="padding: 4px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 14px; cursor: pointer; font-size: 12px; font-weight: 600;">
+                                📤 Post This Bin
+                            </button>
+                        ` : ''}
+                    </span>
+                </div>
+        `;
+
+        if (isSectionExpanded) {
+            for (const loc of locations) {
+                html += renderLocationRow(loc, true);
+            }
+        }
+        html += `</div>`;
+        return html;
+    }
+
+    function renderStandaloneNode(node) {
+        return renderLocationRow(node, false);
+    }
+
+    function renderLocationRow(loc, indent) {
+        const locationId   = loc.location_id;
+        const locationName = loc.location_display;
+        const count        = loc.record_count || 0;
+
+        const isExpanded    = expandedLocations.has(locationId);
+        const isSelected    = selectedLocations.has(locationId);
+        const records       = recordsByLocation.get(locationId);
+        const recordsLoaded = !!records;
+        const pricedCount   = recordsLoaded
+            ? records.filter(r => r._discogsPrice && r._discogsPrice > 0).length
+            : null;
+
+        const padLeft      = indent ? 'padding-left: 20px;' : '';
+        const borderStyle  = indent ? 'border-top: 1px solid #dee2e6;' : 'border: 1px solid #e9ecef; border-radius: 6px;';
+        const marginBottom = indent ? '' : 'margin-bottom: 6px;';
+        const bgColor      = isSelected ? '#f0f8ff' : 'white';
+        const headerBg     = isExpanded ? '#f8f9fa' : 'white';
+
+        let html = `
+            <div style="${borderStyle} ${marginBottom} background: ${bgColor}; ${padLeft}">
+                <div style="display: flex; align-items: center; padding: ${indent ? '6px 12px' : '8px 12px'}; cursor: pointer; background: ${headerBg};"
+                     onclick="toggleLocation(${locationId})">
+                    <span style="font-size: ${indent ? '13px' : '14px'}; margin-right: 8px; color: ${count > 0 ? '#333' : '#999'};">
+                        ${isExpanded ? '▼' : '▶'}
+                    </span>
+                    <input type="checkbox" style="margin-right: 10px; cursor: pointer;"
+                           ${isSelected ? 'checked' : ''}
+                           onclick="event.stopPropagation(); toggleLocationSelection(${locationId})">
+                    <span style="flex: 1; font-weight: ${indent ? '500' : '600'}; color: #333; font-size: ${indent ? '13px' : '14px'};">
+                        ${locationName}
+                    </span>
+                    <span style="display: flex; gap: 6px; align-items: center; font-size: ${indent ? '11px' : '12px'}; margin-right: 8px;">
+                        <span style="background: #e9ecef; padding: 1px 10px; border-radius: 10px; color: #495057;">
+                            ${count} records
+                        </span>
+                        ${pricedCount !== null ? `<span style="color: #667eea; font-weight: 600;">${pricedCount} priced</span>` : ''}
+                        ${count > 0 ? `
+                            <button onclick="event.stopPropagation(); postLocation(${locationId})"
+                                    style="padding: ${indent ? '2px 12px' : '3px 14px'}; background: ${indent ? '#28a745' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'}; color: white; border: none; border-radius: ${indent ? '10px' : '14px'}; cursor: pointer; font-size: ${indent ? '10px' : '11px'}; font-weight: 600;">
+                                📤 Post
+                            </button>
+                        ` : ''}
+                    </span>
+                </div>
+        `;
+
+        if (isExpanded) {
+            if (!recordsLoaded) {
+                html += `
+                    <div style="padding: 12px 20px; font-size: 12px; color: #666; border-top: 1px solid #f0f0f0;">
+                        ⏳ Loading records...
+                    </div>
+                `;
+            } else if (records.length === 0) {
+                html += `
+                    <div style="padding: 12px 20px; font-size: 12px; color: #999; border-top: 1px solid #f0f0f0;">
+                        No eligible records in this location.
+                    </div>
+                `;
+            } else {
+                html += renderRecordsTable(records, indent ? 'small' : 'normal');
+            }
+        }
+
+        html += `</div>`;
+        return html;
+    }
+
+    function renderRecordsTable(locationRecords, size) {
+        const s = size === 'small'
+            ? { pad: '3px 6px', fs: '11px', idFs: '10px', ageFs: '9px', headerPad: '3px 6px', headerFs: '11px' }
+            : { pad: '4px 8px', fs: '12px', idFs: '11px', ageFs: '10px', headerPad: '4px 8px', headerFs: '11px' };
+
+        let html = `
+            <div style="padding: ${size === 'small' ? '6px 12px 10px 40px' : '10px 12px 12px 36px'}; border-top: 1px solid #f0f0f0; overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: ${s.fs};">
+                    <thead>
+                        <tr style="background: #f1f3f5; border-bottom: 2px solid #dee2e6;">
+                            <th style="padding: ${s.headerPad}; text-align: left; color: #495057; font-weight: 600; font-size: ${s.headerFs};">ID</th>
+                            <th style="padding: ${s.headerPad}; text-align: left; color: #495057; font-weight: 600; font-size: ${s.headerFs};">Artist</th>
+                            <th style="padding: ${s.headerPad}; text-align: left; color: #495057; font-weight: 600; font-size: ${s.headerFs};">Title</th>
+                            <th style="padding: ${s.headerPad}; text-align: right; color: #495057; font-weight: 600; font-size: ${s.headerFs};">Store</th>
+                            <th style="padding: ${s.headerPad}; text-align: right; color: #28a745; font-weight: 600; font-size: ${s.headerFs};">Discogs</th>
+                            <th style="padding: ${s.headerPad}; text-align: center; color: #495057; font-weight: 600; font-size: ${s.headerFs};">Markup</th>
+                            <th style="padding: ${s.headerPad}; text-align: center; color: #495057; font-weight: 600; font-size: ${s.headerFs};">Age</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        const sortedRecords = [...locationRecords].sort((a, b) => {
+            if (a.location_index && b.location_index) return a.location_index - b.location_index;
+            return (a.artist || '').localeCompare(b.artist || '');
+        });
+
+        for (const r of sortedRecords) {
+            const hasPrice = r._discogsPrice && r._discogsPrice > 0;
+            const discogsPrice = hasPrice ? r._discogsPrice : '—';
+            const markup = r._markupPercent || 0;
+            const isMarkdown = markup < 0;
+            const markupColor = isMarkdown ? '#dc3545' : (markup > 0 ? '#28a745' : '#ffc107');
+            const markupText = hasPrice ? (markup > 0 ? `+${markup}%` : markup < 0 ? `${markup}%` : '0%') : '—';
+            const rowStyle = hasPrice ? (isMarkdown ? 'background: #fff5f5;' : '') : 'opacity: 0.4;';
+            const ageText = hasPrice ? `${r._daysOld}d` : '—';
+
+            html += `
+                <tr style="${rowStyle} border-bottom: 1px solid #f0f0f0;">
+                    <td style="padding: ${s.pad}; color: #666; font-size: ${s.idFs};">${r.id}</td>
+                    <td style="padding: ${s.pad}; color: #333;">${r.artist || 'Unknown'}</td>
+                    <td style="padding: ${s.pad}; color: #333;">${r.title || 'Unknown'}</td>
+                    <td style="padding: ${s.pad}; text-align: right; color: #666;">${r.store_price ? '$' + r.store_price.toFixed(2) : '—'}</td>
+                    <td style="padding: ${s.pad}; text-align: right; color: ${hasPrice ? (isMarkdown ? '#dc3545' : '#28a745') : '#999'}; font-weight: 600;">
+                        ${hasPrice ? '$' + discogsPrice.toFixed(2) : '—'}
+                    </td>
+                    <td style="padding: ${s.pad}; text-align: center; color: ${hasPrice ? markupColor : '#999'}; font-weight: 600;">
+                        ${markupText}
+                    </td>
+                    <td style="padding: ${s.pad}; text-align: center; color: #999; font-size: ${s.ageFs};">${ageText}</td>
+                </tr>
+            `;
+        }
+
+        html += `</tbody></table></div>`;
+        return html;
+    }
+
+    // ===== TOGGLES =====
+
     window.toggleBinSection = function(baseName) {
-        if (expandedSections.has(baseName)) {
-            expandedSections.delete(baseName);
-        } else {
-            expandedSections.add(baseName);
-        }
+        if (expandedSections.has(baseName)) expandedSections.delete(baseName);
+        else expandedSections.add(baseName);
         renderRecords();
     };
 
-    // ===== TOGGLE ALL LOCATIONS IN A BIN =====
     window.toggleAllLocationsInBin = function(baseName) {
-        const allLocations = [];
-        for (const group of groupRecordsByLocation(records)) {
-            if (group.is_bin_section && group.base_name === baseName) {
-                for (const loc of group.locations) {
-                    allLocations.push(loc.location_id);
-                }
-                break;
-            }
-        }
-
-        const allSelected = allLocations.every(id => selectedLocations.has(id));
-
+        const bin = findBinNode(baseName);
+        if (!bin) return;
+        const ids = bin.locations.map(l => l.location_id);
+        const allSelected = ids.every(id => selectedLocations.has(id));
         if (allSelected) {
-            for (const id of allLocations) selectedLocations.delete(id);
+            for (const id of ids) selectedLocations.delete(id);
         } else {
-            for (const id of allLocations) selectedLocations.add(id);
+            for (const id of ids) selectedLocations.add(id);
         }
-
         renderRecords();
-        updateSelectionInfo();
-        updateButtons();
     };
 
-    // ===== POST ENTIRE BIN SECTION =====
-    window.postBinSection = async function(baseName) {
-        if (isPosting) return;
-
-        let recordsToPost = [];
-        let locationNames = [];
-        for (const group of groupRecordsByLocation(records)) {
-            if (group.is_bin_section && group.base_name === baseName) {
-                for (const loc of group.locations) {
-                    const withPrices = loc.records.filter(r => r._discogsPrice && r._discogsPrice > 0);
-                    recordsToPost = recordsToPost.concat(withPrices);
-                    locationNames.push(loc.location_name);
-                }
-                break;
-            }
-        }
-
-        if (recordsToPost.length === 0) {
-            showStatus(`⚠️ No records with Discogs prices in ${baseName}`, 'warning');
-            return;
-        }
-
-        const withMarkdown = recordsToPost.filter(r => r._markupPercent && r._markupPercent < 0);
-        const estMinutes = ((recordsToPost.length * DISCOGS_POST_DELAY_MS) / 60000).toFixed(1);
-        let confirmMsg = `Post ${recordsToPost.length} record(s) from ${baseName} to Discogs?\n\n`;
-        confirmMsg += `Locations: ${locationNames.join(', ')}\n`;
-        confirmMsg += `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (max markdown: ${discogsMaxMarkdown}%)\n`;
-        confirmMsg += `${withMarkdown.length} records will be on markdown\n`;
-        confirmMsg += `Estimated time: ~${estMinutes} minutes (${DISCOGS_POST_DELAY_MS / 1000}s between each)`;
-
-        if (!confirm(confirmMsg)) return;
-
-        await postRecords(recordsToPost);
-    };
-
-    // ===== TOGGLE LOCATION EXPANSION =====
-    window.toggleLocation = function(locationId) {
+    window.toggleLocation = async function(locationId) {
         if (expandedLocations.has(locationId)) {
             expandedLocations.delete(locationId);
-        } else {
-            expandedLocations.add(locationId);
+            renderRecords();
+            return;
         }
+        expandedLocations.add(locationId);
         renderRecords();
+
+        if (!recordsByLocation.has(locationId)) {
+            try {
+                await ensureRecordsForLocation(locationId);
+            } catch (err) {
+                console.error(`Failed to load records for location ${locationId}:`, err);
+                showStatus(`❌ Could not load records for location ${locationId}: ${err.message}`, 'error');
+            }
+            renderRecords();
+        }
     };
 
-    // ===== TOGGLE LOCATION SELECTION =====
     window.toggleLocationSelection = function(locationId) {
-        if (selectedLocations.has(locationId)) {
-            selectedLocations.delete(locationId);
-        } else {
-            selectedLocations.add(locationId);
-        }
+        if (selectedLocations.has(locationId)) selectedLocations.delete(locationId);
+        else selectedLocations.add(locationId);
         renderRecords();
-        updateSelectionInfo();
-        updateButtons();
     };
 
-    // ===== TOGGLE ALL LOCATIONS =====
     window.toggleAllLocations = function() {
         const selectAll = document.getElementById('select-all-locations');
         const isChecked = selectAll.checked;
-
         if (isChecked) {
-            const locationIds = new Set();
-            for (const r of records) {
-                if (r.location_id) locationIds.add(r.location_id);
+            const tree = buildTreeFromCounts();
+            for (const node of tree) {
+                if (node.is_bin_section) {
+                    for (const loc of node.locations) selectedLocations.add(loc.location_id);
+                } else {
+                    selectedLocations.add(node.location_id);
+                }
             }
-            selectedLocations = locationIds;
         } else {
             selectedLocations.clear();
         }
-
         renderRecords();
-        updateSelectionInfo();
-        updateButtons();
     };
 
-    // ===== UPDATE SELECTION INFO =====
     function updateSelectionInfo() {
         const info = document.getElementById('selection-info');
         if (!info) return;
-
-        let selectedCount = selectedLocations.size;
-        let recordCount = 0;
-
-        for (const locationId of selectedLocations) {
-            const group = groupRecordsByLocation(records).find(g => {
-                if (g.is_bin_section) return g.locations.some(l => l.location_id === locationId);
-                return g.location_id === locationId;
-            });
-            if (group) {
-                if (group.is_bin_section) {
-                    for (const loc of group.locations) {
-                        if (loc.location_id === locationId) recordCount += loc.records.length;
-                    }
-                } else {
-                    recordCount += group.records.length;
-                }
-            }
+        let totalRecords = 0;
+        for (const id of selectedLocations) {
+            totalRecords += getLocationCount(id);
         }
-
-        info.textContent = `${selectedCount} locations selected, ${recordCount} records`;
+        info.textContent = `${selectedLocations.size} locations selected, ${totalRecords} records`;
     }
 
-    // ===== UPDATE BUTTONS =====
     function updateButtons() {
         const postSelectedBtn = document.getElementById('post-selected-btn');
-        const cancelBtn = document.getElementById('cancel-post-btn');
+        const cancelBtn       = document.getElementById('cancel-post-btn');
 
-        let selectedPriced = 0;
-        for (const locationId of selectedLocations) {
-            const group = groupRecordsByLocation(records).find(g => {
-                if (g.is_bin_section) return g.locations.some(l => l.location_id === locationId);
-                return g.location_id === locationId;
-            });
-            if (group) {
-                if (group.is_bin_section) {
-                    for (const loc of group.locations) {
-                        if (loc.location_id === locationId) {
-                            selectedPriced += loc.records.filter(r => r._discogsPrice && r._discogsPrice > 0).length;
-                        }
-                    }
-                } else {
-                    selectedPriced += group.records.filter(r => r._discogsPrice && r._discogsPrice > 0).length;
-                }
-            }
+        let selectedRecords = 0;
+        for (const id of selectedLocations) {
+            selectedRecords += getLocationCount(id);
         }
 
         if (postSelectedBtn) {
-            postSelectedBtn.disabled = selectedLocations.size === 0 || selectedPriced === 0 || isPosting;
-            if (selectedPriced > 0) {
-                postSelectedBtn.textContent = `📤 Post Selected (${selectedPriced} records)`;
+            postSelectedBtn.disabled = selectedLocations.size === 0 || selectedRecords === 0 || isPosting;
+            if (selectedRecords > 0) {
+                postSelectedBtn.textContent = `📤 Post Selected (${selectedRecords} records)`;
             } else {
                 postSelectedBtn.textContent = '📤 Post Selected';
             }
@@ -1060,102 +894,88 @@
         }
     }
 
-    // ===== POST SELECTED LOCATIONS =====
+    // ===== POSTING =====
+
+    window.postBinSection = async function(baseName) {
+        if (isPosting) return;
+        const bin = findBinNode(baseName);
+        if (!bin) {
+            showStatus(`⚠️ Bin ${baseName} not found`, 'warning');
+            return;
+        }
+        const ids = bin.locations.map(l => l.location_id);
+        await collectAndPost(ids, `Bin ${baseName}`);
+    };
+
+    window.postLocation = async function(locationId) {
+        if (isPosting) return;
+        const found = findLocationNode(locationId);
+        if (!found) {
+            showStatus(`⚠️ Location ${locationId} not found`, 'warning');
+            return;
+        }
+        const label = found.loc.location_display || found.loc.location_name;
+        await collectAndPost([locationId], label);
+    };
+
     window.postSelectedLocations = async function() {
         if (isPosting) return;
         if (selectedLocations.size === 0) {
             showStatus('⚠️ No locations selected', 'warning');
             return;
         }
+        const ids = Array.from(selectedLocations);
+        await collectAndPost(ids, `${ids.length} selected locations`);
+    };
+
+    async function collectAndPost(locationIds, scopeLabel) {
+        const statusDiv = document.getElementById('post-discogs-status');
+
+        if (statusDiv) {
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'status-message status-info';
+            statusDiv.innerHTML = `⏳ Loading records for ${locationIds.length} location(s)...`;
+        }
 
         let recordsToPost = [];
         let locationNames = [];
-        for (const locationId of selectedLocations) {
-            const group = groupRecordsByLocation(records).find(g => {
-                if (g.is_bin_section) return g.locations.some(l => l.location_id === locationId);
-                return g.location_id === locationId;
-            });
-            if (group) {
-                if (group.is_bin_section) {
-                    for (const loc of group.locations) {
-                        if (loc.location_id === locationId) {
-                            const withPrices = loc.records.filter(r => r._discogsPrice && r._discogsPrice > 0);
-                            recordsToPost = recordsToPost.concat(withPrices);
-                            locationNames.push(loc.location_name);
-                        }
-                    }
-                } else {
-                    const withPrices = group.records.filter(r => r._discogsPrice && r._discogsPrice > 0);
-                    recordsToPost = recordsToPost.concat(withPrices);
-                    locationNames.push(group.location_name);
-                }
-            }
-        }
 
-        if (recordsToPost.length === 0) {
-            showStatus('⚠️ No records with Discogs prices in selected locations', 'warning');
+        try {
+            for (const id of locationIds) {
+                const recs = await ensureRecordsForLocation(id);
+                const eligible = recs.filter(r => r._discogsPrice && r._discogsPrice > 0);
+                recordsToPost.push(...eligible);
+                const found = findLocationNode(id);
+                if (found) locationNames.push(found.loc.location_display || found.loc.location_name);
+            }
+        } catch (err) {
+            console.error('Failed loading records for post:', err);
+            showStatus(`❌ ${err.message}`, 'error');
             return;
         }
 
+        renderRecords();
+
+        if (recordsToPost.length === 0) {
+            showStatus(`⚠️ No records with Discogs prices in ${scopeLabel}`, 'warning');
+            return;
+        }
+
+        await confirmAndPost(recordsToPost, locationNames, scopeLabel);
+    }
+
+    async function confirmAndPost(recordsToPost, locationNames, scopeLabel) {
         const withMarkdown = recordsToPost.filter(r => r._markupPercent && r._markupPercent < 0);
         const estMinutes = ((recordsToPost.length * DISCOGS_POST_DELAY_MS) / 60000).toFixed(1);
-        let confirmMsg = `Post ${recordsToPost.length} record(s) from ${selectedLocations.size} selected location(s) to Discogs?\n\n`;
+        let confirmMsg = `Post ${recordsToPost.length} record(s) from ${scopeLabel} to Discogs?\n\n`;
         confirmMsg += `Locations: ${locationNames.join(', ')}\n`;
-        confirmMsg += `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (max markdown: ${discogsMaxMarkdown}%)\n`;
+        confirmMsg += `Markup: +${discogsMarkupPercent}% -${discogsPriceStep}%/wk (floor -${discogsMaxMarkdown}%)\n`;
         confirmMsg += `${withMarkdown.length} records will be on markdown\n`;
         confirmMsg += `Estimated time: ~${estMinutes} minutes (${DISCOGS_POST_DELAY_MS / 1000}s between each)`;
-
         if (!confirm(confirmMsg)) return;
-
         await postRecords(recordsToPost);
-    };
+    }
 
-    // ===== POST A SINGLE LOCATION =====
-    window.postLocation = async function(locationId) {
-        if (isPosting) return;
-
-        let recordsToPost = [];
-        let locationName = '';
-
-        const group = groupRecordsByLocation(records).find(g => {
-            if (g.is_bin_section) return g.locations.some(l => l.location_id === locationId);
-            return g.location_id === locationId;
-        });
-        if (!group) return;
-
-        if (group.is_bin_section) {
-            for (const loc of group.locations) {
-                if (loc.location_id === locationId) {
-                    const withPrices = loc.records.filter(r => r._discogsPrice && r._discogsPrice > 0);
-                    recordsToPost = recordsToPost.concat(withPrices);
-                    locationName = loc.location_name;
-                    break;
-                }
-            }
-        } else {
-            const withPrices = group.records.filter(r => r._discogsPrice && r._discogsPrice > 0);
-            recordsToPost = recordsToPost.concat(withPrices);
-            locationName = group.location_name;
-        }
-
-        if (recordsToPost.length === 0) {
-            showStatus(`⚠️ No records with Discogs prices in ${locationName}`, 'warning');
-            return;
-        }
-
-        const withMarkdown = recordsToPost.filter(r => r._markupPercent && r._markupPercent < 0);
-        const estMinutes = ((recordsToPost.length * DISCOGS_POST_DELAY_MS) / 60000).toFixed(1);
-        let confirmMsg = `Post ${recordsToPost.length} record(s) from ${locationName} to Discogs?\n\n`;
-        confirmMsg += `Markup: ${discogsMarkupPercent}% - ${discogsPriceStep}%/wk (max markdown: ${discogsMaxMarkdown}%)\n`;
-        confirmMsg += `${withMarkdown.length} records will be on markdown\n`;
-        confirmMsg += `Estimated time: ~${estMinutes} minutes (${DISCOGS_POST_DELAY_MS / 1000}s between each)`;
-
-        if (!confirm(confirmMsg)) return;
-
-        await postRecords(recordsToPost);
-    };
-
-    // ===== CANCEL POSTING =====
     window.cancelPosting = function() {
         if (isPosting) {
             cancelPosting = true;
@@ -1165,7 +985,6 @@
         }
     };
 
-    // ===== POST RECORDS WITH PROGRESS =====
     async function postRecords(recordsToPost) {
         if (isPosting) return;
         isPosting = true;
@@ -1320,12 +1139,11 @@
         }
         updateButtons();
 
-        if (hasLoadedOnce) {
-            window.loadPostDiscogsRecords();
-        }
+        if (hasLoadedOnce) loadLocations();
     }
 
-    // ===== SHOW STATUS =====
+    // ===== STATUS =====
+
     function showStatus(message, type) {
         const statusDiv = document.getElementById('post-discogs-status');
         if (!statusDiv) return;
@@ -1337,20 +1155,22 @@
         }
     }
 
-    // ===== INIT =====
-    window.initPostDiscogs = function() {
-        console.log('📀 Post to Discogs initialized (manual load mode)');
+    // ===== INIT — auto-loads on page entry, no button =====
 
-        records = [];
+    window.initPostDiscogs = function() {
+        console.log('📀 Post to Discogs initialized (auto-load mode)');
+
+        locationCounts = [];
+        recordsByLocation.clear();
         selectedLocations.clear();
         expandedLocations.clear();
         expandedSections.clear();
-        isLoadingRecords = false;
+        isLoadingLocations = false;
         hasLoadedOnce = false;
 
         const list = document.getElementById('post-discogs-locations');
         if (list) {
-            list.innerHTML = '<div style="text-align:center;padding:30px;color:#666;">Click <strong>📥 Load Records</strong> above to fetch records for posting.</div>';
+            list.innerHTML = '<div style="text-align:center;padding:30px;color:#666;">Loading locations...</div>';
         }
 
         const statusDiv = document.getElementById('post-discogs-status');
@@ -1359,24 +1179,14 @@
             statusDiv.innerHTML = '';
         }
 
-        const info = document.getElementById('load-records-info');
-        if (info) {
-            info.textContent = 'Click to fetch records from the server. This may take a moment.';
-        }
-
-        updateLoadButtonState(false);
         updateButtons();
 
-        fetchDiscogsConfig()
-            .then(() => {
-                console.log('✅ Config loaded into inputs');
-            })
-            .catch(err => {
-                console.error('❌ Failed to load config on init:', err);
-                showStatus(`❌ Could not load config: ${err.message}`, 'error');
-            });
+        loadLocations();
+    };
 
-        updatePriceInfo();
+    // Kept for backwards compatibility in case anything else calls it.
+    window.loadPostDiscogsRecords = function() {
+        return loadLocations();
     };
 
 })();
