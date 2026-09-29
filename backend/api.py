@@ -14938,22 +14938,12 @@ def ebay_list_item():
         "category_id": "176985"                # optional, default 176985 (Vinyl Records)
       }
 
-    HARD REQUIREMENTS (no fallbacks — the endpoint errors):
-      - record must exist
-      - record.consignor_id must be NULL (consigned records cannot be listed)
-      - record.condition_disc_id must be set and resolve to a d_condition row
-      - record.condition_sleeve_id must be set and resolve to a d_condition row
-      - each resolved d_condition row must have an abbreviation
-      - each resolved d_condition row must have a non-empty ebay_blurb
-      - image_url must be provided in the request body
-      - image_url must be HTTPS
-
-    Image handling:
-      - The caller supplies image_url. We do NOT probe it server-side; Discogs
-        (and other CDNs) return 403 to server-side HEAD requests with no UA,
-        which would be a false negative. eBay's own fetcher is the arbiter.
-        If eBay rejects the URL, the inventory PUT will fail and we'll surface
-        eBay's error text verbatim.
+    Image handling (all in this endpoint):
+      - Download the image at image_url.
+      - If its longest side is < 800px, upscale to 800px with PIL.
+      - Save the result to static/images/ebay/<record_id>_<hex>.jpg.
+      - Use the local https://www.pigstylemusic.com/static/images/ebay/... URL
+        for the eBay listing.
     """
     try:
         data = request.json or {}
@@ -14962,15 +14952,10 @@ def ebay_list_item():
 
         if not record_id:
             return jsonify({'status': 'error', 'error': 'record_id required'}), 400
-
         if not image_url:
             return jsonify({'status': 'error', 'error': 'image_url required'}), 400
-
         if not image_url.startswith('https://'):
-            return jsonify({
-                'status': 'error',
-                'error': 'image_url must be HTTPS (eBay rejects HTTP image URLs)'
-            }), 400
+            return jsonify({'status': 'error', 'error': 'image_url must be HTTPS'}), 400
 
         client_id = os.environ.get('EBAY_CLIENT_ID')
         client_secret = os.environ.get('EBAY_CLIENT_SECRET')
@@ -15010,67 +14995,30 @@ def ebay_list_item():
             conn.close()
             return jsonify({'status': 'error', 'error': 'Consigned records cannot be listed'}), 400
 
-        # --- Hard requirement: condition IDs must be set ---
         if record['condition_disc_id'] is None:
             conn.close()
-            return jsonify({
-                'status': 'error',
-                'error': f'Record {record_id} has no condition_disc_id. Set the media condition before listing.'
-            }), 400
-
+            return jsonify({'status': 'error', 'error': f'Record {record_id} has no condition_disc_id'}), 400
         if record['condition_sleeve_id'] is None:
             conn.close()
-            return jsonify({
-                'status': 'error',
-                'error': f'Record {record_id} has no condition_sleeve_id. Set the sleeve condition before listing.'
-            }), 400
-
-        # --- Hard requirement: conditions must resolve to d_condition rows ---
+            return jsonify({'status': 'error', 'error': f'Record {record_id} has no condition_sleeve_id'}), 400
         if record['disc_abbr'] is None and record['disc_name'] is None:
             conn.close()
-            return jsonify({
-                'status': 'error',
-                'error': f'condition_disc_id {record["condition_disc_id"]} does not resolve to a d_condition row'
-            }), 500
-
+            return jsonify({'status': 'error', 'error': f'condition_disc_id {record["condition_disc_id"]} not resolvable'}), 500
         if record['sleeve_abbr'] is None and record['sleeve_name'] is None:
             conn.close()
-            return jsonify({
-                'status': 'error',
-                'error': f'condition_sleeve_id {record["condition_sleeve_id"]} does not resolve to a d_condition row'
-            }), 500
-
-        # --- Hard requirement: abbreviations must be set ---
+            return jsonify({'status': 'error', 'error': f'condition_sleeve_id {record["condition_sleeve_id"]} not resolvable'}), 500
         if not (record['disc_abbr'] or '').strip():
             conn.close()
-            return jsonify({
-                'status': 'error',
-                'error': f'd_condition id={record["condition_disc_id"]} has no abbreviation'
-            }), 500
-
+            return jsonify({'status': 'error', 'error': f'd_condition {record["condition_disc_id"]} has no abbreviation'}), 500
         if not (record['sleeve_abbr'] or '').strip():
             conn.close()
-            return jsonify({
-                'status': 'error',
-                'error': f'd_condition id={record["condition_sleeve_id"]} has no abbreviation'
-            }), 500
-
-        # --- Hard requirement: ebay_blurb must be set ---
+            return jsonify({'status': 'error', 'error': f'd_condition {record["condition_sleeve_id"]} has no abbreviation'}), 500
         if not (record['disc_blurb'] or '').strip():
             conn.close()
-            return jsonify({
-                'status': 'error',
-                'error': f'Record {record_id} media condition "{record["disc_abbr"]}" '
-                         f'has no ebay_blurb. Populate d_condition.ebay_blurb.'
-            }), 400
-
+            return jsonify({'status': 'error', 'error': f'Record {record_id} media "{record["disc_abbr"]}" has no ebay_blurb'}), 400
         if not (record['sleeve_blurb'] or '').strip():
             conn.close()
-            return jsonify({
-                'status': 'error',
-                'error': f'Record {record_id} sleeve condition "{record["sleeve_abbr"]}" '
-                         f'has no ebay_blurb. Populate d_condition.ebay_blurb.'
-            }), 400
+            return jsonify({'status': 'error', 'error': f'Record {record_id} sleeve "{record["sleeve_abbr"]}" has no ebay_blurb'}), 400
 
         cfg = {}
         for key in ['ebay_refresh_token', 'ebay_access_token', 'ebay_token_expires',
@@ -15083,11 +15031,58 @@ def ebay_list_item():
 
         if not cfg['ebay_refresh_token']:
             return jsonify({'status': 'error', 'error': 'eBay not connected. Visit /api/ebay/auth/url first.'}), 400
+        for req in ['ebay_merchant_location_key', 'ebay_fulfillment_policy_id',
+                    'ebay_payment_policy_id', 'ebay_return_policy_id']:
+            if not cfg[req]:
+                return jsonify({'status': 'error', 'error': f'{req} not configured'}), 500
 
-        for required in ['ebay_merchant_location_key', 'ebay_fulfillment_policy_id',
-                         'ebay_payment_policy_id', 'ebay_return_policy_id']:
-            if not cfg[required]:
-                return jsonify({'status': 'error', 'error': f'{required} not configured'}), 500
+        # --- Download, upscale if needed, save to our domain ---
+        try:
+            img_resp = requests.get(
+                image_url,
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                                  'AppleWebKit/537.36 (KHTML, like Gecko) '
+                                  'Chrome/122.0.0.0 Safari/537.36',
+                    'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Referer': 'https://www.discogs.com/',
+                },
+                timeout=20,
+                allow_redirects=True
+            )
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': f'Image download failed: {e}'}), 400
+
+        if img_resp.status_code != 200 or not img_resp.content:
+            return jsonify({
+                'status': 'error',
+                'error': f'Image download returned HTTP {img_resp.status_code}'
+            }), 400
+
+        try:
+            from PIL import Image
+            import io as _io
+            img = Image.open(_io.BytesIO(img_resp.content)).convert('RGB')
+
+            longest = max(img.width, img.height)
+            if longest < 800:
+                scale = 800.0 / longest
+                new_size = (int(round(img.width * scale)), int(round(img.height * scale)))
+                img = img.resize(new_size, Image.LANCZOS)
+                app.logger.info(f"Upscaled image for record {record_id} from {longest}px to {new_size[0]}x{new_size[1]}")
+
+            img_folder = os.path.join(os.path.dirname(__file__), 'static', 'images', 'ebay')
+            os.makedirs(img_folder, exist_ok=True)
+            filename = f"{record_id}_{uuid.uuid4().hex[:8]}.jpg"
+            filepath = os.path.join(img_folder, filename)
+            img.save(filepath, 'JPEG', quality=88, optimize=True)
+        except Exception as e:
+            app.logger.error(f"Image processing failed for record {record_id}: {e}")
+            app.logger.error(traceback.format_exc())
+            return jsonify({'status': 'error', 'error': f'Image processing failed: {e}'}), 500
+
+        hosted_image_url = f"https://www.pigstylemusic.com/static/images/ebay/{filename}"
 
         # --- Refresh access token if expired ---
         access_token = cfg['ebay_access_token']
@@ -15135,7 +15130,6 @@ def ebay_list_item():
             'Content-Language': 'en-US',
         }
 
-        # --- Build payload ---
         sku = f"PIGSTYLE-{record_id}"
         title = f"{record['artist']} - {record['title']}"
         if len(title) > 80:
@@ -15143,7 +15137,6 @@ def ebay_list_item():
 
         media_str  = f"{record['disc_abbr'].strip()} ({record['disc_blurb'].strip()})"
         sleeve_str = f"{record['sleeve_abbr'].strip()} ({record['sleeve_blurb'].strip()})"
-
         condition_html = (
             f"<strong>Media:</strong> {media_str} &nbsp;|&nbsp; "
             f"<strong>Sleeve:</strong> {sleeve_str}"
@@ -15175,7 +15168,7 @@ def ebay_list_item():
             'title': title,
             'description': description,
             'aspects': {'Artist': [record['artist']]},
-            'imageUrls': [image_url],
+            'imageUrls': [hosted_image_url],
         }
 
         inventory_payload = {
@@ -15189,7 +15182,6 @@ def ebay_list_item():
             },
         }
 
-        # --- 1. Inventory item ---
         inv_resp = requests.put(
             f'{base_url}/sell/inventory/v1/inventory_item/{sku}',
             headers=headers,
@@ -15202,7 +15194,6 @@ def ebay_list_item():
                 'error': f'eBay inventory item failed ({inv_resp.status_code}): {inv_resp.text[:500]}'
             }), 400
 
-        # --- 2. Delete any existing offer for this SKU ---
         offers_resp = requests.get(
             f'{base_url}/sell/inventory/v1/offer?sku={sku}',
             headers=headers,
@@ -15218,7 +15209,6 @@ def ebay_list_item():
                         timeout=30
                     )
 
-        # --- 3. Offer ---
         offer_resp = requests.post(
             f'{base_url}/sell/inventory/v1/offer',
             headers=headers,
@@ -15254,7 +15244,6 @@ def ebay_list_item():
         if not offer_id:
             return jsonify({'status': 'error', 'error': 'eBay did not return an offerId'}), 500
 
-        # --- 4. Publish ---
         pub_resp = requests.post(
             f'{base_url}/sell/inventory/v1/offer/{offer_id}/publish',
             headers=headers,
@@ -15270,7 +15259,7 @@ def ebay_list_item():
             'status': 'success',
             'message': f'Listed on eBay: {title}',
             'offer_id': offer_id,
-            'image_url_used': image_url,
+            'image_url_used': hosted_image_url,
         })
 
     except Exception as e:
