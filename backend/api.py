@@ -2581,57 +2581,58 @@ def get_artists():
     conn.close()
     return jsonify({'status': 'success', 'artists': [dict(artist) for artist in artists]})
 
+
 @app.route('/records', methods=['POST'])
 def create_record():
     data = request.get_json()
     if not data:
         return jsonify({'status': 'error', 'error': 'No data provided'}), 400
-    
+
     required_fields = ['artist', 'title', 'store_price', 'batch_id']
     for field in required_fields:
         if field not in data or data[field] is None:
             return jsonify({'status': 'error', 'error': f'{field} is required'}), 400
-    
+
     batch_id = data.get('batch_id')
     if not batch_id:
         return jsonify({'status': 'error', 'error': 'batch_id must be a valid draft ID'}), 400
 
     conn = get_db()
     cursor = conn.cursor()
-    
+
     try:
         consignor_id = data.get('consignor_id')
         commission_rate = data.get('commission_rate')
         status_id = data.get('status_id', 1)
-        
+
         condition_sleeve_id = data.get('condition_sleeve_id')
         condition_disc_id = data.get('condition_disc_id')
-        
+
         if not condition_sleeve_id and data.get('condition'):
             cursor.execute('SELECT id FROM d_condition WHERE condition_name = ?', (data.get('condition'),))
             result = cursor.fetchone()
             if result:
                 condition_sleeve_id = result['id']
                 condition_disc_id = result['id']
-        
+
         discogs_genre_raw = data.get('discogs_genre_raw', '')
         notes = data.get('notes', '')
-        
+
         # Location fields - only location_id and location_index
         location_id = data.get('location_id')
         location_index = data.get('location_index')
         format_id = data.get('format_id')
-        
+
         # ===== Discogs release ID =====
         discogs_release_id = data.get('discogs_release_id')
-        
+
         # ===== GET last_seen from request or use CURRENT_TIMESTAMP =====
         last_seen = data.get('last_seen')
         if last_seen:
             last_seen_value = last_seen
         else:
             last_seen_value = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
+
         cursor.execute('''
             INSERT INTO records (
                 artist, title, barcode, image_url, catalog_number,
@@ -2642,16 +2643,16 @@ def create_record():
                 created_at, last_seen
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
         ''', (
-            data.get('artist'), 
-            data.get('title'), 
-            data.get('barcode', ''), 
-            data.get('image_url', ''), 
-            data.get('catalog_number', ''), 
+            data.get('artist'),
+            data.get('title'),
+            data.get('barcode', ''),
+            data.get('image_url', ''),
+            data.get('catalog_number', ''),
             condition_sleeve_id,
-            condition_disc_id, 
+            condition_disc_id,
             float(data.get('store_price', 0.0)),
-            consignor_id, 
-            float(commission_rate) if commission_rate else None, 
+            consignor_id,
+            float(commission_rate) if commission_rate else None,
             int(status_id),
             discogs_genre_raw,
             notes,
@@ -2662,9 +2663,57 @@ def create_record():
             discogs_release_id,
             last_seen_value
         ))
-        
+
         record_id = cursor.lastrowid
-        
+
+        # ===== POPULATE image_large_url FROM DISCOGS =====
+        # Fetch the signed full-size image URL now so ebay_list_item doesn't
+        # have to call the Discogs API at post time. Failures are non-fatal:
+        # the record is still created, and a later backfill can fill the gap.
+        if discogs_release_id:
+            try:
+                discogs_resp = requests.get(
+                    f'https://api.discogs.com/releases/{discogs_release_id}',
+                    headers={
+                        'Authorization': f'Discogs token={os.environ.get("DISCOGS_USER_TOKEN", "")}',
+                        'User-Agent': 'PigStyleMusic/1.0',
+                    },
+                    timeout=10
+                )
+                if discogs_resp.status_code == 200:
+                    images = discogs_resp.json().get('images') or []
+                    usable = [i for i in images if (i.get('width') or 0) >= 500 and i.get('uri')]
+                    if usable:
+                        best = max(usable, key=lambda i: i.get('width') or 0)
+                        cursor.execute(
+                            "UPDATE records SET image_large_url = ? WHERE id = ?",
+                            (best['uri'], record_id)
+                        )
+                        app.logger.info(
+                            f"Record {record_id}: populated image_large_url "
+                            f"({best.get('width')}x{best.get('height')})"
+                        )
+                    else:
+                        app.logger.warning(
+                            f"Record {record_id}: Discogs release {discogs_release_id} "
+                            f"has no image >= 500px; image_large_url left NULL"
+                        )
+                elif discogs_resp.status_code == 429:
+                    app.logger.warning(
+                        f"Record {record_id}: Discogs rate-limited during import; "
+                        f"image_large_url left NULL (will be picked up by backfill)"
+                    )
+                else:
+                    app.logger.warning(
+                        f"Record {record_id}: Discogs release API returned "
+                        f"{discogs_resp.status_code}; image_large_url left NULL"
+                    )
+            except Exception as e:
+                app.logger.warning(
+                    f"Record {record_id}: Discogs image fetch failed ({e}); "
+                    f"image_large_url left NULL"
+                )
+
         # ===== STORE CREDIT / GIFT CARD TRADE-IN LOGIC =====
         store_credit = data.get('store_credit', False)
         gift_card_code = data.get('gift_card_code', '').strip().upper()
@@ -2676,60 +2725,60 @@ def create_record():
                 conn.rollback()
                 conn.close()
                 return jsonify({'status': 'error', 'error': 'Gift card code required for store credit'}), 400
-            
+
             if not debtor_name:
                 conn.rollback()
                 conn.close()
                 return jsonify({'status': 'error', 'error': 'Debtor name required for store credit'}), 400
-            
+
             if total_offer <= 0:
                 conn.rollback()
                 conn.close()
                 return jsonify({'status': 'error', 'error': 'Total offer must be greater than 0'}), 400
-            
+
             store_credit_value = total_offer * 1.5
-            
+
             cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1050',))
             inventory = cursor.fetchone()
             cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
             liability = cursor.fetchone()
-            
+
             if not inventory or not liability:
                 conn.rollback()
                 conn.close()
                 return jsonify({'status': 'error', 'error': 'Required accounts not found'}), 500
-            
+
             cursor.execute('SELECT id FROM journal_entries WHERE source_type = "gift_card" AND source_id = ?', (gift_card_code,))
             if cursor.fetchone():
                 conn.rollback()
                 conn.close()
                 return jsonify({'status': 'error', 'error': 'Gift card code already exists'}), 400
-            
+
             value_cents = int(round(store_credit_value * 100))
             today = datetime.now().strftime('%Y-%m-%d')
             trade_notes = data.get('trade_notes', f'Trade-in: {data.get("record_count", 0)} records')
-            
+
             description = f"{debtor_name} | {gift_card_code} | ${store_credit_value:.2f} | Trade-in: {trade_notes}"
-            
+
             cursor.execute('''
                 INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
                 VALUES (?, ?, ?, ?)
             ''', (today, description, 'gift_card', gift_card_code))
             entry_id = cursor.lastrowid
-            
+
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
             ''', (entry_id, inventory['id'], value_cents, 0))
-            
+
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
             ''', (entry_id, liability['id'], 0, value_cents))
-            
+
             conn.commit()
             conn.close()
-            
+
             conn2 = get_db()
             cursor2 = conn2.cursor()
             cursor2.execute('''
@@ -2747,7 +2796,7 @@ def create_record():
             ''', (record_id,))
             record = cursor2.fetchone()
             conn2.close()
-            
+
             return jsonify({
                 'status': 'success',
                 'record': dict(record) if record else {},
@@ -2757,9 +2806,9 @@ def create_record():
                 'debtor_name': debtor_name,
                 'entry_id': entry_id
             })
-        
+
         conn.commit()
-        
+
         cursor.execute('''
             SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name,
             cd.condition_name as disc_condition_name,
@@ -2773,21 +2822,20 @@ def create_record():
             LEFT JOIN locations l ON r.location_id = l.id
             WHERE r.id = ?
         ''', (record_id,))
-        
+
         record = cursor.fetchone()
         conn.close()
-        
+
         return jsonify({
-            'status': 'success', 
-            'record': dict(record) if record else {}, 
+            'status': 'success',
+            'record': dict(record) if record else {},
             'message': f'Record added successfully with ID: {record_id}'
         })
-        
+
     except Exception as e:
         conn.rollback()
         conn.close()
         return jsonify({'status': 'error', 'error': f"Database error: {str(e)}"}), 500
- 
 
 @app.route('/records', methods=['GET'])
 def get_records():
