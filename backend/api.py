@@ -14940,6 +14940,13 @@ def ebay_list_item():
       - Media + Sleeve, each rendered as "<abbr> (<ebay_blurb>)"
       - Barcode surfaced as a low-key "Store ref." line alongside the catalog
         number, so it reads as normal listing metadata rather than inventory tag.
+      - Note that images are stock photos and buyer can request actual photos.
+
+    Image handling:
+      - Discogs CDN thumbnail URLs embed size directives like
+          /rs:fit/g:sm/q:40/h:150/w:150/...
+        The h:/w: values are rewritten inline to 1200 before the image URL is
+        handed to eBay. Non-Discogs images pass through unchanged.
     """
     try:
         data = request.json or {}
@@ -15137,7 +15144,11 @@ def ebay_list_item():
             f"<h3 style=\"margin:0 0 6px 0;\">{record['artist']} - {record['title']}</h3>"
             f"<p style=\"margin:0 0 6px 0;\">{condition_html}</p>"
             f"<p style=\"margin:0 0 6px 0;\">Pre-owned. Sold as described. "
-            f"All records are visually graded. Ships from our retail store.</p>"
+            f"All records are visually graded.</p>"
+            f"<p style=\"margin:0 0 6px 0;\">"
+            f"<em>Note: images are stock photos, not the actual item.</em> "
+            f"Message us if you'd like pictures of the exact copy you'll receive."
+            f"</p>"
             + (f"<p style=\"margin:0;font-size:0.9em;color:#555;\">{ref_line}</p>" if ref_line else "")
             + f"<p style=\"margin:6px 0 0 0;font-size:0.9em;color:#555;\">— PigStyle Music</p>"
         )
@@ -15145,12 +15156,21 @@ def ebay_list_item():
         # --- conditionDescription for Seller Notes (no fallback) ---
         condition_description = f"Media: {media_str}. Sleeve: {sleeve_str}."[:1000]
 
-        # --- Images: omit the field entirely if empty; eBay rejects [] ---
+        # --- Image: upgrade Discogs thumbnail URL inline; omit field if none ---
         image_urls = []
         if record['image_url']:
             img = record['image_url']
             if img.startswith('/'):
                 img = f"https://www.pigstylemusic.com{img}"
+
+            # Discogs CDN thumbnail URLs embed size directives like
+            #   /rs:fit/g:sm/q:40/h:150/w:150/...
+            # Rewriting h:/w: to a larger value returns the same signed
+            # image at full size. Non-Discogs URLs pass through unchanged.
+            if 'i.discogs.com' in img or 'img.discogs.com' in img:
+                img = re.sub(r'h:\d+', 'h:1200', img)
+                img = re.sub(r'w:\d+', 'w:1200', img)
+
             image_urls.append(img)
 
         product_block = {
@@ -15172,6 +15192,7 @@ def ebay_list_item():
             },
         }
 
+        # --- 1. Inventory item ---
         inv_resp = requests.put(
             f'{base_url}/sell/inventory/v1/inventory_item/{sku}',
             headers=headers,
@@ -15184,7 +15205,7 @@ def ebay_list_item():
                 'error': f'eBay inventory item failed ({inv_resp.status_code}): {inv_resp.text[:500]}'
             }), 400
 
-        # --- Delete any existing offer for this SKU ---
+        # --- 2. Delete any existing offer for this SKU ---
         offers_resp = requests.get(
             f'{base_url}/sell/inventory/v1/offer?sku={sku}',
             headers=headers,
@@ -15200,7 +15221,7 @@ def ebay_list_item():
                         timeout=30
                     )
 
-        # --- Offer ---
+        # --- 3. Offer ---
         offer_resp = requests.post(
             f'{base_url}/sell/inventory/v1/offer',
             headers=headers,
@@ -15236,7 +15257,7 @@ def ebay_list_item():
         if not offer_id:
             return jsonify({'status': 'error', 'error': 'eBay did not return an offerId'}), 500
 
-        # --- Publish ---
+        # --- 4. Publish ---
         pub_resp = requests.post(
             f'{base_url}/sell/inventory/v1/offer/{offer_id}/publish',
             headers=headers,
@@ -15252,6 +15273,7 @@ def ebay_list_item():
             'status': 'success',
             'message': f'Listed on eBay: {title}',
             'offer_id': offer_id,
+            'image_url_used': image_urls[0] if image_urls else None,
         })
 
     except Exception as e:
