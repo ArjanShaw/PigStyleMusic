@@ -14936,18 +14936,15 @@ def ebay_list_item():
       - each resolved d_condition row must have an abbreviation
       - each resolved d_condition row must have a non-empty ebay_blurb
 
-    Description includes:
-      - Media + Sleeve, each rendered as "<abbr> (<ebay_blurb>)"
-      - Barcode surfaced as a low-key "Store ref." line alongside the catalog
-        number, so it reads as normal listing metadata rather than inventory tag.
-      - Note that images are stock photos and buyer can request actual photos.
-
-    Image handling:
-      - Discogs CDN thumbnail URLs embed size directives like
-          /rs:fit/g:sm/q:40/h:150/w:150/...
-        The h:/w: values are rewritten inline to 1200 before the image URL is
-        handed to eBay. Non-Discogs images pass through unchanged.
+    TEMPORARY: image URL is hardcoded for testing.
     """
+    # TEMP: hardcoded image URL for testing
+    HARDCODED_IMAGE_URL = (
+        "https://i.discogs.com/RQFM6J_hq5s1Rd3L-soSEcmkzo583jEmrPnYzceI_iI/"
+        "rs:fit/g:sm/q:90/h:603/w:600/czM6Ly9kaXNjb2dz/LWRhdGFiYXNlLWlt/"
+        "YWdlcy9SLTI5NDU3/NjktMTUyMTc2Nzc3/OS0yMzA5LmpwZWc.jpeg"
+    )
+
     try:
         data = request.json or {}
         record_id = data.get('record_id')
@@ -14992,7 +14989,6 @@ def ebay_list_item():
             conn.close()
             return jsonify({'status': 'error', 'error': 'Consigned records cannot be listed'}), 400
 
-        # --- Hard requirement: condition IDs must be set ---
         if record['condition_disc_id'] is None:
             conn.close()
             return jsonify({
@@ -15007,7 +15003,6 @@ def ebay_list_item():
                 'error': f'Record {record_id} has no condition_sleeve_id. Set the sleeve condition before listing.'
             }), 400
 
-        # --- Hard requirement: conditions must resolve to d_condition rows ---
         if record['disc_abbr'] is None and record['disc_name'] is None:
             conn.close()
             return jsonify({
@@ -15022,7 +15017,6 @@ def ebay_list_item():
                 'error': f'condition_sleeve_id {record["condition_sleeve_id"]} does not resolve to a d_condition row'
             }), 500
 
-        # --- Hard requirement: abbreviations must be set ---
         if not (record['disc_abbr'] or '').strip():
             conn.close()
             return jsonify({
@@ -15037,7 +15031,6 @@ def ebay_list_item():
                 'error': f'd_condition id={record["condition_sleeve_id"]} has no abbreviation'
             }), 500
 
-        # --- Hard requirement: ebay_blurb must be set ---
         if not (record['disc_blurb'] or '').strip():
             conn.close()
             return jsonify({
@@ -15123,7 +15116,6 @@ def ebay_list_item():
         if len(title) > 80:
             title = title[:77] + '...'
 
-        # --- Condition lines (no fallbacks — validated above) ---
         media_str  = f"{record['disc_abbr'].strip()} ({record['disc_blurb'].strip()})"
         sleeve_str = f"{record['sleeve_abbr'].strip()} ({record['sleeve_blurb'].strip()})"
 
@@ -15132,7 +15124,6 @@ def ebay_list_item():
             f"<strong>Sleeve:</strong> {sleeve_str}"
         )
 
-        # --- Reference line: catalog number + barcode as low-key "Store ref." ---
         ref_bits = []
         if record['catalog_number']:
             ref_bits.append(f"Cat. No. {record['catalog_number']}")
@@ -15153,33 +15144,17 @@ def ebay_list_item():
             + f"<p style=\"margin:6px 0 0 0;font-size:0.9em;color:#555;\">— PigStyle Music</p>"
         )
 
-        # --- conditionDescription for Seller Notes (no fallback) ---
         condition_description = f"Media: {media_str}. Sleeve: {sleeve_str}."[:1000]
 
-        # --- Image: upgrade Discogs thumbnail URL inline; omit field if none ---
-        image_urls = []
-        if record['image_url']:
-            img = record['image_url']
-            if img.startswith('/'):
-                img = f"https://www.pigstylemusic.com{img}"
-
-            # Discogs CDN thumbnail URLs embed size directives like
-            #   /rs:fit/g:sm/q:40/h:150/w:150/...
-            # Rewriting h:/w: to a larger value returns the same signed
-            # image at full size. Non-Discogs URLs pass through unchanged.
-            if 'i.discogs.com' in img or 'img.discogs.com' in img:
-                img = re.sub(r'h:\d+', 'h:1200', img)
-                img = re.sub(r'w:\d+', 'w:1200', img)
-
-            image_urls.append(img)
+        # --- Image: TEMP hardcoded for testing ---
+        image_urls = [HARDCODED_IMAGE_URL]
 
         product_block = {
             'title': title,
             'description': description,
             'aspects': {'Artist': [record['artist']]},
+            'imageUrls': image_urls,
         }
-        if image_urls:
-            product_block['imageUrls'] = image_urls
 
         inventory_payload = {
             'product': product_block,
