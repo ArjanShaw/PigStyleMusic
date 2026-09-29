@@ -14920,7 +14920,6 @@ def ebay_auth_callback():
 
     return jsonify({'status': 'success', 'message': 'eBay account connected'})
 
-
 @app.route('/api/ebay/list', methods=['POST'])
 @login_required
 @role_required(['admin'])
@@ -14935,6 +14934,7 @@ def ebay_list_item():
       - record.condition_sleeve_id must be set and resolve to a d_condition row
       - each resolved d_condition row must have an abbreviation
       - each resolved d_condition row must have a non-empty ebay_blurb
+      - record must have an image that can be fetched and re-hosted
 
     Description includes:
       - Media + Sleeve, each rendered as "<abbr> (<ebay_blurb>)"
@@ -14943,9 +14943,12 @@ def ebay_list_item():
       - Note that images are stock photos and buyer can request actual photos.
 
     Image handling:
-      - image_url from the DB is passed through inline: relative paths get
-        prefixed with the production domain, and Discogs CDN thumbnail URLs
-        get their h:/w: size directives rewritten to 1200.
+      - Discogs CDN blocks referer-less / non-discogs.com fetches, so hotlinking
+        from eBay results in a broken image for buyers. We fetch the image once
+        server-side with a browser-ish UA, save it to static/images/ebay/, and
+        serve it from our own HTTPS domain. eBay has no reason to block our
+        domain, and buyers fetching from eBay get the image directly.
+      - Non-Discogs URLs (self-hosted, other sources) pass through unchanged.
     """
     try:
         data = request.json or {}
@@ -15155,30 +15158,70 @@ def ebay_list_item():
         # --- conditionDescription for Seller Notes (no fallback) ---
         condition_description = f"Media: {media_str}. Sleeve: {sleeve_str}."[:1000]
 
-        # --- Image: relative paths get prefixed; Discogs thumbnails upscaled ---
+        # --- Image: download to our domain so eBay can serve it to buyers ---
+        # Discogs CDN blocks referer-less fetches, so hotlinking produces a
+        # broken image on the listing page. Fetch once server-side with a
+        # browser-ish UA, save locally, serve from our own HTTPS domain.
         image_urls = []
         if record['image_url']:
-            img = record['image_url']
-            if img.startswith('/'):
-                img = f"https://www.pigstylemusic.com{img}"
+            src = record['image_url']
+            if src.startswith('/'):
+                src = f"https://www.pigstylemusic.com{src}"
 
-            # Discogs CDN thumbnail URLs embed size directives like
-            #   /rs:fit/g:sm/q:40/h:150/w:150/...
-            # Rewriting h:/w: to a larger value returns the same signed
-            # image at full size. Non-Discogs URLs pass through unchanged.
-            if 'i.discogs.com' in img or 'img.discogs.com' in img:
-                img = re.sub(r'h:\d+', 'h:1200', img)
-                img = re.sub(r'w:\d+', 'w:1200', img)
+            if 'i.discogs.com' in src or 'img.discogs.com' in src:
+                # Bump size params in case eBay's sizing isn't enough
+                src = re.sub(r'h:\d+', 'h:1200', src)
+                src = re.sub(r'w:\d+', 'w:1200', src)
 
-            image_urls.append(img)
+                try:
+                    img_resp = requests.get(
+                        src,
+                        headers={
+                            'User-Agent': 'Mozilla/5.0 (compatible; PigStyleMusic/1.0)',
+                            'Accept': 'image/*',
+                        },
+                        timeout=15
+                    )
+                    if img_resp.status_code == 200 and img_resp.content:
+                        img_folder = os.path.join(
+                            os.path.dirname(__file__), 'static', 'images', 'ebay'
+                        )
+                        os.makedirs(img_folder, exist_ok=True)
+
+                        img_filename = f"{record_id}_{uuid.uuid4().hex[:8]}.jpg"
+                        img_path = os.path.join(img_folder, img_filename)
+                        with open(img_path, 'wb') as f:
+                            f.write(img_resp.content)
+
+                        image_urls.append(
+                            f"https://www.pigstylemusic.com/static/images/ebay/{img_filename}"
+                        )
+                    else:
+                        app.logger.warning(
+                            f"Discogs image fetch for record {record_id} returned "
+                            f"{img_resp.status_code}"
+                        )
+                except Exception as e:
+                    app.logger.warning(
+                        f"Discogs image download failed for record {record_id}: {e}"
+                    )
+            else:
+                # Already a self-hosted or other external HTTPS URL — pass through
+                image_urls.append(src)
+
+        if not image_urls:
+            return jsonify({
+                'status': 'error',
+                'error': f'Record {record_id} has no usable image after download attempt; '
+                         f'refusing to list without a picture.'
+            }), 400
 
         product_block = {
             'title': title,
             'description': description,
             'aspects': {'Artist': [record['artist']]},
+            'imageUrls': image_urls,
         }
-        if image_urls:
-            product_block['imageUrls'] = image_urls
 
         inventory_payload = {
             'product': product_block,
@@ -15272,11 +15315,12 @@ def ebay_list_item():
             'status': 'success',
             'message': f'Listed on eBay: {title}',
             'offer_id': offer_id,
-            'image_url_used': image_urls[0] if image_urls else None,
+            'image_url_used': image_urls[0],
         })
 
     except Exception as e:
         app.logger.error(f'eBay listing error: {str(e)}')
+        app.logger.traceback = None
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
@@ -15382,6 +15426,11 @@ def ebay_connection_status():
     except Exception as e:
         app.logger.error(f'eBay connection status error: {str(e)}')
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/static/images/ebay/<path:filename>')
+def serve_ebay_image(filename):
+    ebay_folder = os.path.join(os.path.dirname(__file__), 'static', 'images', 'ebay')
+    return send_from_directory(ebay_folder, filename)
 
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
