@@ -13707,17 +13707,29 @@ def mark_all_orders_read():
     conn.close()
     return jsonify({'status': 'success', 'updated': updated})
 
-
 @app.route('/api/records/location-counts', methods=['GET'])
 def get_records_location_counts():
-    """Count of records per location, respecting the per-bin visibility rule.
+    """
+    Count of records per location, respecting the per-bin visibility rule.
+
+    Query params:
+        hide_consigned   true/false (default: false)
+                         When true, exclude records with consignor_id NOT NULL
+                         from the counts, matching the /records endpoint's
+                         hide_consigned filter.
+
     Rows include the composed display name (e.g. "Bin 20/RT").
     """
     try:
         conn = get_db()
         cursor = conn.cursor()
 
-        query = '''
+        hide_consigned = request.args.get('hide_consigned', 'false').lower() == 'true'
+
+        # Build the per-record eligibility predicate once
+        consignor_clause = "AND r.consignor_id IS NULL" if hide_consigned else ""
+
+        query = f'''
             SELECT
                 l.id      AS location_id,
                 l.name    AS leaf_name,
@@ -13727,6 +13739,7 @@ def get_records_location_counts():
             LEFT JOIN locations lp ON l.parent_id = lp.id
             LEFT JOIN records r ON r.location_id = l.id
                 AND r.status_id = 2
+                {consignor_clause}
                 AND (
                     r.last_seen IS NULL
                     OR NOT EXISTS (
@@ -13769,6 +13782,7 @@ def get_records_location_counts():
     except Exception as e:
         app.logger.error(f"Error getting location counts: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/api/events', methods=['GET'])
 def get_events():
@@ -14913,6 +14927,19 @@ def ebay_auth_callback():
 def ebay_list_item():
     """
     List a record on eBay. Body: {"record_id": 123, "price": 29.99, "category_id": "176985"}
+
+    HARD REQUIREMENTS (no fallbacks — the endpoint errors):
+      - record must exist
+      - record.consignor_id must be NULL (consigned records cannot be listed)
+      - record.condition_disc_id must be set and resolve to a d_condition row
+      - record.condition_sleeve_id must be set and resolve to a d_condition row
+      - each resolved d_condition row must have an abbreviation
+      - each resolved d_condition row must have a non-empty ebay_blurb
+
+    Description includes:
+      - Media + Sleeve, each rendered as "<abbr> (<ebay_blurb>)"
+      - Barcode surfaced as a low-key "Store ref." line alongside the catalog
+        number, so it reads as normal listing metadata rather than inventory tag.
     """
     try:
         data = request.json or {}
@@ -14929,12 +14956,24 @@ def ebay_list_item():
 
         base_url = 'https://api.sandbox.ebay.com' if env == 'sandbox' else 'https://api.ebay.com'
 
-        # --- Load record + config ---
+        # --- Load record + condition + config ---
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT id, artist, title, barcode, catalog_number, store_price, image_url, consignor_id
-            FROM records WHERE id = ?
+            SELECT
+                r.id, r.artist, r.title, r.barcode, r.catalog_number,
+                r.store_price, r.image_url, r.consignor_id,
+                r.condition_disc_id, r.condition_sleeve_id,
+                cd.abbreviation   AS disc_abbr,
+                cd.condition_name AS disc_name,
+                cd.ebay_blurb     AS disc_blurb,
+                cs.abbreviation   AS sleeve_abbr,
+                cs.condition_name AS sleeve_name,
+                cs.ebay_blurb     AS sleeve_blurb
+            FROM records r
+            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            WHERE r.id = ?
         ''', (record_id,))
         record = cursor.fetchone()
 
@@ -14945,6 +14984,68 @@ def ebay_list_item():
         if record['consignor_id'] is not None:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Consigned records cannot be listed'}), 400
+
+        # --- Hard requirement: condition IDs must be set ---
+        if record['condition_disc_id'] is None:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Record {record_id} has no condition_disc_id. Set the media condition before listing.'
+            }), 400
+
+        if record['condition_sleeve_id'] is None:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Record {record_id} has no condition_sleeve_id. Set the sleeve condition before listing.'
+            }), 400
+
+        # --- Hard requirement: conditions must resolve to d_condition rows ---
+        if record['disc_abbr'] is None and record['disc_name'] is None:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'condition_disc_id {record["condition_disc_id"]} does not resolve to a d_condition row'
+            }), 500
+
+        if record['sleeve_abbr'] is None and record['sleeve_name'] is None:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'condition_sleeve_id {record["condition_sleeve_id"]} does not resolve to a d_condition row'
+            }), 500
+
+        # --- Hard requirement: abbreviations must be set ---
+        if not (record['disc_abbr'] or '').strip():
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'd_condition id={record["condition_disc_id"]} has no abbreviation'
+            }), 500
+
+        if not (record['sleeve_abbr'] or '').strip():
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'd_condition id={record["condition_sleeve_id"]} has no abbreviation'
+            }), 500
+
+        # --- Hard requirement: ebay_blurb must be set ---
+        if not (record['disc_blurb'] or '').strip():
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Record {record_id} media condition "{record["disc_abbr"]}" '
+                         f'has no ebay_blurb. Populate d_condition.ebay_blurb.'
+            }), 400
+
+        if not (record['sleeve_blurb'] or '').strip():
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Record {record_id} sleeve condition "{record["sleeve_abbr"]}" '
+                         f'has no ebay_blurb. Populate d_condition.ebay_blurb.'
+            }), 400
 
         cfg = {}
         for key in ['ebay_refresh_token', 'ebay_access_token', 'ebay_token_expires',
@@ -15015,14 +15116,36 @@ def ebay_list_item():
         if len(title) > 80:
             title = title[:77] + '...'
 
-        description = (
-            f"<h3>{record['artist']} - {record['title']}</h3>"
-            f"<p>Barcode: {record['barcode'] or 'N/A'}</p>"
-            f"<p>Catalog #: {record['catalog_number'] or 'N/A'}</p>"
-            f"<p>Condition: Pre-owned, sold as described.</p>"
-            f"<p>PigStyle Music</p>"
+        # --- Condition lines (no fallbacks — validated above) ---
+        media_str  = f"{record['disc_abbr'].strip()} ({record['disc_blurb'].strip()})"
+        sleeve_str = f"{record['sleeve_abbr'].strip()} ({record['sleeve_blurb'].strip()})"
+
+        condition_html = (
+            f"<strong>Media:</strong> {media_str} &nbsp;|&nbsp; "
+            f"<strong>Sleeve:</strong> {sleeve_str}"
         )
 
+        # --- Reference line: catalog number + barcode as low-key "Store ref." ---
+        ref_bits = []
+        if record['catalog_number']:
+            ref_bits.append(f"Cat. No. {record['catalog_number']}")
+        if record['barcode']:
+            ref_bits.append(f"Store ref. {record['barcode']}")
+        ref_line = " · ".join(ref_bits)
+
+        description = (
+            f"<h3 style=\"margin:0 0 6px 0;\">{record['artist']} - {record['title']}</h3>"
+            f"<p style=\"margin:0 0 6px 0;\">{condition_html}</p>"
+            f"<p style=\"margin:0 0 6px 0;\">Pre-owned. Sold as described. "
+            f"All records are visually graded. Ships from our retail store.</p>"
+            + (f"<p style=\"margin:0;font-size:0.9em;color:#555;\">{ref_line}</p>" if ref_line else "")
+            + f"<p style=\"margin:6px 0 0 0;font-size:0.9em;color:#555;\">— PigStyle Music</p>"
+        )
+
+        # --- conditionDescription for Seller Notes (no fallback) ---
+        condition_description = f"Media: {media_str}. Sleeve: {sleeve_str}."[:1000]
+
+        # --- Images: omit the field entirely if empty; eBay rejects [] ---
         image_urls = []
         if record['image_url']:
             img = record['image_url']
@@ -15030,25 +15153,29 @@ def ebay_list_item():
                 img = f"https://www.pigstylemusic.com{img}"
             image_urls.append(img)
 
-        # --- 1. Inventory item ---
+        product_block = {
+            'title': title,
+            'description': description,
+            'aspects': {'Artist': [record['artist']]},
+        }
+        if image_urls:
+            product_block['imageUrls'] = image_urls
+
+        inventory_payload = {
+            'product': product_block,
+            'condition': data.get('condition', 'USED_EXCELLENT'),
+            'conditionDescription': condition_description,
+            'availability': {
+                'shipToLocationAvailability': {
+                    'quantity': int(data.get('quantity', 1))
+                }
+            },
+        }
+
         inv_resp = requests.put(
             f'{base_url}/sell/inventory/v1/inventory_item/{sku}',
             headers=headers,
-            json={
-                'product': {
-                    'title': title,
-                    'description': description,
-                    'aspects': {'Artist': [record['artist']]},
-                    'imageUrls': image_urls,
-                },
-                'condition': data.get('condition', 'USED_EXCELLENT'),
-                'conditionDescription': data.get('conditionDescription', 'Pre-owned vinyl record. Sold as described.'),
-                'availability': {
-                    'shipToLocationAvailability': {
-                        'quantity': int(data.get('quantity', 1))
-                    }
-                },
-            },
+            json=inventory_payload,
             timeout=30
         )
         if inv_resp.status_code not in (200, 201, 204):
@@ -15057,7 +15184,7 @@ def ebay_list_item():
                 'error': f'eBay inventory item failed ({inv_resp.status_code}): {inv_resp.text[:500]}'
             }), 400
 
-        # --- 2. Delete any existing offer for this SKU ---
+        # --- Delete any existing offer for this SKU ---
         offers_resp = requests.get(
             f'{base_url}/sell/inventory/v1/offer?sku={sku}',
             headers=headers,
@@ -15073,7 +15200,7 @@ def ebay_list_item():
                         timeout=30
                     )
 
-        # --- 3. Offer ---
+        # --- Offer ---
         offer_resp = requests.post(
             f'{base_url}/sell/inventory/v1/offer',
             headers=headers,
@@ -15109,7 +15236,7 @@ def ebay_list_item():
         if not offer_id:
             return jsonify({'status': 'error', 'error': 'eBay did not return an offerId'}), 500
 
-        # --- 4. Publish ---
+        # --- Publish ---
         pub_resp = requests.post(
             f'{base_url}/sell/inventory/v1/offer/{offer_id}/publish',
             headers=headers,
