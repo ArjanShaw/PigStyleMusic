@@ -14933,7 +14933,7 @@ def ebay_list_item():
         "record_id": 15449,
         "price": 12.59,
         "quantity": 1,
-        "image_url": "https://www.pigstylemusic.com/static/images/ebay/15449_ab12cd34.jpg",
+        "image_url": "https://i.discogs.com/.../image.jpeg",
         "condition": "USED_EXCELLENT",         # optional, default USED_EXCELLENT
         "category_id": "176985"                # optional, default 176985 (Vinyl Records)
       }
@@ -14946,18 +14946,14 @@ def ebay_list_item():
       - each resolved d_condition row must have an abbreviation
       - each resolved d_condition row must have a non-empty ebay_blurb
       - image_url must be provided in the request body
-      - image_url must return HTTP 200 to a HEAD request before publishing
-
-    Description includes:
-      - Media + Sleeve, each rendered as "<abbr> (<ebay_blurb>)"
-      - Barcode surfaced as a low-key "Store ref." line alongside the catalog
-        number, so it reads as normal listing metadata rather than inventory tag.
-      - Note that images are stock photos and buyer can request actual photos.
+      - image_url must be HTTPS
 
     Image handling:
-      - The caller is responsible for hosting the image. We HEAD-check the URL
-        first so eBay never sees a dead link. If the HEAD fails, the endpoint
-        refuses to publish and returns the reason.
+      - The caller supplies image_url. We do NOT probe it server-side; Discogs
+        (and other CDNs) return 403 to server-side HEAD requests with no UA,
+        which would be a false negative. eBay's own fetcher is the arbiter.
+        If eBay rejects the URL, the inventory PUT will fail and we'll surface
+        eBay's error text verbatim.
     """
     try:
         data = request.json or {}
@@ -15092,27 +15088,6 @@ def ebay_list_item():
                          'ebay_payment_policy_id', 'ebay_return_policy_id']:
             if not cfg[required]:
                 return jsonify({'status': 'error', 'error': f'{required} not configured'}), 500
-
-        # --- Verify the image is reachable before we tell eBay about it ---
-        try:
-            probe = requests.head(image_url, timeout=10, allow_redirects=True)
-            if probe.status_code != 200:
-                return jsonify({
-                    'status': 'error',
-                    'error': f'image_url returned HTTP {probe.status_code} to a HEAD request; '
-                             f'eBay will not be able to fetch it.'
-                }), 400
-            content_type = probe.headers.get('Content-Type', '')
-            if not content_type.startswith('image/'):
-                return jsonify({
-                    'status': 'error',
-                    'error': f'image_url Content-Type is "{content_type}", expected image/*'
-                }), 400
-        except Exception as e:
-            return jsonify({
-                'status': 'error',
-                'error': f'image_url HEAD check failed: {e}'
-            }), 400
 
         # --- Refresh access token if expired ---
         access_token = cfg['ebay_access_token']
