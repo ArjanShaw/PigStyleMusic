@@ -14920,6 +14920,23 @@ def ebay_auth_callback():
 
     return jsonify({'status': 'success', 'message': 'eBay account connected'})
 
+@app.route('/debug-pil')
+def debug_pil():
+    import sys, os
+    out = {
+        'python_version': sys.version,
+        'sys_executable': sys.executable,
+        'virtualenv': os.environ.get('VIRTUAL_ENV'),
+        'sys_path': sys.path,
+        'pil_check': None,
+        'pil_error': None,
+    }
+    try:
+        from PIL import Image
+        out['pil_check'] = Image.__version__
+    except Exception as e:
+        out['pil_error'] = str(e)
+    return jsonify(out)
 
 @app.route('/api/ebay/list', methods=['POST'])
 @login_required
