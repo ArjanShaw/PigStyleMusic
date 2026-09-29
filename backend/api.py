@@ -14920,12 +14920,23 @@ def ebay_auth_callback():
 
     return jsonify({'status': 'success', 'message': 'eBay account connected'})
 
+
 @app.route('/api/ebay/list', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def ebay_list_item():
     """
-    List a record on eBay. Body: {"record_id": 123, "price": 29.99, "category_id": "176985"}
+    List a record on eBay.
+
+    Body:
+      {
+        "record_id": 15449,
+        "price": 12.59,
+        "quantity": 1,
+        "image_url": "https://www.pigstylemusic.com/static/images/ebay/15449_ab12cd34.jpg",
+        "condition": "USED_EXCELLENT",         # optional, default USED_EXCELLENT
+        "category_id": "176985"                # optional, default 176985 (Vinyl Records)
+      }
 
     HARD REQUIREMENTS (no fallbacks — the endpoint errors):
       - record must exist
@@ -14934,7 +14945,8 @@ def ebay_list_item():
       - record.condition_sleeve_id must be set and resolve to a d_condition row
       - each resolved d_condition row must have an abbreviation
       - each resolved d_condition row must have a non-empty ebay_blurb
-      - record must have an image that can be fetched and re-hosted
+      - image_url must be provided in the request body
+      - image_url must return HTTP 200 to a HEAD request before publishing
 
     Description includes:
       - Media + Sleeve, each rendered as "<abbr> (<ebay_blurb>)"
@@ -14943,18 +14955,26 @@ def ebay_list_item():
       - Note that images are stock photos and buyer can request actual photos.
 
     Image handling:
-      - Discogs CDN blocks referer-less / non-discogs.com fetches, so hotlinking
-        from eBay results in a broken image for buyers. We fetch the image once
-        server-side with a browser-ish UA, save it to static/images/ebay/, and
-        serve it from our own HTTPS domain. eBay has no reason to block our
-        domain, and buyers fetching from eBay get the image directly.
-      - Non-Discogs URLs (self-hosted, other sources) pass through unchanged.
+      - The caller is responsible for hosting the image. We HEAD-check the URL
+        first so eBay never sees a dead link. If the HEAD fails, the endpoint
+        refuses to publish and returns the reason.
     """
     try:
         data = request.json or {}
         record_id = data.get('record_id')
+        image_url = (data.get('image_url') or '').strip()
+
         if not record_id:
             return jsonify({'status': 'error', 'error': 'record_id required'}), 400
+
+        if not image_url:
+            return jsonify({'status': 'error', 'error': 'image_url required'}), 400
+
+        if not image_url.startswith('https://'):
+            return jsonify({
+                'status': 'error',
+                'error': 'image_url must be HTTPS (eBay rejects HTTP image URLs)'
+            }), 400
 
         client_id = os.environ.get('EBAY_CLIENT_ID')
         client_secret = os.environ.get('EBAY_CLIENT_SECRET')
@@ -14971,7 +14991,7 @@ def ebay_list_item():
         cursor.execute('''
             SELECT
                 r.id, r.artist, r.title, r.barcode, r.catalog_number,
-                r.store_price, r.image_url, r.consignor_id,
+                r.store_price, r.consignor_id,
                 r.condition_disc_id, r.condition_sleeve_id,
                 cd.abbreviation   AS disc_abbr,
                 cd.condition_name AS disc_name,
@@ -15073,6 +15093,27 @@ def ebay_list_item():
             if not cfg[required]:
                 return jsonify({'status': 'error', 'error': f'{required} not configured'}), 500
 
+        # --- Verify the image is reachable before we tell eBay about it ---
+        try:
+            probe = requests.head(image_url, timeout=10, allow_redirects=True)
+            if probe.status_code != 200:
+                return jsonify({
+                    'status': 'error',
+                    'error': f'image_url returned HTTP {probe.status_code} to a HEAD request; '
+                             f'eBay will not be able to fetch it.'
+                }), 400
+            content_type = probe.headers.get('Content-Type', '')
+            if not content_type.startswith('image/'):
+                return jsonify({
+                    'status': 'error',
+                    'error': f'image_url Content-Type is "{content_type}", expected image/*'
+                }), 400
+        except Exception as e:
+            return jsonify({
+                'status': 'error',
+                'error': f'image_url HEAD check failed: {e}'
+            }), 400
+
         # --- Refresh access token if expired ---
         access_token = cfg['ebay_access_token']
         need_refresh = True
@@ -15125,7 +15166,6 @@ def ebay_list_item():
         if len(title) > 80:
             title = title[:77] + '...'
 
-        # --- Condition lines (no fallbacks — validated above) ---
         media_str  = f"{record['disc_abbr'].strip()} ({record['disc_blurb'].strip()})"
         sleeve_str = f"{record['sleeve_abbr'].strip()} ({record['sleeve_blurb'].strip()})"
 
@@ -15134,7 +15174,6 @@ def ebay_list_item():
             f"<strong>Sleeve:</strong> {sleeve_str}"
         )
 
-        # --- Reference line: catalog number + barcode as low-key "Store ref." ---
         ref_bits = []
         if record['catalog_number']:
             ref_bits.append(f"Cat. No. {record['catalog_number']}")
@@ -15155,72 +15194,13 @@ def ebay_list_item():
             + f"<p style=\"margin:6px 0 0 0;font-size:0.9em;color:#555;\">— PigStyle Music</p>"
         )
 
-        # --- conditionDescription for Seller Notes (no fallback) ---
         condition_description = f"Media: {media_str}. Sleeve: {sleeve_str}."[:1000]
-
-        # --- Image: download to our domain so eBay can serve it to buyers ---
-        # Discogs CDN blocks referer-less fetches, so hotlinking produces a
-        # broken image on the listing page. Fetch once server-side with a
-        # browser-ish UA, save locally, serve from our own HTTPS domain.
-        image_urls = []
-        if record['image_url']:
-            src = record['image_url']
-            if src.startswith('/'):
-                src = f"https://www.pigstylemusic.com{src}"
-
-            if 'i.discogs.com' in src or 'img.discogs.com' in src:
-                # Bump size params in case eBay's sizing isn't enough
-                src = re.sub(r'h:\d+', 'h:1200', src)
-                src = re.sub(r'w:\d+', 'w:1200', src)
-
-                try:
-                    img_resp = requests.get(
-                        src,
-                        headers={
-                            'User-Agent': 'Mozilla/5.0 (compatible; PigStyleMusic/1.0)',
-                            'Accept': 'image/*',
-                        },
-                        timeout=15
-                    )
-                    if img_resp.status_code == 200 and img_resp.content:
-                        img_folder = os.path.join(
-                            os.path.dirname(__file__), 'static', 'images', 'ebay'
-                        )
-                        os.makedirs(img_folder, exist_ok=True)
-
-                        img_filename = f"{record_id}_{uuid.uuid4().hex[:8]}.jpg"
-                        img_path = os.path.join(img_folder, img_filename)
-                        with open(img_path, 'wb') as f:
-                            f.write(img_resp.content)
-
-                        image_urls.append(
-                            f"https://www.pigstylemusic.com/static/images/ebay/{img_filename}"
-                        )
-                    else:
-                        app.logger.warning(
-                            f"Discogs image fetch for record {record_id} returned "
-                            f"{img_resp.status_code}"
-                        )
-                except Exception as e:
-                    app.logger.warning(
-                        f"Discogs image download failed for record {record_id}: {e}"
-                    )
-            else:
-                # Already a self-hosted or other external HTTPS URL — pass through
-                image_urls.append(src)
-
-        if not image_urls:
-            return jsonify({
-                'status': 'error',
-                'error': f'Record {record_id} has no usable image after download attempt; '
-                         f'refusing to list without a picture.'
-            }), 400
 
         product_block = {
             'title': title,
             'description': description,
             'aspects': {'Artist': [record['artist']]},
-            'imageUrls': image_urls,
+            'imageUrls': [image_url],
         }
 
         inventory_payload = {
@@ -15315,15 +15295,13 @@ def ebay_list_item():
             'status': 'success',
             'message': f'Listed on eBay: {title}',
             'offer_id': offer_id,
-            'image_url_used': image_urls[0],
+            'image_url_used': image_url,
         })
 
     except Exception as e:
         app.logger.error(f'eBay listing error: {str(e)}')
-        app.logger.traceback = None
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 @app.route('/api/ebay/connection-status', methods=['GET'])
 @login_required
