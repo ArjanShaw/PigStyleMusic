@@ -7,7 +7,10 @@
 //                         renders the tree immediately
 //   2. Expand loc      -> GET /records?location_ids=<id>&... (cached)
 //   3. Post loc/bin    -> ensure records loaded, filter by price,
-//                         POST each via /api/ebay/list
+//                         POST each via /api/ebay/list with an
+//                         image_url (Discogs source, size-bumped to
+//                         1200px when possible; server upscales and
+//                         re-hosts before listing on eBay).
 //
 // MARKUP MODEL (shared with Discogs):
 //   Initial Markup  : starting markup %, e.g. 40
@@ -300,7 +303,7 @@
     };
 
     // ----------------------------------------------------------------
-    // LOAD LOCATION COUNTS (called from init, no button)
+    // LOAD LOCATION COUNTS
     // ----------------------------------------------------------------
 
     function showLoadProgressBar(label, loaded, total, extra) {
@@ -344,10 +347,6 @@
         return data.data || [];
     }
 
-    /**
-     * Loads config + location counts and renders the tree.
-     * Called from initPostToEbay(). Safe to call again to refresh.
-     */
     async function loadLocations() {
         if (isLoadingLocations) return;
         if (isPosting) {
@@ -1019,10 +1018,29 @@
                     throw new Error('No computed eBay price');
                 }
 
+                // --- Build the image URL ---
+                // Prefer a 1200px variant from Discogs if it exists; otherwise
+                // leave the URL as-is and let the server upscale the smaller
+                // source before listing. Non-Discogs URLs pass through untouched.
+                let recordImageUrl = record.image_url || null;
+                if (recordImageUrl && /i\.discogs\.com|img\.discogs\.com/.test(recordImageUrl) && /h:\d+/.test(recordImageUrl)) {
+                    const candidate = recordImageUrl
+                        .replace(/h:\d+/, 'h:1200')
+                        .replace(/w:\d+/, 'w:1200');
+                    try {
+                        const probe = await fetch(candidate, { method: 'HEAD' });
+                        if (probe.ok) recordImageUrl = candidate;
+                    } catch (_) {
+                        // Probe failed (CORS, network). Keep the original URL;
+                        // the server will upscale if needed.
+                    }
+                }
+
                 const payload = {
                     record_id: record.id,
                     price: ebayPrice,
-                    quantity: 1
+                    quantity: 1,
+                    image_url: recordImageUrl
                 };
 
                 const listingResult = await fetch(`${API_BASE}/api/ebay/list`, {
@@ -1122,7 +1140,6 @@
         loadLocations();
     };
 
-    // Kept for backwards compatibility in case anything else calls it.
     window.loadPostEbayRecords = function() {
         return loadLocations();
     };
