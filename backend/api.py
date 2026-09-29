@@ -14978,6 +14978,11 @@ def ebay_list_item():
 
     Description footer line includes the internal record ID:
       Cat. No. LPM 2782 · #15449 · SKU 100050
+
+    Response includes listing_id and listing_url so the client can display
+    and verify each posted item:
+      "listing_id": "307205372798",
+      "listing_url": "https://www.ebay.com/itm/307205372798"
     """
     try:
         data = request.json or {}
@@ -15070,10 +15075,6 @@ def ebay_list_item():
                 return jsonify({'status': 'error', 'error': f'{req} not configured'}), 500
 
         # --- Resolve source image via the Discogs release API ---
-        # Thumbnails stored in image_url are signed only for their tiny size;
-        # bumping h:/w: breaks the signature (403). The release API returns a
-        # correctly-signed full-size URL. Fall back to the stored URL only if
-        # the API call fails or the record has no discogs_release_id.
         source_image_url = record['image_url'].strip()
         if source_image_url.startswith('/'):
             source_image_url = f"https://www.pigstylemusic.com{source_image_url}"
@@ -15091,8 +15092,6 @@ def ebay_list_item():
                 if discogs_resp.status_code == 200:
                     release_data = discogs_resp.json()
                     images = release_data.get('images') or []
-                    # Prefer the largest image that meets eBay's 500px minimum;
-                    # fall back to the primary image if nothing meets it.
                     usable = [i for i in images if (i.get('width') or 0) >= 500 and i.get('uri')]
                     if usable:
                         best = max(usable, key=lambda i: i.get('width') or 0)
@@ -15343,10 +15342,23 @@ def ebay_list_item():
                 'error': f'eBay publish failed ({pub_resp.status_code}): {pub_resp.text[:500]}'
             }), 400
 
+        # --- Extract listingId from publish response for the client to display ---
+        listing_id = None
+        listing_url = None
+        try:
+            pub_data = pub_resp.json()
+            listing_id = pub_data.get('listingId')
+            if listing_id:
+                listing_url = f"https://www.ebay.com/itm/{listing_id}"
+        except Exception as e:
+            app.logger.warning(f"Record {record_id}: could not parse publish response for listingId: {e}")
+
         return jsonify({
             'status': 'success',
             'message': f'Listed on eBay: {title}',
             'offer_id': offer_id,
+            'listing_id': listing_id,
+            'listing_url': listing_url,
             'source_image_url': source_image_url,
             'hosted_image_url': hosted_image_url,
             'source_image_width': source_width,
