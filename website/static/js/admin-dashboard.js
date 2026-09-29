@@ -39,11 +39,11 @@
             notification: null
         },
         { 
-            page: 'post-discogs', 
-            icon: 'fa-share-alt', 
-            label: 'Post to Discogs', 
-            description: 'Post inventory to Discogs marketplace',
-            color: 'purple',
+            page: 'discogs', 
+            icon: 'fa-record-vinyl', 
+            label: 'Discogs', 
+            description: 'Post inventory & manage Discogs orders',
+            color: 'pink',
             notification: null
         },
         { 
@@ -52,14 +52,6 @@
             label: 'Post to eBay', 
             description: 'Post inventory to eBay marketplace',
             color: 'info',
-            notification: null
-        },
-        { 
-            page: 'discogs-orders', 
-            icon: 'fa-shopping-bag', 
-            label: 'Discogs Orders', 
-            description: 'Manage orders from Discogs',
-            color: 'pink',
             notification: null
         },
         { 

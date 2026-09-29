@@ -7,10 +7,12 @@
 //                         renders the tree immediately
 //   2. Expand loc      -> GET /records?location_ids=<id>&... (cached)
 //   3. Post loc/bin    -> ensure records loaded, filter by price,
-//                         POST each via /api/ebay/list with an
-//                         image_url (Discogs source, size-bumped to
-//                         1200px when possible; server upscales and
-//                         re-hosts before listing on eBay).
+//                         POST each via /api/ebay/list. The endpoint
+//                         pulls the image from the records table,
+//                         fetches the signed full-size URL from the
+//                         Discogs release API, upscales if needed,
+//                         re-hosts locally, and returns listing_url.
+//                         URLs are shown live in the progress bar.
 //
 // MARKUP MODEL (shared with Discogs):
 //   Initial Markup  : starting markup %, e.g. 40
@@ -960,6 +962,7 @@
         let success = 0;
         let failed = 0;
         let errorMessages = [];
+        let postedListings = [];  // { id, artist, title, url }
 
         for (let i = 0; i < recordsToPost.length; i++) {
             if (cancelPosting) {
@@ -1002,6 +1005,13 @@
                             <span>🕒 ${EBAY_POST_DELAY_MS / 1000}s between posts</span>
                             ${cancelPosting ? '<span style="color: #dc3545;">⏹️ Cancelling...</span>' : ''}
                         </div>
+                        ${postedListings.length > 0 ? `
+                            <div style="font-size: 11px; color: #555; background: #f0f8ff; padding: 4px 8px; border-radius: 4px; max-height: 100px; overflow-y: auto; border: 1px solid #d0e3f5;">
+                                ${postedListings.slice(-5).map(l =>
+                                    `✅ <strong>#${l.id}</strong> <a href="${l.url}" target="_blank" rel="noopener" style="color: #0064d2; text-decoration: none;">${l.url}</a>`
+                                ).join('<br>')}
+                            </div>
+                        ` : ''}
                         ${errorMessages.length > 0 ? `
                             <div style="font-size: 11px; color: #dc3545; background: #fff5f5; padding: 4px 8px; border-radius: 4px; max-height: 80px; overflow-y: auto;">
                                 ${errorMessages.slice(-3).join('<br>')}
@@ -1018,29 +1028,10 @@
                     throw new Error('No computed eBay price');
                 }
 
-                // --- Build the image URL ---
-                // Prefer a 1200px variant from Discogs if it exists; otherwise
-                // leave the URL as-is and let the server upscale the smaller
-                // source before listing. Non-Discogs URLs pass through untouched.
-                let recordImageUrl = record.image_url || null;
-                if (recordImageUrl && /i\.discogs\.com|img\.discogs\.com/.test(recordImageUrl) && /h:\d+/.test(recordImageUrl)) {
-                    const candidate = recordImageUrl
-                        .replace(/h:\d+/, 'h:1200')
-                        .replace(/w:\d+/, 'w:1200');
-                    try {
-                        const probe = await fetch(candidate, { method: 'HEAD' });
-                        if (probe.ok) recordImageUrl = candidate;
-                    } catch (_) {
-                        // Probe failed (CORS, network). Keep the original URL;
-                        // the server will upscale if needed.
-                    }
-                }
-
                 const payload = {
                     record_id: record.id,
                     price: ebayPrice,
-                    quantity: 1,
-                    image_url: recordImageUrl
+                    quantity: 1
                 };
 
                 const listingResult = await fetch(`${API_BASE}/api/ebay/list`, {
@@ -1055,6 +1046,14 @@
 
                 if (listingResult.ok && data.status === 'success') {
                     success++;
+                    if (data.listing_url) {
+                        postedListings.push({
+                            id: record.id,
+                            artist: record.artist,
+                            title: record.title,
+                            url: data.listing_url
+                        });
+                    }
                 } else {
                     failed++;
                     const errorMsg = data.error || data.message || `HTTP ${listingResult.status}`;
@@ -1082,11 +1081,18 @@
                     </div>`;
                 }
             }
+            if (postedListings.length > 0) {
+                message += `<br><br><div style="font-size: 12px; background: #f0f8ff; padding: 8px 12px; border-radius: 4px; max-height: 200px; overflow-y: auto; text-align: left; border: 1px solid #d0e3f5;">
+                    <strong>Listings posted:</strong><br>${postedListings.map(l =>
+                        `✅ <strong>#${l.id}</strong> <a href="${l.url}" target="_blank" rel="noopener" style="color: #0064d2;">${l.url}</a>`
+                    ).join('<br>')}
+                </div>`;
+            }
             if (cancelPosting) message = `⏹️ Cancelled. ${success} posted, ${failed} failed`;
             statusDiv.innerHTML = message;
             statusDiv.className = failed > 0 || cancelPosting ? 'status-message status-warning' : 'status-message status-success';
             if (failed === 0 && !cancelPosting) {
-                setTimeout(() => { statusDiv.style.display = 'none'; }, 8000);
+                setTimeout(() => { statusDiv.style.display = 'none'; }, 15000);
             }
         }
 

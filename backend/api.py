@@ -14938,6 +14938,7 @@ def debug_pil():
         out['pil_error'] = str(e)
     return jsonify(out)
 
+
 @app.route('/api/ebay/list', methods=['POST'])
 @login_required
 @role_required(['admin'])
@@ -14964,12 +14965,19 @@ def ebay_list_item():
       - record.image_url must be set
 
     Image handling (all in this endpoint):
-      - Pull image_url from the records table.
-      - Download it with a browser UA + Discogs Referer.
+      - If the record has a discogs_release_id, fetch the release from the
+        Discogs API and pick the largest image >= 500px (the signed full-size
+        URL). Thumbnails stored in image_url are only signed for their tiny
+        size; bumping h:/w: breaks the signature with a 403, so this is the
+        only way to get a larger source.
+      - Download with a browser UA + Discogs Referer.
       - If its longest side is < 800px, upscale to 800px with PIL.
       - Save to static/images/ebay/<record_id>_<hex>.jpg.
       - Use the local https://www.pigstylemusic.com/static/images/ebay/... URL
         for the eBay listing.
+
+    Description footer line includes the internal record ID:
+      Cat. No. LPM 2782 · #15449 · SKU 100050
     """
     try:
         data = request.json or {}
@@ -14994,6 +15002,7 @@ def ebay_list_item():
             SELECT
                 r.id, r.artist, r.title, r.barcode, r.catalog_number,
                 r.store_price, r.image_url, r.consignor_id,
+                r.discogs_release_id,
                 r.condition_disc_id, r.condition_sleeve_id,
                 cd.abbreviation   AS disc_abbr,
                 cd.condition_name AS disc_name,
@@ -15060,30 +15069,56 @@ def ebay_list_item():
             if not cfg[req]:
                 return jsonify({'status': 'error', 'error': f'{req} not configured'}), 500
 
-        # --- Resolve source image URL: prefer 1200px if Discogs has it ---
+        # --- Resolve source image via the Discogs release API ---
+        # Thumbnails stored in image_url are signed only for their tiny size;
+        # bumping h:/w: breaks the signature (403). The release API returns a
+        # correctly-signed full-size URL. Fall back to the stored URL only if
+        # the API call fails or the record has no discogs_release_id.
         source_image_url = record['image_url'].strip()
         if source_image_url.startswith('/'):
             source_image_url = f"https://www.pigstylemusic.com{source_image_url}"
 
-        if ('i.discogs.com' in source_image_url or 'img.discogs.com' in source_image_url) and re.search(r'h:\d+', source_image_url):
-            candidate = re.sub(r'h:\d+', 'h:1200', source_image_url)
-            candidate = re.sub(r'w:\d+', 'w:1200', candidate)
+        if record['discogs_release_id']:
             try:
-                probe = requests.head(
-                    candidate,
+                discogs_resp = requests.get(
+                    f'https://api.discogs.com/releases/{record["discogs_release_id"]}',
                     headers={
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                                      'AppleWebKit/537.36 (KHTML, like Gecko) '
-                                      'Chrome/122.0.0.0 Safari/537.36',
-                        'Referer': 'https://www.discogs.com/',
+                        'Authorization': f'Discogs token={os.environ.get("DISCOGS_USER_TOKEN", "")}',
+                        'User-Agent': 'PigStyleMusic/1.0',
                     },
-                    timeout=10,
-                    allow_redirects=True
+                    timeout=15
                 )
-                if probe.status_code == 200:
-                    source_image_url = candidate
+                if discogs_resp.status_code == 200:
+                    release_data = discogs_resp.json()
+                    images = release_data.get('images') or []
+                    # Prefer the largest image that meets eBay's 500px minimum;
+                    # fall back to the primary image if nothing meets it.
+                    usable = [i for i in images if (i.get('width') or 0) >= 500 and i.get('uri')]
+                    if usable:
+                        best = max(usable, key=lambda i: i.get('width') or 0)
+                        source_image_url = best['uri']
+                        app.logger.info(
+                            f"Record {record_id}: using Discogs image "
+                            f"{best.get('width')}x{best.get('height')} for listing"
+                        )
+                    else:
+                        primary = next((i for i in images if i.get('type') == 'primary'), None)
+                        if primary and primary.get('uri'):
+                            source_image_url = primary['uri']
+                            app.logger.warning(
+                                f"Record {record_id}: best Discogs image is only "
+                                f"{primary.get('width')}x{primary.get('height')} (below 500px)"
+                            )
+                else:
+                    app.logger.warning(
+                        f"Record {record_id}: Discogs release API returned "
+                        f"{discogs_resp.status_code}; using stored image_url"
+                    )
             except Exception as e:
-                app.logger.warning(f"Discogs 1200px probe failed for record {record_id}: {e}")
+                app.logger.warning(
+                    f"Record {record_id}: Discogs release API call failed ({e}); "
+                    f"using stored image_url"
+                )
 
         # --- Download, upscale if needed, save to our domain ---
         try:
@@ -15114,6 +15149,8 @@ def ebay_list_item():
             import io as _io
             img = Image.open(_io.BytesIO(img_resp.content)).convert('RGB')
 
+            source_width = img.width
+            source_height = img.height
             longest = max(img.width, img.height)
             if longest < 800:
                 scale = 800.0 / longest
@@ -15191,11 +15228,13 @@ def ebay_list_item():
             f"<strong>Sleeve:</strong> {sleeve_str}"
         )
 
+        # --- Footer reference line: catalog number + internal record ID + barcode ---
         ref_bits = []
         if record['catalog_number']:
             ref_bits.append(f"Cat. No. {record['catalog_number']}")
+        ref_bits.append(f"#{record['id']}")
         if record['barcode']:
-            ref_bits.append(f"Store ref. {record['barcode']}")
+            ref_bits.append(f"SKU {record['barcode']}")
         ref_line = " · ".join(ref_bits)
 
         description = (
@@ -15310,12 +15349,15 @@ def ebay_list_item():
             'offer_id': offer_id,
             'source_image_url': source_image_url,
             'hosted_image_url': hosted_image_url,
+            'source_image_width': source_width,
+            'source_image_height': source_height,
         })
 
     except Exception as e:
         app.logger.error(f'eBay listing error: {str(e)}')
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/api/ebay/connection-status', methods=['GET'])
 @login_required
