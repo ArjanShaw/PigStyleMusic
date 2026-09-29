@@ -14950,29 +14950,33 @@ def ebay_list_item():
         "record_id": 15449,
         "price": 12.59,
         "quantity": 1,
-        "image_url": "https://i.discogs.com/.../image.jpeg",
         "condition": "USED_EXCELLENT",         # optional, default USED_EXCELLENT
         "category_id": "176985"                # optional, default 176985 (Vinyl Records)
       }
 
+    HARD REQUIREMENTS (no fallbacks — the endpoint errors):
+      - record must exist
+      - record.consignor_id must be NULL (consigned records cannot be listed)
+      - record.condition_disc_id must be set and resolve to a d_condition row
+      - record.condition_sleeve_id must be set and resolve to a d_condition row
+      - each resolved d_condition row must have an abbreviation
+      - each resolved d_condition row must have a non-empty ebay_blurb
+      - record.image_url must be set
+
     Image handling (all in this endpoint):
-      - Download the image at image_url.
+      - Pull image_url from the records table.
+      - Download it with a browser UA + Discogs Referer.
       - If its longest side is < 800px, upscale to 800px with PIL.
-      - Save the result to static/images/ebay/<record_id>_<hex>.jpg.
+      - Save to static/images/ebay/<record_id>_<hex>.jpg.
       - Use the local https://www.pigstylemusic.com/static/images/ebay/... URL
         for the eBay listing.
     """
     try:
         data = request.json or {}
         record_id = data.get('record_id')
-        image_url = (data.get('image_url') or '').strip()
 
         if not record_id:
             return jsonify({'status': 'error', 'error': 'record_id required'}), 400
-        if not image_url:
-            return jsonify({'status': 'error', 'error': 'image_url required'}), 400
-        if not image_url.startswith('https://'):
-            return jsonify({'status': 'error', 'error': 'image_url must be HTTPS'}), 400
 
         client_id = os.environ.get('EBAY_CLIENT_ID')
         client_secret = os.environ.get('EBAY_CLIENT_SECRET')
@@ -14989,7 +14993,7 @@ def ebay_list_item():
         cursor.execute('''
             SELECT
                 r.id, r.artist, r.title, r.barcode, r.catalog_number,
-                r.store_price, r.consignor_id,
+                r.store_price, r.image_url, r.consignor_id,
                 r.condition_disc_id, r.condition_sleeve_id,
                 cd.abbreviation   AS disc_abbr,
                 cd.condition_name AS disc_name,
@@ -15036,6 +15040,9 @@ def ebay_list_item():
         if not (record['sleeve_blurb'] or '').strip():
             conn.close()
             return jsonify({'status': 'error', 'error': f'Record {record_id} sleeve "{record["sleeve_abbr"]}" has no ebay_blurb'}), 400
+        if not (record['image_url'] or '').strip():
+            conn.close()
+            return jsonify({'status': 'error', 'error': f'Record {record_id} has no image_url'}), 400
 
         cfg = {}
         for key in ['ebay_refresh_token', 'ebay_access_token', 'ebay_token_expires',
@@ -15053,10 +15060,35 @@ def ebay_list_item():
             if not cfg[req]:
                 return jsonify({'status': 'error', 'error': f'{req} not configured'}), 500
 
+        # --- Resolve source image URL: prefer 1200px if Discogs has it ---
+        source_image_url = record['image_url'].strip()
+        if source_image_url.startswith('/'):
+            source_image_url = f"https://www.pigstylemusic.com{source_image_url}"
+
+        if ('i.discogs.com' in source_image_url or 'img.discogs.com' in source_image_url) and re.search(r'h:\d+', source_image_url):
+            candidate = re.sub(r'h:\d+', 'h:1200', source_image_url)
+            candidate = re.sub(r'w:\d+', 'w:1200', candidate)
+            try:
+                probe = requests.head(
+                    candidate,
+                    headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                                      'AppleWebKit/537.36 (KHTML, like Gecko) '
+                                      'Chrome/122.0.0.0 Safari/537.36',
+                        'Referer': 'https://www.discogs.com/',
+                    },
+                    timeout=10,
+                    allow_redirects=True
+                )
+                if probe.status_code == 200:
+                    source_image_url = candidate
+            except Exception as e:
+                app.logger.warning(f"Discogs 1200px probe failed for record {record_id}: {e}")
+
         # --- Download, upscale if needed, save to our domain ---
         try:
             img_resp = requests.get(
-                image_url,
+                source_image_url,
                 headers={
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
                                   'AppleWebKit/537.36 (KHTML, like Gecko) '
@@ -15276,7 +15308,8 @@ def ebay_list_item():
             'status': 'success',
             'message': f'Listed on eBay: {title}',
             'offer_id': offer_id,
-            'image_url_used': hosted_image_url,
+            'source_image_url': source_image_url,
+            'hosted_image_url': hosted_image_url,
         })
 
     except Exception as e:
