@@ -4,7 +4,12 @@
 // delete location, with per-location record counts and latest last_seen.
 //
 // Also supports selecting any node (any generation) and posting the
-// selected subtree(s) to eBay or Discogs.
+// selected subtree(s) to eBay or Discogs by looping client-side and
+// calling the EXISTING single-record endpoints:
+//   POST /api/ebay/list
+//   POST /api/discogs/create-listing-single
+//
+// No new backend endpoints are required.
 // ================================================================
 
 (function() {
@@ -56,6 +61,10 @@
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
+    }
+
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     // Build a nested tree from the flat /api/locations response.
@@ -124,6 +133,7 @@
     // ================================================================
 
     let selectedIds = new Set();
+    let currentTreeById = {};
 
     function collectSubtreeIds(node) {
         const ids = [];
@@ -171,8 +181,6 @@
     // ================================================================
     //  RENDER
     // ================================================================
-
-    let currentTreeById = {};
 
     function indexTree(roots) {
         const byId = {};
@@ -544,8 +552,87 @@
     }
 
     // ================================================================
-    //  POST SELECTED
+    //  PRICE CALCULATION (shared model, same as posting tiles)
     // ================================================================
+
+    let pricingConfig = null;
+
+    async function loadPricingConfig() {
+        if (pricingConfig) return pricingConfig;
+
+        async function getConfig(key) {
+            const r = await fetch(`${API_BASE}/config/${key}`, {
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (!r.ok) throw new Error(`Config ${key} not available (HTTP ${r.status})`);
+            const d = await r.json();
+            if (d.status !== 'success') throw new Error(`Config ${key} returned non-success`);
+            const v = parseFloat(d.config_value);
+            if (isNaN(v)) throw new Error(`Config ${key} is not a number (got "${d.config_value}")`);
+            return v;
+        }
+
+        const markup = await getConfig('PRICING_MARKUP_PERCENT');
+        const step   = await getConfig('PRICING_PRICE_STEP');
+        const maxMd  = await getConfig('PRICING_MAX_MARKDOWN');
+
+        pricingConfig = {
+            markup: markup,
+            step: step,
+            maxMarkdown: Math.abs(maxMd)
+        };
+        return pricingConfig;
+    }
+
+    function computePrice(storePrice, createdAt) {
+        if (!storePrice || storePrice <= 0 || !createdAt) return null;
+
+        let createdDate;
+        if (typeof createdAt === 'string') {
+            createdDate = new Date(createdAt.split('T')[0].split(' ')[0]);
+        } else {
+            createdDate = new Date(createdAt);
+        }
+        if (isNaN(createdDate.getTime())) return null;
+
+        const today = new Date();
+        const daysOld = Math.floor((today - createdDate) / (1000 * 60 * 60 * 24));
+        const weeksOld = Math.floor(Math.max(0, daysOld) / 7);
+
+        const floor = -Math.abs(pricingConfig.maxMarkdown);
+        let markup = pricingConfig.markup - (weeksOld * pricingConfig.step);
+        markup = Math.max(floor, markup);
+
+        return Math.round(storePrice * (1 + markup / 100) * 100) / 100;
+    }
+
+    // ================================================================
+    //  POST SELECTED - client-side loop, existing endpoints
+    // ================================================================
+
+    async function fetchPostableRecordsForLeaves(leafIds) {
+        const allRecords = [];
+        const seenIds = new Set();
+
+        for (const locId of leafIds) {
+            const url = `${API_BASE}/records?status_ids=2&visible_only=true&hide_consigned=true&location_ids=${locId}`;
+            const r = await fetch(url, {
+                credentials: 'include',
+                headers: getHeaders()
+            });
+            if (!r.ok) throw new Error(`Failed to fetch records for location ${locId} (HTTP ${r.status})`);
+            const d = await r.json();
+            if (d.status !== 'success') throw new Error(d.error || `API error for location ${locId}`);
+
+            for (const rec of (d.records || [])) {
+                if (seenIds.has(rec.id)) continue;
+                seenIds.add(rec.id);
+                allRecords.push(rec);
+            }
+        }
+        return allRecords;
+    }
 
     async function postSelectedToEbay() {
         const leafIds = getSelectedLeafIds();
@@ -554,36 +641,86 @@
             return;
         }
 
-        const totalRecords = totalSelectedRecords();
         if (!confirm(
             `Post records from ${selectedIds.size} selected location(s) to eBay?\n\n` +
-            `This will resolve to ${leafIds.length} leaf location(s) containing ${totalRecords} record(s).\n\n` +
+            `This will resolve to ${leafIds.length} leaf location(s).\n\n` +
             `Continue?`
         )) return;
 
-        showStatus('🛒 Posting selected subtree(s) to eBay...', 'info');
+        const statusPrefix = '🛒 eBay:';
 
         try {
-            const response = await fetch(`${API_BASE}/api/ebay/list-by-locations`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: getHeaders(),
-                body: JSON.stringify({ location_ids: leafIds })
-            });
+            showStatus(`${statusPrefix} Loading pricing config...`, 'info');
+            await loadPricingConfig();
 
-            const data = await response.json();
+            showStatus(`${statusPrefix} Loading records from ${leafIds.length} leaf location(s)...`, 'info');
+            const records = await fetchPostableRecordsForLeaves(leafIds);
 
-            if (data.status === 'success') {
-                showStatus(
-                    `✅ eBay: posted ${data.success || 0}, failed ${data.failed || 0}` +
-                    (data.errors && data.errors.length ? ` — first error: ${data.errors[0]}` : ''),
-                    data.failed > 0 ? 'error' : 'success'
-                );
-            } else {
-                showStatus(`❌ ${data.error || 'eBay post failed'}`, 'error');
+            if (records.length === 0) {
+                showStatus(`${statusPrefix} No eligible records found in selected locations.`, 'error');
+                return;
             }
+
+            let success = 0;
+            let failed = 0;
+            const errors = [];
+
+            for (let i = 0; i < records.length; i++) {
+                const rec = records[i];
+                const price = computePrice(rec.store_price, rec.created_at);
+
+                if (!price) {
+                    failed++;
+                    errors.push(`Record #${rec.id}: cannot compute price`);
+                    continue;
+                }
+
+                showStatus(
+                    `${statusPrefix} ${i + 1}/${records.length} — posting #${rec.id} (${rec.artist || 'Unknown'} - ${rec.title || 'Unknown'}) @ $${price.toFixed(2)}`,
+                    'info'
+                );
+
+                try {
+                    const r = await fetch(`${API_BASE}/api/ebay/list`, {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: getHeaders(),
+                        body: JSON.stringify({
+                            record_id: rec.id,
+                            price: price,
+                            quantity: 1
+                        })
+                    });
+
+                    let body = {};
+                    try { body = await r.json(); } catch (_) {}
+
+                    if (r.ok && body.status === 'success') {
+                        success++;
+                    } else {
+                        failed++;
+                        errors.push(`Record #${rec.id}: ${body.error || body.message || `HTTP ${r.status}`}`);
+                    }
+                } catch (err) {
+                    failed++;
+                    errors.push(`Record #${rec.id}: ${err.message}`);
+                }
+
+                if (i < records.length - 1) {
+                    await sleep(1000);
+                }
+            }
+
+            const summary = `${statusPrefix} done. ✅ ${success} posted, ❌ ${failed} failed.`;
+            showStatus(
+                errors.length > 0
+                    ? `${summary} First error: ${errors[0]}`
+                    : summary,
+                failed > 0 ? 'error' : 'success'
+            );
+
         } catch (err) {
-            showStatus(`❌ ${err.message}`, 'error');
+            showStatus(`${statusPrefix} ❌ ${err.message}`, 'error');
         }
     }
 
@@ -594,36 +731,98 @@
             return;
         }
 
-        const totalRecords = totalSelectedRecords();
         if (!confirm(
             `Post records from ${selectedIds.size} selected location(s) to Discogs?\n\n` +
-            `This will resolve to ${leafIds.length} leaf location(s) containing ${totalRecords} record(s).\n\n` +
+            `This will resolve to ${leafIds.length} leaf location(s).\n\n` +
             `Continue?`
         )) return;
 
-        showStatus('📀 Posting selected subtree(s) to Discogs...', 'info');
+        const statusPrefix = '📀 Discogs:';
 
         try {
-            const response = await fetch(`${API_BASE}/api/discogs/list-by-locations`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: getHeaders(),
-                body: JSON.stringify({ location_ids: leafIds })
-            });
+            showStatus(`${statusPrefix} Loading pricing config...`, 'info');
+            await loadPricingConfig();
 
-            const data = await response.json();
+            showStatus(`${statusPrefix} Loading records from ${leafIds.length} leaf location(s)...`, 'info');
+            const records = await fetchPostableRecordsForLeaves(leafIds);
 
-            if (data.status === 'success') {
-                showStatus(
-                    `✅ Discogs: posted ${data.success || 0}, failed ${data.failed || 0}` +
-                    (data.errors && data.errors.length ? ` — first error: ${data.errors[0]}` : ''),
-                    data.failed > 0 ? 'error' : 'success'
-                );
-            } else {
-                showStatus(`❌ ${data.error || 'Discogs post failed'}`, 'error');
+            if (records.length === 0) {
+                showStatus(`${statusPrefix} No eligible records found in selected locations.`, 'error');
+                return;
             }
+
+            let success = 0;
+            let failed = 0;
+            const errors = [];
+
+            for (let i = 0; i < records.length; i++) {
+                const rec = records[i];
+                const price = computePrice(rec.store_price, rec.created_at);
+
+                if (!price) {
+                    failed++;
+                    errors.push(`Record #${rec.id}: cannot compute price`);
+                    continue;
+                }
+
+                showStatus(
+                    `${statusPrefix} ${i + 1}/${records.length} — posting #${rec.id} (${rec.artist || 'Unknown'} - ${rec.title || 'Unknown'}) @ $${price.toFixed(2)}`,
+                    'info'
+                );
+
+                const payload = {
+                    record: {
+                        id: rec.id,
+                        artist: rec.artist || 'Unknown',
+                        title: rec.title || 'Unknown',
+                        catalog_number: rec.catalog_number || '',
+                        media_condition: rec.disc_condition_name || 'Very Good Plus (VG+)',
+                        sleeve_condition: rec.sleeve_condition_name || 'Very Good Plus (VG+)',
+                        price: price,
+                        notes: rec.notes || '',
+                        location: rec.location_display || rec.location_name || '',
+                        discogs_release_id: rec.discogs_release_id || null,
+                        format_id: rec.format_id || null
+                    }
+                };
+
+                try {
+                    const r = await fetch(`${API_BASE}/api/discogs/create-listing-single`, {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: getHeaders(),
+                        body: JSON.stringify(payload)
+                    });
+
+                    let body = {};
+                    try { body = await r.json(); } catch (_) {}
+
+                    if (r.ok && body.success) {
+                        success++;
+                    } else {
+                        failed++;
+                        errors.push(`Record #${rec.id}: ${body.error || body.message || `HTTP ${r.status}`}`);
+                    }
+                } catch (err) {
+                    failed++;
+                    errors.push(`Record #${rec.id}: ${err.message}`);
+                }
+
+                if (i < records.length - 1) {
+                    await sleep(3000);
+                }
+            }
+
+            const summary = `${statusPrefix} done. ✅ ${success} posted, ❌ ${failed} failed.`;
+            showStatus(
+                errors.length > 0
+                    ? `${summary} First error: ${errors[0]}`
+                    : summary,
+                failed > 0 ? 'error' : 'success'
+            );
+
         } catch (err) {
-            showStatus(`❌ ${err.message}`, 'error');
+            showStatus(`${statusPrefix} ❌ ${err.message}`, 'error');
         }
     }
 
