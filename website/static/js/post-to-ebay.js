@@ -2,28 +2,8 @@
 // FILE: /static/js/post-to-ebay.js
 // Post to eBay page - counts-first, lazy-load records per location
 //
-// FLOW:
-//   1. initPostToEbay  -> GET /api/locations (auto)
-//                         renders the tree immediately
-//   2. Expand loc      -> GET /records?location_ids=<id>&... (cached)
-//   3. Post loc/bin    -> ensure records loaded, filter by price,
-//                         POST each via /api/ebay/list. The endpoint
-//                         pulls the image from the records table,
-//                         fetches the signed full-size URL from the
-//                         Discogs release API, upscales if needed,
-//                         re-hosts locally, and returns listing_url.
-//                         URLs are shown live in the progress bar.
-//
-// MARKUP MODEL (shared with Discogs):
-//   Initial Markup  : starting markup %, e.g. 40
-//   Weekly Step     : markup drops this many points per week, e.g. 2
-//   Max Markdown    : maximum discount as a POSITIVE % (0-100), e.g. 50
-//                     → internally floor = -MaxMarkdown
-//
-// CONFIG KEYS (shared with post-discogs.js):
-//   PRICING_MARKUP_PERCENT
-//   PRICING_PRICE_STEP
-//   PRICING_MAX_MARKDOWN
+// Tree is built from /api/locations using parent_id, so any level
+// of the hierarchy can be posted (root, parent, leaf).
 // ================================================================
 
 (function() {
@@ -35,7 +15,8 @@
 
     const EBAY_POST_DELAY_MS = 1000;
 
-    let locationCounts = [];
+    let locationTree = [];
+    let locationById = {};
     let recordsByLocation = new Map();
 
     let ebayMarkupPercent = null;
@@ -50,11 +31,6 @@
 
     let expandedLocations = new Set();
     let selectedLocations = new Set();
-    let expandedSections = new Set();
-
-    // ----------------------------------------------------------------
-    // HEADERS / UTIL
-    // ----------------------------------------------------------------
 
     function getHeaders() {
         const headers = { 'Content-Type': 'application/json' };
@@ -69,6 +45,15 @@
 
     function getMarkdownFloor() {
         return -Math.abs(ebayMaxMarkdown);
+    }
+
+    function escapeHtml(s) {
+        if (s === null || s === undefined) return '';
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
     }
 
     // ----------------------------------------------------------------
@@ -237,12 +222,8 @@
             info.textContent = 'Config not loaded';
             return;
         }
-        if (locationCounts.length === 0) {
-            info.textContent = `Markup: ${ebayMarkupPercent}% - ${ebayPriceStep}%/wk (max markdown: ${ebayMaxMarkdown}%) | no locations loaded`;
-            return;
-        }
-        const totalEligible = locationCounts.reduce((s, l) => s + (l.record_count || 0), 0);
-        info.textContent = `Markup: ${ebayMarkupPercent}% - ${ebayPriceStep}%/wk (max markdown: ${ebayMaxMarkdown}%) | ${totalEligible} eligible records across ${locationCounts.length} locations`;
+        const totalEligible = locationTree.reduce((s, n) => s + n.subtree_count, 0);
+        info.textContent = `Markup: ${ebayMarkupPercent}% - ${ebayPriceStep}%/wk (max markdown: ${ebayMaxMarkdown}%) | ${totalEligible} eligible records across ${Object.keys(locationById).length} locations`;
     }
 
     window.updateEbayPrices = async function() {
@@ -305,7 +286,7 @@
     };
 
     // ----------------------------------------------------------------
-    // LOAD LOCATIONS (from /api/locations)
+    // LOAD LOCATIONS
     // ----------------------------------------------------------------
 
     function showLoadProgressBar(label, loaded, total, extra) {
@@ -336,7 +317,7 @@
         statusDiv.innerHTML = `❌ ${msg}`;
     }
 
-    async function fetchLocationCounts() {
+    async function fetchLocationRows() {
         const url = `${API_BASE}/api/locations`;
         const response = await fetch(url, {
             credentials: 'include',
@@ -346,20 +327,66 @@
         if (!response.ok) throw new Error(`Failed to fetch locations (HTTP ${response.status})`);
         const data = await response.json();
         if (data.status !== 'success') throw new Error(data.error || 'Locations API error');
+        return data.locations || [];
+    }
 
-        const rows = data.locations || [];
-        // Drop empty top-level parent rows (containers only, no records of their own).
-        // Keep anything with records or anything that is a child.
-        return rows
-            .filter(r => (r.record_count || 0) > 0 || (r.parent_id !== null && r.parent_id !== undefined))
-            .map(r => ({
-                location_id: r.id,
-                location_name: r.name,
-                location_parent_id: r.parent_id,
-                location_parent_name: r.parent_name,
-                location_display: r.display_name || r.name,
+    function buildLocationTree(rows) {
+        const byId = {};
+        rows.forEach(r => {
+            byId[r.id] = {
+                id: r.id,
+                name: r.name,
+                display_name: r.display_name || r.name,
+                parent_id: r.parent_id,
+                parent_name: r.parent_name,
                 record_count: r.record_count || 0,
-            }));
+                subtree_count: r.record_count || 0,
+                children: []
+            };
+        });
+
+        const roots = [];
+        rows.forEach(r => {
+            const node = byId[r.id];
+            if (r.parent_id && byId[r.parent_id]) {
+                byId[r.parent_id].children.push(node);
+            } else {
+                roots.push(node);
+            }
+        });
+
+        function sortSiblings(nodes) {
+            nodes.sort((a, b) =>
+                a.display_name.localeCompare(b.display_name, undefined, { numeric: true })
+            );
+            nodes.forEach(n => sortSiblings(n.children));
+        }
+        sortSiblings(roots);
+
+        function computeSubtree(nodes) {
+            nodes.forEach(n => {
+                computeSubtree(n.children);
+                n.subtree_count = n.record_count +
+                    n.children.reduce((sum, c) => sum + c.subtree_count, 0);
+            });
+        }
+        computeSubtree(roots);
+
+        return { roots, byId };
+    }
+
+    function findNode(id) {
+        return locationById[id] || null;
+    }
+
+    function collectSubtreeIds(node) {
+        const ids = [];
+        function walk(n) {
+            ids.push(n.id);
+            n.children.forEach(walk);
+        }
+        walk(node);
+        return ids;
     }
 
     async function loadLocations() {
@@ -378,12 +405,17 @@
             showLoadProgressBar('⚙️ Loading configuration...', 0, 0, '');
             await fetchEbayConfig();
 
-            showLoadProgressBar('📥 Loading location counts...', 0, 0, '');
-            locationCounts = await fetchLocationCounts();
+            showLoadProgressBar('📥 Loading locations...', 0, 0, '');
+            const rows = await fetchLocationRows();
+            const { roots, byId } = buildLocationTree(rows);
+            locationTree = roots;
+            locationById = byId;
 
             recordsByLocation.clear();
+            selectedLocations = new Set([...selectedLocations].filter(id => byId[id]));
+            expandedLocations = new Set([...expandedLocations].filter(id => byId[id]));
 
-            if (locationCounts.length === 0) {
+            if (locationTree.length === 0) {
                 if (list) list.innerHTML = `<div style="text-align:center;padding:20px;color:#999;">No locations found</div>`;
                 showLoadProgressBar('✅ Loaded (empty)', 0, 0, '');
                 return;
@@ -392,9 +424,9 @@
             renderRecords();
             updatePriceInfo();
 
-            const totalEligible = locationCounts.reduce((s, l) => s + (l.record_count || 0), 0);
+            const totalEligible = locationTree.reduce((s, n) => s + n.subtree_count, 0);
             showStatus(
-                `✅ Loaded ${locationCounts.length} locations (${totalEligible} eligible records). Expand a location to load its records.`,
+                `✅ Loaded ${Object.keys(locationById).length} locations (${totalEligible} eligible records). Expand any level to load its records.`,
                 'info'
             );
 
@@ -402,10 +434,10 @@
             updateButtons();
 
         } catch (err) {
-            console.error('❌ Error loading location counts:', err);
+            console.error('❌ Error loading locations:', err);
             showLoadError(err.message || 'Failed to load locations');
             if (list) {
-                list.innerHTML = `<div style="text-align:center;padding:20px;color:#dc3545;">Error: ${err.message}</div>`;
+                list.innerHTML = `<div style="text-align:center;padding:20px;color:#dc3545;">Error: ${escapeHtml(err.message)}</div>`;
             }
         } finally {
             isLoadingLocations = false;
@@ -413,7 +445,7 @@
     }
 
     // ----------------------------------------------------------------
-    // LAZY-LOAD RECORDS FOR A LOCATION
+    // LAZY-LOAD RECORDS
     // ----------------------------------------------------------------
 
     async function ensureRecordsForLocation(locationId) {
@@ -436,129 +468,22 @@
         return records;
     }
 
-    // ----------------------------------------------------------------
-    // TREE BUILDING
-    // ----------------------------------------------------------------
-
-    function extractBinNumber(locationName) {
-        const match = locationName.match(/Bin\s*(\d+)/i);
-        if (match) return parseInt(match[1], 10);
-        return null;
-    }
-
-    function extractBinSection(locationName) {
-        const match = locationName.match(/Bin\s*\d+\s*([A-Z]{2})/i);
-        if (match) return match[1].toUpperCase();
-        return null;
-    }
-
-    function isBinLocation(locationName) {
-        return /Bin\s*\d+/i.test(locationName);
-    }
-
-    function sortBinSections(sections) {
-        const order = ['LT', 'RT', 'LB', 'RB'];
-        return sections.sort((a, b) => {
-            const ia = order.indexOf(a.section);
-            const ib = order.indexOf(b.section);
-            if (ia === -1) return 1;
-            if (ib === -1) return -1;
-            return ia - ib;
-        });
-    }
-
-    function buildTreeFromCounts() {
-        const binSections = {};
-        const standalone  = [];
-
-        // Track which locations are parents of other locations. Any row
-        // whose id shows up as a parent_id is a container, not a leaf,
-        // and must not be rendered as a standalone leaf.
-        const parentIds = new Set();
-        for (const row of locationCounts) {
-            if (row.location_parent_id !== null && row.location_parent_id !== undefined) {
-                parentIds.add(row.location_parent_id);
-            }
+    async function ensureRecordsForSubtree(node, progress) {
+        const leaves = [];
+        function collectLeaves(n) {
+            if (n.children.length === 0) leaves.push(n);
+            else n.children.forEach(collectLeaves);
         }
+        collectLeaves(node);
 
-        for (const row of locationCounts) {
-            // Skip rows that are themselves parents of other locations.
-            if (parentIds.has(row.location_id)) continue;
-
-            const parentName = row.location_parent_name;
-            const leafName   = row.location_name;
-
-            if (parentName && isBinLocation(parentName)) {
-                const baseName = parentName;
-                if (!binSections[baseName]) {
-                    binSections[baseName] = { base_name: baseName, locations: [] };
-                }
-                binSections[baseName].locations.push({
-                    location_id:      row.location_id,
-                    location_name:    leafName,
-                    location_display: row.location_display,
-                    record_count:     row.record_count || 0,
-                    section:          extractBinSection(`${baseName}/${leafName}`) || leafName.toUpperCase(),
-                });
-            } else {
-                standalone.push({
-                    is_bin_section:   false,
-                    location_id:      row.location_id,
-                    location_name:    row.location_name,
-                    location_display: row.location_display,
-                    record_count:     row.record_count || 0,
-                });
-            }
+        const all = [];
+        for (let i = 0; i < leaves.length; i++) {
+            const leaf = leaves[i];
+            const recs = await ensureRecordsForLocation(leaf.id);
+            all.push(...recs);
+            if (progress) progress(i + 1, leaves.length, leaf.display_name);
         }
-
-        for (const key in binSections) {
-            sortBinSections(binSections[key].locations);
-        }
-
-        const sortedBinKeys = Object.keys(binSections).sort((a, b) => {
-            const na = extractBinNumber(a);
-            const nb = extractBinNumber(b);
-            if (na !== null && nb !== null) return na - nb;
-            if (na !== null) return -1;
-            if (nb !== null) return 1;
-            return a.localeCompare(b);
-        });
-
-        standalone.sort((a, b) => a.location_display.localeCompare(b.location_display));
-
-        const result = [];
-        for (const key of sortedBinKeys) {
-            const bin = binSections[key];
-            const total = bin.locations.reduce((s, l) => s + (l.record_count || 0), 0);
-            result.push({
-                is_bin_section: true,
-                base_name:      key,
-                total_count:    total,
-                locations:      bin.locations,
-            });
-        }
-        for (const s of standalone) {
-            result.push(s);
-        }
-        return result;
-    }
-
-    function findBinNode(baseName) {
-        const tree = buildTreeFromCounts();
-        return tree.find(n => n.is_bin_section && n.base_name === baseName);
-    }
-
-    function findLocationNode(locationId) {
-        const tree = buildTreeFromCounts();
-        for (const node of tree) {
-            if (node.is_bin_section) {
-                const loc = node.locations.find(l => l.location_id === locationId);
-                if (loc) return { parent: node, loc };
-            } else if (node.location_id === locationId) {
-                return { parent: null, loc: node };
-            }
-        }
-        return null;
+        return all;
     }
 
     // ----------------------------------------------------------------
@@ -569,86 +494,92 @@
         const list = document.getElementById('ebay-locations');
         if (!list) return;
 
-        if (locationCounts.length === 0) {
+        if (locationTree.length === 0) {
             list.innerHTML = `<div style="text-align:center;padding:20px;color:#999;">No locations loaded</div>`;
             return;
         }
 
-        const tree = buildTreeFromCounts();
-        const totalEligible = locationCounts.reduce((s, l) => s + (l.record_count || 0), 0);
+        const totalEligible = locationTree.reduce((s, n) => s + n.subtree_count, 0);
+        const totalLocations = Object.keys(locationById).length;
 
         let html = `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; margin-bottom: 8px; background: #f8f9fa; border-radius: 4px;">
-                <span style="font-size: 13px; color: #666;">${totalEligible} eligible records across ${locationCounts.length} locations</span>
-                <span style="font-size: 12px; color: #888;">${recordsByLocation.size} location(s) expanded</span>
+                <span style="font-size: 13px; color: #666;">${totalEligible} eligible records across ${totalLocations} locations</span>
+                <span style="font-size: 12px; color: #888;">${recordsByLocation.size} location(s) loaded</span>
             </div>
         `;
 
-        for (const node of tree) {
-            if (node.is_bin_section) {
-                html += renderBinNode(node);
-            } else {
-                html += renderStandaloneNode(node);
-            }
-        }
+        for (const node of locationTree) html += renderNode(node, 0);
 
         list.innerHTML = html;
         updateSelectionInfo();
         updateButtons();
     }
 
-    function renderBinNode(node) {
-        const baseName = node.base_name;
-        const locations = node.locations;
-        const totalRecords = node.total_count;
-        const isSectionExpanded = expandedSections.has(baseName);
+    function renderNode(node, depth) {
+        const isLeaf = node.children.length === 0;
+        if (isLeaf) return renderLeafRow(node, depth);
+        return renderParentNode(node, depth);
+    }
 
-        const allSelected = locations.length > 0 && locations.every(l => selectedLocations.has(l.location_id));
-        const anySelected = locations.some(l => selectedLocations.has(l.location_id));
-        const totalSelected = locations.filter(l => selectedLocations.has(l.location_id))
-                                      .reduce((s, l) => s + (l.record_count || 0), 0);
+    function renderParentNode(node, depth) {
+        const isExpanded = expandedLocations.has(node.id);
+        const subtreeRecords = node.subtree_count;
+        const directRecords = node.record_count;
+
+        const nodeIds = collectSubtreeIds(node);
+        const allSelected = nodeIds.length > 0 && nodeIds.every(id => selectedLocations.has(id));
+        const anySelected = nodeIds.some(id => selectedLocations.has(id));
+        const totalSelectedRecords = nodeIds
+            .filter(id => selectedLocations.has(id))
+            .reduce((s, id) => s + (findNode(id)?.subtree_count || 0), 0);
+
+        const indent = depth * 16;
+        const childLabel = node.children.length === 1 ? 'child' : 'children';
 
         let html = `
-            <div style="border: 2px solid #6c757d; border-radius: 8px; margin-bottom: 10px; background: ${anySelected ? '#f0f8ff' : 'white'};">
-                <div style="display: flex; align-items: center; padding: 10px 14px; cursor: pointer; background: ${isSectionExpanded ? '#e9ecef' : 'white'}; border-radius: ${isSectionExpanded ? '8px 8px 0 0' : '8px'};"
-                     onclick="ebayToggleBinSection('${baseName}')">
-                    <span style="font-size: 16px; margin-right: 10px; color: #333;">${isSectionExpanded ? '▼' : '▶'}</span>
-                    <input type="checkbox" style="margin-right: 12px; cursor: pointer; width: 18px; height: 18px;"
+            <div style="border: 2px solid #6c757d; border-radius: 8px; margin-bottom: 8px; margin-left: ${indent}px; background: ${anySelected ? '#f0f8ff' : 'white'};">
+                <div style="display: flex; align-items: center; padding: 10px 14px; cursor: pointer; background: ${isExpanded ? '#e9ecef' : 'white'}; border-radius: ${isExpanded ? '8px 8px 0 0' : '8px'};"
+                     onclick="ebayToggleLocation(${node.id})">
+                    <span style="font-size: 14px; margin-right: 10px; color: #333;">
+                        ${isExpanded ? '▼' : '▶'}
+                    </span>
+                    <input type="checkbox"
+                           style="margin-right: 12px; cursor: pointer; width: 16px; height: 16px;"
                            ${allSelected ? 'checked' : ''}
-                           onclick="event.stopPropagation(); ebayToggleAllLocationsInBin('${baseName}')">
-                    <span style="flex: 1; font-weight: 700; color: #333; font-size: 16px;">📦 ${baseName}</span>
+                           onclick="event.stopPropagation(); ebayToggleLocationSelection(${node.id})">
+                    <span style="flex: 1; font-weight: 700; color: #333; font-size: 15px;">
+                        📦 ${escapeHtml(node.display_name)}
+                    </span>
                     <span style="display: flex; gap: 8px; align-items: center; font-size: 12px; margin-right: 8px;">
-                        <span style="background: #e9ecef; padding: 2px 12px; border-radius: 12px; color: #495057; font-weight: 600;">
-                            ${totalRecords} records
+                        <span style="background: #e9ecef; padding: 2px 10px; border-radius: 12px; color: #495057; font-weight: 600;">
+                            ${node.children.length} ${childLabel}
                         </span>
-                        ${anySelected ? `<span style="color: #0064d2; font-weight: 600;">${totalSelected} selected</span>` : ''}
-                        ${totalRecords > 0 ? `
-                            <button onclick="event.stopPropagation(); ebayPostBinSection('${baseName}')"
+                        <span style="background: #e3f2fd; padding: 2px 12px; border-radius: 12px; color: #0d47a1; font-weight: 600;">
+                            ${directRecords > 0 ? directRecords + ' here · ' : ''}${subtreeRecords} total
+                        </span>
+                        ${anySelected ? `<span style="color: #0064d2; font-weight: 600;">${totalSelectedRecords} selected</span>` : ''}
+                        ${subtreeRecords > 0 ? `
+                            <button onclick="event.stopPropagation(); ebayPostLocation(${node.id})"
                                     style="padding: 4px 16px; background: linear-gradient(135deg, #0064d2 0%, #004a99 100%); color: white; border: none; border-radius: 14px; cursor: pointer; font-size: 12px; font-weight: 600;">
-                                📤 Post This Bin
+                                📤 Post
                             </button>
                         ` : ''}
                     </span>
                 </div>
         `;
 
-        if (isSectionExpanded) {
-            for (const loc of locations) {
-                html += renderLocationRow(loc, true);
-            }
+        if (isExpanded) {
+            for (const child of node.children) html += renderNode(child, depth + 1);
         }
+
         html += `</div>`;
         return html;
     }
 
-    function renderStandaloneNode(node) {
-        return renderLocationRow(node, false);
-    }
-
-    function renderLocationRow(loc, indent) {
-        const locationId   = loc.location_id;
-        const locationName = loc.location_display;
-        const count        = loc.record_count || 0;
+    function renderLeafRow(node, depth) {
+        const locationId = node.id;
+        const count = node.record_count || 0;
 
         const isExpanded   = expandedLocations.has(locationId);
         const isSelected   = selectedLocations.has(locationId);
@@ -658,33 +589,29 @@
             ? records.filter(r => r._ebayPrice && r._ebayPrice > 0).length
             : null;
 
-        const padLeft      = indent ? 'padding-left: 20px;' : '';
-        const borderStyle  = indent ? 'border-top: 1px solid #dee2e6;' : 'border: 1px solid #e9ecef; border-radius: 6px;';
-        const marginBottom = indent ? '' : 'margin-bottom: 6px;';
-        const bgColor      = isSelected ? '#f0f8ff' : 'white';
-        const headerBg     = isExpanded ? '#f8f9fa' : 'white';
+        const indent = depth * 16;
 
         let html = `
-            <div style="${borderStyle} ${marginBottom} background: ${bgColor}; ${padLeft}">
-                <div style="display: flex; align-items: center; padding: ${indent ? '6px 12px' : '8px 12px'}; cursor: pointer; background: ${headerBg};"
+            <div style="border: 1px solid #e9ecef; border-radius: 6px; margin-bottom: 6px; margin-left: ${indent}px; background: ${isSelected ? '#f0f8ff' : 'white'};">
+                <div style="display: flex; align-items: center; padding: 8px 12px; cursor: pointer; background: ${isExpanded ? '#f8f9fa' : 'white'};"
                      onclick="ebayToggleLocation(${locationId})">
-                    <span style="font-size: ${indent ? '13px' : '14px'}; margin-right: 8px; color: ${count > 0 ? '#333' : '#999'};">
+                    <span style="font-size: 13px; margin-right: 8px; color: ${count > 0 ? '#333' : '#999'};">
                         ${isExpanded ? '▼' : '▶'}
                     </span>
                     <input type="checkbox" style="margin-right: 10px; cursor: pointer;"
                            ${isSelected ? 'checked' : ''}
                            onclick="event.stopPropagation(); ebayToggleLocationSelection(${locationId})">
-                    <span style="flex: 1; font-weight: ${indent ? '500' : '600'}; color: #333; font-size: ${indent ? '13px' : '14px'};">
-                        ${locationName}
+                    <span style="flex: 1; font-weight: 500; color: #333; font-size: 13px;">
+                        📍 ${escapeHtml(node.display_name)}
                     </span>
-                    <span style="display: flex; gap: 6px; align-items: center; font-size: ${indent ? '11px' : '12px'}; margin-right: 8px;">
+                    <span style="display: flex; gap: 6px; align-items: center; font-size: 12px; margin-right: 8px;">
                         <span style="background: #e9ecef; padding: 1px 10px; border-radius: 10px; color: #495057;">
                             ${count} records
                         </span>
                         ${pricedCount !== null ? `<span style="color: #0064d2; font-weight: 600;">${pricedCount} priced</span>` : ''}
                         ${count > 0 ? `
                             <button onclick="event.stopPropagation(); ebayPostLocation(${locationId})"
-                                    style="padding: ${indent ? '2px 12px' : '3px 14px'}; background: ${indent ? '#28a745' : 'linear-gradient(135deg, #0064d2 0%, #004a99 100%)'}; color: white; border: none; border-radius: ${indent ? '10px' : '14px'}; cursor: pointer; font-size: ${indent ? '10px' : '11px'}; font-weight: 600;">
+                                    style="padding: 3px 14px; background: #28a745; color: white; border: none; border-radius: 12px; cursor: pointer; font-size: 11px; font-weight: 600;">
                                 📤 Post
                             </button>
                         ` : ''}
@@ -706,7 +633,7 @@
                     </div>
                 `;
             } else {
-                html += renderRecordsTable(records, indent ? 'small' : 'normal');
+                html += renderRecordsTable(records);
             }
         }
 
@@ -714,13 +641,11 @@
         return html;
     }
 
-    function renderRecordsTable(locationRecords, size) {
-        const s = size === 'small'
-            ? { pad: '3px 6px', fs: '11px', idFs: '10px', ageFs: '9px', headerPad: '3px 6px', headerFs: '11px' }
-            : { pad: '4px 8px', fs: '12px', idFs: '11px', ageFs: '10px', headerPad: '4px 8px', headerFs: '11px' };
+    function renderRecordsTable(locationRecords) {
+        const s = { pad: '4px 8px', fs: '12px', idFs: '11px', ageFs: '10px', headerPad: '4px 8px', headerFs: '11px' };
 
         let html = `
-            <div style="padding: ${size === 'small' ? '6px 12px 10px 40px' : '10px 12px 12px 36px'}; border-top: 1px solid #f0f0f0; overflow-x: auto;">
+            <div style="padding: 10px 12px 12px 36px; border-top: 1px solid #f0f0f0; overflow-x: auto;">
                 <table style="width: 100%; border-collapse: collapse; font-size: ${s.fs};">
                     <thead>
                         <tr style="background: #f1f3f5; border-bottom: 2px solid #dee2e6;">
@@ -754,8 +679,8 @@
             html += `
                 <tr style="${rowStyle} border-bottom: 1px solid #f0f0f0;">
                     <td style="padding: ${s.pad}; color: #666; font-size: ${s.idFs};">${r.id}</td>
-                    <td style="padding: ${s.pad}; color: #333;">${r.artist || 'Unknown'}</td>
-                    <td style="padding: ${s.pad}; color: #333;">${r.title || 'Unknown'}</td>
+                    <td style="padding: ${s.pad}; color: #333;">${escapeHtml(r.artist || 'Unknown')}</td>
+                    <td style="padding: ${s.pad}; color: #333;">${escapeHtml(r.title || 'Unknown')}</td>
                     <td style="padding: ${s.pad}; text-align: right; color: #666;">${r.store_price ? '$' + r.store_price.toFixed(2) : '—'}</td>
                     <td style="padding: ${s.pad}; text-align: right; color: ${hasPrice ? (isMarkdown ? '#dc3545' : '#0064d2') : '#999'}; font-weight: 600;">
                         ${hasPrice ? '$' + ebayPrice.toFixed(2) : '—'}
@@ -776,26 +701,10 @@
     // TOGGLES
     // ----------------------------------------------------------------
 
-    window.ebayToggleBinSection = function(baseName) {
-        if (expandedSections.has(baseName)) expandedSections.delete(baseName);
-        else expandedSections.add(baseName);
-        renderRecords();
-    };
-
-    window.ebayToggleAllLocationsInBin = function(baseName) {
-        const bin = findBinNode(baseName);
-        if (!bin) return;
-        const ids = bin.locations.map(l => l.location_id);
-        const allSelected = ids.every(id => selectedLocations.has(id));
-        if (allSelected) {
-            for (const id of ids) selectedLocations.delete(id);
-        } else {
-            for (const id of ids) selectedLocations.add(id);
-        }
-        renderRecords();
-    };
-
     window.ebayToggleLocation = async function(locationId) {
+        const node = findNode(locationId);
+        if (!node) return;
+
         if (expandedLocations.has(locationId)) {
             expandedLocations.delete(locationId);
             renderRecords();
@@ -804,11 +713,29 @@
         expandedLocations.add(locationId);
         renderRecords();
 
-        if (!recordsByLocation.has(locationId)) {
+        if (node.children.length > 0) {
+            const leaves = [];
+            (function collect(n) {
+                if (n.children.length === 0) leaves.push(n);
+                else n.children.forEach(collect);
+            })(node);
+
+            const missing = leaves.filter(l => !recordsByLocation.has(l.id));
+            if (missing.length > 0) {
+                showStatus(`⏳ Loading ${missing.length} leaf location(s) under ${escapeHtml(node.display_name)}...`, 'info');
+                try {
+                    for (const leaf of missing) {
+                        await ensureRecordsForLocation(leaf.id);
+                    }
+                } catch (err) {
+                    showStatus(`❌ ${err.message}`, 'error');
+                }
+                renderRecords();
+            }
+        } else if (!recordsByLocation.has(locationId)) {
             try {
                 await ensureRecordsForLocation(locationId);
             } catch (err) {
-                console.error(`Failed to load records for location ${locationId}:`, err);
                 showStatus(`❌ Could not load records for location ${locationId}: ${err.message}`, 'error');
             }
             renderRecords();
@@ -816,8 +743,17 @@
     };
 
     window.ebayToggleLocationSelection = function(locationId) {
-        if (selectedLocations.has(locationId)) selectedLocations.delete(locationId);
-        else selectedLocations.add(locationId);
+        const node = findNode(locationId);
+        if (!node) return;
+
+        const ids = collectSubtreeIds(node);
+        const allSelected = ids.every(id => selectedLocations.has(id));
+
+        if (allSelected) {
+            ids.forEach(id => selectedLocations.delete(id));
+        } else {
+            ids.forEach(id => selectedLocations.add(id));
+        }
         renderRecords();
     };
 
@@ -825,31 +761,29 @@
         const selectAll = document.getElementById('ebay-select-all-locations');
         const isChecked = selectAll.checked;
         if (isChecked) {
-            const tree = buildTreeFromCounts();
-            for (const node of tree) {
-                if (node.is_bin_section) {
-                    for (const loc of node.locations) selectedLocations.add(loc.location_id);
-                } else {
-                    selectedLocations.add(node.location_id);
-                }
-            }
+            Object.keys(locationById).forEach(id => selectedLocations.add(Number(id)));
         } else {
             selectedLocations.clear();
         }
         renderRecords();
     };
 
-    function getLocationCount(locationId) {
-        const found = findLocationNode(locationId);
-        return found ? (found.loc.record_count || 0) : 0;
-    }
-
     function updateSelectionInfo() {
         const info = document.getElementById('ebay-selection-info');
         if (!info) return;
+
         let totalRecords = 0;
         for (const id of selectedLocations) {
-            totalRecords += getLocationCount(id);
+            const node = findNode(id);
+            if (!node) continue;
+            let coveredByAncestor = false;
+            let p = node.parent_id;
+            while (p) {
+                if (selectedLocations.has(p)) { coveredByAncestor = true; break; }
+                const pn = findNode(p);
+                p = pn ? pn.parent_id : null;
+            }
+            if (!coveredByAncestor) totalRecords += node.subtree_count;
         }
         info.textContent = `${selectedLocations.size} locations selected, ${totalRecords} records`;
     }
@@ -860,7 +794,16 @@
 
         let selectedRecords = 0;
         for (const id of selectedLocations) {
-            selectedRecords += getLocationCount(id);
+            const node = findNode(id);
+            if (!node) continue;
+            let coveredByAncestor = false;
+            let p = node.parent_id;
+            while (p) {
+                if (selectedLocations.has(p)) { coveredByAncestor = true; break; }
+                const pn = findNode(p);
+                p = pn ? pn.parent_id : null;
+            }
+            if (!coveredByAncestor) selectedRecords += node.subtree_count;
         }
 
         if (postSelectedBtn) {
@@ -883,26 +826,14 @@
     // POSTING
     // ----------------------------------------------------------------
 
-    window.ebayPostBinSection = async function(baseName) {
-        if (isPosting) return;
-        const bin = findBinNode(baseName);
-        if (!bin) {
-            showStatus(`⚠️ Bin ${baseName} not found`, 'warning');
-            return;
-        }
-        const ids = bin.locations.map(l => l.location_id);
-        await collectAndPost(ids, `Bin ${baseName}`);
-    };
-
     window.ebayPostLocation = async function(locationId) {
         if (isPosting) return;
-        const found = findLocationNode(locationId);
-        if (!found) {
+        const node = findNode(locationId);
+        if (!node) {
             showStatus(`⚠️ Location ${locationId} not found`, 'warning');
             return;
         }
-        const label = found.loc.location_display || found.loc.location_name;
-        await collectAndPost([locationId], label);
+        await collectAndPost([node], node.display_name);
     };
 
     window.postSelectedEbayLocations = async function() {
@@ -911,29 +842,49 @@
             showStatus('⚠️ No locations selected', 'warning');
             return;
         }
-        const ids = Array.from(selectedLocations);
-        await collectAndPost(ids, `${ids.length} selected locations`);
+
+        const roots = [];
+        for (const id of selectedLocations) {
+            const node = findNode(id);
+            if (!node) continue;
+            let coveredByAncestor = false;
+            let p = node.parent_id;
+            while (p) {
+                if (selectedLocations.has(p)) { coveredByAncestor = true; break; }
+                const pn = findNode(p);
+                p = pn ? pn.parent_id : null;
+            }
+            if (!coveredByAncestor) roots.push(node);
+        }
+
+        const label = roots.length === 1 ? roots[0].display_name : `${roots.length} selected locations`;
+        await collectAndPost(roots, label);
     };
 
-    async function collectAndPost(locationIds, scopeLabel) {
+    async function collectAndPost(nodes, scopeLabel) {
         const statusDiv = document.getElementById('ebay-status');
 
         if (statusDiv) {
             statusDiv.style.display = 'block';
             statusDiv.className = 'status-message status-info';
-            statusDiv.innerHTML = `⏳ Loading records for ${locationIds.length} location(s)...`;
+            statusDiv.innerHTML = `⏳ Loading records under ${escapeHtml(scopeLabel)}...`;
         }
 
-        let recordsToPost = [];
-        let locationNames = [];
+        const recordsToPost = [];
+        const locationNames = [];
 
         try {
-            for (const id of locationIds) {
-                const recs = await ensureRecordsForLocation(id);
+            for (const node of nodes) {
+                locationNames.push(node.display_name);
+                const recs = await ensureRecordsForSubtree(node, (done, total, leafName) => {
+                    if (statusDiv) {
+                        statusDiv.style.display = 'block';
+                        statusDiv.className = 'status-message status-info';
+                        statusDiv.innerHTML = `⏳ Loading ${done}/${total}: ${escapeHtml(leafName)}`;
+                    }
+                });
                 const eligible = recs.filter(r => r._ebayPrice && r._ebayPrice > 0);
                 recordsToPost.push(...eligible);
-                const found = findLocationNode(id);
-                if (found) locationNames.push(found.loc.location_display || found.loc.location_name);
             }
         } catch (err) {
             console.error('Failed loading records for post:', err);
@@ -944,7 +895,7 @@
         renderRecords();
 
         if (recordsToPost.length === 0) {
-            showStatus(`⚠️ No records with eBay prices in ${scopeLabel}`, 'warning');
+            showStatus(`⚠️ No records with eBay prices in ${escapeHtml(scopeLabel)}`, 'warning');
             return;
         }
 
@@ -955,7 +906,7 @@
         const withMarkdown = recordsToPost.filter(r => r._markupPercent && r._markupPercent < 0);
         const estMinutes = ((recordsToPost.length * EBAY_POST_DELAY_MS) / 60000).toFixed(1);
         let confirmMsg = `Post ${recordsToPost.length} record(s) from ${scopeLabel} to eBay?\n\n`;
-        confirmMsg += `Locations: ${locationNames.join(', ')}\n`;
+        confirmMsg += `Locations: ${locationNames.slice(0, 5).join(', ')}${locationNames.length > 5 ? ` (+${locationNames.length - 5} more)` : ''}\n`;
         confirmMsg += `Markup: ${ebayMarkupPercent}% - ${ebayPriceStep}%/wk (max markdown: ${ebayMaxMarkdown}%)\n`;
         confirmMsg += `${withMarkdown.length} records will be on markdown\n`;
         confirmMsg += `Estimated time: ~${estMinutes} minutes (${EBAY_POST_DELAY_MS / 1000}s between each)`;
@@ -1015,7 +966,7 @@
                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
                             <span>
                                 ⏳ ${current}/${total}: 
-                                <strong>${record.artist || 'Unknown'} - ${record.title || 'Unknown'}</strong>
+                                <strong>${escapeHtml(record.artist || 'Unknown')} - ${escapeHtml(record.title || 'Unknown')}</strong>
                                 <span style="color: ${priceColor}; font-weight: 600;">$${record._ebayPrice.toFixed(2)}</span>
                                 ${isMarkdown ? '🔻' : '📈'}
                             </span>
@@ -1141,18 +1092,14 @@
         }
     }
 
-    // ----------------------------------------------------------------
-    // INIT — auto-loads on page entry, no button
-    // ----------------------------------------------------------------
-
     window.initPostToEbay = function() {
         console.log('🛒 Post to eBay initialized (auto-load mode)');
 
-        locationCounts = [];
+        locationTree = [];
+        locationById = {};
         recordsByLocation.clear();
         selectedLocations.clear();
         expandedLocations.clear();
-        expandedSections.clear();
         isLoadingLocations = false;
         hasLoadedOnce = false;
 
