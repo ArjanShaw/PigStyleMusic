@@ -13767,6 +13767,10 @@ def get_records_location_counts():
                          hide_consigned filter.
 
     Rows include the composed display name (e.g. "Bin 20/RT").
+
+    Top-level locations that have children (i.e. they are parents, not
+    leaves) are excluded from the result so they don't render as
+    standalone empty leaves in the client tree.
     """
     try:
         conn = get_db()
@@ -13774,14 +13778,14 @@ def get_records_location_counts():
 
         hide_consigned = request.args.get('hide_consigned', 'false').lower() == 'true'
 
-        # Build the per-record eligibility predicate once
         consignor_clause = "AND r.consignor_id IS NULL" if hide_consigned else ""
 
         query = f'''
             SELECT
-                l.id      AS location_id,
-                l.name    AS leaf_name,
-                lp.name   AS parent_name,
+                l.id        AS location_id,
+                l.name      AS leaf_name,
+                l.parent_id AS location_parent_id,
+                lp.name     AS parent_name,
                 COUNT(r.id) AS record_count
             FROM locations l
             LEFT JOIN locations lp ON l.parent_id = lp.id
@@ -13803,7 +13807,11 @@ def get_records_location_counts():
                           AND y.status_id = 2
                     )
                 )
-            GROUP BY l.id, l.name, lp.name
+            WHERE NOT (
+                l.parent_id IS NULL
+                AND EXISTS (SELECT 1 FROM locations c WHERE c.parent_id = l.id)
+            )
+            GROUP BY l.id, l.name, l.parent_id, lp.name
             ORDER BY COALESCE(lp.name, l.name), l.name
         '''
 
@@ -13816,6 +13824,7 @@ def get_records_location_counts():
             result.append({
                 'location_id': row['location_id'],
                 'location_name': row['leaf_name'],
+                'location_parent_id': row['location_parent_id'],
                 'location_parent_name': row['parent_name'],
                 'location_display': build_location_display(row['parent_name'], row['leaf_name']),
                 'record_count': row['record_count'],
