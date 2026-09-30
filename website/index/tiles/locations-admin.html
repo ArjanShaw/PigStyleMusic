@@ -1,6 +1,7 @@
 <!-- ================================================================ -->
 <!-- FILE: /tiles/locations-admin.html                                -->
 <!-- Locations admin - tree view, add child, clear records, delete.   -->
+<!-- Also: select any node and post its subtree to eBay or Discogs.   -->
 <!-- ================================================================ -->
 
 <div style="display: flex; flex-direction: column; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 12px; overflow: hidden; width: 100%; box-sizing: border-box;">
@@ -9,7 +10,7 @@
         <div>
             <h2 style="color: #333; margin: 0;">🗺️ Locations</h2>
             <p style="color: #666; margin: 4px 0 0 0; font-size: 13px;">
-                Manage the location hierarchy (bins, sub-slots, areas).
+                Manage the location hierarchy (bins, sub-slots, areas). Select any level and post its subtree.
             </p>
         </div>
         <div style="display: flex; gap: 8px;">
@@ -22,6 +23,31 @@
                 <i class="fas fa-sync"></i> Refresh
             </button>
         </div>
+    </div>
+
+    <!-- Selection / Post row -->
+    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px;">
+        <span id="locations-admin-selection-info" style="font-size: 13px; color: #666; flex: 1;">
+            No locations selected
+        </span>
+        <button id="locations-admin-post-ebay"
+                onclick="locationsAdminPostEbay()"
+                disabled
+                style="padding: 6px 20px; background: linear-gradient(135deg, #0064d2 0%, #004a99 100%); color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 13px; font-weight: 600; opacity: 0.5;">
+            🛒 Post Selected to eBay
+        </button>
+        <button id="locations-admin-post-discogs"
+                onclick="locationsAdminPostDiscogs()"
+                disabled
+                style="padding: 6px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 13px; font-weight: 600; opacity: 0.5;">
+            📀 Post Selected to Discogs
+        </button>
+        <button id="locations-admin-clear-selection"
+                onclick="locationsAdminClearSelection()"
+                disabled
+                style="padding: 6px 16px; background: #6c757d; color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: 600; opacity: 0.5;">
+            Clear Selection
+        </button>
     </div>
 
     <div id="locations-admin-status"

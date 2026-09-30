@@ -2,6 +2,9 @@
 // FILE: /static/js/locations-admin.js
 // Locations admin - tree view, add child, add root, clear records,
 // delete location, with per-location record counts and latest last_seen.
+//
+// Also supports selecting any node (any generation) and posting the
+// selected subtree(s) to eBay or Discogs.
 // ================================================================
 
 (function() {
@@ -56,9 +59,6 @@
     }
 
     // Build a nested tree from the flat /api/locations response.
-    // Each node carries `record_count` (own records), `subtree_count`
-    // (own + all descendants), and `latest_last_seen` (most recent
-    // last_seen timestamp at this exact location).
     function buildTree(rows) {
         const byId = {};
         rows.forEach(r => {
@@ -69,7 +69,7 @@
                 parent_id: r.parent_id,
                 parent_name: r.parent_name,
                 record_count: r.record_count || 0,
-                subtree_count: r.record_count || 0,   // updated below
+                subtree_count: r.record_count || 0,
                 latest_last_seen: r.latest_last_seen || null,
                 children: []
             };
@@ -93,7 +93,6 @@
         }
         sortSiblings(roots);
 
-        // Compute subtree_count bottom-up
         function computeSubtree(nodes) {
             nodes.forEach(n => {
                 computeSubtree(n.children);
@@ -120,22 +119,84 @@
         return { total, leaves };
     }
 
+    // ================================================================
+    //  SELECTION STATE
+    // ================================================================
+
+    let selectedIds = new Set();
+
+    function collectSubtreeIds(node) {
+        const ids = [];
+        (function walk(n) {
+            ids.push(n.id);
+            n.children.forEach(walk);
+        })(node);
+        return ids;
+    }
+
+    function findRootsForSelected() {
+        const roots = [];
+        for (const id of selectedIds) {
+            const node = currentTreeById[id];
+            if (!node) continue;
+            let covered = false;
+            let p = node.parent_id;
+            while (p) {
+                if (selectedIds.has(p)) { covered = true; break; }
+                const pn = currentTreeById[p];
+                p = pn ? pn.parent_id : null;
+            }
+            if (!covered) roots.push(node);
+        }
+        return roots;
+    }
+
+    function totalSelectedRecords() {
+        let total = 0;
+        for (const node of findRootsForSelected()) total += node.subtree_count;
+        return total;
+    }
+
+    function getSelectedLeafIds() {
+        const leafIds = new Set();
+        for (const root of findRootsForSelected()) {
+            (function collect(n) {
+                if (n.children.length === 0) leafIds.add(n.id);
+                else n.children.forEach(collect);
+            })(root);
+        }
+        return [...leafIds];
+    }
+
+    // ================================================================
+    //  RENDER
+    // ================================================================
+
+    let currentTreeById = {};
+
+    function indexTree(roots) {
+        const byId = {};
+        function walk(nodes) {
+            nodes.forEach(n => {
+                byId[n.id] = n;
+                walk(n.children);
+            });
+        }
+        walk(roots);
+        return byId;
+    }
+
     function renderNode(node, depth) {
         const indent = depth * 20;
         const isParent = node.children.length > 0;
 
-        // Direct records at this location
         const directCount = node.record_count;
-        // Records at this location + all descendants
         const subtreeCount = node.subtree_count;
 
-        // Most recent last_seen timestamp at this exact location
         const latestSeen = node.latest_last_seen
             ? String(node.latest_last_seen).split('T')[0]
             : null;
 
-        // Delete is disabled if the location has any records assigned
-        // (direct) OR any children. The backend enforces the same rule.
         const canDelete = directCount === 0 && node.children.length === 0;
         const deleteDisabledAttr = canDelete ? '' : 'disabled';
         const deleteTitle = canDelete
@@ -148,6 +209,10 @@
         const deleteCursor = canDelete ? 'pointer' : 'not-allowed';
         const deleteColor = canDelete ? 'white' : '#666';
 
+        const ids = collectSubtreeIds(node);
+        const allSelected = ids.length > 0 && ids.every(id => selectedIds.has(id));
+        const anySelected = ids.some(id => selectedIds.has(id));
+
         let countBadge = '';
         if (isParent) {
             if (subtreeCount === 0) {
@@ -157,9 +222,7 @@
                     </span>
                 `;
             } else {
-                const directPart = directCount > 0
-                    ? `${directCount} here`
-                    : '';
+                const directPart = directCount > 0 ? `${directCount} here` : '';
                 const subtreePart = `${subtreeCount} total`;
                 countBadge = `
                     <span style="background: #e3f2fd; padding: 1px 8px; border-radius: 10px; font-size: 10px; color: #0d47a1; font-weight: 600;">
@@ -202,7 +265,11 @@
 
         let html = `
             <div data-loc-id="${node.id}"
-                 style="padding: 6px 8px 6px ${8 + indent}px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px;">
+                 style="padding: 6px 8px 6px ${8 + indent}px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; background: ${anySelected ? '#f0f8ff' : 'transparent'};">
+                <input type="checkbox"
+                       ${allSelected ? 'checked' : ''}
+                       onchange="locationsAdminToggleSelect(${node.id})"
+                       style="cursor: pointer; width: 15px; height: 15px; margin: 0;">
                 <span style="font-size: 14px; color: ${isParent ? '#333' : '#888'};">
                     ${isParent ? '📦' : '📍'}
                 </span>
@@ -245,19 +312,34 @@
         return html;
     }
 
-    // Cache the current tree so clear/delete can look up display names.
-    let currentTreeById = {};
+    function updateSelectionUI() {
+        const infoEl = document.getElementById('locations-admin-selection-info');
+        if (!infoEl) return;
+        const count = selectedIds.size;
+        const records = totalSelectedRecords();
+        infoEl.textContent = count === 0
+            ? 'No locations selected'
+            : `${count} location${count === 1 ? '' : 's'} selected · ${records} record${records === 1 ? '' : 's'}`;
 
-    function indexTree(roots) {
-        const byId = {};
-        function walk(nodes) {
-            nodes.forEach(n => {
-                byId[n.id] = n;
-                walk(n.children);
-            });
+        const ebayBtn = document.getElementById('locations-admin-post-ebay');
+        const discogsBtn = document.getElementById('locations-admin-post-discogs');
+        const clearBtn = document.getElementById('locations-admin-clear-selection');
+        const disabled = count === 0;
+        if (ebayBtn) {
+            ebayBtn.disabled = disabled;
+            ebayBtn.style.opacity = disabled ? '0.5' : '1';
+            ebayBtn.style.cursor = disabled ? 'not-allowed' : 'pointer';
         }
-        walk(roots);
-        return byId;
+        if (discogsBtn) {
+            discogsBtn.disabled = disabled;
+            discogsBtn.style.opacity = disabled ? '0.5' : '1';
+            discogsBtn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+        }
+        if (clearBtn) {
+            clearBtn.disabled = disabled;
+            clearBtn.style.opacity = disabled ? '0.5' : '1';
+            clearBtn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+        }
     }
 
     async function loadLocations() {
@@ -286,6 +368,8 @@
             const roots = buildTree(rows);
             currentTreeById = indexTree(roots);
 
+            selectedIds = new Set([...selectedIds].filter(id => currentTreeById[id]));
+
             const { total, leaves } = countNodes(roots);
 
             const countEl = document.getElementById('locations-admin-count');
@@ -297,6 +381,7 @@
 
             if (roots.length === 0) {
                 treeEl.innerHTML = '<div style="text-align: center; padding: 30px; color: #999;">No locations found.</div>';
+                updateSelectionUI();
                 return;
             }
 
@@ -306,6 +391,7 @@
             });
             treeEl.innerHTML = html;
 
+            updateSelectionUI();
             clearStatus();
 
         } catch (err) {
@@ -389,7 +475,6 @@
         const node = currentTreeById[locationId];
         const displayName = node ? node.display_name : `location #${locationId}`;
 
-        // Client-side guard (mirrors the backend rule):
         if (node && (node.record_count > 0 || node.children.length > 0)) {
             showStatus(
                 node.record_count > 0
@@ -422,6 +507,130 @@
         }
     }
 
+    // ================================================================
+    //  SELECTION HANDLERS
+    // ================================================================
+
+    window.locationsAdminToggleSelect = function(locationId) {
+        const node = currentTreeById[locationId];
+        if (!node) return;
+
+        const ids = collectSubtreeIds(node);
+        const allSelected = ids.every(id => selectedIds.has(id));
+
+        if (allSelected) {
+            ids.forEach(id => selectedIds.delete(id));
+        } else {
+            ids.forEach(id => selectedIds.add(id));
+        }
+
+        rerenderFromCache();
+    };
+
+    window.locationsAdminClearSelection = function() {
+        selectedIds.clear();
+        rerenderFromCache();
+    };
+
+    function rerenderFromCache() {
+        const treeEl = document.getElementById('locations-admin-tree');
+        if (!treeEl) return;
+        const roots = Object.values(currentTreeById).filter(n => !n.parent_id || !currentTreeById[n.parent_id]);
+        roots.sort((a, b) => a.display_name.localeCompare(b.display_name, undefined, { numeric: true }));
+        let html = '';
+        roots.forEach(r => { html += renderNode(r, 0); });
+        treeEl.innerHTML = html;
+        updateSelectionUI();
+    }
+
+    // ================================================================
+    //  POST SELECTED
+    // ================================================================
+
+    async function postSelectedToEbay() {
+        const leafIds = getSelectedLeafIds();
+        if (leafIds.length === 0) {
+            showStatus('⚠️ No leaf locations selected', 'error');
+            return;
+        }
+
+        const totalRecords = totalSelectedRecords();
+        if (!confirm(
+            `Post records from ${selectedIds.size} selected location(s) to eBay?\n\n` +
+            `This will resolve to ${leafIds.length} leaf location(s) containing ${totalRecords} record(s).\n\n` +
+            `Continue?`
+        )) return;
+
+        showStatus('🛒 Posting selected subtree(s) to eBay...', 'info');
+
+        try {
+            const response = await fetch(`${API_BASE}/api/ebay/list-by-locations`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: getHeaders(),
+                body: JSON.stringify({ location_ids: leafIds })
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                showStatus(
+                    `✅ eBay: posted ${data.success || 0}, failed ${data.failed || 0}` +
+                    (data.errors && data.errors.length ? ` — first error: ${data.errors[0]}` : ''),
+                    data.failed > 0 ? 'error' : 'success'
+                );
+            } else {
+                showStatus(`❌ ${data.error || 'eBay post failed'}`, 'error');
+            }
+        } catch (err) {
+            showStatus(`❌ ${err.message}`, 'error');
+        }
+    }
+
+    async function postSelectedToDiscogs() {
+        const leafIds = getSelectedLeafIds();
+        if (leafIds.length === 0) {
+            showStatus('⚠️ No leaf locations selected', 'error');
+            return;
+        }
+
+        const totalRecords = totalSelectedRecords();
+        if (!confirm(
+            `Post records from ${selectedIds.size} selected location(s) to Discogs?\n\n` +
+            `This will resolve to ${leafIds.length} leaf location(s) containing ${totalRecords} record(s).\n\n` +
+            `Continue?`
+        )) return;
+
+        showStatus('📀 Posting selected subtree(s) to Discogs...', 'info');
+
+        try {
+            const response = await fetch(`${API_BASE}/api/discogs/list-by-locations`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: getHeaders(),
+                body: JSON.stringify({ location_ids: leafIds })
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                showStatus(
+                    `✅ Discogs: posted ${data.success || 0}, failed ${data.failed || 0}` +
+                    (data.errors && data.errors.length ? ` — first error: ${data.errors[0]}` : ''),
+                    data.failed > 0 ? 'error' : 'success'
+                );
+            } else {
+                showStatus(`❌ ${data.error || 'Discogs post failed'}`, 'error');
+            }
+        } catch (err) {
+            showStatus(`❌ ${err.message}`, 'error');
+        }
+    }
+
+    // ================================================================
+    //  PUBLIC API
+    // ================================================================
+
     window.locationsAdminRefresh = function() {
         loadLocations();
     };
@@ -442,8 +651,17 @@
         deleteLocation(locationId);
     };
 
+    window.locationsAdminPostEbay = function() {
+        postSelectedToEbay();
+    };
+
+    window.locationsAdminPostDiscogs = function() {
+        postSelectedToDiscogs();
+    };
+
     window.initLocationsAdmin = function() {
         console.log('🗺️ Locations admin initialized');
+        selectedIds = new Set();
         loadLocations();
     };
 
