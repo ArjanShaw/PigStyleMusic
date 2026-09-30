@@ -129,13 +129,142 @@
     }
 
     // ================================================================
+    //  PRICING CONFIG (editable inputs)
+    // ================================================================
+
+    let pricingConfig = {
+        markup: null,
+        step: null,
+        maxMarkdown: null
+    };
+
+    async function fetchRequiredConfig(key) {
+        const r = await fetch(`${API_BASE}/config/${key}`, {
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (!r.ok) throw new Error(`Config ${key} not available (HTTP ${r.status})`);
+        const d = await r.json();
+        if (d.status !== 'success') throw new Error(`Config ${key} returned non-success`);
+        if (d.config_value === null || d.config_value === undefined || d.config_value === '') {
+            throw new Error(`Config ${key} is missing in app_config`);
+        }
+        const v = parseFloat(d.config_value);
+        if (isNaN(v)) throw new Error(`Config ${key} is not a number (got "${d.config_value}")`);
+        return v;
+    }
+
+    async function loadPricingConfigFromServer() {
+        const markup = await fetchRequiredConfig('PRICING_MARKUP_PERCENT');
+        const step   = await fetchRequiredConfig('PRICING_PRICE_STEP');
+        const maxMd  = await fetchRequiredConfig('PRICING_MAX_MARKDOWN');
+
+        pricingConfig = {
+            markup: markup,
+            step: step,
+            maxMarkdown: Math.abs(maxMd)
+        };
+
+        const markupEl = document.getElementById('locations-pricing-markup');
+        if (markupEl) markupEl.value = pricingConfig.markup;
+        const stepEl = document.getElementById('locations-pricing-step');
+        if (stepEl) stepEl.value = pricingConfig.step;
+        const maxEl = document.getElementById('locations-pricing-max-markdown');
+        if (maxEl) maxEl.value = pricingConfig.maxMarkdown;
+
+        updatePricingInfo();
+    }
+
+    async function saveOneConfig(key, value) {
+        const r = await fetch(`${API_BASE}/config/${key}`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: getHeaders(),
+            body: JSON.stringify({ config_value: value })
+        });
+        if (!r.ok) {
+            let detail = '';
+            try { detail = (await r.json()).error || ''; } catch (_) {}
+            throw new Error(`Failed to save ${key} (HTTP ${r.status}) ${detail}`);
+        }
+        const d = await r.json();
+        if (d.status !== 'success') throw new Error(`Failed to save ${key}: ${d.error || 'unknown error'}`);
+    }
+
+    async function savePricingConfigToServer() {
+        await saveOneConfig('PRICING_MARKUP_PERCENT', pricingConfig.markup);
+        await saveOneConfig('PRICING_PRICE_STEP', pricingConfig.step);
+        await saveOneConfig('PRICING_MAX_MARKDOWN', pricingConfig.maxMarkdown);
+    }
+
+    function updatePricingInfo() {
+        const info = document.getElementById('locations-pricing-info');
+        if (!info) return;
+
+        if (pricingConfig.markup === null) {
+            info.textContent = 'Config not loaded';
+            return;
+        }
+
+        const totalRecords = Object.values(currentTreeById)
+            .reduce((sum, n) => sum + n.record_count, 0);
+
+        info.textContent =
+            `Markup: +${pricingConfig.markup}% -${pricingConfig.step}%/wk ` +
+            `(floor -${pricingConfig.maxMarkdown}%) | ` +
+            `${totalRecords} records across ${Object.keys(currentTreeById).length} locations`;
+    }
+
+    window.locationsUpdatePricing = async function() {
+        if (isPosting) {
+            showStatus('⚠️ Cannot update pricing while posting', 'error');
+            return;
+        }
+
+        const markupInput = document.getElementById('locations-pricing-markup');
+        const stepInput   = document.getElementById('locations-pricing-step');
+        const maxInput    = document.getElementById('locations-pricing-max-markdown');
+
+        const newMarkup = parseFloat(markupInput.value);
+        const newStep   = parseFloat(stepInput.value);
+        const newMax    = parseFloat(maxInput.value);
+
+        if (isNaN(newMarkup) || newMarkup < -100 || newMarkup > 200) {
+            alert('Initial Markup must be a number between -100 and 200');
+            return;
+        }
+        if (isNaN(newStep) || newStep < 0) {
+            alert('Weekly Step must be a positive number');
+            return;
+        }
+        if (isNaN(newMax) || newMax < 0 || newMax > 100) {
+            alert('Max Markdown must be a number between 0 and 100');
+            return;
+        }
+
+        pricingConfig = {
+            markup: newMarkup,
+            step: newStep,
+            maxMarkdown: Math.abs(newMax)
+        };
+
+        try {
+            showStatus('⚙️ Saving pricing config...', 'info');
+            await savePricingConfigToServer();
+            updatePricingInfo();
+            showStatus('✅ Pricing config saved', 'success');
+        } catch (err) {
+            showStatus(`❌ ${err.message}`, 'error');
+        }
+    };
+
+    // ================================================================
     //  SELECTION STATE
     // ================================================================
 
     let selectedIds = new Set();
     let currentTreeById = {};
 
-    // Cancellation flag for the post loop. Reset at the start of each run.
     let cancelRequested = false;
     let isPosting = false;
 
@@ -363,6 +492,13 @@
             cancelBtn.disabled = !isPosting;
             cancelBtn.textContent = cancelRequested ? '⏹️ Cancelling…' : '⏹️ Cancel Posting';
         }
+
+        const pricingBtn = document.getElementById('locations-pricing-update-btn');
+        if (pricingBtn) {
+            pricingBtn.disabled = isPosting;
+            pricingBtn.style.opacity = isPosting ? '0.5' : '1';
+            pricingBtn.style.cursor = isPosting ? 'not-allowed' : 'pointer';
+        }
     }
 
     async function loadLocations() {
@@ -415,6 +551,7 @@
             treeEl.innerHTML = html;
 
             updateSelectionUI();
+            updatePricingInfo();
             clearStatus();
 
         } catch (err) {
@@ -575,41 +712,15 @@
     }
 
     // ================================================================
-    //  PRICE CALCULATION (shared model, same as posting tiles)
+    //  PRICE COMPUTATION
     // ================================================================
-
-    let pricingConfig = null;
-
-    async function loadPricingConfig() {
-        if (pricingConfig) return pricingConfig;
-
-        async function getConfig(key) {
-            const r = await fetch(`${API_BASE}/config/${key}`, {
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            if (!r.ok) throw new Error(`Config ${key} not available (HTTP ${r.status})`);
-            const d = await r.json();
-            if (d.status !== 'success') throw new Error(`Config ${key} returned non-success`);
-            const v = parseFloat(d.config_value);
-            if (isNaN(v)) throw new Error(`Config ${key} is not a number (got "${d.config_value}")`);
-            return v;
-        }
-
-        const markup = await getConfig('PRICING_MARKUP_PERCENT');
-        const step   = await getConfig('PRICING_PRICE_STEP');
-        const maxMd  = await getConfig('PRICING_MAX_MARKDOWN');
-
-        pricingConfig = {
-            markup: markup,
-            step: step,
-            maxMarkdown: Math.abs(maxMd)
-        };
-        return pricingConfig;
-    }
 
     function computePrice(storePrice, createdAt) {
         if (!storePrice || storePrice <= 0 || !createdAt) return null;
+
+        if (pricingConfig.markup === null || pricingConfig.step === null || pricingConfig.maxMarkdown === null) {
+            throw new Error('Pricing config not loaded');
+        }
 
         let createdDate;
         if (typeof createdAt === 'string') {
@@ -679,7 +790,7 @@
 
         try {
             showStatus(`${statusPrefix} Loading pricing config...`, 'info');
-            await loadPricingConfig();
+            await loadPricingConfigFromServer();
 
             showStatus(`${statusPrefix} Loading records from ${leafIds.length} leaf location(s)...`, 'info');
             const records = await fetchPostableRecordsForLeaves(leafIds);
@@ -791,7 +902,7 @@
 
         try {
             showStatus(`${statusPrefix} Loading pricing config...`, 'info');
-            await loadPricingConfig();
+            await loadPricingConfigFromServer();
 
             showStatus(`${statusPrefix} Loading records from ${leafIds.length} leaf location(s)...`, 'info');
             const records = await fetchPostableRecordsForLeaves(leafIds);
@@ -925,11 +1036,16 @@
         postSelectedToDiscogs();
     };
 
-    window.initLocationsAdmin = function() {
+    window.initLocationsAdmin = async function() {
         console.log('🗺️ Locations admin initialized');
         selectedIds = new Set();
         cancelRequested = false;
         isPosting = false;
+        try {
+            await loadPricingConfigFromServer();
+        } catch (err) {
+            console.warn('Could not load pricing config on init:', err.message);
+        }
         loadLocations();
     };
 
