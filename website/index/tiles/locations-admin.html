@@ -1,7 +1,8 @@
 <!-- ================================================================ -->
 <!-- FILE: /tiles/locations-admin.html                                -->
 <!-- Locations admin - tree view, add child, clear records, delete.   -->
-<!-- Also: select any node and post its subtree to eBay or Discogs.   -->
+<!-- Also: select any node and post its subtree to eBay or Discogs,   -->
+<!-- with a cancel button to stop a running post.                     -->
 <!-- ================================================================ -->
 
 <div style="display: flex; flex-direction: column; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 12px; overflow: hidden; width: 100%; box-sizing: border-box;">
@@ -47,6 +48,11 @@
                 disabled
                 style="padding: 6px 16px; background: #6c757d; color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: 600; opacity: 0.5;">
             Clear Selection
+        </button>
+        <button id="locations-admin-cancel-post"
+                onclick="locationsAdminCancelPost()"
+                style="display: none; padding: 6px 20px; background: #dc3545; color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            ⏹️ Cancel Posting
         </button>
     </div>
 

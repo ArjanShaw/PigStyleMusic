@@ -135,6 +135,10 @@
     let selectedIds = new Set();
     let currentTreeById = {};
 
+    // Cancellation flag for the post loop. Reset at the start of each run.
+    let cancelRequested = false;
+    let isPosting = false;
+
     function collectSubtreeIds(node) {
         const ids = [];
         (function walk(n) {
@@ -322,31 +326,42 @@
 
     function updateSelectionUI() {
         const infoEl = document.getElementById('locations-admin-selection-info');
-        if (!infoEl) return;
-        const count = selectedIds.size;
-        const records = totalSelectedRecords();
-        infoEl.textContent = count === 0
-            ? 'No locations selected'
-            : `${count} location${count === 1 ? '' : 's'} selected · ${records} record${records === 1 ? '' : 's'}`;
+        if (infoEl) {
+            const count = selectedIds.size;
+            const records = totalSelectedRecords();
+            infoEl.textContent = count === 0
+                ? 'No locations selected'
+                : `${count} location${count === 1 ? '' : 's'} selected · ${records} record${records === 1 ? '' : 's'}`;
+        }
 
         const ebayBtn = document.getElementById('locations-admin-post-ebay');
         const discogsBtn = document.getElementById('locations-admin-post-discogs');
         const clearBtn = document.getElementById('locations-admin-clear-selection');
-        const disabled = count === 0;
+        const cancelBtn = document.getElementById('locations-admin-cancel-post');
+
+        const disabled = selectedIds.size === 0;
         if (ebayBtn) {
-            ebayBtn.disabled = disabled;
-            ebayBtn.style.opacity = disabled ? '0.5' : '1';
-            ebayBtn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+            ebayBtn.disabled = disabled || isPosting;
+            ebayBtn.style.opacity = (disabled || isPosting) ? '0.5' : '1';
+            ebayBtn.style.cursor = (disabled || isPosting) ? 'not-allowed' : 'pointer';
+            ebayBtn.style.display = isPosting ? 'none' : 'inline-block';
         }
         if (discogsBtn) {
-            discogsBtn.disabled = disabled;
-            discogsBtn.style.opacity = disabled ? '0.5' : '1';
-            discogsBtn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+            discogsBtn.disabled = disabled || isPosting;
+            discogsBtn.style.opacity = (disabled || isPosting) ? '0.5' : '1';
+            discogsBtn.style.cursor = (disabled || isPosting) ? 'not-allowed' : 'pointer';
+            discogsBtn.style.display = isPosting ? 'none' : 'inline-block';
         }
         if (clearBtn) {
-            clearBtn.disabled = disabled;
-            clearBtn.style.opacity = disabled ? '0.5' : '1';
-            clearBtn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+            clearBtn.disabled = disabled || isPosting;
+            clearBtn.style.opacity = (disabled || isPosting) ? '0.5' : '1';
+            clearBtn.style.cursor = (disabled || isPosting) ? 'not-allowed' : 'pointer';
+            clearBtn.style.display = isPosting ? 'none' : 'inline-block';
+        }
+        if (cancelBtn) {
+            cancelBtn.style.display = isPosting ? 'inline-block' : 'none';
+            cancelBtn.disabled = !isPosting;
+            cancelBtn.textContent = cancelRequested ? '⏹️ Cancelling…' : '⏹️ Cancel Posting';
         }
     }
 
@@ -540,6 +555,14 @@
         rerenderFromCache();
     };
 
+    window.locationsAdminCancelPost = function() {
+        if (isPosting) {
+            cancelRequested = true;
+            updateSelectionUI();
+            showStatus('⏹️ Cancelling… will stop after the current record finishes.', 'error');
+        }
+    };
+
     function rerenderFromCache() {
         const treeEl = document.getElementById('locations-admin-tree');
         if (!treeEl) return;
@@ -635,6 +658,8 @@
     }
 
     async function postSelectedToEbay() {
+        if (isPosting) return;
+
         const leafIds = getSelectedLeafIds();
         if (leafIds.length === 0) {
             showStatus('⚠️ No leaf locations selected', 'error');
@@ -648,6 +673,9 @@
         )) return;
 
         const statusPrefix = '🛒 eBay:';
+        isPosting = true;
+        cancelRequested = false;
+        updateSelectionUI();
 
         try {
             showStatus(`${statusPrefix} Loading pricing config...`, 'info');
@@ -663,9 +691,15 @@
 
             let success = 0;
             let failed = 0;
+            let skipped = 0;
             const errors = [];
 
             for (let i = 0; i < records.length; i++) {
+                if (cancelRequested) {
+                    skipped = records.length - i;
+                    break;
+                }
+
                 const rec = records[i];
                 const price = computePrice(rec.store_price, rec.created_at);
 
@@ -706,25 +740,38 @@
                     errors.push(`Record #${rec.id}: ${err.message}`);
                 }
 
-                if (i < records.length - 1) {
+                if (i < records.length - 1 && !cancelRequested) {
                     await sleep(1000);
                 }
             }
 
-            const summary = `${statusPrefix} done. ✅ ${success} posted, ❌ ${failed} failed.`;
+            const cancelled = cancelRequested;
+            let summary;
+            if (cancelled) {
+                summary = `${statusPrefix} ⏹️ Cancelled. ✅ ${success} posted, ❌ ${failed} failed, ${skipped} skipped.`;
+            } else {
+                summary = `${statusPrefix} done. ✅ ${success} posted, ❌ ${failed} failed.`;
+            }
+
             showStatus(
                 errors.length > 0
                     ? `${summary} First error: ${errors[0]}`
                     : summary,
-                failed > 0 ? 'error' : 'success'
+                (failed > 0 || cancelled) ? 'error' : 'success'
             );
 
         } catch (err) {
             showStatus(`${statusPrefix} ❌ ${err.message}`, 'error');
+        } finally {
+            isPosting = false;
+            cancelRequested = false;
+            updateSelectionUI();
         }
     }
 
     async function postSelectedToDiscogs() {
+        if (isPosting) return;
+
         const leafIds = getSelectedLeafIds();
         if (leafIds.length === 0) {
             showStatus('⚠️ No leaf locations selected', 'error');
@@ -738,6 +785,9 @@
         )) return;
 
         const statusPrefix = '📀 Discogs:';
+        isPosting = true;
+        cancelRequested = false;
+        updateSelectionUI();
 
         try {
             showStatus(`${statusPrefix} Loading pricing config...`, 'info');
@@ -753,9 +803,15 @@
 
             let success = 0;
             let failed = 0;
+            let skipped = 0;
             const errors = [];
 
             for (let i = 0; i < records.length; i++) {
+                if (cancelRequested) {
+                    skipped = records.length - i;
+                    break;
+                }
+
                 const rec = records[i];
                 const price = computePrice(rec.store_price, rec.created_at);
 
@@ -808,21 +864,32 @@
                     errors.push(`Record #${rec.id}: ${err.message}`);
                 }
 
-                if (i < records.length - 1) {
+                if (i < records.length - 1 && !cancelRequested) {
                     await sleep(3000);
                 }
             }
 
-            const summary = `${statusPrefix} done. ✅ ${success} posted, ❌ ${failed} failed.`;
+            const cancelled = cancelRequested;
+            let summary;
+            if (cancelled) {
+                summary = `${statusPrefix} ⏹️ Cancelled. ✅ ${success} posted, ❌ ${failed} failed, ${skipped} skipped.`;
+            } else {
+                summary = `${statusPrefix} done. ✅ ${success} posted, ❌ ${failed} failed.`;
+            }
+
             showStatus(
                 errors.length > 0
                     ? `${summary} First error: ${errors[0]}`
                     : summary,
-                failed > 0 ? 'error' : 'success'
+                (failed > 0 || cancelled) ? 'error' : 'success'
             );
 
         } catch (err) {
             showStatus(`${statusPrefix} ❌ ${err.message}`, 'error');
+        } finally {
+            isPosting = false;
+            cancelRequested = false;
+            updateSelectionUI();
         }
     }
 
@@ -861,6 +928,8 @@
     window.initLocationsAdmin = function() {
         console.log('🗺️ Locations admin initialized');
         selectedIds = new Set();
+        cancelRequested = false;
+        isPosting = false;
         loadLocations();
     };
 
