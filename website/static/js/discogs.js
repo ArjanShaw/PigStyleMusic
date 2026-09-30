@@ -23,7 +23,6 @@
     }
 
     function showHubStatus(message, type) {
-        // Prefer the tab-specific status bar if visible; fall back to the other.
         const postStatus = document.getElementById('post-discogs-status');
         const ordersStatus = document.getElementById('discogs-orders-status-msg');
         const postPanel = document.getElementById('discogs-panel-post');
@@ -300,18 +299,31 @@
         statusDiv.innerHTML = `❌ ${msg}`;
     }
 
-    // ---------- Post: fetch location counts ----------
+    // ---------- Post: fetch location counts (from /api/locations) ----------
     async function fetchLocationCounts() {
-        const url = `${API_BASE}/api/records/location-counts`;
+        const url = `${API_BASE}/api/locations`;
         const response = await fetch(url, {
             credentials: 'include',
             mode: 'cors',
             headers: getHeaders()
         });
-        if (!response.ok) throw new Error(`Failed to fetch location counts (HTTP ${response.status})`);
+        if (!response.ok) throw new Error(`Failed to fetch locations (HTTP ${response.status})`);
         const data = await response.json();
-        if (data.status !== 'success') throw new Error(data.error || 'Location counts API error');
-        return data.data || [];
+        if (data.status !== 'success') throw new Error(data.error || 'Locations API error');
+
+        const rows = data.locations || [];
+        // Drop empty top-level parent rows (containers only, no records of their own).
+        // Keep anything with records or anything that is a child.
+        return rows
+            .filter(r => (r.record_count || 0) > 0 || (r.parent_id !== null && r.parent_id !== undefined))
+            .map(r => ({
+                location_id: r.id,
+                location_name: r.name,
+                location_parent_id: r.parent_id,
+                location_parent_name: r.parent_name,
+                location_display: r.display_name || r.name,
+                record_count: r.record_count || 0,
+            }));
     }
 
     async function loadLocations() {
@@ -405,7 +417,20 @@
         const binSections = {};
         const standalone  = [];
 
+        // Track which locations are parents of other locations. Any row
+        // whose id shows up as a parent_id is a container, not a leaf,
+        // and must not be rendered as a standalone leaf.
+        const parentIds = new Set();
         for (const row of locationCounts) {
+            if (row.location_parent_id !== null && row.location_parent_id !== undefined) {
+                parentIds.add(row.location_parent_id);
+            }
+        }
+
+        for (const row of locationCounts) {
+            // Skip rows that are themselves parents of other locations.
+            if (parentIds.has(row.location_id)) continue;
+
             const parentName = row.location_parent_name;
             const leafName   = row.location_name;
 
@@ -1770,7 +1795,6 @@
     // ================  PUBLIC INIT FUNCTIONS  =======================
     // ================================================================
 
-    // Called by discogsHubTab('post')
     window.initPostDiscogs = function() {
         console.log('📀 Post to Discogs initialized (auto-load mode)');
 
@@ -1792,12 +1816,10 @@
         loadLocations();
     };
 
-    // Legacy alias
     window.loadPostDiscogsRecords = function() {
         return loadLocations();
     };
 
-    // Called by discogsHubTab('orders') the first time
     window.initDiscogsOrders = function() {
         console.log('📦 Discogs Orders initialized');
 
@@ -1824,7 +1846,6 @@
         loadOrders();
     };
 
-    // Called by app.js when the merged tile page opens
     window.initDiscogsHub = function() {
         console.log('📀 Discogs Hub initialized');
         ordersInited = false;

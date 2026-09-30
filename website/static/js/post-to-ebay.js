@@ -3,7 +3,7 @@
 // Post to eBay page - counts-first, lazy-load records per location
 //
 // FLOW:
-//   1. initPostToEbay  -> GET /api/records/location-counts (auto)
+//   1. initPostToEbay  -> GET /api/locations (auto)
 //                         renders the tree immediately
 //   2. Expand loc      -> GET /records?location_ids=<id>&... (cached)
 //   3. Post loc/bin    -> ensure records loaded, filter by price,
@@ -305,7 +305,7 @@
     };
 
     // ----------------------------------------------------------------
-    // LOAD LOCATION COUNTS
+    // LOAD LOCATIONS (from /api/locations)
     // ----------------------------------------------------------------
 
     function showLoadProgressBar(label, loaded, total, extra) {
@@ -337,16 +337,29 @@
     }
 
     async function fetchLocationCounts() {
-        const url = `${API_BASE}/api/records/location-counts`;
+        const url = `${API_BASE}/api/locations`;
         const response = await fetch(url, {
             credentials: 'include',
             mode: 'cors',
             headers: getHeaders()
         });
-        if (!response.ok) throw new Error(`Failed to fetch location counts (HTTP ${response.status})`);
+        if (!response.ok) throw new Error(`Failed to fetch locations (HTTP ${response.status})`);
         const data = await response.json();
-        if (data.status !== 'success') throw new Error(data.error || 'Location counts API error');
-        return data.data || [];
+        if (data.status !== 'success') throw new Error(data.error || 'Locations API error');
+
+        const rows = data.locations || [];
+        // Drop empty top-level parent rows (containers only, no records of their own).
+        // Keep anything with records or anything that is a child.
+        return rows
+            .filter(r => (r.record_count || 0) > 0 || (r.parent_id !== null && r.parent_id !== undefined))
+            .map(r => ({
+                location_id: r.id,
+                location_name: r.name,
+                location_parent_id: r.parent_id,
+                location_parent_name: r.parent_name,
+                location_display: r.display_name || r.name,
+                record_count: r.record_count || 0,
+            }));
     }
 
     async function loadLocations() {
@@ -458,7 +471,20 @@
         const binSections = {};
         const standalone  = [];
 
+        // Track which locations are parents of other locations. Any row
+        // whose id shows up as a parent_id is a container, not a leaf,
+        // and must not be rendered as a standalone leaf.
+        const parentIds = new Set();
         for (const row of locationCounts) {
+            if (row.location_parent_id !== null && row.location_parent_id !== undefined) {
+                parentIds.add(row.location_parent_id);
+            }
+        }
+
+        for (const row of locationCounts) {
+            // Skip rows that are themselves parents of other locations.
+            if (parentIds.has(row.location_id)) continue;
+
             const parentName = row.location_parent_name;
             const leafName   = row.location_name;
 
@@ -962,7 +988,7 @@
         let success = 0;
         let failed = 0;
         let errorMessages = [];
-        let postedListings = [];  // { id, artist, title, url }
+        let postedListings = [];
 
         for (let i = 0; i < recordsToPost.length; i++) {
             if (cancelPosting) {
