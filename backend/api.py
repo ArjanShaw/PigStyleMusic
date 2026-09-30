@@ -15417,5 +15417,249 @@ def serve_ebay_image(filename):
     ebay_folder = os.path.join(os.path.dirname(__file__), 'static', 'images', 'ebay')
     return send_from_directory(ebay_folder, filename)
 
+
+def _get_config_value(key):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT config_value FROM app_config WHERE config_key = ?', (key,))
+    row = cursor.fetchone()
+    conn.close()
+    return row['config_value'] if row else None
+
+@app.route('/api/ebay/list-by-locations', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def ebay_list_by_locations():
+    """
+    Post every eligible record in the given locations to eBay.
+    Body: { "location_ids": [13, 14, ...] }
+    """
+    try:
+        data = request.json or {}
+        location_ids = data.get('location_ids', [])
+
+        if not location_ids:
+            return jsonify({'status': 'error', 'error': 'location_ids required'}), 400
+
+        placeholders = ','.join('?' for _ in location_ids)
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            SELECT id, store_price, created_at
+            FROM records
+            WHERE status_id = 2
+              AND location_id IN ({placeholders})
+              AND consignor_id IS NULL
+              AND store_price > 0
+              AND created_at IS NOT NULL
+            ORDER BY id
+        ''', location_ids)
+        rows = cursor.fetchall()
+        conn.close()
+
+        if not rows:
+            return jsonify({
+                'status': 'success',
+                'success': 0,
+                'failed': 0,
+                'errors': [],
+                'message': 'No eligible records in selected locations'
+            })
+
+        markup = float(_get_config_value('PRICING_MARKUP_PERCENT'))
+        step = float(_get_config_value('PRICING_PRICE_STEP'))
+        max_md = float(_get_config_value('PRICING_MAX_MARKDOWN'))
+
+        success = 0
+        failed = 0
+        errors = []
+
+        for row in rows:
+            record_id = row['id']
+            try:
+                created = row['created_at']
+                if isinstance(created, str):
+                    created = datetime.strptime(created.split('T')[0], '%Y-%m-%d')
+                days_old = (datetime.now() - created).days
+                weeks_old = max(0, days_old // 7)
+
+                floor = -abs(max_md)
+                eff_markup = markup - (weeks_old * step)
+                eff_markup = max(floor, eff_markup)
+                price = round(float(row['store_price']) * (1 + eff_markup / 100), 2)
+
+                r = requests.post(
+                    'http://localhost:5000/api/ebay/list',
+                    json={'record_id': record_id, 'price': price, 'quantity': 1},
+                    headers={'Authorization': request.headers.get('Authorization', '')},
+                    cookies=request.cookies,
+                    timeout=120
+                )
+
+                try:
+                    body = r.json()
+                except Exception:
+                    body = {}
+
+                if r.status_code == 200 and body.get('status') == 'success':
+                    success += 1
+                else:
+                    failed += 1
+                    errors.append(f'Record #{record_id}: {body.get("error") or r.text[:200]}')
+
+                time.sleep(1)
+
+            except Exception as e:
+                failed += 1
+                errors.append(f'Record #{record_id}: {str(e)}')
+
+        return jsonify({
+            'status': 'success',
+            'success': success,
+            'failed': failed,
+            'errors': errors
+        })
+
+    except Exception as e:
+        app.logger.error(f'eBay bulk list error: {str(e)}')
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+@app.route('/api/discogs/list-by-locations', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def discogs_list_by_locations():
+    """
+    Post every eligible record in the given locations to Discogs.
+    Body: { "location_ids": [13, 14, ...] }
+    """
+    try:
+        data = request.json or {}
+        location_ids = data.get('location_ids', [])
+
+        if not location_ids:
+            return jsonify({'status': 'error', 'error': 'location_ids required'}), 400
+
+        placeholders = ','.join('?' for _ in location_ids)
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            SELECT id, store_price, created_at
+            FROM records
+            WHERE status_id = 2
+              AND location_id IN ({placeholders})
+              AND consignor_id IS NULL
+              AND store_price > 0
+              AND created_at IS NOT NULL
+            ORDER BY id
+        ''', location_ids)
+        rows = cursor.fetchall()
+        conn.close()
+
+        if not rows:
+            return jsonify({
+                'status': 'success',
+                'success': 0,
+                'failed': 0,
+                'errors': [],
+                'message': 'No eligible records in selected locations'
+            })
+
+        markup = float(_get_config_value('PRICING_MARKUP_PERCENT'))
+        step = float(_get_config_value('PRICING_PRICE_STEP'))
+        max_md = float(_get_config_value('PRICING_MAX_MARKDOWN'))
+
+        success = 0
+        failed = 0
+        errors = []
+
+        for row in rows:
+            record_id = row['id']
+            try:
+                created = row['created_at']
+                if isinstance(created, str):
+                    created = datetime.strptime(created.split('T')[0], '%Y-%m-%d')
+                days_old = (datetime.now() - created).days
+                weeks_old = max(0, days_old // 7)
+
+                floor = -abs(max_md)
+                eff_markup = markup - (weeks_old * step)
+                eff_markup = max(floor, eff_markup)
+                price = round(float(row['store_price']) * (1 + eff_markup / 100), 2)
+
+                conn2 = get_db()
+                cursor2 = conn2.cursor()
+                cursor2.execute('''
+                    SELECT r.id, r.artist, r.title, r.catalog_number, r.notes,
+                           r.discogs_release_id,
+                           cd.condition_name AS disc_condition_name,
+                           cs.condition_name AS sleeve_condition_name
+                    FROM records r
+                    LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+                    LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+                    WHERE r.id = ?
+                ''', (record_id,))
+                rec = cursor2.fetchone()
+                conn2.close()
+
+                if not rec:
+                    failed += 1
+                    errors.append(f'Record #{record_id}: not found')
+                    continue
+
+                payload = {
+                    'record': {
+                        'id': rec['id'],
+                        'artist': rec['artist'] or 'Unknown',
+                        'title': rec['title'] or 'Unknown',
+                        'catalog_number': rec['catalog_number'] or '',
+                        'media_condition': rec['disc_condition_name'] or 'Very Good Plus (VG+)',
+                        'sleeve_condition': rec['sleeve_condition_name'] or 'Very Good Plus (VG+)',
+                        'price': price,
+                        'notes': rec['notes'] or '',
+                        'discogs_release_id': rec['discogs_release_id']
+                    }
+                }
+
+                r = requests.post(
+                    'http://localhost:5000/api/discogs/create-listing-single',
+                    json=payload,
+                    headers={'Authorization': request.headers.get('Authorization', '')},
+                    cookies=request.cookies,
+                    timeout=60
+                )
+
+                try:
+                    body = r.json()
+                except Exception:
+                    body = {}
+
+                if r.status_code == 200 and body.get('success'):
+                    success += 1
+                else:
+                    failed += 1
+                    errors.append(f'Record #{record_id}: {body.get("error") or r.text[:200]}')
+
+                time.sleep(3)  # Discogs rate limit
+
+            except Exception as e:
+                failed += 1
+                errors.append(f'Record #{record_id}: {str(e)}')
+
+        return jsonify({
+            'status': 'success',
+            'success': success,
+            'failed': failed,
+            'errors': errors
+        })
+
+    except Exception as e:
+        app.logger.error(f'Discogs bulk list error: {str(e)}')
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 if __name__ == '__main__': 
     app.run(debug=True, port=5000)
