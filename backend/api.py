@@ -2837,6 +2837,7 @@ def create_record():
         conn.close()
         return jsonify({'status': 'error', 'error': f"Database error: {str(e)}"}), 500
 
+
 @app.route('/records', methods=['GET'])
 def get_records():
     """Get records with filtering, pagination, and a generic search.
@@ -2860,7 +2861,10 @@ def get_records():
         last_seen_after    YYYY-MM-DD. Deprecated.
         last_seen_before   YYYY-MM-DD.
         batch_id           Integer, or -1 for NULL.
-        visible_only       true/false. When true, apply Feature 1 bin-max rule.
+        visible_only       true/false. When true, apply Feature 1 bin-max rule:
+                           location_id must be set, last_seen must be set, and
+                           last_seen must equal the max last_seen date for that
+                           same bin among Active records.
         hide_consigned     true/false. When true, exclude consignor_id NOT NULL.
         order_by           Column name (whitelisted).
         order_dir          ASC/DESC.
@@ -3036,27 +3040,24 @@ def get_records():
                 where_clauses.append("r.batch_id = ?")
                 params.append(batch_id_int)
 
-        # --- Feature 1: per-bin last_seen visibility ---
+        # --- Feature 1: per-bin last_seen visibility (FIXED) ---
+        # A record is visible only if:
+        #   1. it is assigned to a location (location_id IS NOT NULL), and
+        #   2. it has a last_seen date, and
+        #   3. that date equals the most recent last_seen date for its bin
+        #      among Active records.
+        # Records with NULL location_id or NULL last_seen are hidden.
         visible_only = request.args.get('visible_only', 'false').lower() == 'true'
         if visible_only:
             where_clauses.append("""
-                (
-                    r.location_id IS NULL
-                    OR NOT EXISTS (
-                        SELECT 1 FROM records x
-                        WHERE x.location_id = r.location_id
-                          AND x.status_id = 2
-                          AND x.last_seen IS NOT NULL
-                    )
-                    OR (
-                        r.last_seen IS NOT NULL
-                        AND date(r.last_seen) = (
-                            SELECT MAX(date(y.last_seen))
-                            FROM records y
-                            WHERE y.location_id = r.location_id
-                              AND y.status_id = 2
-                        )
-                    )
+                r.location_id IS NOT NULL
+                AND r.last_seen IS NOT NULL
+                AND date(r.last_seen) = (
+                    SELECT MAX(date(y.last_seen))
+                    FROM records y
+                    WHERE y.location_id = r.location_id
+                      AND y.status_id = 2
+                      AND y.last_seen IS NOT NULL
                 )
             """)
 
@@ -3131,11 +3132,11 @@ def get_records():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
 @app.route('/api/genres-with-records', methods=['GET'])
 def get_genres_with_records():
-    """Genres that have visible Active records. Applies Feature 1 (per-bin
-    last_seen) unconditionally, plus the effective-genre resolution.
+    """Genres that have visible Active records. Applies the per-bin
+    last_seen rule unconditionally (location_id NOT NULL, last_seen NOT NULL,
+    and last_seen = bin max), plus the effective-genre resolution.
     """
     try:
         conn = get_db()
@@ -3173,25 +3174,16 @@ def get_genres_with_records():
                 query += f' AND r.location_id IN ({placeholders})'
                 params.extend(ids)
 
-        # Feature 1: per-bin visibility
+        # Per-bin visibility (same rule as /records visible_only=true)
         query += '''
-            AND (
-                r.location_id IS NULL
-                OR NOT EXISTS (
-                    SELECT 1 FROM records x
-                    WHERE x.location_id = r.location_id
-                      AND x.status_id = 2
-                      AND x.last_seen IS NOT NULL
-                )
-                OR (
-                    r.last_seen IS NOT NULL
-                    AND date(r.last_seen) = (
-                        SELECT MAX(date(y.last_seen))
-                        FROM records y
-                        WHERE y.location_id = r.location_id
-                          AND y.status_id = 2
-                    )
-                )
+            AND r.location_id IS NOT NULL
+            AND r.last_seen IS NOT NULL
+            AND date(r.last_seen) = (
+                SELECT MAX(date(y.last_seen))
+                FROM records y
+                WHERE y.location_id = r.location_id
+                  AND y.status_id = 2
+                  AND y.last_seen IS NOT NULL
             )
         '''
 
@@ -3213,11 +3205,11 @@ def get_genres_with_records():
         app.logger.error(f"Error getting genres with records: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
 @app.route('/api/formats-with-records', methods=['GET'])
 def get_formats_with_records():
-    """Formats that have visible Active records. Applies Feature 1 (per-bin
-    last_seen) unconditionally. Format comes from records.format_id only.
+    """Formats that have visible Active records. Applies the per-bin
+    last_seen rule unconditionally (location_id NOT NULL, last_seen NOT NULL,
+    and last_seen = bin max). Format comes from records.format_id only.
     """
     try:
         conn = get_db()
@@ -3253,25 +3245,16 @@ def get_formats_with_records():
                 query += f' AND r.location_id IN ({placeholders})'
                 params.extend(ids)
 
-        # Feature 1: per-bin visibility
+        # Per-bin visibility (same rule as /records visible_only=true)
         query += '''
-            AND (
-                r.location_id IS NULL
-                OR NOT EXISTS (
-                    SELECT 1 FROM records x
-                    WHERE x.location_id = r.location_id
-                      AND x.status_id = 2
-                      AND x.last_seen IS NOT NULL
-                )
-                OR (
-                    r.last_seen IS NOT NULL
-                    AND date(r.last_seen) = (
-                        SELECT MAX(date(y.last_seen))
-                        FROM records y
-                        WHERE y.location_id = r.location_id
-                          AND y.status_id = 2
-                    )
-                )
+            AND r.location_id IS NOT NULL
+            AND r.last_seen IS NOT NULL
+            AND date(r.last_seen) = (
+                SELECT MAX(date(y.last_seen))
+                FROM records y
+                WHERE y.location_id = r.location_id
+                  AND y.status_id = 2
+                  AND y.last_seen IS NOT NULL
             )
         '''
 
@@ -3292,7 +3275,6 @@ def get_formats_with_records():
     except Exception as e:
         app.logger.error(f"Error getting formats with records: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 
 @app.route('/api/stats/last-seen-distribution', methods=['GET'])
