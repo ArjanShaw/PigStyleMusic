@@ -14907,36 +14907,35 @@ def ebay_list_item():
         "record_id": 15449,
         "price": 12.59,
         "quantity": 1,
-        "condition": "USED_EXCELLENT",         # optional, default USED_EXCELLENT
-        "category_id": "176985"                # optional, default 176985 (Vinyl Records)
+        "condition": "USED_EXCELLENT",       # optional, default USED_EXCELLENT
+        "category_id": "176985"              # optional, overrides formats.ebay_category_id
       }
 
     HARD REQUIREMENTS (no fallbacks — the endpoint errors):
       - record must exist
       - record.consignor_id must be NULL (consigned records cannot be listed)
+      - record.format_id must resolve to a formats row with
+        ebay_category_id, ebay_format_aspect, ebay_type_aspect all set
       - record.condition_disc_id must be set and resolve to a d_condition row
-      - record.condition_sleeve_id must be set and resolve to a d_condition row
-      - each resolved d_condition row must have an abbreviation
-      - each resolved d_condition row must have a non-empty ebay_blurb
+      - For formats with ebay_has_sleeve = 1:
+          record.condition_sleeve_id must be set and resolve
+          d_condition.ebay_disc_blurb and ebay_sleeve_blurb must be non-empty
+      - For formats with ebay_has_sleeve = 0:
+          d_condition.ebay_blurb must be non-empty
       - record must have image_large_url OR image_url set
 
-    Image handling (all in this endpoint):
-      - Prefer image_large_url (the signed full-size Discogs URL populated at
-        import or by the backfill).
-      - Fall back to image_url if image_large_url is empty.
-      - Download with a browser UA + Discogs Referer.
-      - If its longest side is < 800px, upscale to 800px with PIL.
+    Image handling:
+      - Prefer image_large_url, fall back to image_url.
+      - Download with browser UA + Discogs Referer.
+      - Upscale to 800px with PIL if longest side < 800.
       - Save to static/images/ebay/<record_id>_<hex>.jpg.
-      - Use the local https://www.pigstylemusic.com/static/images/ebay/... URL
-        for the eBay listing.
+      - Use the local https://www.pigstylemusic.com/static/images/ebay/... URL.
 
     Description footer line includes the internal record ID:
       Cat. No. LPM 2782 · #15449 · SKU 100050
 
-    Response includes listing_id and listing_url so the client can display
-    and verify each posted item:
-      "listing_id": "307205372798",
-      "listing_url": "https://www.ebay.com/itm/307205372798"
+    Response includes listing_id, listing_url, format_name, category_used,
+    and category_label so the client can display and verify each posted item.
     """
     try:
         data = request.json or {}
@@ -14954,24 +14953,31 @@ def ebay_list_item():
 
         base_url = 'https://api.sandbox.ebay.com' if env == 'sandbox' else 'https://api.ebay.com'
 
-        # --- Load record + condition + config ---
+        # --- Load record + condition + format ---
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute('''
             SELECT
                 r.id, r.artist, r.title, r.barcode, r.catalog_number,
                 r.store_price, r.image_url, r.image_large_url, r.consignor_id,
-                r.discogs_release_id,
+                r.discogs_release_id, r.discogs_genre_raw,
                 r.condition_disc_id, r.condition_sleeve_id,
-                cd.abbreviation   AS disc_abbr,
-                cd.condition_name AS disc_name,
-                cd.ebay_blurb     AS disc_blurb,
-                cs.abbreviation   AS sleeve_abbr,
-                cs.condition_name AS sleeve_name,
-                cs.ebay_blurb     AS sleeve_blurb
+                f.name                AS format_name,
+                f.ebay_category_id    AS fmt_category_id,
+                f.ebay_format_aspect  AS fmt_format_aspect,
+                f.ebay_type_aspect    AS fmt_type_aspect,
+                f.ebay_has_sleeve     AS fmt_has_sleeve,
+                cd.abbreviation       AS disc_abbr,
+                cd.condition_name     AS disc_name,
+                cd.ebay_disc_blurb    AS disc_blurb,
+                cd.ebay_blurb         AS disc_other_blurb,
+                cs.abbreviation       AS sleeve_abbr,
+                cs.condition_name     AS sleeve_name,
+                cs.ebay_sleeve_blurb  AS sleeve_blurb
             FROM records r
-            LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
-            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN formats f       ON r.format_id = f.id
+            LEFT JOIN d_condition cd  ON r.condition_disc_id = cd.id
+            LEFT JOIN d_condition cs  ON r.condition_sleeve_id = cs.id
             WHERE r.id = ?
         ''', (record_id,))
         record = cursor.fetchone()
@@ -14984,30 +14990,89 @@ def ebay_list_item():
             conn.close()
             return jsonify({'status': 'error', 'error': 'Consigned records cannot be listed'}), 400
 
+        # --- Format validation ---
+        if not record['format_name']:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Record {record_id} has no format_id set'
+            }), 400
+
+        if not record['fmt_category_id']:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Format "{record["format_name"]}" has no ebay_category_id set'
+            }), 400
+
+        if not record['fmt_format_aspect']:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Format "{record["format_name"]}" has no ebay_format_aspect set'
+            }), 400
+
+        if not record['fmt_type_aspect']:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Format "{record["format_name"]}" has no ebay_type_aspect set'
+            }), 400
+
+        # --- Condition validation ---
         if record['condition_disc_id'] is None:
             conn.close()
-            return jsonify({'status': 'error', 'error': f'Record {record_id} has no condition_disc_id'}), 400
-        if record['condition_sleeve_id'] is None:
+            return jsonify({
+                'status': 'error',
+                'error': f'Record {record_id} has no condition_disc_id'
+            }), 400
+
+        if not record['disc_abbr']:
             conn.close()
-            return jsonify({'status': 'error', 'error': f'Record {record_id} has no condition_sleeve_id'}), 400
-        if record['disc_abbr'] is None and record['disc_name'] is None:
-            conn.close()
-            return jsonify({'status': 'error', 'error': f'condition_disc_id {record["condition_disc_id"]} not resolvable'}), 500
-        if record['sleeve_abbr'] is None and record['sleeve_name'] is None:
-            conn.close()
-            return jsonify({'status': 'error', 'error': f'condition_sleeve_id {record["condition_sleeve_id"]} not resolvable'}), 500
-        if not (record['disc_abbr'] or '').strip():
-            conn.close()
-            return jsonify({'status': 'error', 'error': f'd_condition {record["condition_disc_id"]} has no abbreviation'}), 500
-        if not (record['sleeve_abbr'] or '').strip():
-            conn.close()
-            return jsonify({'status': 'error', 'error': f'd_condition {record["condition_sleeve_id"]} has no abbreviation'}), 500
-        if not (record['disc_blurb'] or '').strip():
-            conn.close()
-            return jsonify({'status': 'error', 'error': f'Record {record_id} media "{record["disc_abbr"]}" has no ebay_blurb'}), 400
-        if not (record['sleeve_blurb'] or '').strip():
-            conn.close()
-            return jsonify({'status': 'error', 'error': f'Record {record_id} sleeve "{record["sleeve_abbr"]}" has no ebay_blurb'}), 400
+            return jsonify({
+                'status': 'error',
+                'error': f'condition_disc_id {record["condition_disc_id"]} has no abbreviation'
+            }), 500
+
+        has_sleeve = bool(record['fmt_has_sleeve'])
+
+        if has_sleeve:
+            if record['condition_sleeve_id'] is None:
+                conn.close()
+                return jsonify({
+                    'status': 'error',
+                    'error': f'Record {record_id} format "{record["format_name"]}" '
+                             f'requires a sleeve condition but condition_sleeve_id is not set'
+                }), 400
+
+            if not record['sleeve_abbr']:
+                conn.close()
+                return jsonify({
+                    'status': 'error',
+                    'error': f'condition_sleeve_id {record["condition_sleeve_id"]} has no abbreviation'
+                }), 500
+
+            if not (record['disc_blurb'] or '').strip():
+                conn.close()
+                return jsonify({
+                    'status': 'error',
+                    'error': f'Condition "{record["disc_name"]}" has no ebay_disc_blurb'
+                }), 400
+
+            if not (record['sleeve_blurb'] or '').strip():
+                conn.close()
+                return jsonify({
+                    'status': 'error',
+                    'error': f'Condition "{record["sleeve_name"]}" has no ebay_sleeve_blurb'
+                }), 400
+        else:
+            if not (record['disc_other_blurb'] or '').strip():
+                conn.close()
+                return jsonify({
+                    'status': 'error',
+                    'error': f'Condition "{record["disc_name"]}" has no ebay_blurb '
+                             f'(required for non-sleeve formats)'
+                }), 400
 
         cfg = {}
         for key in ['ebay_refresh_token', 'ebay_access_token', 'ebay_token_expires',
@@ -15025,7 +15090,7 @@ def ebay_list_item():
             if not cfg[req]:
                 return jsonify({'status': 'error', 'error': f'{req} not configured'}), 500
 
-        # --- Resolve source image: prefer the pre-fetched large URL ---
+        # --- Resolve source image ---
         source_image_url = None
         if record['image_large_url'] and record['image_large_url'].strip():
             source_image_url = record['image_large_url'].strip()
@@ -15040,7 +15105,7 @@ def ebay_list_item():
         else:
             return jsonify({'status': 'error', 'error': f'Record {record_id} has no image'}), 400
 
-        # --- Download, upscale if needed, save to our domain ---
+        # --- Download, upscale if needed, save locally ---
         try:
             img_resp = requests.get(
                 source_image_url,
@@ -15141,14 +15206,24 @@ def ebay_list_item():
         if len(title) > 80:
             title = title[:77] + '...'
 
-        media_str  = f"{record['disc_abbr'].strip()} ({record['disc_blurb'].strip()})"
-        sleeve_str = f"{record['sleeve_abbr'].strip()} ({record['sleeve_blurb'].strip()})"
-        condition_html = (
-            f"<strong>Media:</strong> {media_str} &nbsp;|&nbsp; "
-            f"<strong>Sleeve:</strong> {sleeve_str}"
-        )
+        # --- Condition line ---
+        disc_str = f"{record['disc_abbr']} ({record['disc_blurb'].strip()})"
+        if has_sleeve:
+            sleeve_str = f"{record['sleeve_abbr']} ({record['sleeve_blurb'].strip()})"
+            condition_html = (
+                f"<strong>Media:</strong> {disc_str} &nbsp;|&nbsp; "
+                f"<strong>Sleeve:</strong> {sleeve_str}"
+            )
+            condition_description = f"Media: {disc_str}. Sleeve: {sleeve_str}."[:1000]
+        else:
+            disc_str = f"{record['disc_abbr']} ({record['disc_other_blurb'].strip()})"
+            condition_html = f"<strong>Media:</strong> {disc_str}"
+            condition_description = f"Media: {disc_str}."[:1000]
 
-        # --- Footer reference line: catalog number + internal record ID + barcode ---
+        # --- Format line ---
+        format_line = f"{record['fmt_format_aspect']}, {record['fmt_type_aspect']}"
+
+        # --- Footer reference line ---
         ref_bits = []
         if record['catalog_number']:
             ref_bits.append(f"Cat. No. {record['catalog_number']}")
@@ -15159,6 +15234,7 @@ def ebay_list_item():
 
         description = (
             f"<h3 style=\"margin:0 0 6px 0;\">{record['artist']} - {record['title']}</h3>"
+            f"<p style=\"margin:0 0 6px 0;\"><strong>Format:</strong> {format_line}</p>"
             f"<p style=\"margin:0 0 6px 0;\">{condition_html}</p>"
             f"<p style=\"margin:0 0 6px 0;\">Pre-owned. Sold as described. "
             f"All records are visually graded.</p>"
@@ -15170,12 +15246,25 @@ def ebay_list_item():
             + f"<p style=\"margin:6px 0 0 0;font-size:0.9em;color:#555;\">— PigStyle Music</p>"
         )
 
-        condition_description = f"Media: {media_str}. Sleeve: {sleeve_str}."[:1000]
+        # --- Aspects from DB ---
+        aspects = {
+            'Artist': [record['artist'] or 'Unknown'],
+            'Format': [record['fmt_format_aspect']],
+            'Type':   [record['fmt_type_aspect']],
+        }
+        genre_raw = (record['discogs_genre_raw'] or '').strip()
+        if genre_raw:
+            genres = [g.strip() for g in genre_raw.split('/') if g.strip()]
+            if genres:
+                aspects['Genre'] = genres
+
+        # --- Category ---
+        category_to_use = str(data.get('category_id') or record['fmt_category_id'])
 
         product_block = {
             'title': title,
             'description': description,
-            'aspects': {'Artist': [record['artist']]},
+            'aspects': aspects,
             'imageUrls': [hosted_image_url],
         }
 
@@ -15225,7 +15314,7 @@ def ebay_list_item():
                 'marketplaceId': 'EBAY_US',
                 'format': 'FIXED_PRICE',
                 'availableQuantity': int(data.get('quantity', 1)),
-                'categoryId': str(data.get('category_id', '176985')),
+                'categoryId': category_to_use,
                 'listingDescription': description,
                 'listingPolicies': {
                     'fulfillmentPolicyId': cfg['ebay_fulfillment_policy_id'],
@@ -15263,7 +15352,6 @@ def ebay_list_item():
                 'error': f'eBay publish failed ({pub_resp.status_code}): {pub_resp.text[:500]}'
             }), 400
 
-        # --- Extract listingId from publish response for the client to display ---
         listing_id = None
         listing_url = None
         try:
@@ -15284,13 +15372,15 @@ def ebay_list_item():
             'hosted_image_url': hosted_image_url,
             'source_image_width': source_width,
             'source_image_height': source_height,
+            'format_name': record['format_name'],
+            'category_used': category_to_use,
+            'category_label': format_line,
         })
 
     except Exception as e:
         app.logger.error(f'eBay listing error: {str(e)}')
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 @app.route('/api/ebay/connection-status', methods=['GET'])
 @login_required
