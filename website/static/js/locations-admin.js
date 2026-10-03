@@ -9,6 +9,8 @@
 //   POST /api/ebay/list
 //   POST /api/discogs/create-listing-single
 //
+// Both posts include the location display string AND location_index.
+//
 // No new backend endpoints are required.
 // ================================================================
 
@@ -833,7 +835,11 @@
                         body: JSON.stringify({
                             record_id: rec.id,
                             price: price,
-                            quantity: 1
+                            quantity: 1,
+                            location: rec.location_display || rec.location_name || '',
+                            location_index: rec.location_index !== undefined && rec.location_index !== null
+                                ? rec.location_index
+                                : null
                         })
                     });
 
@@ -948,6 +954,9 @@
                         price: price,
                         notes: rec.notes || '',
                         location: rec.location_display || rec.location_name || '',
+                        location_index: rec.location_index !== undefined && rec.location_index !== null
+                            ? rec.location_index
+                            : null,
                         discogs_release_id: rec.discogs_release_id || null,
                         format_id: rec.format_id || null
                     }

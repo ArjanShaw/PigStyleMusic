@@ -810,7 +810,6 @@ def require_discogs_auth(f):
         return f(*args, **kwargs)
     return decorated_function
 
-
 @app.route('/api/discogs/create-listing-single', methods=['POST'])
 def create_discogs_listing_single():
     """
@@ -823,6 +822,9 @@ def create_discogs_listing_single():
     Feature 3: consigned records (consignor_id NOT NULL) are rejected.
 
     Price is client-supplied. No fallback markup.
+
+    Location display string and location_index are appended to the
+    Discogs listing comments as "[PIGSTYLE ID: N] | Location: <loc> | idx:<n>".
     """
     try:
         data = request.json
@@ -884,9 +886,17 @@ def create_discogs_listing_single():
             'User-Agent': 'PigStyleMusic/1.0'
         }
 
+        # --- Build comments with PIGSTYLE ID, location, and index ---
         comments = f"[PIGSTYLE ID: {record['id']}]"
+
+        loc_bits = []
         if record.get('location'):
-            comments += f" | Location: {record.get('location')}"
+            loc_bits.append(str(record.get('location')).strip())
+        if record.get('location_index') is not None:
+            loc_bits.append(f"idx:{record.get('location_index')}")
+        if loc_bits:
+            comments += f" | Location: {' | '.join(loc_bits)}"
+
         if record.get('notes'):
             comments += f" | {record.get('notes')}"
 
@@ -901,7 +911,7 @@ def create_discogs_listing_single():
 
         app.logger.info(
             f"Creating listing for release {release_id} at ${discogs_price} "
-            f"(Record #{record['id']})"
+            f"(Record #{record['id']}) — comments: {comments[:200]}"
         )
 
         listing_response = requests.post(
@@ -14908,7 +14918,9 @@ def ebay_list_item():
         "price": 12.59,
         "quantity": 1,
         "condition": "USED_EXCELLENT",       # optional, default USED_EXCELLENT
-        "category_id": "176985"              # optional, overrides formats.ebay_category_id
+        "category_id": "176985",             # optional, overrides formats.ebay_category_id
+        "location": "Bin 20/RT",             # optional, from client
+        "location_index": 42                 # optional, from client
       }
 
     HARD REQUIREMENTS (no fallbacks — the endpoint errors):
@@ -14931,8 +14943,10 @@ def ebay_list_item():
       - Save to static/images/ebay/<record_id>_<hex>.jpg.
       - Use the local https://www.pigstylemusic.com/static/images/ebay/... URL.
 
-    Description footer line includes the internal record ID:
-      Cat. No. LPM 2782 · #15449 · SKU 100050
+    Description footer line includes the internal record ID, catalog
+    number, SKU, and (when supplied by the client) the location display
+    string and location_index:
+      Cat. No. LPM 2782 · #15449 · SKU 100050 · Loc: Bin 20/RT / idx:42
 
     Response includes listing_id, listing_url, format_name, category_used,
     and category_label so the client can display and verify each posted item.
@@ -14940,6 +14954,10 @@ def ebay_list_item():
     try:
         data = request.json or {}
         record_id = data.get('record_id')
+
+        # --- Capture location info from client (optional) ---
+        location_str = (data.get('location') or '').strip() if data.get('location') is not None else ''
+        location_index = data.get('location_index')
 
         if not record_id:
             return jsonify({'status': 'error', 'error': 'record_id required'}), 400
@@ -15223,13 +15241,22 @@ def ebay_list_item():
         # --- Format line ---
         format_line = f"{record['fmt_format_aspect']}, {record['fmt_type_aspect']}"
 
-        # --- Footer reference line ---
+        # --- Footer reference line (catalog, id, sku, location, idx) ---
         ref_bits = []
         if record['catalog_number']:
             ref_bits.append(f"Cat. No. {record['catalog_number']}")
         ref_bits.append(f"#{record['id']}")
         if record['barcode']:
             ref_bits.append(f"SKU {record['barcode']}")
+
+        loc_bits = []
+        if location_str:
+            loc_bits.append(location_str)
+        if location_index is not None:
+            loc_bits.append(f"idx:{location_index}")
+        if loc_bits:
+            ref_bits.append(f"Loc: {' / '.join(loc_bits)}")
+
         ref_line = " · ".join(ref_bits)
 
         description = (
@@ -15381,7 +15408,6 @@ def ebay_list_item():
         app.logger.error(f'eBay listing error: {str(e)}')
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 
 # ==================== EBAY: END ALL ACTIVE LISTINGS ====================
