@@ -15385,91 +15385,50 @@ def ebay_list_item():
 
 # ==================== EBAY: END ALL LISTINGS ====================
 
-@app.route('/api/ebay/end-listings', methods=['POST'])
+
+# ==================== EBAY: END ALL ACTIVE LISTINGS ====================
+
+@app.route('/api/ebay/end-all-active', methods=['POST'])
 @login_required
 @role_required(['admin'])
-def ebay_end_listings():
+def ebay_end_all_active():
     """
-    End multiple eBay listings via Trading API EndItem.
+    Find every Active eBay listing (via GetMyeBaySelling) and end each
+    one (via EndItem). No CSV, no item IDs required.
 
-    Body:
-      {
-        "item_ids": ["307208861157", "307208861239", ...]   # explicit list
-      }
-      OR
-      {
-        "csv": "<raw CSV text>"                              # Seller Hub export
-      }
+    Body (all optional):
+      { "execute": true, "sleep_ms": 1000 }
 
-    Optional:
-      {
-        "execute": true,        # default false (dry-run)
-        "sleep_ms": 1000        # throttle between calls
-      }
-
-    Response:
-      {
-        "status": "success",
-        "dry_run": false,
-        "total": 1620,
-        "ended": 1618,
-        "failed": 2,
-        "errors": [{"item_id": "...", "error": "..."}, ...]
-      }
-
-    Uses the eBay access token from app_config, refreshing if expired.
-    Same credentials and env as /api/ebay/list.
+    Without execute, this is a dry run.
     """
-    import time as _time
     import re
+    import time as _time
 
     try:
         data = request.json or {}
         execute = bool(data.get('execute', False))
         sleep_ms = int(data.get('sleep_ms', 1000))
 
-        # --- Resolve item IDs ---
-        item_ids = data.get('item_ids') or []
-
-        if not item_ids and data.get('csv'):
-            raw_csv = data['csv']
-            reader = csv.DictReader(io.StringIO(raw_csv))
-            if 'Item number' not in (reader.fieldnames or []):
-                return jsonify({
-                    'status': 'error',
-                    'error': "CSV has no 'Item number' column",
-                    'columns_found': reader.fieldnames or []
-                }), 400
-            for row in reader:
-                iid = (row.get('Item number') or '').strip().strip('"')
-                if iid:
-                    item_ids.append(iid)
-
-        if not item_ids:
-            return jsonify({
-                'status': 'error',
-                'error': 'No item_ids or csv provided'
-            }), 400
-
-        # --- Credentials ---
+        # ---- Credentials ----
         client_id = os.environ.get('EBAY_CLIENT_ID')
         client_secret = os.environ.get('EBAY_CLIENT_SECRET')
         env = os.environ.get('EBAY_ENVIRONMENT', 'sandbox')
 
         if not client_id or not client_secret:
-            return jsonify({
-                'status': 'error',
-                'error': 'eBay credentials not configured'
-            }), 500
+            return jsonify({'status': 'error', 'error': 'eBay credentials not configured'}), 500
 
-        if env == 'sandbox':
-            api_base = 'https://api.sandbox.ebay.com'
-            trading_url = 'https://api.sandbox.ebay.com/ws/api.dll'
-        else:
-            api_base = 'https://api.ebay.com'
-            trading_url = 'https://api.ebay.com/ws/api.dll'
+        api_base = (
+            'https://api.sandbox.ebay.com'
+            if env == 'sandbox'
+            else 'https://api.ebay.com'
+        )
+        trading_url = (
+            'https://api.sandbox.ebay.com/ws/api.dll'
+            if env == 'sandbox'
+            else 'https://api.ebay.com/ws/api.dll'
+        )
 
-        # --- Load + refresh token if needed ---
+        # ---- Load + refresh token ----
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'ebay_refresh_token'")
@@ -15519,12 +15478,11 @@ def ebay_end_listings():
                     'status': 'error',
                     'error': f'eBay token refresh failed ({r.status_code}): {r.text[:300]}'
                 }), 500
-
             rj = r.json()
             access_token = rj['access_token']
-            expires_in = rj.get('expires_in', 7200)
-            expires_at = (datetime.now() + timedelta(seconds=expires_in - 60)).isoformat()
-
+            expires_at = (
+                datetime.now() + timedelta(seconds=rj.get('expires_in', 7200) - 60)
+            ).isoformat()
             conn = get_db()
             cursor = conn.cursor()
             cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'ebay_access_token'", (access_token,))
@@ -15532,30 +15490,99 @@ def ebay_end_listings():
             conn.commit()
             conn.close()
 
-        # --- Dry run bail-out ---
+        # ---- Page through GetMyeBaySelling to collect every active ItemID ----
+        item_ids = []
+        page = 1
+        entries_per_page = 200
+
+        while page <= 50:
+            body = f"""<?xml version="1.0" encoding="utf-8"?>
+<GetMyeBaySellingRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <ActiveList>
+    <Include>true</Include>
+    <Pagination>
+      <EntriesPerPage>{entries_per_page}</EntriesPerPage>
+      <PageNumber>{page}</PageNumber>
+    </Pagination>
+  </ActiveList>
+  <ErrorLanguage>en_US</ErrorLanguage>
+  <WarningLevel>High</WarningLevel>
+</GetMyeBaySellingRequest>"""
+
+            try:
+                resp = requests.post(
+                    trading_url,
+                    headers={
+                        'X-EBAY-API-CALL-NAME': 'GetMyeBaySelling',
+                        'X-EBAY-API-SITEID': '0',
+                        'X-EBAY-API-COMPATIBILITY-LEVEL': '1193',
+                        'X-EBAY-API-IAF-TOKEN': access_token,
+                        'Content-Type': 'text/xml',
+                    },
+                    data=body,
+                    timeout=60
+                )
+            except Exception as e:
+                return jsonify({
+                    'status': 'error',
+                    'error': f'GetMyeBaySelling network error: {e}'
+                }), 500
+
+            text = resp.text
+
+            if '<Ack>Failure</Ack>' in text:
+                m = re.search(r'<LongMessage>(.*?)</LongMessage>', text)
+                err_msg = m.group(1) if m else text[:200]
+                return jsonify({
+                    'status': 'error',
+                    'error': f'GetMyeBaySelling failed: {err_msg}'
+                }), 500
+
+            ids_on_page = re.findall(r'<ItemID>(\d+)</ItemID>', text)
+            if not ids_on_page:
+                break
+
+            item_ids.extend(ids_on_page)
+
+            if len(ids_on_page) < entries_per_page:
+                break
+
+            page += 1
+
+        # Dedup, preserve order
+        seen = set()
+        unique_ids = []
+        for i in item_ids:
+            if i not in seen:
+                seen.add(i)
+                unique_ids.append(i)
+
+        # ---- Dry run ----
         if not execute:
             return jsonify({
                 'status': 'success',
                 'dry_run': True,
-                'total': len(item_ids),
-                'sample': item_ids[:10],
-                'message': 'Set execute=true to actually end these listings.'
+                'found': len(unique_ids),
+                'sample': unique_ids[:10],
+                'message': f'Would end {len(unique_ids)} listings. Set execute=true to proceed.'
             })
 
-        # --- Loop EndItem ---
+        if not unique_ids:
+            return jsonify({
+                'status': 'success',
+                'dry_run': False,
+                'found': 0,
+                'ended': 0,
+                'failed': 0,
+                'errors': []
+            })
+
+        # ---- Loop EndItem ----
         ended = 0
         failed = 0
         errors = []
 
-        for n, item_id in enumerate(item_ids, start=1):
-            headers = {
-                'X-EBAY-API-CALL-NAME': 'EndItem',
-                'X-EBAY-API-SITEID': '0',
-                'X-EBAY-API-COMPATIBILITY-LEVEL': '1193',
-                'X-EBAY-API-IAF-TOKEN': access_token,
-                'Content-Type': 'text/xml',
-            }
-
+        for n, item_id in enumerate(unique_ids, start=1):
             body = f"""<?xml version="1.0" encoding="utf-8"?>
 <EndItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
   <ItemID>{item_id}</ItemID>
@@ -15565,17 +15592,27 @@ def ebay_end_listings():
 </EndItemRequest>"""
 
             try:
-                resp = requests.post(trading_url, headers=headers, data=body, timeout=30)
+                resp = requests.post(
+                    trading_url,
+                    headers={
+                        'X-EBAY-API-CALL-NAME': 'EndItem',
+                        'X-EBAY-API-SITEID': '0',
+                        'X-EBAY-API-COMPATIBILITY-LEVEL': '1193',
+                        'X-EBAY-API-IAF-TOKEN': access_token,
+                        'Content-Type': 'text/xml',
+                    },
+                    data=body,
+                    timeout=60
+                )
+                text = resp.text
             except Exception as e:
                 failed += 1
                 errors.append({'item_id': item_id, 'error': f'network: {e}'})
                 continue
 
-            text = resp.text
-
-            # Token expired mid-run — refresh once and retry
+            # Token expired mid-run: refresh and retry once
             if 'Invalid access token' in text or 'IAF token' in text:
-                app.logger.warning(f'eBay token expired mid-run at item {item_id}, refreshing')
+                app.logger.warning(f'eBay token expired at item {item_id}, refreshing')
                 auth_str = base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
                 rr = requests.post(
                     f'{api_base}/identity/v1/oauth2/token',
@@ -15593,39 +15630,49 @@ def ebay_end_listings():
                 if rr.status_code == 200:
                     rj = rr.json()
                     access_token = rj['access_token']
-                    expires_at = (datetime.now() + timedelta(seconds=rj.get('expires_in', 7200) - 60)).isoformat()
+                    expires_at = (
+                        datetime.now() + timedelta(seconds=rj.get('expires_in', 7200) - 60)
+                    ).isoformat()
                     conn = get_db()
                     cursor = conn.cursor()
                     cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'ebay_access_token'", (access_token,))
                     cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'ebay_token_expires'", (expires_at,))
                     conn.commit()
                     conn.close()
-
-                    # retry
-                    headers['X-EBAY-API-IAF-TOKEN'] = access_token
                     try:
-                        resp = requests.post(trading_url, headers=headers, data=body, timeout=30)
+                        resp = requests.post(
+                            trading_url,
+                            headers={
+                                'X-EBAY-API-CALL-NAME': 'EndItem',
+                                'X-EBAY-API-SITEID': '0',
+                                'X-EBAY-API-COMPATIBILITY-LEVEL': '1193',
+                                'X-EBAY-API-IAF-TOKEN': access_token,
+                                'Content-Type': 'text/xml',
+                            },
+                            data=body,
+                            timeout=60
+                        )
                         text = resp.text
                     except Exception as e:
                         failed += 1
-                        errors.append({'item_id': item_id, 'error': f'retry network: {e}'})
+                        errors.append({'item_id': item_id, 'error': f'retry: {e}'})
                         continue
 
             if '<Ack>Success</Ack>' in text or '<Ack>Warning</Ack>' in text:
                 ended += 1
             else:
                 m = re.search(r'<LongMessage>(.*?)</LongMessage>', text)
-                err = m.group(1) if m else text[:200]
+                err_msg = m.group(1) if m else text[:200]
                 failed += 1
-                errors.append({'item_id': item_id, 'error': err})
+                errors.append({'item_id': item_id, 'error': err_msg})
 
-            if sleep_ms > 0 and n < len(item_ids):
+            if sleep_ms > 0 and n < len(unique_ids):
                 _time.sleep(sleep_ms / 1000.0)
 
         return jsonify({
             'status': 'success',
             'dry_run': False,
-            'total': len(item_ids),
+            'found': len(unique_ids),
             'ended': ended,
             'failed': failed,
             'errors': errors[:50],
@@ -15633,7 +15680,7 @@ def ebay_end_listings():
         })
 
     except Exception as e:
-        app.logger.error(f'eBay end-listings error: {str(e)}')
+        app.logger.error(f'eBay end-all-active error: {str(e)}')
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
