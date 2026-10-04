@@ -1079,7 +1079,7 @@ nav button.admin-toggle.active {
 }
 
 /* ================================================================
-   PHOTO ALBUM — home flip card back, left tile
+   PHOTO ALBUM - home flip card back, left tile
    Appended. Existing rules above are unchanged except the single
    change to .home-back-tile overflow (hidden -> overflow-y: auto)
    so the taller album isn't clipped.
@@ -1250,4 +1250,71 @@ nav button.admin-toggle.active {
     .album-controls {
         gap: 10px;
     }
+}
+
+/* ================================================================
+   OWNER PORTRAIT - right tile, top of home flip card back
+   Appended. Existing rules above unchanged.
+   ================================================================ */
+
+.home-back-tile .owner-portrait-block {
+    flex-shrink: 0;
+    margin-bottom: 12px;
+}
+
+.home-back-tile .owner-portrait-image {
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 10px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+    background: #f0f0f0;
+}
+
+.home-back-tile .owner-portrait-image img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 260px;
+    object-fit: cover;
+    object-position: center top;
+}
+
+.home-back-tile .owner-portrait-caption {
+    font-size: 0.85rem;
+    line-height: 1.45;
+    color: #333;
+    margin: 0;
+    font-style: italic;
+    text-align: left;
+    padding: 0 2px;
+}
+
+/* Ensure the map keeps a sensible flexible height beneath the portrait */
+.home-back-tile .map-container {
+    flex: 1;
+    min-height: 180px;
+}
+
+@media (max-width: 768px) {
+    .home-back-tile .owner-portrait-image img {
+        max-height: 200px;
+    }
+    .home-back-tile .owner-portrait-caption {
+        font-size: 0.8rem;
+    }
+}
+/* ================================================================
+   MAP BORDER - home flip card back, right tile
+   Appended. Existing rules above unchanged.
+   ================================================================ */
+
+.home-back-tile .map-container {
+    border: 2px solid #4CAF50;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+    border-radius: 8px;
+}
+
+.home-back-tile .map-container iframe {
+    border-radius: 6px;
 }
