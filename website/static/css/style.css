@@ -249,7 +249,7 @@ nav button.admin-toggle.active {
     border-radius: 10px;
     padding: 15px;
     color: #333;
-    overflow: hidden;
+    overflow-y: auto;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     display: flex;
     flex-direction: column;
@@ -1075,5 +1075,179 @@ nav button.admin-toggle.active {
     .admin-dashboard-footer {
         font-size: 9px;
         padding-top: 8px;
+    }
+}
+
+/* ================================================================
+   PHOTO ALBUM — home flip card back, left tile
+   Appended. Existing rules above are unchanged except the single
+   change to .home-back-tile overflow (hidden -> overflow-y: auto)
+   so the taller album isn't clipped.
+   ================================================================ */
+
+.photo-album-section {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+.photo-album-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #222;
+    margin-bottom: 10px;
+    text-shadow: none;
+}
+
+.photo-album-header i {
+    font-size: 0.95rem;
+    color: #6d4fc6;
+}
+
+.album-stack-container {
+    position: relative;
+    width: 100%;
+    height: 480px;                /* taller container */
+    background: rgba(0, 0, 0, 0.06);
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid rgba(128, 128, 128, 0.25);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.album-stack {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.album-empty {
+    color: #888;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+}
+
+.album-stack-item {
+    position: absolute;
+    width: 88%;                   /* narrower so the frame reads as a photo */
+    height: 96%;                  /* nearly full container height */
+    border-radius: 10px;
+    object-fit: cover;
+    box-shadow: 0 12px 26px -8px rgba(0, 0, 0, 0.7);
+    transition: all 0.35s ease;
+    background: #222;
+    border: 2px solid rgba(255, 255, 255, 0.6);
+    pointer-events: none;
+    opacity: 0;
+    transform: scale(0.9) translateY(8px);
+}
+
+.album-stack-item.active {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    z-index: 10;
+}
+
+.album-stack-item.prev {
+    opacity: 0.55;
+    transform: scale(0.96) translateY(-12px);
+    z-index: 5;
+}
+
+.album-stack-item.next {
+    opacity: 0.45;
+    transform: scale(0.93) translateY(14px);
+    z-index: 4;
+}
+
+.album-stack-item.far {
+    opacity: 0.25;
+    transform: scale(0.89) translateY(20px);
+    z-index: 2;
+}
+
+.album-controls {
+    position: absolute;
+    bottom: 12px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 14px;
+    z-index: 30;
+}
+
+.album-nav {
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #fff;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: 0.2s;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+    padding: 0;
+}
+
+.album-nav:hover {
+    background: #6d4fc6;
+    color: #fff;
+    transform: scale(1.08);
+}
+
+.album-nav:disabled {
+    opacity: 0.35;
+    cursor: default;
+    transform: none;
+}
+
+.album-indicator {
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.8rem;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    padding: 5px 12px;
+    border-radius: 50px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    letter-spacing: 0.5px;
+}
+
+@media (max-width: 900px) {
+    .album-stack-container {
+        height: 380px;
+    }
+}
+
+@media (max-width: 600px) {
+    .album-stack-container {
+        height: 300px;
+    }
+    .album-nav {
+        width: 30px;
+        height: 30px;
+        font-size: 0.8rem;
+    }
+    .album-controls {
+        gap: 10px;
     }
 }

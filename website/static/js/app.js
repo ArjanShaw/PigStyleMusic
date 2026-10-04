@@ -716,3 +716,160 @@ document.addEventListener('DOMContentLoaded', function() {
 
     startMenuRotation();
 });
+
+// ================================================================
+// PHOTO ALBUM — home flip card back (left tile)
+// Scoped IIFE. Runs whenever the 'home' customer tile becomes active.
+// ================================================================
+(function initHomePhotoAlbum() {
+    const IMAGE_PATH   = '/images/';           // absolute — works from /tiles/home.html
+    const IMAGE_PREFIX = 'front_page_image';
+    const IMAGE_EXT    = '.png';
+    const MAX_IMAGES   = 30;                    // safety cap
+
+    let imageUrls = [];
+    let currentIndex = 0;
+    let albumInitialized = false;
+
+    function imageExists(url) {
+        return new Promise(function(resolve) {
+            const img = new Image();
+            img.onload  = function() { resolve(true); };
+            img.onerror = function() { resolve(false); };
+            img.src = url;
+        });
+    }
+
+    async function discoverImages() {
+        const found = [];
+        for (let i = 1; i <= MAX_IMAGES; i++) {
+            const url = IMAGE_PATH + IMAGE_PREFIX + i + IMAGE_EXT;
+            const ok = await imageExists(url);
+            if (ok) found.push(url);
+            else break; // stop at first gap
+        }
+        return found;
+    }
+
+    function updateStackClasses() {
+        const stack = document.getElementById('albumStack');
+        const indicator = document.getElementById('albumIndicator');
+        if (!stack) return;
+
+        const items = stack.querySelectorAll('.album-stack-item');
+        const total = items.length;
+        if (total === 0) return;
+
+        items.forEach(function(item) {
+            item.classList.remove('active', 'prev', 'next', 'far');
+        });
+
+        items[currentIndex].classList.add('active');
+        if (indicator) indicator.textContent = (currentIndex + 1) + ' / ' + total;
+
+        if (total === 1) return;
+
+        const prevIndex = (currentIndex - 1 + total) % total;
+        const nextIndex = (currentIndex + 1) % total;
+        items[prevIndex].classList.add('prev');
+        items[nextIndex].classList.add('next');
+
+        if (total >= 3) {
+            const farIndex = (currentIndex + 2) % total;
+            if (farIndex !== currentIndex && farIndex !== prevIndex && farIndex !== nextIndex) {
+                items[farIndex].classList.add('far');
+            }
+        }
+    }
+
+    function renderAlbum() {
+        const stack = document.getElementById('albumStack');
+        const controls = document.getElementById('albumControls');
+        const prevBtn = document.getElementById('prevAlbumBtn');
+        const nextBtn = document.getElementById('nextAlbumBtn');
+        const indicator = document.getElementById('albumIndicator');
+        if (!stack) return;
+
+        stack.innerHTML = '';
+
+        if (imageUrls.length === 0) {
+            stack.innerHTML = '<div class="album-empty"><i class="fas fa-image"></i> No photos yet</div>';
+            if (controls) controls.style.display = 'none';
+            return;
+        }
+
+        imageUrls.forEach(function(src, idx) {
+            const img = document.createElement('img');
+            img.src = src;
+            img.alt = 'PigStyle photo ' + (idx + 1);
+            img.className = 'album-stack-item';
+            img.dataset.index = idx;
+            stack.appendChild(img);
+        });
+
+        if (controls) controls.style.display = 'flex';
+
+        if (imageUrls.length <= 1) {
+            if (prevBtn) prevBtn.disabled = true;
+            if (nextBtn) nextBtn.disabled = true;
+        } else {
+            if (prevBtn) prevBtn.disabled = false;
+            if (nextBtn) nextBtn.disabled = false;
+        }
+
+        // Wire navigation once
+        if (prevBtn && !prevBtn.dataset.wired) {
+            prevBtn.dataset.wired = '1';
+            prevBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (imageUrls.length <= 1) return;
+                currentIndex = (currentIndex - 1 + imageUrls.length) % imageUrls.length;
+                updateStackClasses();
+            });
+        }
+        if (nextBtn && !nextBtn.dataset.wired) {
+            nextBtn.dataset.wired = '1';
+            nextBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (imageUrls.length <= 1) return;
+                currentIndex = (currentIndex + 1) % imageUrls.length;
+                updateStackClasses();
+            });
+        }
+        if (indicator && !indicator.dataset.wired) {
+            indicator.dataset.wired = '1';
+            indicator.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+        }
+
+        updateStackClasses();
+    }
+
+    async function setupAlbum() {
+        const stack = document.getElementById('albumStack');
+        if (!stack) return;                 // home tile not loaded — nothing to do
+        if (albumInitialized) return;       // already done this session
+        albumInitialized = true;
+
+        imageUrls = await discoverImages();
+        currentIndex = 0;
+        renderAlbum();
+    }
+
+    // Re-run setup when home becomes active (also handles the very first load)
+    document.addEventListener('pageChange', function(e) {
+        if (e && e.detail && e.detail.page === 'home') {
+            setupAlbum();
+        }
+    });
+
+    // In case 'home' is the initial page and pageChange already fired before we attached
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(setupAlbum, 300);
+        });
+    } else {
+        setTimeout(setupAlbum, 300);
+    }
+})();
