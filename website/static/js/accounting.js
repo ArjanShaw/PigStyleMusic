@@ -1,5 +1,14 @@
 // ============================================================
-// accounting.js – Complete Accounting Module with Bar Charts
+// accounting.js – Accounting Module, single-source aggregation
+//
+// Data flow:
+//   loadAllTransactions()  ->  allTransactions[]
+//                          ->  monthlyAggregate{}
+//                          ->  every tab renders from memory
+//
+// No calls to /api/accounting/monthly-pl
+// No calls to /api/accounting/monthly-account-transactions
+// One raw endpoint: /api/accounting/bank-transactions-full
 // ============================================================
 
 console.log('[ACCOUNTING] Script started loading');
@@ -17,9 +26,14 @@ let journalTotalEntries = 0;
 let currentSearchTerm = '';
 let currentFilter = 'all';
 
-// Monthly P&L charts
-let monthlyPLMonths = [];
-let monthlyPLAllData = {};
+// ===== SINGLE SOURCE OF TRUTH =====
+// Populated once by loadAllTransactions().
+// Every view derives from these two.
+let allTransactions = [];       // raw rows from /api/accounting/bank-transactions-full
+let monthlyAggregate = {};      // { 'YYYY-MM': { '<account_id>': { name, code, total, transactions[] } } }
+
+// Monthly P&L chart page state
+let monthlyPLMonths = [];       // derived from monthlyAggregate keys
 let monthlyPLCurrentPage = 0;
 let monthlyPLChartInstances = {};
 
@@ -28,7 +42,6 @@ let monthlyPLChartInstances = {};
 // ============================================================
 
 function showToast(message, type = 'success') {
-    console.log('[TOAST] Called with:', message, type);
     const toast = document.createElement('div');
     toast.className = `toast-notification ${type}`;
     toast.innerHTML = message;
@@ -54,7 +67,6 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
-// Add animation styles if not present
 if (!document.getElementById('toast-styles')) {
     const style = document.createElement('style');
     style.id = 'toast-styles';
@@ -65,6 +77,92 @@ if (!document.getElementById('toast-styles')) {
         }
     `;
     document.head.appendChild(style);
+}
+
+// ============================================================
+// SINGLE FETCH + SINGLE AGGREGATION
+// ============================================================
+
+/**
+ * Fetch every bank transaction once and populate allTransactions
+ * and monthlyAggregate. Every view reads from these two from here on.
+ */
+async function loadAllTransactions() {
+    console.log('[ACCT] Loading all bank transactions...');
+    try {
+        const url = `${API_BASE}/api/accounting/bank-transactions-full?filter=all`;
+        const response = await fetch(url, {
+            credentials: 'include',
+            mode: 'cors'
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        if (data.status !== 'success') {
+            throw new Error(data.error || 'Failed to load transactions');
+        }
+
+        allTransactions = data.transactions || [];
+        monthlyAggregate = aggregateByMonthAndAccount(allTransactions);
+        monthlyPLMonths = Object.keys(monthlyAggregate).sort().reverse();
+
+        console.log(
+            `[ACCT] Loaded ${allTransactions.length} transactions across ` +
+            `${monthlyPLMonths.length} months`
+        );
+
+        return true;
+    } catch (err) {
+        console.error('[ACCT] loadAllTransactions failed:', err);
+        allTransactions = [];
+        monthlyAggregate = {};
+        monthlyPLMonths = [];
+        throw err;
+    }
+}
+
+/**
+ * Aggregate the flat transaction list into per-month, per-account buckets.
+ *
+ * Bucket key is the post_to account id (as a string). Only posted rows
+ * (post_to !== null) contribute to an account's total. Unposted rows
+ * live only in allTransactions and are shown on the Transactions tab,
+ * but they don't belong to any account yet.
+ *
+ * @param {Array} transactions - raw rows from bank-transactions-full
+ * @returns {Object} months[YYYY-MM][accountId] = { name, code, total, transactions[] }
+ */
+function aggregateByMonthAndAccount(transactions) {
+    const months = {};
+
+    for (const tx of transactions) {
+        if (!tx.transaction_date) continue;
+
+        // transaction_date is 'YYYY-MM-DD' — slice off the day.
+        const month = String(tx.transaction_date).slice(0, 7);
+        if (!month) continue;
+
+        // Skip unposted rows — they don't belong to an account yet.
+        if (tx.post_to === null || tx.post_to === undefined) continue;
+
+        const accountId = String(tx.post_to);
+
+        if (!months[month]) months[month] = {};
+        if (!months[month][accountId]) {
+            months[month][accountId] = {
+                account_id: tx.post_to,
+                name: tx.post_to_account_name || 'Unknown',
+                code: tx.post_to_account_code || '',
+                total: 0,
+                transactions: []
+            };
+        }
+
+        months[month][accountId].total += Number(tx.amount) || 0;
+        months[month][accountId].transactions.push(tx);
+    }
+
+    return months;
 }
 
 // ============================================================
@@ -96,10 +194,10 @@ async function loadAccounts() {
 function populateBulkAccountSelect() {
     const select = document.getElementById('bulk-account-select');
     if (!select) return;
-    
+
     const currentValue = select.value;
     select.innerHTML = '<option value="">Select Account</option>';
-    
+
     bankAccounts.forEach(acc => {
         const selected = acc.id == currentValue ? 'selected' : '';
         select.innerHTML += `<option value="${acc.id}" ${selected}>${acc.code} - ${acc.name}</option>`;
@@ -107,70 +205,61 @@ function populateBulkAccountSelect() {
 }
 
 // ============================================================
-// TRANSACTIONS TAB
+// TRANSACTIONS TAB (in-memory filtering)
 // ============================================================
 
-async function loadTransactions() {
-    console.log('[TRANSACTIONS] Loading transactions...');
+function loadTransactions() {
+    console.log('[TRANSACTIONS] Rendering from in-memory data...');
     const list = document.getElementById('transactions-list');
-    if (!list) {
-        console.warn('[TRANSACTIONS] transactions-list not found');
-        return;
-    }
-    
-    list.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">Loading...</div>';
-    
+    if (!list) return;
+
     const filter = document.getElementById('unposted-filter')?.value || 'all';
     const search = document.getElementById('transaction-search')?.value.trim() || '';
     currentFilter = filter;
     currentSearchTerm = search;
-    
-    try {
-        let url = `${API_BASE}/api/accounting/bank-transactions-full`;
-        const params = new URLSearchParams();
-        if (filter === 'unposted') params.append('filter', 'unposted');
-        else if (filter === 'posted') params.append('filter', 'posted');
-        else params.append('filter', 'all');
-        if (search) params.append('search', search);
-        
-        const query = params.toString();
-        if (query) url += '?' + query;
-        
-        const response = await fetch(url, { 
-            credentials: 'include',
-            mode: 'cors'
-        });
-        
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-        
-        if (data.status === 'success') {
-            renderTransactions(data.transactions || []);
-            updateBulkAssignSection(data.transactions || []);
-        } else {
-            list.innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Error loading transactions</div>';
-        }
-    } catch (err) {
-        console.error('[TRANSACTIONS] Error:', err);
-        list.innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Error: ' + err.message + '</div>';
+
+    let rows = allTransactions;
+
+    if (filter === 'unposted') {
+        rows = rows.filter(tx => tx.post_to === null || tx.post_to === undefined);
+    } else if (filter === 'posted') {
+        rows = rows.filter(tx => tx.post_to !== null && tx.post_to !== undefined);
     }
+
+    if (search) {
+        const s = search.toLowerCase();
+        rows = rows.filter(tx =>
+            (tx.description || '').toLowerCase().includes(s) ||
+            (tx.additional_info || '').toLowerCase().includes(s)
+        );
+    }
+
+    // Newest first for display
+    rows = [...rows].sort((a, b) => {
+        const da = String(a.transaction_date || '');
+        const db = String(b.transaction_date || '');
+        if (da !== db) return db.localeCompare(da);
+        return (b.id || 0) - (a.id || 0);
+    });
+
+    renderTransactions(rows);
+    updateBulkAssignSection(rows);
 }
 
 function renderTransactions(transactions) {
     const list = document.getElementById('transactions-list');
     if (!list) return;
-    
+
     if (!transactions || transactions.length === 0) {
         list.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">No transactions found</div>';
         return;
     }
-    
-    // Build account dropdown options
+
     let accountOptions = '<option value="">Select Account</option>';
     bankAccounts.forEach(acc => {
         accountOptions += `<option value="${acc.id}">${acc.code} - ${acc.name}</option>`;
     });
-    
+
     let html = '';
     transactions.forEach(tx => {
         const amount = parseFloat(tx.amount) || 0;
@@ -179,7 +268,7 @@ function renderTransactions(transactions) {
         const isProcessed = tx.post_to !== null && tx.post_to !== undefined;
         const statusColor = isProcessed ? '#28a745' : '#dc3545';
         const statusText = isProcessed ? '✅ Posted' : '⏳ Unposted';
-        
+
         html += `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; ${isProcessed ? 'background: #f0fff4;' : 'background: #fff5f5;'}">
                 <div style="flex: 1; min-width: 150px;">
@@ -201,8 +290,7 @@ function renderTransactions(transactions) {
         `;
     });
     list.innerHTML = html;
-    
-    // Add event listeners for individual assignment buttons
+
     document.querySelectorAll('.assign-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const transactionId = this.dataset.transactionId;
@@ -214,8 +302,7 @@ function renderTransactions(transactions) {
             }
         });
     });
-    
-    // Allow Enter key on select dropdowns
+
     document.querySelectorAll('.post-to-select').forEach(select => {
         select.addEventListener('keypress', function(e) {
             if (e.key === 'Enter' && this.value) {
@@ -230,9 +317,9 @@ function updateBulkAssignSection(transactions) {
     const section = document.getElementById('bulk-assign-section');
     const countSpan = document.getElementById('bulk-count');
     if (!section || !countSpan) return;
-    
+
     const unposted = transactions.filter(tx => tx.post_to === null || tx.post_to === undefined);
-    
+
     if (unposted.length > 0 && currentSearchTerm) {
         section.style.display = 'flex';
         countSpan.textContent = unposted.length;
@@ -250,23 +337,25 @@ async function assignSingleTransaction(transactionId, accountId) {
         showToast('Please select an account.', 'warning');
         return;
     }
-    
+
     try {
         const response = await fetch(`${API_BASE}/api/accounting/bank/assign-single`, {
             method: 'POST',
             credentials: 'include',
             mode: 'cors',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                transaction_id: parseInt(transactionId), 
-                post_to: parseInt(accountId) 
+            body: JSON.stringify({
+                transaction_id: parseInt(transactionId),
+                post_to: parseInt(accountId)
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (result.status === 'success') {
             showToast(`✅ Transaction assigned to ${result.account_name || 'account'}`, 'success');
+            // Refresh the single source of truth, then re-render
+            await loadAllTransactions();
             loadTransactions();
         } else {
             showToast('Error: ' + (result.error || 'Failed to assign'), 'error');
@@ -280,44 +369,42 @@ async function assignSingleTransaction(transactionId, accountId) {
 async function bulkAssignAccount() {
     const select = document.getElementById('bulk-account-select');
     const accountId = select?.value;
-    
+
     if (!accountId) {
         showToast('Please select an account to assign.', 'warning');
         return;
     }
-    
+
     if (!currentSearchTerm) {
         showToast('Please enter a search term first.', 'warning');
         return;
     }
-    
+
     const accountName = select.options[select.selectedIndex]?.text || 'selected account';
     if (!confirm(`Assign all unposted transactions matching "${currentSearchTerm}" to ${accountName}?`)) {
         return;
     }
-    
+
     try {
-        const url = `${API_BASE}/api/accounting/bank-transactions-full?search=${encodeURIComponent(currentSearchTerm)}&filter=unposted`;
-        const response = await fetch(url, { credentials: 'include', mode: 'cors' });
-        const data = await response.json();
-        
-        if (data.status !== 'success' || !data.transactions || data.transactions.length === 0) {
-            showToast('No unposted transactions found to assign.', 'warning');
-            return;
-        }
-        
-        const unpostedTransactions = data.transactions.filter(tx => tx.post_to === null || tx.post_to === undefined);
-        
+        // Use the in-memory set — no fetch needed
+        const searchLower = currentSearchTerm.toLowerCase();
+        const unpostedTransactions = allTransactions.filter(tx => {
+            if (tx.post_to !== null && tx.post_to !== undefined) return false;
+            const d = (tx.description || '').toLowerCase();
+            const a = (tx.additional_info || '').toLowerCase();
+            return d.includes(searchLower) || a.includes(searchLower);
+        });
+
         if (unpostedTransactions.length === 0) {
             showToast('No unposted transactions found to assign.', 'warning');
             return;
         }
-        
+
         const updates = unpostedTransactions.map(tx => ({
             transaction_id: tx.id,
             post_to: parseInt(accountId)
         }));
-        
+
         const updateResponse = await fetch(`${API_BASE}/api/accounting/bank/bulk-assign`, {
             method: 'POST',
             credentials: 'include',
@@ -325,11 +412,12 @@ async function bulkAssignAccount() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ updates })
         });
-        
+
         const result = await updateResponse.json();
-        
+
         if (result.status === 'success') {
             showToast(`✅ ${result.processed} transactions assigned successfully`, 'success');
+            await loadAllTransactions();
             loadTransactions();
             document.getElementById('bulk-assign-section').style.display = 'none';
             select.value = '';
@@ -354,13 +442,10 @@ function cancelBulkAssign() {
 async function loadAccountsList() {
     console.log('[ACCOUNTS] Loading accounts list...');
     const list = document.getElementById('accounts-list');
-    if (!list) {
-        console.warn('[ACCOUNTS] accounts-list not found');
-        return;
-    }
-    
+    if (!list) return;
+
     list.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">Loading...</div>';
-    
+
     try {
         const response = await fetch(`${API_BASE}/api/accounting/accounts`, {
             credentials: 'include',
@@ -368,7 +453,7 @@ async function loadAccountsList() {
         });
         if (!response.ok) throw new Error('Failed to load accounts');
         const data = await response.json();
-        
+
         if (data.status === 'success') {
             renderAccounts(data.accounts || []);
         } else {
@@ -383,12 +468,12 @@ async function loadAccountsList() {
 function renderAccounts(accounts) {
     const list = document.getElementById('accounts-list');
     if (!list) return;
-    
+
     if (!accounts || accounts.length === 0) {
         list.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">No accounts found</div>';
         return;
     }
-    
+
     const typeColors = {
         asset: '#cce5ff',
         liability: '#fff3cd',
@@ -396,7 +481,7 @@ function renderAccounts(accounts) {
         revenue: '#cce5ff',
         expense: '#f8d7da'
     };
-    
+
     let html = '';
     accounts.forEach(acc => {
         const typeColor = typeColors[acc.type] || '#f8f9fa';
@@ -430,16 +515,16 @@ async function saveAccount() {
     const code = document.getElementById('account-form-code').value.trim();
     const name = document.getElementById('account-form-name').value.trim();
     const type = document.getElementById('account-form-type').value;
-    
+
     if (!code || !name || !type) {
         showToast('Code, Name, and Type are required.', 'error');
         return;
     }
-    
+
     try {
         const url = id ? `${API_BASE}/api/accounting/accounts/${id}` : `${API_BASE}/api/accounting/accounts`;
         const method = id ? 'PUT' : 'POST';
-        
+
         const response = await fetch(url, {
             method: method,
             credentials: 'include',
@@ -448,7 +533,7 @@ async function saveAccount() {
             body: JSON.stringify({ code, name, type, description: '' })
         });
         const data = await response.json();
-        
+
         if (data.status === 'success') {
             showToast(id ? 'Account updated' : 'Account created', 'success');
             document.getElementById('add-account-modal').style.display = 'none';
@@ -470,28 +555,25 @@ async function saveAccount() {
 async function loadJournalEntries() {
     console.log('[JOURNAL] Loading journal entries...');
     const list = document.getElementById('journal-list');
-    if (!list) {
-        console.warn('[JOURNAL] journal-list not found');
-        return;
-    }
-    
+    if (!list) return;
+
     list.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">Loading...</div>';
-    
+
     const search = document.getElementById('journal-search')?.value.trim() || '';
-    
+
     try {
         const params = new URLSearchParams();
         params.append('page', journalCurrentPage);
         params.append('per_page', journalPageSize);
         if (search) params.append('search', search);
-        
+
         const response = await fetch(`${API_BASE}/api/accounting/journal?${params.toString()}`, {
             credentials: 'include',
             mode: 'cors'
         });
         if (!response.ok) throw new Error('Failed to load journal');
         const data = await response.json();
-        
+
         if (data.status === 'success') {
             journalTotalEntries = data.total || 0;
             renderJournalEntries(data.entries || []);
@@ -507,18 +589,18 @@ async function loadJournalEntries() {
 function renderJournalEntries(entries) {
     const list = document.getElementById('journal-list');
     if (!list) return;
-    
+
     if (!entries || entries.length === 0) {
         list.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">No journal entries found</div>';
         return;
     }
-    
+
     let html = '';
     entries.forEach(e => {
         const debitAmount = e.debit_amount ? '$' + parseFloat(e.debit_amount).toFixed(2) : '';
         const creditAmount = e.credit_amount ? '$' + parseFloat(e.credit_amount).toFixed(2) : '';
         const diff = (e.debit_amount || 0) - (e.credit_amount || 0);
-        
+
         html += `
             <div style="display: flex; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; ${Math.abs(diff) > 0.01 ? 'background: #fff5f5;' : ''}">
                 <div style="flex: 1; min-width: 150px;">
@@ -557,13 +639,10 @@ function resetJournalFilters() {
 async function loadBalances() {
     console.log('[BALANCE] Loading balances...');
     const list = document.getElementById('balance-list');
-    if (!list) {
-        console.warn('[BALANCE] balance-list not found');
-        return;
-    }
-    
+    if (!list) return;
+
     list.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">Loading...</div>';
-    
+
     try {
         const response = await fetch(`${API_BASE}/api/accounting/balances`, {
             credentials: 'include',
@@ -571,7 +650,7 @@ async function loadBalances() {
         });
         if (!response.ok) throw new Error('Failed to load balances');
         const data = await response.json();
-        
+
         if (data.status === 'success') {
             renderBalances(data.balances || []);
         } else {
@@ -586,12 +665,12 @@ async function loadBalances() {
 function renderBalances(balances) {
     const list = document.getElementById('balance-list');
     if (!list) return;
-    
+
     if (!balances || balances.length === 0) {
         list.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">No balances found</div>';
         return;
     }
-    
+
     const types = {
         asset: { label: 'ASSETS', color: '#28a745', items: [] },
         liability: { label: 'LIABILITIES', color: '#dc3545', items: [] },
@@ -599,21 +678,19 @@ function renderBalances(balances) {
         revenue: { label: 'REVENUE', color: '#007bff', items: [] },
         expense: { label: 'EXPENSES', color: '#fd7e14', items: [] }
     };
-    
+
     balances.forEach(b => {
         const type = b.type || 'asset';
-        if (types[type]) {
-            types[type].items.push(b);
-        }
+        if (types[type]) types[type].items.push(b);
     });
-    
+
     let html = '';
     Object.keys(types).forEach(key => {
         const group = types[key];
         if (group.items.length === 0) return;
-        
+
         html += `<div style="font-weight: 700; color: ${group.color}; padding: 8px 12px; border-bottom: 2px solid ${group.color}; margin-top: 5px;">${group.label}</div>`;
-        
+
         group.items.forEach(item => {
             const balance = item.balance || 0;
             const balanceColor = balance >= 0 ? '#28a745' : '#dc3545';
@@ -625,109 +702,23 @@ function renderBalances(balances) {
             `;
         });
     });
-    
+
     list.innerHTML = html || '<div style="text-align: center; padding: 40px; color: #999;">No balances found</div>';
 }
 
 // ============================================================
-// MONTHLY P&L BAR CHARTS
+// MONTHLY P&L BAR CHARTS (from monthlyAggregate)
 // ============================================================
 
-async function loadMonthlyPLBarChart() {
-    console.log('========================================');
-    console.log('[MONTHLY-PL] 🔄 Starting loadMonthlyPLBarChart');
-    console.log('========================================');
-    
-    const container = document.getElementById('monthly-pl-bar-chart-container');
-    if (!container) {
-        console.error('[MONTHLY-PL] ❌ Container not found!');
-        return;
-    }
-
-    container.innerHTML = '<div style="text-align: center; font-size: 14px; color: #666; padding: 40px;">Loading charts...</div>';
-
-    try {
-        const url = `${API_BASE}/api/accounting/monthly-pl`;
-        console.log(`[MONTHLY-PL] 📡 Fetching URL: ${url}`);
-        
-        const response = await fetch(url, {
-            credentials: 'include',
-            mode: 'cors'
-        });
-
-        console.log(`[MONTHLY-PL] 📡 Response status: ${response.status}`);
-        
-        if (!response.ok) {
-            console.error(`[MONTHLY-PL] ❌ HTTP Error: ${response.status}`);
-            throw new Error(`Failed to load monthly P&L: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        console.log('[MONTHLY-PL] 📊 Raw data received:', data);
-        console.log(`[MONTHLY-PL] 📊 Total entries: ${data.data ? data.data.length : 0}`);
-        
-        // ============================================================
-        // CHECK FOR RENT ENTRIES IN RAW DATA
-        // ============================================================
-        const rentEntries = data.data.filter(item => 
-            item.name && (item.name.includes('Rent') || item.name.includes('rent'))
-        );
-        console.log(`[MONTHLY-PL] 🏠 Rent entries found in raw data: ${rentEntries.length}`);
-        if (rentEntries.length > 0) {
-            console.log('[MONTHLY-PL] 🏠 Rent entries:', rentEntries);
-        } else {
-            console.warn('[MONTHLY-PL] ⚠️ NO RENT ENTRIES FOUND IN RAW DATA!');
-            console.log('[MONTHLY-PL] 🔍 First 5 items:', data.data.slice(0, 5));
-        }
-
-        if (data.status === 'success') {
-            const groupedByMonth = {};
-            data.data.forEach(item => {
-                if (!groupedByMonth[item.month]) {
-                    groupedByMonth[item.month] = [];
-                }
-                groupedByMonth[item.month].push(item);
-            });
-
-            console.log('[MONTHLY-PL] 📅 Months found:', Object.keys(groupedByMonth).sort());
-
-            // Check each month for rent entries
-            Object.keys(groupedByMonth).forEach(month => {
-                const items = groupedByMonth[month];
-                const rentInMonth = items.filter(i => 
-                    i.name && (i.name.includes('Rent') || i.name.includes('rent'))
-                );
-                if (rentInMonth.length > 0) {
-                    console.log(`[MONTHLY-PL] 🏠 Rent entries in ${month}:`, rentInMonth);
-                }
-            });
-
-            monthlyPLMonths = Object.keys(groupedByMonth).sort().reverse();
-            monthlyPLAllData = groupedByMonth;
-            monthlyPLCurrentPage = 0;
-            
-            console.log('[MONTHLY-PL] 📊 monthlyPLMonths:', monthlyPLMonths);
-            console.log('[MONTHLY-PL] 📊 monthlyPLAllData keys:', Object.keys(monthlyPLAllData));
-            
-            renderMonthlyPLChartsPage();
-        } else {
-            console.error('[MONTHLY-PL] ❌ API returned error status:', data.status);
-            container.innerHTML = `<p style="text-align:center; padding:40px; color:#dc3545;">${data.error || 'Error loading data'}</p>`;
-        }
-        
-    } catch (err) {
-        console.error('[MONTHLY-PL] ❌ Error:', err);
-        container.innerHTML = `<p style="text-align:center; padding:40px; color:#dc3545;">Error: ${err.message}</p>`;
-    }
+function loadMonthlyPLBarChart() {
+    console.log('[MONTHLY-PL] Rendering from aggregate');
+    renderMonthlyPLChartsPage();
 }
 
-
 function renderMonthlyPLChartsPage() {
-    console.log('[MONTHLY-PL] Rendering page', monthlyPLCurrentPage);
     const container = document.getElementById('monthly-pl-bar-chart-container');
-    
     if (!container) return;
-    
+
     if (!monthlyPLMonths || monthlyPLMonths.length === 0) {
         container.innerHTML = '<p style="text-align:center; padding:40px; color:#666;">No data available.</p>';
         return;
@@ -768,318 +759,15 @@ function renderMonthlyPLChartsPage() {
     `;
 
     visibleMonths.forEach((month, index) => {
-        const items = monthlyPLAllData[month] || [];
-        
-        // Use balance sign to determine revenue vs expense
-        const revenueItems = items.filter(i => i.balance > 0);
-        const expenseItems = items.filter(i => i.balance < 0);
-        
-        const totalRevenue = revenueItems.reduce((sum, i) => sum + i.balance, 0);
-        const totalExpenses = expenseItems.reduce((sum, i) => sum + i.balance, 0);
+        const accounts = monthlyAggregate[month] || {};
+        const acctList = Object.values(accounts);
+
+        const revenueItems = acctList.filter(a => a.total > 0);
+        const expenseItems = acctList.filter(a => a.total < 0);
+
+        const totalRevenue = revenueItems.reduce((s, a) => s + a.total, 0);
+        const totalExpenses = expenseItems.reduce((s, a) => s + a.total, 0);
         const netIncome = totalRevenue + totalExpenses;
-
-        const labels = [];
-        const values = [];
-        const colors = [];
-
-        revenueItems.forEach(item => {
-            labels.push(item.name);
-            values.push(item.balance);
-            colors.push('rgba(40, 167, 69, 0.85)');
-        });
-
-        expenseItems.forEach(item => {
-            labels.push(item.name);
-            values.push(item.balance);
-            colors.push('rgba(220, 53, 69, 0.75)');
-        });
-
-        labels.push('Net Income');
-        values.push(netIncome);
-        colors.push(netIncome >= 0 ? 'rgba(40, 167, 69, 0.95)' : 'rgba(220, 53, 69, 0.95)');
-
-        const chartIndex = startIndex + index;
-
-        html += `
-            <div style="background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; position: relative; min-height: 400px;">
-                <div style="text-align: center; font-weight: 600; font-size: 16px; color: #000; margin-bottom: 10px;">${month}</div>
-                <div style="text-align: center; font-size: 12px; color: #666; margin-bottom: 10px;">
-                    Revenue: <span style="color:#28a745;font-weight:bold;">$${totalRevenue.toFixed(2)}</span> | 
-                    Expenses: <span style="color:#dc3545;font-weight:bold;">$${Math.abs(totalExpenses).toFixed(2)}</span> | 
-                    Net: <span style="font-weight: bold; color: ${netIncome >= 0 ? '#28a745' : '#dc3545'};">${netIncome >= 0 ? '+' : ''}$${netIncome.toFixed(2)}</span>
-                </div>
-                <div style="position: relative; height: 280px;">
-                    <canvas id="monthly-pl-chart-${chartIndex}"></canvas>
-                </div>
-                <div style="text-align: center; font-size: 11px; color: #999; margin-top: 5px;">
-                    Click bar for details
-                </div>
-            </div>
-        `;
-    });
-
-    html += '</div>';
-    container.innerHTML = html;
-
-    // Destroy old chart instances
-    Object.keys(monthlyPLChartInstances).forEach(key => {
-        if (monthlyPLChartInstances[key]) {
-            monthlyPLChartInstances[key].destroy();
-            delete monthlyPLChartInstances[key];
-        }
-    });
-
-    setTimeout(() => {
-        visibleMonths.forEach((month, index) => {
-            const items = monthlyPLAllData[month] || [];
-            
-            // Use balance sign to determine revenue vs expense
-            const revenueItems = items.filter(i => i.balance > 0);
-            const expenseItems = items.filter(i => i.balance < 0);
-            
-            const totalRevenue = revenueItems.reduce((sum, i) => sum + i.balance, 0);
-            const totalExpenses = expenseItems.reduce((sum, i) => sum + i.balance, 0);
-            const netIncome = totalRevenue + totalExpenses;
-
-            const labels = [];
-            const values = [];
-            const colors = [];
-
-            revenueItems.forEach(item => {
-                labels.push(item.name);
-                values.push(item.balance);
-                colors.push('rgba(40, 167, 69, 0.85)');
-            });
-
-            expenseItems.forEach(item => {
-                labels.push(item.name);
-                values.push(item.balance);
-                colors.push('rgba(220, 53, 69, 0.75)');
-            });
-
-            labels.push('Net Income');
-            values.push(netIncome);
-            colors.push(netIncome >= 0 ? 'rgba(40, 167, 69, 0.95)' : 'rgba(220, 53, 69, 0.95)');
-
-            const chartIndex = startIndex + index;
-            const canvasId = `monthly-pl-chart-${chartIndex}`;
-            const canvas = document.getElementById(canvasId);
-            if (!canvas) return;
-
-            const ctx = canvas.getContext('2d');
-            
-            const chart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Amount',
-                        data: values,
-                        backgroundColor: colors,
-                        borderColor: colors.map(c => c.replace('0.85', '1').replace('0.75', '1').replace('0.95', '1')),
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    const val = context.raw;
-                                    return (val >= 0 ? '+' : '') + '$' + Math.abs(val).toFixed(2);
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                callback: function(value) {
-                                    return '$' + value;
-                                },
-                                font: { size: 9 }
-                            }
-                        },
-                        x: {
-                            ticks: {
-                                maxRotation: 45,
-                                minRotation: 45,
-                                font: { size: 8 }
-                            }
-                        }
-                    },
-                    onClick: function(e, elements) {
-                        if (elements.length === 0) return;
-                        const element = elements[0];
-                        const idx = element.index;
-                        const label = this.data.labels[idx];
-                        
-                        console.log('[MONTHLY-PL] Bar clicked:', label, 'Month:', month);
-                        
-                        if (label === 'Net Income') {
-                            showMonthlyTransactions(month, null, 'All Transactions', true);
-                            return;
-                        }
-                        
-                        const foundAccount = bankAccounts.find(a => a.name === label);
-                        if (foundAccount) {
-                            showMonthlyTransactions(month, foundAccount.id, label, true);
-                        } else {
-                            showMonthlyTransactions(month, null, label, true);
-                        }
-                    }
-                }
-            });
-
-            monthlyPLChartInstances[chartIndex] = chart;
-        });
-
-        // Pagination button event listeners
-        const prevBtn = document.getElementById('monthly-pl-prev');
-        const nextBtn = document.getElementById('monthly-pl-next');
-        
-        if (prevBtn) {
-            prevBtn.addEventListener('click', function() {
-                if (monthlyPLCurrentPage > 0) {
-                    monthlyPLCurrentPage--;
-                    renderMonthlyPLChartsPage();
-                }
-            });
-        }
-
-        if (nextBtn) {
-            nextBtn.addEventListener('click', function() {
-                const totalPages = Math.ceil(monthlyPLMonths.length / 6);
-                if (monthlyPLCurrentPage < totalPages - 1) {
-                    monthlyPLCurrentPage++;
-                    renderMonthlyPLChartsPage();
-                }
-            });
-        }
-
-    }, 100);
-}
-
-
-function renderMonthlyPLChartsPage() {
-    console.log('========================================');
-    console.log('[MONTHLY-PL] 📊 Rendering charts - Page', monthlyPLCurrentPage);
-    console.log('========================================');
-    
-    const container = document.getElementById('monthly-pl-bar-chart-container');
-    
-    if (!container) {
-        console.error('[MONTHLY-PL] ❌ Container not found!');
-        return;
-    }
-    
-    if (!monthlyPLMonths || monthlyPLMonths.length === 0) {
-        console.warn('[MONTHLY-PL] ⚠️ No months data available');
-        container.innerHTML = '<p style="text-align:center; padding:40px; color:#666;">No data available.</p>';
-        return;
-    }
-
-    console.log(`[MONTHLY-PL] 📅 Available months: ${monthlyPLMonths.join(', ')}`);
-
-    const startIndex = monthlyPLCurrentPage * 6;
-    const endIndex = Math.min(startIndex + 6, monthlyPLMonths.length);
-    const visibleMonths = monthlyPLMonths.slice(startIndex, endIndex);
-
-    console.log(`[MONTHLY-PL] 📅 Showing months ${startIndex + 1}-${endIndex} of ${monthlyPLMonths.length}: ${visibleMonths.join(', ')}`);
-
-    if (visibleMonths.length === 0) {
-        if (monthlyPLCurrentPage > 0) {
-            monthlyPLCurrentPage--;
-            renderMonthlyPLChartsPage();
-        }
-        return;
-    }
-
-    const totalPages = Math.ceil(monthlyPLMonths.length / 6);
-    const isFirstPage = monthlyPLCurrentPage === 0;
-    const isLastPage = monthlyPLCurrentPage >= totalPages - 1;
-
-    let html = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 10px 15px; background: #f8f9fa; border-radius: 8px;">
-            <div>
-                <span style="font-weight: 600; color: #000;">Monthly P&L</span>
-                <span style="color: #666; margin-left: 10px; font-size: 13px;">Showing ${startIndex + 1}-${Math.min(endIndex, monthlyPLMonths.length)} of ${monthlyPLMonths.length} months</span>
-            </div>
-            <div style="display: flex; gap: 10px;">
-                <button id="monthly-pl-prev" ${isFirstPage ? 'disabled' : ''} style="padding: 6px 16px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: ${isFirstPage ? 'not-allowed' : 'pointer'}; color: ${isFirstPage ? '#999' : '#000'};">
-                    <i class="fas fa-chevron-left"></i> Newer
-                </button>
-                <button id="monthly-pl-next" ${isLastPage ? 'disabled' : ''} style="padding: 6px 16px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: ${isLastPage ? 'not-allowed' : 'pointer'}; color: ${isLastPage ? '#999' : '#000'};">
-                    Older <i class="fas fa-chevron-right"></i>
-                </button>
-            </div>
-        </div>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; margin-bottom: 20px;">
-    `;
-
-    visibleMonths.forEach((month, index) => {
-        const items = monthlyPLAllData[month] || [];
-        
-        console.log(`[MONTHLY-PL] 📊 Month ${month}: ${items.length} items`);
-        
-        // Log rent items for this month
-        const rentItems = items.filter(i => 
-            i.name && (i.name.includes('Rent') || i.name.includes('rent'))
-        );
-        if (rentItems.length > 0) {
-            console.log(`[MONTHLY-PL] 🏠 Rent items in ${month}:`, rentItems);
-        }
-        
-        // ============================================================
-        // FIXED: Exclude Prepaid Rent (code: 1055) from net income
-        // ============================================================
-        // For chart display: show all items including Prepaid Rent
-        const displayRevenue = items.filter(i => i.balance > 0);
-        const displayExpense = items.filter(i => i.balance < 0);
-        
-        // For net income calculation: EXCLUDE Prepaid Rent (asset account 1055)
-        const revenueForNet = items.filter(i => i.balance > 0 && i.code !== '1055');
-        const expenseForNet = items.filter(i => i.balance < 0);
-        
-        const totalRevenue = revenueForNet.reduce((sum, i) => sum + i.balance, 0);
-        const totalExpenses = expenseForNet.reduce((sum, i) => sum + i.balance, 0);
-        const netIncome = totalRevenue + totalExpenses;
-        
-        console.log(`[MONTHLY-PL] 📊 ${month} - Revenue (for net): ${totalRevenue.toFixed(2)}, Expenses: ${totalExpenses.toFixed(2)}, Net Income: ${netIncome.toFixed(2)}`);
-        
-        // Build chart labels with display data (includes Prepaid Rent for visual)
-        const labels = [];
-        const values = [];
-        const colors = [];
-
-        displayRevenue.forEach(item => {
-            let label = item.name;
-            if (label.length > 15) {
-                label = label.substring(0, 13) + '...';
-            }
-            labels.push(label);
-            values.push(item.balance);
-            colors.push('rgba(40, 167, 69, 0.85)');
-        });
-
-        displayExpense.forEach(item => {
-            let label = item.name;
-            if (label.length > 15) {
-                label = label.substring(0, 13) + '...';
-            }
-            labels.push(label);
-            values.push(item.balance);
-            colors.push('rgba(220, 53, 69, 0.75)');
-        });
-
-        // Add Net Income bar with CORRECTED value
-        labels.push('Net Income');
-        values.push(netIncome);
-        colors.push(netIncome >= 0 ? 'rgba(40, 167, 69, 0.95)' : 'rgba(220, 53, 69, 0.95)');
 
         const chartIndex = startIndex + index;
 
@@ -1090,7 +778,6 @@ function renderMonthlyPLChartsPage() {
                     Revenue: <span style="color:#28a745;font-weight:bold;">$${totalRevenue.toFixed(2)}</span> | 
                     Expenses: <span style="color:#dc3545;font-weight:bold;">$${Math.abs(totalExpenses).toFixed(2)}</span> | 
                     Net: <span style="font-weight: bold; color: ${netIncome >= 0 ? '#28a745' : '#dc3545'};">${netIncome >= 0 ? '+' : ''}$${netIncome.toFixed(2)}</span>
-                    ${rentItems.length > 0 ? `| Rent: <span style="color:#dc3545;font-weight:bold;">$${Math.abs(rentItems.find(i => i.code === '6025')?.balance || 0).toFixed(2)}</span>` : ''}
                 </div>
                 <div style="position: relative; height: 300px;">
                     <canvas id="monthly-pl-chart-${chartIndex}"></canvas>
@@ -1115,62 +802,52 @@ function renderMonthlyPLChartsPage() {
 
     setTimeout(() => {
         visibleMonths.forEach((month, index) => {
-            const items = monthlyPLAllData[month] || [];
-            
-            // For display: show all items
-            const displayRevenue = items.filter(i => i.balance > 0);
-            const displayExpense = items.filter(i => i.balance < 0);
-            
-            // For net income: EXCLUDE Prepaid Rent (code: 1055)
-            const revenueForNet = items.filter(i => i.balance > 0 && i.code !== '1055');
-            const expenseForNet = items.filter(i => i.balance < 0);
-            
-            const totalRevenue = revenueForNet.reduce((sum, i) => sum + i.balance, 0);
-            const totalExpenses = expenseForNet.reduce((sum, i) => sum + i.balance, 0);
+            const accounts = monthlyAggregate[month] || {};
+            const acctList = Object.values(accounts);
+
+            const revenueItems = acctList.filter(a => a.total > 0);
+            const expenseItems = acctList.filter(a => a.total < 0);
+
+            const totalRevenue = revenueItems.reduce((s, a) => s + a.total, 0);
+            const totalExpenses = expenseItems.reduce((s, a) => s + a.total, 0);
             const netIncome = totalRevenue + totalExpenses;
 
             const labels = [];
             const values = [];
             const colors = [];
+            // Parallel array so we can look up the account on click
+            const clickTargets = [];  // { account_id } or null for net income
 
-            displayRevenue.forEach(item => {
-                let label = item.name;
-                if (label.length > 15) {
-                    label = label.substring(0, 13) + '...';
-                }
+            revenueItems.forEach(a => {
+                let label = a.name;
+                if (label.length > 15) label = label.substring(0, 13) + '...';
                 labels.push(label);
-                values.push(item.balance);
+                values.push(a.total);
                 colors.push('rgba(40, 167, 69, 0.85)');
+                clickTargets.push({ account_id: a.account_id });
             });
 
-            displayExpense.forEach(item => {
-                let label = item.name;
-                if (label.length > 15) {
-                    label = label.substring(0, 13) + '...';
-                }
+            expenseItems.forEach(a => {
+                let label = a.name;
+                if (label.length > 15) label = label.substring(0, 13) + '...';
                 labels.push(label);
-                values.push(item.balance);
+                values.push(a.total);
                 colors.push('rgba(220, 53, 69, 0.75)');
+                clickTargets.push({ account_id: a.account_id });
             });
 
             labels.push('Net Income');
             values.push(netIncome);
             colors.push(netIncome >= 0 ? 'rgba(40, 167, 69, 0.95)' : 'rgba(220, 53, 69, 0.95)');
+            clickTargets.push(null);
 
             const chartIndex = startIndex + index;
             const canvasId = `monthly-pl-chart-${chartIndex}`;
             const canvas = document.getElementById(canvasId);
-            if (!canvas) {
-                console.warn(`[MONTHLY-PL] ⚠️ Canvas ${canvasId} not found`);
-                return;
-            }
-
-            console.log(`[MONTHLY-PL] 📊 Creating chart for ${month} with ${labels.length} bars`);
-            console.log(`[MONTHLY-PL] 📊 Labels:`, labels);
-            console.log(`[MONTHLY-PL] 📊 Values:`, values);
+            if (!canvas) return;
 
             const ctx = canvas.getContext('2d');
-            
+
             const chart = new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -1179,7 +856,7 @@ function renderMonthlyPLChartsPage() {
                         label: 'Amount',
                         data: values,
                         backgroundColor: colors,
-                        borderColor: colors.map(c => c.replace('0.85', '1').replace('0.75', '1').replace('0.95', '1')),
+                        borderColor: colors.map(c => c.replace(/[\d.]+\)$/, '1)')),
                         borderWidth: 1
                     }]
                 },
@@ -1201,9 +878,7 @@ function renderMonthlyPLChartsPage() {
                         y: {
                             beginAtZero: true,
                             ticks: {
-                                callback: function(value) {
-                                    return '$' + value;
-                                },
+                                callback: function(value) { return '$' + value; },
                                 font: { size: 9 }
                             }
                         },
@@ -1219,33 +894,29 @@ function renderMonthlyPLChartsPage() {
                         if (elements.length === 0) return;
                         const element = elements[0];
                         const idx = element.index;
-                        const label = this.data.labels[idx];
-                        
-                        console.log('[MONTHLY-PL] Bar clicked:', label, 'Month:', month);
-                        
-                        if (label === 'Net Income') {
-                            showMonthlyTransactions(month, null, 'All Transactions', true);
+                        const target = clickTargets[idx];
+
+                        if (target === null) {
+                            // Net Income bar — show all transactions for the month
+                            showMonthlyTransactions(month, null, 'All Transactions');
                             return;
                         }
-                        
-                        const foundAccount = bankAccounts.find(a => a.name === label);
-                        if (foundAccount) {
-                            showMonthlyTransactions(month, foundAccount.id, label, true);
-                        } else {
-                            showMonthlyTransactions(month, null, label, true);
-                        }
+
+                        const accountId = target.account_id;
+                        const bucket = monthlyAggregate[month]?.[String(accountId)];
+                        const accountName = bucket ? bucket.name : 'Unknown';
+                        showMonthlyTransactions(month, accountId, accountName);
                     }
                 }
             });
 
             monthlyPLChartInstances[chartIndex] = chart;
-            console.log(`[MONTHLY-PL] ✅ Chart created for ${month}`);
         });
 
-        // Pagination button event listeners
+        // Pagination listeners
         const prevBtn = document.getElementById('monthly-pl-prev');
         const nextBtn = document.getElementById('monthly-pl-next');
-        
+
         if (prevBtn) {
             prevBtn.addEventListener('click', function() {
                 if (monthlyPLCurrentPage > 0) {
@@ -1268,105 +939,79 @@ function renderMonthlyPLChartsPage() {
     }, 100);
 }
 
-function showMonthlyTransactions(month, accountId, accountName, excludeOrders = false) {
-    console.log('[MODAL] Showing monthly transactions:', { month, accountId, accountName });
-    
+// ============================================================
+// MONTHLY TRANSACTIONS MODAL
+// ============================================================
+// Reads from monthlyAggregate. No fetch. No account_name string filter.
+// The set of transactions shown is exactly the set that produced
+// the bar's total — so they cannot disagree.
+// ============================================================
+
+function showMonthlyTransactions(month, accountId, accountName) {
     const modal = document.getElementById('monthly-tx-modal');
     const body = document.getElementById('modal-body');
     const title = document.getElementById('modal-title');
-    
+
     if (!modal || !body || !title) {
-        console.error('[MODAL] Modal elements not found');
         showToast('Error: Modal elements not found', 'error');
         return;
     }
 
+    // Build a nice date-range label for the modal title
     const [year, monthNumber] = month.split('-');
     const firstDay = new Date(parseInt(year), parseInt(monthNumber) - 1, 1);
     const lastDay = new Date(parseInt(year), parseInt(monthNumber), 0);
-    
-    const formatDate = function(dateValue) {
-        const monthVal = String(dateValue.getMonth() + 1).padStart(2, '0');
-        const dayVal = String(dateValue.getDate()).padStart(2, '0');
-        const yearVal = String(dateValue.getFullYear()).slice(2);
-        return monthVal + '/' + dayVal + '/' + yearVal;
-    };
-    
-    const dateRange = formatDate(firstDay) + ' - ' + formatDate(lastDay);
-    const displayName = accountName + ' - ' + dateRange;
-    title.textContent = displayName;
-    
-    body.innerHTML = '<div style="text-align: center; padding: 30px; color: #666;">Loading transactions...</div>';
+    const fmt = d => String(d.getMonth() + 1).padStart(2, '0') + '/' +
+                     String(d.getDate()).padStart(2, '0') + '/' +
+                     String(d.getFullYear()).slice(2);
+    const dateRange = fmt(firstDay) + ' - ' + fmt(lastDay);
+
+    title.textContent = `${accountName} - ${dateRange}`;
     modal.style.display = 'flex';
 
-    let url = `${API_BASE}/api/accounting/monthly-account-transactions?month=${month}`;
-    if (accountId) {
-        url = url + '&account_id=' + accountId;
-    }
-    if (excludeOrders) {
-        url = url + '&exclude_orders=true';
-    }
-    
-    console.log('[MODAL] Fetching:', url);
-    
-    fetch(url, {
-        credentials: 'include',
-        mode: 'cors'
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success' && data.transactions) {
-            renderModalTransactions(data.transactions, accountName, dateRange, accountId);
-        } else {
-            body.innerHTML = '<p style="color: #dc3545;">' + (data.error || 'Failed to load transactions') + '</p>';
+    // Collect rows
+    let rows = [];
+    const accountsInMonth = monthlyAggregate[month] || {};
+
+    if (accountId === null || accountId === undefined) {
+        // "All Transactions" for the month
+        for (const bucket of Object.values(accountsInMonth)) {
+            rows = rows.concat(bucket.transactions);
         }
-    })
-    .catch(error => {
-        console.error('[MODAL] Error:', error);
-        body.innerHTML = '<p style="color: #dc3545;">Error: ' + error.message + '</p>';
+    } else {
+        const bucket = accountsInMonth[String(accountId)];
+        if (bucket) rows = bucket.transactions.slice();
+    }
+
+    // Sort newest first
+    rows.sort((a, b) => {
+        const da = String(a.transaction_date || '');
+        const db = String(b.transaction_date || '');
+        if (da !== db) return db.localeCompare(da);
+        return (b.id || 0) - (a.id || 0);
     });
+
+    renderModalTransactions(rows, accountName, dateRange);
 }
 
-function renderModalTransactions(transactions, accountName, dateRange, accountId = null) {
+function renderModalTransactions(transactions, accountName, dateRange) {
     const body = document.getElementById('modal-body');
     if (!body) return;
-    
+
     if (!transactions || transactions.length === 0) {
         body.innerHTML = '<p style="color: #000;">No transactions found for this period.</p>';
         return;
     }
 
-    let filteredTransactions = transactions;
-    if (accountId) {
-        const account = bankAccounts.find(a => a.id == accountId);
-        if (account) {
-            filteredTransactions = transactions.filter(tx => tx.account_name === account.name);
-        }
-    }
-
-    if (!filteredTransactions || filteredTransactions.length === 0) {
-        body.innerHTML = '<p style="color: #000;">No transactions found for this account.</p>';
-        return;
-    }
-
-    const isRevenueAccount = accountName &&
-        (accountName.toLowerCase().includes('revenue') ||
-         accountName.toLowerCase().includes('sales') ||
-         accountName.toLowerCase().includes('income'));
-
     let total = 0;
-    filteredTransactions.forEach(tx => {
-        total += tx.amount || 0;
-    });
-
-    let displayTotal = isRevenueAccount ? -total : total;
+    transactions.forEach(tx => { total += Number(tx.amount) || 0; });
 
     let html = `
         <div style="background: #f8f9fa; padding: 12px 16px; border-radius: 4px; margin-bottom: 15px; display: flex; gap: 20px; flex-wrap: wrap; align-items: center; color: #000;">
             <div style="color: #000;"><strong style="color: #000;">Account:</strong> ${accountName || 'All Accounts'}</div>
             <div style="color: #000;"><strong style="color: #000;">Period:</strong> ${dateRange}</div>
-            <div style="color: #000;"><strong style="color: #000;">Transactions:</strong> ${filteredTransactions.length}</div>
-            <div style="color: #000;"><strong style="color: #000;">Total:</strong> <span style="font-weight:bold;color:${displayTotal >= 0 ? '#28a745' : '#dc3545'};">${displayTotal >= 0 ? '+' : ''}$${displayTotal.toFixed(2)}</span></div>
+            <div style="color: #000;"><strong style="color: #000;">Transactions:</strong> ${transactions.length}</div>
+            <div style="color: #000;"><strong style="color: #000;">Total:</strong> <span style="font-weight:bold;color:${total >= 0 ? '#28a745' : '#dc3545'};">${total >= 0 ? '+' : ''}$${total.toFixed(2)}</span></div>
         </div>
         <table style="width:100%; border-collapse:collapse; font-size:14px; color:#000; background:#fff;">
             <thead>
@@ -1379,63 +1024,63 @@ function renderModalTransactions(transactions, accountName, dateRange, accountId
             </thead>
             <tbody style="color: #000;">`;
 
-    filteredTransactions.forEach(tx => {
-        let displayAmount = tx.amount || 0;
-        if (isRevenueAccount) {
-            displayAmount = -tx.amount || 0;
-        }
-        const isPositive = displayAmount > 0;
-        const sign = displayAmount > 0 ? '+' : (displayAmount < 0 ? '-' : '');
-        const displayAmountStr = displayAmount !== 0 ? '$' + Math.abs(displayAmount).toFixed(2) : '';
+    transactions.forEach(tx => {
+        const amt = Number(tx.amount) || 0;
+        const isPositive = amt > 0;
+        const sign = amt > 0 ? '+' : (amt < 0 ? '-' : '');
+        const amtStr = amt !== 0 ? '$' + Math.abs(amt).toFixed(2) : '';
 
         html += `<tr style="border-bottom:1px solid #eee; color:#000;">
-            <td style="padding:8px 12px; white-space:nowrap; color:#000;">${tx.transaction_date}</td>
+            <td style="padding:8px 12px; white-space:nowrap; color:#000;">${tx.transaction_date || ''}</td>
             <td style="padding:8px 12px; color:#000;">${tx.description || ''}</td>
-            <td style="padding:8px 12px; color:#000;">${tx.account_name || ''}</td>
-            <td style="padding:8px 12px; text-align:right; font-weight:600; color: ${isPositive ? '#28a745' : '#dc3545'};">${sign}${displayAmountStr}</td>
+            <td style="padding:8px 12px; color:#000;">${tx.post_to_account_name || ''}</td>
+            <td style="padding:8px 12px; text-align:right; font-weight:600; color: ${isPositive ? '#28a745' : '#dc3545'};">${sign}${amtStr}</td>
         </tr>`;
     });
 
     html += `<tr class="total-row" style="font-weight:bold; background:#f0f0f0; color:#000;">
         <td colspan="3" style="padding:8px 12px; color:#000;"><strong style="color:#000;">Total</strong></td>
-        <td style="padding:8px 12px; text-align:right; color:${displayTotal >= 0 ? '#28a745' : '#dc3545'};">${displayTotal >= 0 ? '+' : ''}${displayTotal !== 0 ? '$' + displayTotal.toFixed(2) : ''}</td>
+        <td style="padding:8px 12px; text-align:right; color:${total >= 0 ? '#28a745' : '#dc3545'};">${total >= 0 ? '+' : ''}${total !== 0 ? '$' + total.toFixed(2) : ''}</td>
     </tr>`;
     html += '</tbody></table>';
+
     body.innerHTML = html;
+}
+
+function closeMonthlyModal() {
+    document.getElementById('monthly-tx-modal').style.display = 'none';
 }
 
 // ============================================================
 // INITIALIZATION
 // ============================================================
 
-function initAccounting() {
+async function initAccounting() {
     console.log('[INIT] initAccounting called');
-    
+
     const container = document.getElementById('accounting-container');
     if (!container) {
         console.error('[INIT] Container not found');
         return;
     }
-    console.log('[INIT] Container found');
 
     // Tab switching
     document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const sub = this.dataset.subtab;
             console.log('[INIT] Tab clicked:', sub);
-            
+
             document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(t => {
                 t.style.background = '#e9ecef';
                 t.style.color = '#333';
             });
             this.style.background = '#007bff';
             this.style.color = 'white';
-            
+
             document.querySelectorAll('.sub-tab-content').forEach(c => c.style.display = 'none');
             const target = document.getElementById('sub-' + sub);
             if (target) target.style.display = 'flex';
-            
-            // Load data for tab
+
             if (sub === 'transactions') {
                 loadTransactions();
             } else if (sub === 'accounts') {
@@ -1454,20 +1099,21 @@ function initAccounting() {
     document.getElementById('search-btn')?.addEventListener('click', function() {
         loadTransactions();
     });
-    
+
     document.getElementById('transaction-search')?.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             loadTransactions();
         }
     });
-    
+
     document.getElementById('clear-search-btn')?.addEventListener('click', function() {
         document.getElementById('transaction-search').value = '';
         document.getElementById('bulk-assign-section').style.display = 'none';
         loadTransactions();
     });
 
-    document.getElementById('refresh-btn')?.addEventListener('click', function() {
+    document.getElementById('refresh-btn')?.addEventListener('click', async function() {
+        await loadAllTransactions();
         loadTransactions();
     });
 
@@ -1479,7 +1125,7 @@ function initAccounting() {
     document.getElementById('bulk-assign-btn')?.addEventListener('click', function() {
         bulkAssignAccount();
     });
-    
+
     document.getElementById('bulk-cancel-btn')?.addEventListener('click', function() {
         cancelBulkAssign();
     });
@@ -1499,24 +1145,25 @@ function initAccounting() {
 
     // Click outside modal to close
     document.getElementById('add-account-modal')?.addEventListener('click', function(e) {
-        if (e.target === this) {
-            this.style.display = 'none';
-        }
+        if (e.target === this) this.style.display = 'none';
     });
 
     document.getElementById('monthly-tx-modal')?.addEventListener('click', function(e) {
-        if (e.target === this) {
-            this.style.display = 'none';
-        }
+        if (e.target === this) this.style.display = 'none';
     });
 
-    // Load initial data
-    loadAccounts().then(() => {
+    // Load everything once
+    try {
+        await loadAccounts();
+        await loadAllTransactions();
         loadTransactions();
-    });
-    
+    } catch (err) {
+        console.error('[INIT] Failed to initialize:', err);
+        showToast('Failed to load accounting data: ' + err.message, 'error');
+    }
+
     console.log('[INIT] Initialization complete');
 }
 
-// Expose initAccounting globally so app.js can call it
+// Expose globally so app.js can call it
 window.initAccounting = initAccounting;
