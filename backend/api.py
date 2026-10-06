@@ -7467,102 +7467,8 @@ def get_balances():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-@app.route('/api/accounting/monthly-pl', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def monthly_pl():
-    """
-    Get monthly P&L data from BOTH bank_transactions AND journal_entries_simple (manual only).
-    """
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT id FROM accounts WHERE type = "asset"')
-        asset_rows = cursor.fetchall()
-        asset_ids = [str(row['id']) for row in asset_rows]
-        asset_ids_str = ','.join(asset_ids) if asset_ids else '0'
-        
-        cursor.execute('SELECT id FROM accounts WHERE code = "1016"')
-        private_row = cursor.fetchone()
-        private_id = str(private_row['id']) if private_row else '0'
-        
-        query = f'''
-            SELECT 
-                strftime('%Y-%m', bt.transaction_date) AS month,
-                a.type,
-                a.code,
-                a.name,
-                SUM(bt.amount) AS balance
-            FROM bank_transactions bt
-            LEFT JOIN accounts a ON a.id = bt.post_to
-            LEFT JOIN accounts f ON f.id = bt.post_from
-            WHERE bt.post_to IS NOT NULL
-              AND NOT (f.type = 'asset' AND a.type = 'asset')
-              AND bt.post_from != {private_id}
-              AND bt.post_to != {private_id}
-              AND bt.post_to != 52
-            GROUP BY strftime('%Y-%m', bt.transaction_date), a.id
-            
-            UNION ALL
-            
-            SELECT 
-                strftime('%Y-%m', je.transaction_date) AS month,
-                a.type,
-                a.code,
-                a.name,
-                SUM(
-                    CASE 
-                        WHEN je.post_from = a.id THEN -je.amount / 100.0
-                        WHEN je.post_to = a.id THEN je.amount / 100.0
-                        ELSE 0
-                    END
-                ) AS balance
-            FROM journal_entries_simple je
-            JOIN accounts a ON a.id = je.post_from OR a.id = je.post_to
-            WHERE je.source_type = 'manual'
-              AND a.id != 52
-            GROUP BY strftime('%Y-%m', je.transaction_date), a.id
-        '''
-        
-        cursor.execute(query)
-        rows = cursor.fetchall()
-        conn.close()
-        
-        from collections import defaultdict
-        aggregated = defaultdict(lambda: defaultdict(float))
-        
-        for row in rows:
-            month = row['month']
-            if not month:
-                continue
-            key = f"{row['code']}_{row['name']}"
-            aggregated[month][key] += float(row['balance'] or 0)
-        
-        result = []
-        for month, accounts in sorted(aggregated.items()):
-            for key, balance in accounts.items():
-                parts = key.split('_', 1)
-                code = parts[0] if len(parts) > 0 else ''
-                name = parts[1] if len(parts) > 1 else ''
-                result.append({
-                    'month': month,
-                    'code': code,
-                    'name': name,
-                    'balance': balance
-                })
-        
-        return jsonify({
-            'status': 'success',
-            'data': result,
-            'count': len(result)
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error in monthly_pl: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-     
+
+
 # ===== SINGLE TRANSACTION ASSIGN =====
 
 @app.route('/api/accounting/bank/assign-single', methods=['POST'])
@@ -8039,67 +7945,107 @@ def mark_sold_on_discogs():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
- 
+ # ============================================================
+# MANUAL JOURNAL ENTRIES ENDPOINT
+# ============================================================
+# Returns raw journal_entries_simple rows where source_type = 'manual',
+# joined with account names for both the post_from and post_to sides.
+#
+# Each row represents ONE side of a double entry. A typical manual
+# entry contributes TWO rows to the client: the "from" side (which
+# debits/credits the source account) and the "to" side (which does
+# the mirror). The client is expected to normalize these into the
+# shape used by the transaction aggregator.
+#
+# Amounts are returned in CENTS (as stored in journal_entries_simple)
+# to keep the raw data faithful. The client divides by 100.
+# ============================================================
 
-@app.route('/api/accounting/monthly-account-transactions', methods=['GET'])
+@app.route('/api/accounting/manual-entries', methods=['GET'])
 @login_required
 @role_required(['admin'])
-def monthly_account_transactions():
+def accounting_manual_entries():
     """
-    Return transactions for a given month directly from bank_transactions.
+    Fetch all manual journal entries from journal_entries_simple.
+
+    Query params (optional):
+        date_from     YYYY-MM-DD, inclusive lower bound
+        date_to       YYYY-MM-DD, inclusive upper bound
+        limit         default 5000
     """
-    month = request.args.get('month')
-    account_id = request.args.get('account_id', type=int)
-    exclude_orders = request.args.get('exclude_orders', 'false').lower() == 'true'
+    try:
+        date_from = request.args.get('date_from')
+        date_to = request.args.get('date_to')
+        limit = request.args.get('limit', 5000, type=int)
 
-    if not month:
-        return jsonify({'status': 'error', 'error': 'month required'}), 400
+        conn = get_db()
+        cursor = conn.cursor()
 
-    conn = get_db()
-    cursor = conn.cursor()
+        query = '''
+            SELECT 
+                jes.id,
+                jes.transaction_date,
+                jes.description,
+                jes.source_type,
+                jes.source_id,
+                jes.post_from,
+                jes.post_to,
+                jes.amount,
+                jes.created_at,
+                af.code AS post_from_code,
+                af.name AS post_from_name,
+                at.code AS post_to_code,
+                at.name AS post_to_name
+            FROM journal_entries_simple jes
+            LEFT JOIN accounts af ON af.id = jes.post_from
+            LEFT JOIN accounts at ON at.id = jes.post_to
+            WHERE jes.source_type = 'manual'
+        '''
+        params = []
 
-    query = '''
-        SELECT 
-            bt.id,
-            bt.transaction_date,
-            bt.description,
-            bt.amount,
-            bt.post_to,
-            a.name AS account_name,
-            bt.additional_info
-        FROM bank_transactions bt
-        LEFT JOIN accounts a ON a.id = bt.post_to
-        WHERE strftime('%Y-%m', bt.transaction_date) = ?
-    '''
-    params = [month]
+        if date_from:
+            query += ' AND date(jes.transaction_date) >= date(?)'
+            params.append(date_from)
+        if date_to:
+            query += ' AND date(jes.transaction_date) <= date(?)'
+            params.append(date_to)
 
-    if account_id is not None:
-        query += ' AND bt.post_to = ?'
-        params.append(account_id)
+        query += ' ORDER BY jes.transaction_date DESC, jes.id DESC LIMIT ?'
+        params.append(limit)
 
-    query += ' ORDER BY bt.transaction_date DESC, bt.id DESC'
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
 
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
+        entries = []
+        for row in rows:
+            entries.append({
+                'id': row['id'],
+                'transaction_date': row['transaction_date'],
+                'description': row['description'] or '',
+                'source_type': row['source_type'],
+                'source_id': row['source_id'],
+                'post_from': row['post_from'],
+                'post_to': row['post_to'],
+                'amount': row['amount'],          # cents, signed
+                'created_at': row['created_at'],
+                'post_from_code': row['post_from_code'],
+                'post_from_name': row['post_from_name'],
+                'post_to_code': row['post_to_code'],
+                'post_to_name': row['post_to_name']
+            })
 
-    transactions = []
-    for row in rows:
-        transactions.append({
-            'id': row['id'],
-            'transaction_date': row['transaction_date'],
-            'description': row['description'] or '',
-            'amount': row['amount'] or 0,
-            'account_name': row['account_name'] or '',
-            'additional_info': row['additional_info'] or '',
-            'processed': row['post_to'] is not None
+        return jsonify({
+            'status': 'success',
+            'entries': entries,
+            'count': len(entries)
         })
 
-    return jsonify({
-        'status': 'success',
-        'transactions': transactions
-    })
-
+    except Exception as e:
+        app.logger.error(f"Error fetching manual entries: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+ 
 @app.route('/api/accounting/bank-transactions/<int:transaction_id>/unpost', methods=['PUT'])
 @login_required
 @role_required(['admin'])

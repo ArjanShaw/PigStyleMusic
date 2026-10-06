@@ -1,14 +1,22 @@
 // ============================================================
-// accounting.js – Accounting Module, single-source aggregation
+// accounting.js – Accounting Module
 //
-// Data flow:
-//   loadAllTransactions()  ->  allTransactions[]
-//                          ->  monthlyAggregate{}
-//                          ->  every tab renders from memory
+// Data sources:
+//   1. /api/accounting/bank-transactions-full  → bank rows (dollars)
+//   2. /api/accounting/manual-entries          → manual journal entries (cents)
 //
-// No calls to /api/accounting/monthly-pl
-// No calls to /api/accounting/monthly-account-transactions
-// One raw endpoint: /api/accounting/bank-transactions-full
+// Both are normalized into a single `allTransactions[]` array, then
+// aggregated by `aggregateByMonthAndAccount()` into `monthlyAggregate`.
+// Every view derives from those two in-memory structures.
+//
+// Normalization rules for manual entries:
+//   - amount (cents) → dollars  : / 100
+//   - Each entry becomes TWO rows: the post_to side (+amount) and
+//     the post_from side (−amount).
+//   - Account 52 (Prepaid Rent) is excluded on both sides, matching
+//     the legacy monthly-pl behavior.
+//   - Tagged with _source: 'journal_manual' so the Transactions tab
+//     can hide them while P&L charts/modal include them.
 // ============================================================
 
 console.log('[ACCOUNTING] Script started loading');
@@ -17,6 +25,9 @@ console.log('[ACCOUNTING] Script started loading');
 const API_BASE = window.location.hostname === 'localhost' 
     ? 'http://localhost:5000' 
     : 'https://www.pigstylemusic.com';
+
+// ===== CONSTANTS =====
+const PREPAID_RENT_ACCOUNT_ID = 52;
 
 // ===== GLOBAL VARIABLES =====
 let bankAccounts = [];
@@ -27,9 +38,7 @@ let currentSearchTerm = '';
 let currentFilter = 'all';
 
 // ===== SINGLE SOURCE OF TRUTH =====
-// Populated once by loadAllTransactions().
-// Every view derives from these two.
-let allTransactions = [];       // raw rows from /api/accounting/bank-transactions-full
+let allTransactions = [];       // normalized: bank + manual (dollars)
 let monthlyAggregate = {};      // { 'YYYY-MM': { '<account_id>': { name, code, total, transactions[] } } }
 
 // Monthly P&L chart page state
@@ -80,57 +89,153 @@ if (!document.getElementById('toast-styles')) {
 }
 
 // ============================================================
-// SINGLE FETCH + SINGLE AGGREGATION
+// FETCH + NORMALIZE + AGGREGATE
 // ============================================================
 
 /**
- * Fetch every bank transaction once and populate allTransactions
- * and monthlyAggregate. Every view reads from these two from here on.
+ * Fetch bank transactions and manual entries in parallel, normalize
+ * both into the same shape, and populate allTransactions/monthlyAggregate.
  */
 async function loadAllTransactions() {
-    console.log('[ACCT] Loading all bank transactions...');
-    try {
-        const url = `${API_BASE}/api/accounting/bank-transactions-full?filter=all`;
-        const response = await fetch(url, {
-            credentials: 'include',
-            mode: 'cors'
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
+    console.log('[ACCT] Loading bank transactions and manual entries...');
 
-        if (data.status !== 'success') {
-            throw new Error(data.error || 'Failed to load transactions');
+    const [bankResult, manualResult] = await Promise.allSettled([
+        fetchBankTransactions(),
+        fetchManualEntries()
+    ]);
+
+    const bankRows = bankResult.status === 'fulfilled' ? bankResult.value : [];
+    const manualRows = manualResult.status === 'fulfilled' ? manualResult.value : [];
+
+    if (bankResult.status === 'rejected') {
+        console.error('[ACCT] bank fetch failed:', bankResult.reason);
+    }
+    if (manualResult.status === 'rejected') {
+        console.error('[ACCT] manual fetch failed:', manualResult.reason);
+    }
+
+    const normalizedManual = normalizeManualEntries(manualRows);
+
+    allTransactions = [...bankRows, ...normalizedManual];
+    monthlyAggregate = aggregateByMonthAndAccount(allTransactions);
+    monthlyPLMonths = Object.keys(monthlyAggregate).sort().reverse();
+
+    console.log(
+        `[ACCT] Loaded ${bankRows.length} bank rows + ${normalizedManual.length} manual rows ` +
+        `= ${allTransactions.length} total across ${monthlyPLMonths.length} months`
+    );
+
+    return allTransactions;
+}
+
+/**
+ * Fetch raw bank transactions from /api/accounting/bank-transactions-full.
+ * Returns the raw rows (with amounts already in dollars).
+ */
+async function fetchBankTransactions() {
+    const url = `${API_BASE}/api/accounting/bank-transactions-full?filter=all`;
+    const response = await fetch(url, {
+        credentials: 'include',
+        mode: 'cors'
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    if (data.status !== 'success') {
+        throw new Error(data.error || 'Failed to load bank transactions');
+    }
+    return (data.transactions || []).map(tx => ({
+        ...tx,
+        _source: 'bank'
+    }));
+}
+
+/**
+ * Fetch raw manual journal entries from /api/accounting/manual-entries.
+ * Returns raw rows; amount is in CENTS.
+ */
+async function fetchManualEntries() {
+    const url = `${API_BASE}/api/accounting/manual-entries`;
+    const response = await fetch(url, {
+        credentials: 'include',
+        mode: 'cors'
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    if (data.status !== 'success') {
+        throw new Error(data.error || 'Failed to load manual entries');
+    }
+    return data.entries || [];
+}
+
+/**
+ * Convert raw manual entries into the bank-transaction shape so the
+ * same aggregator works on both.
+ *
+ * Each manual entry contributes TWO rows:
+ *   - the post_to side   with amount = +dollars
+ *   - the post_from side with amount = -dollars
+ *
+ * Account 52 (Prepaid Rent) is skipped on both sides, matching the
+ * legacy monthly-pl behavior. This avoids double-counting the rent
+ * transfer that touches both a cash account and prepaid rent.
+ *
+ * Amounts arrive in cents; divide by 100 to get dollars.
+ */
+function normalizeManualEntries(entries) {
+    const out = [];
+
+    for (const e of entries) {
+        if (!e.transaction_date) continue;
+
+        const cents = Number(e.amount) || 0;
+        const dollars = cents / 100.0;
+        const baseId = `manual_${e.id}`;
+
+        // post_to side: +amount
+        if (e.post_to && Number(e.post_to) !== PREPAID_RENT_ACCOUNT_ID) {
+            out.push({
+                id: `${baseId}_to`,
+                transaction_date: e.transaction_date,
+                description: e.description || '',
+                amount: dollars,
+                additional_info: `Manual entry #${e.id}`,
+                post_from: e.post_from,
+                post_to: e.post_to,
+                post_from_account_name: e.post_from_name || null,
+                post_from_account_code: e.post_from_code || null,
+                post_to_account_name: e.post_to_name || null,
+                post_to_account_code: e.post_to_code || null,
+                _source: 'journal_manual',
+                _manual_id: e.id
+            });
         }
 
-        allTransactions = data.transactions || [];
-        monthlyAggregate = aggregateByMonthAndAccount(allTransactions);
-        monthlyPLMonths = Object.keys(monthlyAggregate).sort().reverse();
-
-        console.log(
-            `[ACCT] Loaded ${allTransactions.length} transactions across ` +
-            `${monthlyPLMonths.length} months`
-        );
-
-        return true;
-    } catch (err) {
-        console.error('[ACCT] loadAllTransactions failed:', err);
-        allTransactions = [];
-        monthlyAggregate = {};
-        monthlyPLMonths = [];
-        throw err;
+        // post_from side: -amount
+        if (e.post_from && Number(e.post_from) !== PREPAID_RENT_ACCOUNT_ID) {
+            out.push({
+                id: `${baseId}_from`,
+                transaction_date: e.transaction_date,
+                description: e.description || '',
+                amount: -dollars,
+                additional_info: `Manual entry #${e.id}`,
+                post_from: e.post_from,
+                post_to: e.post_from,
+                post_from_account_name: e.post_from_name || null,
+                post_from_account_code: e.post_from_code || null,
+                post_to_account_name: e.post_from_name || null,
+                post_to_account_code: e.post_from_code || null,
+                _source: 'journal_manual',
+                _manual_id: e.id
+            });
+        }
     }
+
+    return out;
 }
 
 /**
  * Aggregate the flat transaction list into per-month, per-account buckets.
- *
- * Bucket key is the post_to account id (as a string). Only posted rows
- * (post_to !== null) contribute to an account's total. Unposted rows
- * live only in allTransactions and are shown on the Transactions tab,
- * but they don't belong to any account yet.
- *
- * @param {Array} transactions - raw rows from bank-transactions-full
- * @returns {Object} months[YYYY-MM][accountId] = { name, code, total, transactions[] }
+ * Only rows with a non-null post_to contribute to an account total.
  */
 function aggregateByMonthAndAccount(transactions) {
     const months = {};
@@ -138,11 +243,9 @@ function aggregateByMonthAndAccount(transactions) {
     for (const tx of transactions) {
         if (!tx.transaction_date) continue;
 
-        // transaction_date is 'YYYY-MM-DD' — slice off the day.
         const month = String(tx.transaction_date).slice(0, 7);
         if (!month) continue;
 
-        // Skip unposted rows — they don't belong to an account yet.
         if (tx.post_to === null || tx.post_to === undefined) continue;
 
         const accountId = String(tx.post_to);
@@ -205,7 +308,11 @@ function populateBulkAccountSelect() {
 }
 
 // ============================================================
-// TRANSACTIONS TAB (in-memory filtering)
+// TRANSACTIONS TAB
+// ============================================================
+// Bank rows only. Manual journal entries are excluded from the
+// Transactions tab by design — they are corrections, not bank
+// activity. They still appear on the P&L chart and in the modal.
 // ============================================================
 
 function loadTransactions() {
@@ -218,7 +325,8 @@ function loadTransactions() {
     currentFilter = filter;
     currentSearchTerm = search;
 
-    let rows = allTransactions;
+    // Bank transactions only — manual entries are not editable here.
+    let rows = allTransactions.filter(tx => tx._source === 'bank');
 
     if (filter === 'unposted') {
         rows = rows.filter(tx => tx.post_to === null || tx.post_to === undefined);
@@ -234,7 +342,6 @@ function loadTransactions() {
         );
     }
 
-    // Newest first for display
     rows = [...rows].sort((a, b) => {
         const da = String(a.transaction_date || '');
         const db = String(b.transaction_date || '');
@@ -354,7 +461,6 @@ async function assignSingleTransaction(transactionId, accountId) {
 
         if (result.status === 'success') {
             showToast(`✅ Transaction assigned to ${result.account_name || 'account'}`, 'success');
-            // Refresh the single source of truth, then re-render
             await loadAllTransactions();
             loadTransactions();
         } else {
@@ -386,9 +492,9 @@ async function bulkAssignAccount() {
     }
 
     try {
-        // Use the in-memory set — no fetch needed
         const searchLower = currentSearchTerm.toLowerCase();
         const unpostedTransactions = allTransactions.filter(tx => {
+            if (tx._source !== 'bank') return false;
             if (tx.post_to !== null && tx.post_to !== undefined) return false;
             const d = (tx.description || '').toLowerCase();
             const a = (tx.additional_info || '').toLowerCase();
@@ -707,7 +813,7 @@ function renderBalances(balances) {
 }
 
 // ============================================================
-// MONTHLY P&L BAR CHARTS (from monthlyAggregate)
+// MONTHLY P&L BAR CHARTS (bank + manual, aggregated client-side)
 // ============================================================
 
 function loadMonthlyPLBarChart() {
@@ -792,7 +898,6 @@ function renderMonthlyPLChartsPage() {
     html += '</div>';
     container.innerHTML = html;
 
-    // Destroy old chart instances
     Object.keys(monthlyPLChartInstances).forEach(key => {
         if (monthlyPLChartInstances[key]) {
             monthlyPLChartInstances[key].destroy();
@@ -815,8 +920,7 @@ function renderMonthlyPLChartsPage() {
             const labels = [];
             const values = [];
             const colors = [];
-            // Parallel array so we can look up the account on click
-            const clickTargets = [];  // { account_id } or null for net income
+            const clickTargets = [];   // { account_id } or null for net income
 
             revenueItems.forEach(a => {
                 let label = a.name;
@@ -897,7 +1001,6 @@ function renderMonthlyPLChartsPage() {
                         const target = clickTargets[idx];
 
                         if (target === null) {
-                            // Net Income bar — show all transactions for the month
                             showMonthlyTransactions(month, null, 'All Transactions');
                             return;
                         }
@@ -913,7 +1016,6 @@ function renderMonthlyPLChartsPage() {
             monthlyPLChartInstances[chartIndex] = chart;
         });
 
-        // Pagination listeners
         const prevBtn = document.getElementById('monthly-pl-prev');
         const nextBtn = document.getElementById('monthly-pl-next');
 
@@ -942,10 +1044,6 @@ function renderMonthlyPLChartsPage() {
 // ============================================================
 // MONTHLY TRANSACTIONS MODAL
 // ============================================================
-// Reads from monthlyAggregate. No fetch. No account_name string filter.
-// The set of transactions shown is exactly the set that produced
-// the bar's total — so they cannot disagree.
-// ============================================================
 
 function showMonthlyTransactions(month, accountId, accountName) {
     const modal = document.getElementById('monthly-tx-modal');
@@ -957,7 +1055,6 @@ function showMonthlyTransactions(month, accountId, accountName) {
         return;
     }
 
-    // Build a nice date-range label for the modal title
     const [year, monthNumber] = month.split('-');
     const firstDay = new Date(parseInt(year), parseInt(monthNumber) - 1, 1);
     const lastDay = new Date(parseInt(year), parseInt(monthNumber), 0);
@@ -969,12 +1066,10 @@ function showMonthlyTransactions(month, accountId, accountName) {
     title.textContent = `${accountName} - ${dateRange}`;
     modal.style.display = 'flex';
 
-    // Collect rows
     let rows = [];
     const accountsInMonth = monthlyAggregate[month] || {};
 
     if (accountId === null || accountId === undefined) {
-        // "All Transactions" for the month
         for (const bucket of Object.values(accountsInMonth)) {
             rows = rows.concat(bucket.transactions);
         }
@@ -983,12 +1078,11 @@ function showMonthlyTransactions(month, accountId, accountName) {
         if (bucket) rows = bucket.transactions.slice();
     }
 
-    // Sort newest first
     rows.sort((a, b) => {
         const da = String(a.transaction_date || '');
         const db = String(b.transaction_date || '');
         if (da !== db) return db.localeCompare(da);
-        return (b.id || 0) - (a.id || 0);
+        return String(b.id).localeCompare(String(a.id));
     });
 
     renderModalTransactions(rows, accountName, dateRange);
@@ -1018,7 +1112,7 @@ function renderModalTransactions(transactions, accountName, dateRange) {
                 <tr style="background:#f8f9fa; color:#000;">
                     <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd; color:#000;">Date</th>
                     <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd; color:#000;">Description</th>
-                    <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd; color:#000;">Account</th>
+                    <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd; color:#000;">Source</th>
                     <th style="padding:8px 12px; text-align:right; border-bottom:2px solid #ddd; color:#000;">Amount</th>
                 </tr>
             </thead>
@@ -1029,11 +1123,12 @@ function renderModalTransactions(transactions, accountName, dateRange) {
         const isPositive = amt > 0;
         const sign = amt > 0 ? '+' : (amt < 0 ? '-' : '');
         const amtStr = amt !== 0 ? '$' + Math.abs(amt).toFixed(2) : '';
+        const sourceLabel = tx._source === 'journal_manual' ? 'Manual' : 'Bank';
 
         html += `<tr style="border-bottom:1px solid #eee; color:#000;">
             <td style="padding:8px 12px; white-space:nowrap; color:#000;">${tx.transaction_date || ''}</td>
             <td style="padding:8px 12px; color:#000;">${tx.description || ''}</td>
-            <td style="padding:8px 12px; color:#000;">${tx.post_to_account_name || ''}</td>
+            <td style="padding:8px 12px; color:#000;">${sourceLabel}</td>
             <td style="padding:8px 12px; text-align:right; font-weight:600; color: ${isPositive ? '#28a745' : '#dc3545'};">${sign}${amtStr}</td>
         </tr>`;
     });
@@ -1064,7 +1159,6 @@ async function initAccounting() {
         return;
     }
 
-    // Tab switching
     document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const sub = this.dataset.subtab;
@@ -1095,7 +1189,6 @@ async function initAccounting() {
         });
     });
 
-    // Search button
     document.getElementById('search-btn')?.addEventListener('click', function() {
         loadTransactions();
     });
@@ -1121,7 +1214,6 @@ async function initAccounting() {
         loadTransactions();
     });
 
-    // Bulk Assign
     document.getElementById('bulk-assign-btn')?.addEventListener('click', function() {
         bulkAssignAccount();
     });
@@ -1130,7 +1222,6 @@ async function initAccounting() {
         cancelBulkAssign();
     });
 
-    // Add Account modal
     document.getElementById('add-account-btn')?.addEventListener('click', function() {
         showAddAccountModal();
     });
@@ -1143,7 +1234,6 @@ async function initAccounting() {
         saveAccount();
     });
 
-    // Click outside modal to close
     document.getElementById('add-account-modal')?.addEventListener('click', function(e) {
         if (e.target === this) this.style.display = 'none';
     });
@@ -1152,7 +1242,6 @@ async function initAccounting() {
         if (e.target === this) this.style.display = 'none';
     });
 
-    // Load everything once
     try {
         await loadAccounts();
         await loadAllTransactions();
@@ -1165,5 +1254,4 @@ async function initAccounting() {
     console.log('[INIT] Initialization complete');
 }
 
-// Expose globally so app.js can call it
 window.initAccounting = initAccounting;
