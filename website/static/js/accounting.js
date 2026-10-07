@@ -1,28 +1,50 @@
 // ============================================================
 // accounting.js – Accounting Module
 //
-// Data sources:
-//   1. /api/accounting/bank-transactions-full  → bank rows (dollars)
+// DATA MODEL
+// ----------
+// Two source endpoints:
+//   1. /api/accounting/bank-transactions-full  → bank rows (dollars, signed)
 //   2. /api/accounting/manual-entries          → manual journal entries (cents)
 //
-// Both are normalized into a single `allTransactions[]` array, then
-// aggregated by `aggregateByMonthAndAccount()` into `monthlyAggregate`.
+// Every raw row is normalized into a flat list of "postings":
 //
-// Views:
-//   - Transactions tab   → allTransactions (bank only)
-//   - Monthly P&L chart  → monthlyAggregate (revenue + expense only)
-//   - Modal              → monthlyAggregate buckets
-//   - Balance tab        → computeBalances() over allTransactions
-//                          with expandable per-account transaction lists
+//   { id, transaction_date, description, additional_info,
+//     account_id, delta, direction, source }
 //
-// Balance semantics:
-//   - Opening balance is treated as 0.
-//   - Each account accumulates in its natural direction:
-//       asset, expense      → debit-normal  (debits add, credits subtract)
-//       liability, equity, revenue → credit-normal (credits add, debits subtract)
-//   - Result: every account reads positive when "healthy" in its own terms.
+// where:
+//   account_id  = the account this posting affects
+//   delta       = signed dollar change to that account's balance
+//                 (positive = increase, negative = decrease)
+//   direction   = 'in' | 'out' — for display only
+//   source      = 'bank' | 'journal_manual'
 //
-// Retired endpoints (no longer called from the frontend):
+// BANK ROW  (raw: post_from=bank, post_to=category, amount signed)
+//   For a positive raw amount (money entered the bank):
+//       posting 1 → account = bank,     delta = +raw (bank increased)
+//       posting 2 → account = category, delta = +raw (category increased)
+//   For a negative raw amount (money left the bank):
+//       posting 1 → account = bank,     delta = raw  (bank decreased, raw is negative)
+//       posting 2 → account = category, delta = -raw (category increased)
+//
+// MANUAL ENTRY  (raw: post_from=source, post_to=dest, amount positive cents)
+//   posting 1 → account = post_to,   delta = +dollars (destination increased)
+//   posting 2 → account = post_from, delta = -dollars (source decreased)
+//
+// DERIVED VIEWS
+// -------------
+//   computeBalances()            → sum delta per account (natural-balance convention:
+//                                   expense balances read positive when expenses grew)
+//   aggregateByMonthAndAccount() → bucket by account_id, apply P&L sign
+//                                   (revenue/asset: +1, expense/liability/equity: -1)
+//
+// MODAL DISPLAY
+// -------------
+//   The monthly P&L modal shows transactions with a P&L-convention sign:
+//   expense postings display as negative, revenue postings as positive.
+//   The Balance tab retains the natural-balance convention (positive when healthy).
+//
+// Retired endpoints:
 //   /api/accounting/monthly-pl
 //   /api/accounting/monthly-account-transactions
 //   /api/accounting/balances
@@ -47,10 +69,11 @@ let currentSearchTerm = '';
 let currentFilter = 'all';
 
 // Expanded-state tracking for the Balance tab
-const expandedBalanceAccounts = new Set();  // set of account ids currently expanded
+const expandedBalanceAccounts = new Set();
 
 // ===== SINGLE SOURCE OF TRUTH =====
-let allTransactions = [];       // normalized: bank + manual (dollars)
+let allTransactions = [];       // flat list of postings
+let rawBankRows = [];           // original bank rows (untransformed) for the Transactions tab
 let monthlyAggregate = {};      // { 'YYYY-MM': { '<account_id>': { name, code, type, total, transactions[] } } }
 
 // Monthly P&L chart page state
@@ -101,7 +124,7 @@ if (!document.getElementById('toast-styles')) {
 }
 
 // ============================================================
-// FETCH + NORMALIZE + AGGREGATE
+// FETCH + NORMALIZE
 // ============================================================
 
 async function loadAllTransactions() {
@@ -112,8 +135,8 @@ async function loadAllTransactions() {
         fetchManualEntries()
     ]);
 
-    const bankRows = bankResult.status === 'fulfilled' ? bankResult.value : [];
-    const manualRows = manualResult.status === 'fulfilled' ? manualResult.value : [];
+    rawBankRows = bankResult.status === 'fulfilled' ? bankResult.value : [];
+    const rawManualRows = manualResult.status === 'fulfilled' ? manualResult.value : [];
 
     if (bankResult.status === 'rejected') {
         console.error('[ACCT] bank fetch failed:', bankResult.reason);
@@ -122,15 +145,16 @@ async function loadAllTransactions() {
         console.error('[ACCT] manual fetch failed:', manualResult.reason);
     }
 
-    const normalizedManual = normalizeManualEntries(manualRows);
+    const bankPostings = normalizeBankTransactions(rawBankRows);
+    const manualPostings = normalizeManualEntries(rawManualRows);
 
-    allTransactions = [...bankRows, ...normalizedManual];
+    allTransactions = [...bankPostings, ...manualPostings];
     monthlyAggregate = aggregateByMonthAndAccount(allTransactions);
     monthlyPLMonths = Object.keys(monthlyAggregate).sort().reverse();
 
     console.log(
-        `[ACCT] Loaded ${bankRows.length} bank rows + ${normalizedManual.length} manual rows ` +
-        `= ${allTransactions.length} total across ${monthlyPLMonths.length} months`
+        `[ACCT] Loaded ${rawBankRows.length} bank rows + ${rawManualRows.length} manual entries ` +
+        `= ${allTransactions.length} postings across ${monthlyPLMonths.length} months`
     );
 
     return allTransactions;
@@ -144,7 +168,7 @@ async function fetchBankTransactions() {
     if (data.status !== 'success') {
         throw new Error(data.error || 'Failed to load bank transactions');
     }
-    return (data.transactions || []).map(tx => ({ ...tx, _source: 'bank' }));
+    return data.transactions || [];
 }
 
 async function fetchManualEntries() {
@@ -158,147 +182,188 @@ async function fetchManualEntries() {
     return data.entries || [];
 }
 
+/**
+ * Turn each bank row into up to two postings.
+ * - Always produce a posting for the bank account (post_from) with the signed raw amount.
+ * - If the row has a category assigned (post_to != null), produce a posting for the
+ *   category account with a positive amount (money arrived at the category).
+ */
+function normalizeBankTransactions(rows) {
+    const postings = [];
+    for (const tx of rows) {
+        const rawAmount = Number(tx.amount) || 0;
+        const absAmount = Math.abs(rawAmount);
+        const direction = rawAmount >= 0 ? 'in' : 'out';
+        const baseId = `bank_${tx.id}`;
+
+        // Bank side: the bank's balance changes by the signed raw amount.
+        if (tx.post_from !== null && tx.post_from !== undefined) {
+            postings.push({
+                id: `${baseId}_bank`,
+                bank_transaction_id: tx.id,
+                transaction_date: tx.transaction_date,
+                description: tx.description || '',
+                additional_info: tx.additional_info || '',
+                account_id: tx.post_from,
+                delta: rawAmount,
+                direction: direction,
+                source: 'bank',
+                is_bank_side: true
+            });
+        }
+
+        // Category side: the category always increases by abs(rawAmount).
+        if (tx.post_to !== null && tx.post_to !== undefined) {
+            postings.push({
+                id: `${baseId}_cat`,
+                bank_transaction_id: tx.id,
+                transaction_date: tx.transaction_date,
+                description: tx.description || '',
+                additional_info: tx.additional_info || '',
+                account_id: tx.post_to,
+                delta: absAmount,
+                direction: 'in',
+                source: 'bank',
+                is_bank_side: false
+            });
+        }
+    }
+    return postings;
+}
+
+/**
+ * Turn each manual journal entry into two postings:
+ * one for the destination account (increases) and one for the source (decreases).
+ *
+ * Account 52 (Prepaid Rent) is skipped, matching the legacy monthly-pl behavior.
+ */
 function normalizeManualEntries(entries) {
-    const out = [];
+    const postings = [];
     for (const e of entries) {
         if (!e.transaction_date) continue;
         const cents = Number(e.amount) || 0;
         const dollars = cents / 100.0;
+        if (dollars === 0) continue;
         const baseId = `manual_${e.id}`;
 
         if (e.post_to && Number(e.post_to) !== PREPAID_RENT_ACCOUNT_ID) {
-            out.push({
+            postings.push({
                 id: `${baseId}_to`,
+                manual_id: e.id,
                 transaction_date: e.transaction_date,
                 description: e.description || '',
-                amount: dollars,
                 additional_info: `Manual entry #${e.id}`,
-                post_from: e.post_from,
-                post_to: e.post_to,
-                post_from_account_name: e.post_from_name || null,
-                post_from_account_code: e.post_from_code || null,
-                post_to_account_name: e.post_to_name || null,
-                post_to_account_code: e.post_to_code || null,
-                _source: 'journal_manual',
-                _manual_id: e.id
+                account_id: e.post_to,
+                delta: dollars,
+                direction: 'in',
+                source: 'journal_manual'
             });
         }
         if (e.post_from && Number(e.post_from) !== PREPAID_RENT_ACCOUNT_ID) {
-            out.push({
+            postings.push({
                 id: `${baseId}_from`,
+                manual_id: e.id,
                 transaction_date: e.transaction_date,
                 description: e.description || '',
-                amount: -dollars,
                 additional_info: `Manual entry #${e.id}`,
-                post_from: e.post_from,
-                post_to: e.post_from,
-                post_from_account_name: e.post_from_name || null,
-                post_from_account_code: e.post_from_code || null,
-                post_to_account_name: e.post_from_name || null,
-                post_to_account_code: e.post_from_code || null,
-                _source: 'journal_manual',
-                _manual_id: e.id
+                account_id: e.post_from,
+                delta: -dollars,
+                direction: 'out',
+                source: 'journal_manual'
             });
         }
     }
-    return out;
+    return postings;
 }
 
-function aggregateByMonthAndAccount(transactions) {
-    const accountTypeById = {};
+/**
+ * Aggregate postings into month + account buckets.
+ *
+ * The bucket's `total` is signed according to the account's P&L direction:
+ *   revenue, asset            → +1  (revenue up, asset up → positive)
+ *   expense, liability, equity → -1  (expense up → negative)
+ */
+function aggregateByMonthAndAccount(postings) {
+    const accountMeta = {};
     for (const acc of bankAccounts) {
-        accountTypeById[String(acc.id)] = acc.type;
+        const type = acc.type || 'asset';
+        let sign = 1;
+        if (type === 'expense' || type === 'liability' || type === 'equity') sign = -1;
+        else sign = 1;
+        accountMeta[String(acc.id)] = { type, sign };
     }
 
     const months = {};
-    for (const tx of transactions) {
-        if (!tx.transaction_date) continue;
-        const month = String(tx.transaction_date).slice(0, 7);
+
+    for (const p of postings) {
+        if (!p.transaction_date) continue;
+        const month = String(p.transaction_date).slice(0, 7);
         if (!month) continue;
-        if (tx.post_to === null || tx.post_to === undefined) continue;
-        const accountId = String(tx.post_to);
+
+        const accountId = String(p.account_id);
+        const meta = accountMeta[accountId] || { type: 'unknown', sign: 1 };
 
         if (!months[month]) months[month] = {};
         if (!months[month][accountId]) {
+            const acc = bankAccounts.find(a => String(a.id) === accountId);
             months[month][accountId] = {
-                account_id: tx.post_to,
-                name: tx.post_to_account_name || 'Unknown',
-                code: tx.post_to_account_code || '',
-                type: accountTypeById[accountId] || 'unknown',
+                account_id: p.account_id,
+                name: acc ? acc.name : 'Unknown',
+                code: acc ? acc.code : '',
+                type: meta.type,
                 total: 0,
                 transactions: []
             };
         }
 
-        months[month][accountId].total += Number(tx.amount) || 0;
-        months[month][accountId].transactions.push(tx);
+        months[month][accountId].total += meta.sign * p.delta;
+        months[month][accountId].transactions.push(p);
     }
+
     return months;
 }
 
 // ============================================================
-// COMPUTE ACCOUNT BALANCES FROM allTransactions
+// COMPUTE ACCOUNT BALANCES (natural-balance convention)
 // ============================================================
-// Opening balance is treated as 0. Each account accumulates in its
-// natural direction:
-//
-//   asset, expense            → debit-normal
-//   liability, equity, revenue → credit-normal
-//
-// Each returned account includes the raw list of transactions that
-// contributed to its balance, so the Balance tab can expand any row
-// to show the underlying detail.
+// Balances are the sum of deltas per account. The natural-balance
+// convention means every account reads positive when "healthy":
+//   asset     → positive when the asset grew
+//   expense   → positive when the expense grew
+//   liability → positive when the obligation grew
+//   equity    → positive when capital grew
+//   revenue   → positive when revenue was earned
 // ============================================================
 
-function computeBalances(transactions, accounts) {
+function computeBalances(postings, accounts) {
     const byId = {};
     for (const acc of accounts) {
-        const type = acc.type || 'asset';
         byId[String(acc.id)] = {
             id: acc.id,
             code: acc.code,
             name: acc.name,
-            type: type,
-            debitNormal: (type === 'asset' || type === 'expense'),
+            type: acc.type || 'asset',
             balance: 0,
             transactions: []
         };
     }
 
-    for (const tx of transactions) {
-        const amt = Number(tx.amount) || 0;
-
-        if (tx.post_to !== null && tx.post_to !== undefined) {
-            const a = byId[String(tx.post_to)];
-            if (a) {
-                a.balance += a.debitNormal ? amt : -amt;
-                a.transactions.push({
-                    transaction_date: tx.transaction_date,
-                    description: tx.description || '',
-                    additional_info: tx.additional_info || '',
-                    amount: amt,
-                    direction: 'to',          // this account received the posting
-                    source: tx._source || 'bank'
-                });
-            }
-        }
-        if (tx.post_from !== null && tx.post_from !== undefined) {
-            const a = byId[String(tx.post_from)];
-            if (a) {
-                a.balance += a.debitNormal ? -amt : amt;
-                a.transactions.push({
-                    transaction_date: tx.transaction_date,
-                    description: tx.description || '',
-                    additional_info: tx.additional_info || '',
-                    amount: amt,
-                    direction: 'from',        // this account sent the posting
-                    source: tx._source || 'bank'
-                });
-            }
-        }
+    for (const p of postings) {
+        const key = String(p.account_id);
+        const a = byId[key];
+        if (!a) continue;
+        a.balance += Number(p.delta) || 0;
+        a.transactions.push({
+            transaction_date: p.transaction_date,
+            description: p.description,
+            additional_info: p.additional_info,
+            amount: Math.abs(Number(p.delta) || 0),
+            signed_delta: Number(p.delta) || 0,
+            direction: p.direction,
+            source: p.source
+        });
     }
 
-    // Sort transactions within each account newest-first
     for (const acc of Object.values(byId)) {
         acc.transactions.sort((a, b) => {
             const da = String(a.transaction_date || '');
@@ -354,7 +419,7 @@ function populateBulkAccountSelect() {
 // ============================================================
 
 function loadTransactions() {
-    console.log('[TRANSACTIONS] Rendering from in-memory data...');
+    console.log('[TRANSACTIONS] Rendering from raw bank rows...');
     const list = document.getElementById('transactions-list');
     if (!list) return;
 
@@ -363,12 +428,14 @@ function loadTransactions() {
     currentFilter = filter;
     currentSearchTerm = search;
 
-    let rows = allTransactions.filter(tx => tx._source === 'bank');
+    let rows = rawBankRows.slice();
+
+    const isPosted = tx => tx.post_to !== null && tx.post_to !== undefined;
 
     if (filter === 'unposted') {
-        rows = rows.filter(tx => tx.post_to === null || tx.post_to === undefined);
+        rows = rows.filter(tx => !isPosted(tx));
     } else if (filter === 'posted') {
-        rows = rows.filter(tx => tx.post_to !== null && tx.post_to !== undefined);
+        rows = rows.filter(tx => isPosted(tx));
     }
 
     if (search) {
@@ -379,7 +446,7 @@ function loadTransactions() {
         );
     }
 
-    rows = [...rows].sort((a, b) => {
+    rows.sort((a, b) => {
         const da = String(a.transaction_date || '');
         const db = String(b.transaction_date || '');
         if (da !== db) return db.localeCompare(da);
@@ -406,19 +473,22 @@ function renderTransactions(transactions) {
 
     let html = '';
     transactions.forEach(tx => {
-        const amount = parseFloat(tx.amount) || 0;
-        const isDebit = amount < 0;
-        const formattedAmount = (isDebit ? '-' : '') + '$' + Math.abs(amount).toFixed(2);
+        const rawAmt = Number(tx.amount) || 0;
+        const isDebit = rawAmt < 0;
+        const formattedAmount = (isDebit ? '-' : '+') + '$' + Math.abs(rawAmt).toFixed(2);
+
         const isProcessed = tx.post_to !== null && tx.post_to !== undefined;
         const statusColor = isProcessed ? '#28a745' : '#dc3545';
         const statusText = isProcessed ? '✅ Posted' : '⏳ Unposted';
+
+        const postedToName = isProcessed ? tx.post_to_account_name : null;
 
         html += `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; ${isProcessed ? 'background: #f0fff4;' : 'background: #fff5f5;'}">
                 <div style="flex: 1; min-width: 150px;">
                     <div style="font-weight: 600; color: #333; font-size: 13px;">${tx.description || 'No description'}</div>
                     <div style="color: #666; font-size: 12px;">${tx.transaction_date || ''} • ID: ${tx.id}</div>
-                    ${tx.post_to_account_name ? `<div style="color: #888; font-size: 11px;">Posted to: ${tx.post_to_account_name}</div>` : ''}
+                    ${postedToName ? `<div style="color: #888; font-size: 11px;">Posted to: ${postedToName}</div>` : ''}
                 </div>
                 <div style="text-align: right; margin-right: 10px; min-width: 100px;">
                     <div style="font-weight: bold; color: ${isDebit ? '#dc3545' : '#28a745'}; font-size: 14px;">${formattedAmount}</div>
@@ -462,7 +532,9 @@ function updateBulkAssignSection(transactions) {
     const countSpan = document.getElementById('bulk-count');
     if (!section || !countSpan) return;
 
-    const unposted = transactions.filter(tx => tx.post_to === null || tx.post_to === undefined);
+    const unposted = transactions.filter(tx =>
+        tx.post_to === null || tx.post_to === undefined
+    );
 
     if (unposted.length > 0 && currentSearchTerm) {
         section.style.display = 'flex';
@@ -515,8 +587,7 @@ async function bulkAssignAccount() {
 
     try {
         const searchLower = currentSearchTerm.toLowerCase();
-        const unpostedTransactions = allTransactions.filter(tx => {
-            if (tx._source !== 'bank') return false;
+        const unpostedTransactions = rawBankRows.filter(tx => {
             if (tx.post_to !== null && tx.post_to !== undefined) return false;
             const d = (tx.description || '').toLowerCase();
             const a = (tx.additional_info || '').toLowerCase();
@@ -728,14 +799,9 @@ function resetJournalFilters() {
 // ============================================================
 // BALANCE TAB (expandable)
 // ============================================================
-// Each account row is clickable. Clicking toggles the account's
-// transaction list, which shows every posting that contributed to
-// the balance. Rows within the expansion show date, description,
-// source (Bank / Manual), direction (in/out), and amount.
-// ============================================================
 
 function loadBalances() {
-    console.log('[BALANCE] Computing from in-memory transactions...');
+    console.log('[BALANCE] Computing from in-memory postings...');
     const list = document.getElementById('balance-list');
     if (!list) return;
 
@@ -838,31 +904,12 @@ function renderBalances(balances) {
                     `;
 
                     item.transactions.forEach(tx => {
-                        // Sign shown depends on direction + debitNormal
-                        const rawAmt = Number(tx.amount) || 0;
-                        const direction = tx.direction;    // 'to' or 'from'
-
-                        // Determine effective sign for this account:
-                        //   debitNormal  (asset/expense):
-                        //       'to'   → +rawAmt
-                        //       'from' → -rawAmt
-                        //   creditNormal (liability/equity/revenue):
-                        //       'to'   → -rawAmt
-                        //       'from' → +rawAmt
-                        const debitNormal = item.debitNormal;
-                        let effectiveSign;
-                        if (direction === 'to') {
-                            effectiveSign = debitNormal ? 1 : -1;
-                        } else {
-                            effectiveSign = debitNormal ? -1 : 1;
-                        }
-                        const effectiveAmt = effectiveSign * Math.abs(rawAmt);
-
-                        const amtColor = effectiveAmt >= 0 ? '#28a745' : '#dc3545';
-                        const amtStr = (effectiveAmt >= 0 ? '+' : '-') + '$' + Math.abs(effectiveAmt).toFixed(2);
+                        const signedDelta = Number(tx.signed_delta) || 0;
+                        const amtColor = signedDelta >= 0 ? '#28a745' : '#dc3545';
+                        const amtStr = (signedDelta >= 0 ? '+' : '-') + '$' + Math.abs(signedDelta).toFixed(2);
                         const sourceLabel = tx.source === 'journal_manual' ? 'Manual' : 'Bank';
-                        const dirLabel = direction === 'to' ? '→ in' : '← out';
-                        const dirColor = direction === 'to' ? '#28a745' : '#dc3545';
+                        const dirLabel = tx.direction === 'in' ? '→ in' : '← out';
+                        const dirColor = tx.direction === 'in' ? '#28a745' : '#dc3545';
 
                         html += `
                             <tr style="border-bottom: 1px solid #eee;">
@@ -1089,6 +1136,13 @@ function renderMonthlyPLChartsPage() {
 // ============================================================
 // MONTHLY TRANSACTIONS MODAL
 // ============================================================
+// Displays transactions with a P&L-convention sign:
+//   revenue → positive
+//   expense → negative
+//   asset/liability/equity → natural sign (rarely shown here)
+//
+// The sign flip for expenses is applied at display time via _displaySign.
+// ============================================================
 
 function showMonthlyTransactions(month, accountId, accountName) {
     const modal = document.getElementById('monthly-tx-modal');
@@ -1111,15 +1165,29 @@ function showMonthlyTransactions(month, accountId, accountName) {
 
     let rows = [];
     const accountsInMonth = monthlyAggregate[month] || {};
+
     if (accountId === null || accountId === undefined) {
+        // P&L Transactions modal: concat all revenue + expense buckets.
+        // Apply the P&L sign per bucket's account type.
         for (const bucket of Object.values(accountsInMonth)) {
             if (bucket.type === 'revenue' || bucket.type === 'expense') {
-                rows = rows.concat(bucket.transactions);
+                const sign = (bucket.type === 'expense') ? -1 : 1;
+                for (const tx of bucket.transactions) {
+                    rows.push({ ...tx, _displaySign: sign });
+                }
             }
         }
     } else {
         const bucket = accountsInMonth[String(accountId)];
-        if (bucket) rows = bucket.transactions.slice();
+        if (bucket) {
+            const isCreditNormal = (bucket.type === 'expense' ||
+                                    bucket.type === 'liability' ||
+                                    bucket.type === 'equity');
+            const sign = isCreditNormal ? -1 : 1;
+            for (const tx of bucket.transactions) {
+                rows.push({ ...tx, _displaySign: sign });
+            }
+        }
     }
 
     rows.sort((a, b) => {
@@ -1140,15 +1208,21 @@ function renderModalTransactions(transactions, accountName, dateRange) {
         return;
     }
 
+    // Total in display convention
     let total = 0;
-    transactions.forEach(tx => { total += Number(tx.amount) || 0; });
+    transactions.forEach(tx => {
+        total += (Number(tx.delta) || 0) * (tx._displaySign || 1);
+    });
+
+    const totalSign = total >= 0 ? '+' : '-';
+    const totalColor = total >= 0 ? '#28a745' : '#dc3545';
 
     let html = `
         <div style="background: #f8f9fa; padding: 12px 16px; border-radius: 4px; margin-bottom: 15px; display: flex; gap: 20px; flex-wrap: wrap; align-items: center; color: #000;">
             <div style="color: #000;"><strong style="color: #000;">Account:</strong> ${accountName || 'All Accounts'}</div>
             <div style="color: #000;"><strong style="color: #000;">Period:</strong> ${dateRange}</div>
             <div style="color: #000;"><strong style="color: #000;">Transactions:</strong> ${transactions.length}</div>
-            <div style="color: #000;"><strong style="color: #000;">Total:</strong> <span style="font-weight:bold;color:${total >= 0 ? '#28a745' : '#dc3545'};">${total >= 0 ? '+' : ''}$${total.toFixed(2)}</span></div>
+            <div style="color: #000;"><strong style="color: #000;">Total:</strong> <span style="font-weight:bold;color:${totalColor};">${totalSign}$${Math.abs(total).toFixed(2)}</span></div>
         </div>
         <table style="width:100%; border-collapse:collapse; font-size:14px; color:#000; background:#fff;">
             <thead>
@@ -1162,11 +1236,13 @@ function renderModalTransactions(transactions, accountName, dateRange) {
             <tbody style="color: #000;">`;
 
     transactions.forEach(tx => {
-        const amt = Number(tx.amount) || 0;
-        const isPositive = amt > 0;
-        const sign = amt > 0 ? '+' : (amt < 0 ? '-' : '');
-        const amtStr = amt !== 0 ? '$' + Math.abs(amt).toFixed(2) : '';
-        const sourceLabel = tx._source === 'journal_manual' ? 'Manual' : 'Bank';
+        const rawDelta = Number(tx.delta) || 0;
+        const displayDelta = rawDelta * (tx._displaySign || 1);
+        const isPositive = displayDelta >= 0;
+        const sign = isPositive ? '+' : '-';
+        const amtStr = '$' + Math.abs(displayDelta).toFixed(2);
+        const sourceLabel = tx.source === 'journal_manual' ? 'Manual' : 'Bank';
+
         html += `<tr style="border-bottom:1px solid #eee; color:#000;">
             <td style="padding:8px 12px; white-space:nowrap; color:#000;">${tx.transaction_date || ''}</td>
             <td style="padding:8px 12px; color:#000;">${tx.description || ''}</td>
@@ -1177,7 +1253,7 @@ function renderModalTransactions(transactions, accountName, dateRange) {
 
     html += `<tr class="total-row" style="font-weight:bold; background:#f0f0f0; color:#000;">
         <td colspan="3" style="padding:8px 12px; color:#000;"><strong style="color:#000;">Total</strong></td>
-        <td style="padding:8px 12px; text-align:right; color:${total >= 0 ? '#28a745' : '#dc3545'};">${total >= 0 ? '+' : ''}${total !== 0 ? '$' + total.toFixed(2) : ''}</td>
+        <td style="padding:8px 12px; text-align:right; color:${totalColor};">${totalSign}$${Math.abs(total).toFixed(2)}</td>
     </tr>`;
     html += '</tbody></table>';
     body.innerHTML = html;
