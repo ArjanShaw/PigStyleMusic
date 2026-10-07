@@ -7,22 +7,25 @@
 //
 // Both are normalized into a single `allTransactions[]` array, then
 // aggregated by `aggregateByMonthAndAccount()` into `monthlyAggregate`.
-// Every view derives from those two in-memory structures.
 //
-// P&L chart rules:
-//   - Only revenue and expense accounts appear on the bars.
-//   - Asset, liability, and equity accounts are balance-sheet movements
-//     and are excluded (e.g. transfers into Prepaid Rent).
-//   - Each bucket carries its account `type` so filters can trust it.
+// Views:
+//   - Transactions tab   → allTransactions (bank only)
+//   - Monthly P&L chart  → monthlyAggregate (revenue + expense only)
+//   - Modal              → monthlyAggregate buckets
+//   - Balance tab        → computeBalances() over allTransactions
+//                          with expandable per-account transaction lists
 //
-// Normalization rules for manual entries:
-//   - amount (cents) → dollars  : / 100
-//   - Each entry becomes TWO rows: the post_to side (+amount) and
-//     the post_from side (−amount).
-//   - Account 52 (Prepaid Rent) is excluded on both sides, matching
-//     the legacy monthly-pl behavior.
-//   - Tagged with _source: 'journal_manual' so the Transactions tab
-//     can hide them while P&L charts/modal include them.
+// Balance semantics:
+//   - Opening balance is treated as 0.
+//   - Each account accumulates in its natural direction:
+//       asset, expense      → debit-normal  (debits add, credits subtract)
+//       liability, equity, revenue → credit-normal (credits add, debits subtract)
+//   - Result: every account reads positive when "healthy" in its own terms.
+//
+// Retired endpoints (no longer called from the frontend):
+//   /api/accounting/monthly-pl
+//   /api/accounting/monthly-account-transactions
+//   /api/accounting/balances
 // ============================================================
 
 console.log('[ACCOUNTING] Script started loading');
@@ -43,12 +46,15 @@ let journalTotalEntries = 0;
 let currentSearchTerm = '';
 let currentFilter = 'all';
 
+// Expanded-state tracking for the Balance tab
+const expandedBalanceAccounts = new Set();  // set of account ids currently expanded
+
 // ===== SINGLE SOURCE OF TRUTH =====
 let allTransactions = [];       // normalized: bank + manual (dollars)
 let monthlyAggregate = {};      // { 'YYYY-MM': { '<account_id>': { name, code, type, total, transactions[] } } }
 
 // Monthly P&L chart page state
-let monthlyPLMonths = [];       // derived from monthlyAggregate keys
+let monthlyPLMonths = [];
 let monthlyPLCurrentPage = 0;
 let monthlyPLChartInstances = {};
 
@@ -98,10 +104,6 @@ if (!document.getElementById('toast-styles')) {
 // FETCH + NORMALIZE + AGGREGATE
 // ============================================================
 
-/**
- * Fetch bank transactions and manual entries in parallel, normalize
- * both into the same shape, and populate allTransactions/monthlyAggregate.
- */
 async function loadAllTransactions() {
     console.log('[ACCT] Loading bank transactions and manual entries...');
 
@@ -134,37 +136,20 @@ async function loadAllTransactions() {
     return allTransactions;
 }
 
-/**
- * Fetch raw bank transactions from /api/accounting/bank-transactions-full.
- * Returns the raw rows (with amounts already in dollars).
- */
 async function fetchBankTransactions() {
     const url = `${API_BASE}/api/accounting/bank-transactions-full?filter=all`;
-    const response = await fetch(url, {
-        credentials: 'include',
-        mode: 'cors'
-    });
+    const response = await fetch(url, { credentials: 'include', mode: 'cors' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     if (data.status !== 'success') {
         throw new Error(data.error || 'Failed to load bank transactions');
     }
-    return (data.transactions || []).map(tx => ({
-        ...tx,
-        _source: 'bank'
-    }));
+    return (data.transactions || []).map(tx => ({ ...tx, _source: 'bank' }));
 }
 
-/**
- * Fetch raw manual journal entries from /api/accounting/manual-entries.
- * Returns raw rows; amount is in CENTS.
- */
 async function fetchManualEntries() {
     const url = `${API_BASE}/api/accounting/manual-entries`;
-    const response = await fetch(url, {
-        credentials: 'include',
-        mode: 'cors'
-    });
+    const response = await fetch(url, { credentials: 'include', mode: 'cors' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     if (data.status !== 'success') {
@@ -173,31 +158,14 @@ async function fetchManualEntries() {
     return data.entries || [];
 }
 
-/**
- * Convert raw manual entries into the bank-transaction shape so the
- * same aggregator works on both.
- *
- * Each manual entry contributes TWO rows:
- *   - the post_to side   with amount = +dollars
- *   - the post_from side with amount = -dollars
- *
- * Account 52 (Prepaid Rent) is skipped on both sides, matching the
- * legacy monthly-pl behavior. This avoids double-counting the rent
- * transfer that touches both a cash account and prepaid rent.
- *
- * Amounts arrive in cents; divide by 100 to get dollars.
- */
 function normalizeManualEntries(entries) {
     const out = [];
-
     for (const e of entries) {
         if (!e.transaction_date) continue;
-
         const cents = Number(e.amount) || 0;
         const dollars = cents / 100.0;
         const baseId = `manual_${e.id}`;
 
-        // post_to side: +amount
         if (e.post_to && Number(e.post_to) !== PREPAID_RENT_ACCOUNT_ID) {
             out.push({
                 id: `${baseId}_to`,
@@ -215,8 +183,6 @@ function normalizeManualEntries(entries) {
                 _manual_id: e.id
             });
         }
-
-        // post_from side: -amount
         if (e.post_from && Number(e.post_from) !== PREPAID_RENT_ACCOUNT_ID) {
             out.push({
                 id: `${baseId}_from`,
@@ -235,35 +201,21 @@ function normalizeManualEntries(entries) {
             });
         }
     }
-
     return out;
 }
 
-/**
- * Aggregate the flat transaction list into per-month, per-account buckets.
- * Only rows with a non-null post_to contribute to an account total.
- *
- * Each bucket carries the account `type` (revenue, expense, asset,
- * liability, equity) so downstream views can filter on it. The type
- * lookup uses `bankAccounts`, which must be loaded before this runs.
- */
 function aggregateByMonthAndAccount(transactions) {
-    // Build account-type lookup once
     const accountTypeById = {};
     for (const acc of bankAccounts) {
         accountTypeById[String(acc.id)] = acc.type;
     }
 
     const months = {};
-
     for (const tx of transactions) {
         if (!tx.transaction_date) continue;
-
         const month = String(tx.transaction_date).slice(0, 7);
         if (!month) continue;
-
         if (tx.post_to === null || tx.post_to === undefined) continue;
-
         const accountId = String(tx.post_to);
 
         if (!months[month]) months[month] = {};
@@ -281,8 +233,84 @@ function aggregateByMonthAndAccount(transactions) {
         months[month][accountId].total += Number(tx.amount) || 0;
         months[month][accountId].transactions.push(tx);
     }
-
     return months;
+}
+
+// ============================================================
+// COMPUTE ACCOUNT BALANCES FROM allTransactions
+// ============================================================
+// Opening balance is treated as 0. Each account accumulates in its
+// natural direction:
+//
+//   asset, expense            → debit-normal
+//   liability, equity, revenue → credit-normal
+//
+// Each returned account includes the raw list of transactions that
+// contributed to its balance, so the Balance tab can expand any row
+// to show the underlying detail.
+// ============================================================
+
+function computeBalances(transactions, accounts) {
+    const byId = {};
+    for (const acc of accounts) {
+        const type = acc.type || 'asset';
+        byId[String(acc.id)] = {
+            id: acc.id,
+            code: acc.code,
+            name: acc.name,
+            type: type,
+            debitNormal: (type === 'asset' || type === 'expense'),
+            balance: 0,
+            transactions: []
+        };
+    }
+
+    for (const tx of transactions) {
+        const amt = Number(tx.amount) || 0;
+
+        if (tx.post_to !== null && tx.post_to !== undefined) {
+            const a = byId[String(tx.post_to)];
+            if (a) {
+                a.balance += a.debitNormal ? amt : -amt;
+                a.transactions.push({
+                    transaction_date: tx.transaction_date,
+                    description: tx.description || '',
+                    additional_info: tx.additional_info || '',
+                    amount: amt,
+                    direction: 'to',          // this account received the posting
+                    source: tx._source || 'bank'
+                });
+            }
+        }
+        if (tx.post_from !== null && tx.post_from !== undefined) {
+            const a = byId[String(tx.post_from)];
+            if (a) {
+                a.balance += a.debitNormal ? -amt : amt;
+                a.transactions.push({
+                    transaction_date: tx.transaction_date,
+                    description: tx.description || '',
+                    additional_info: tx.additional_info || '',
+                    amount: amt,
+                    direction: 'from',        // this account sent the posting
+                    source: tx._source || 'bank'
+                });
+            }
+        }
+    }
+
+    // Sort transactions within each account newest-first
+    for (const acc of Object.values(byId)) {
+        acc.transactions.sort((a, b) => {
+            const da = String(a.transaction_date || '');
+            const db = String(b.transaction_date || '');
+            if (da !== db) return db.localeCompare(da);
+            return String(b.description).localeCompare(String(a.description));
+        });
+    }
+
+    return Object.values(byId).sort((a, b) =>
+        String(a.code).localeCompare(String(b.code))
+    );
 }
 
 // ============================================================
@@ -293,8 +321,7 @@ async function loadAccounts() {
     console.log('[ACCOUNTS] Loading accounts...');
     try {
         const response = await fetch(`${API_BASE}/api/accounting/accounts`, {
-            credentials: 'include',
-            mode: 'cors'
+            credentials: 'include', mode: 'cors'
         });
         if (!response.ok) throw new Error('Failed to load accounts');
         const data = await response.json();
@@ -314,10 +341,8 @@ async function loadAccounts() {
 function populateBulkAccountSelect() {
     const select = document.getElementById('bulk-account-select');
     if (!select) return;
-
     const currentValue = select.value;
     select.innerHTML = '<option value="">Select Account</option>';
-
     bankAccounts.forEach(acc => {
         const selected = acc.id == currentValue ? 'selected' : '';
         select.innerHTML += `<option value="${acc.id}" ${selected}>${acc.code} - ${acc.name}</option>`;
@@ -326,10 +351,6 @@ function populateBulkAccountSelect() {
 
 // ============================================================
 // TRANSACTIONS TAB
-// ============================================================
-// Bank rows only. Manual journal entries are excluded from the
-// Transactions tab by design — they are corrections, not bank
-// activity. They still appear on the P&L chart and in the modal.
 // ============================================================
 
 function loadTransactions() {
@@ -342,7 +363,6 @@ function loadTransactions() {
     currentFilter = filter;
     currentSearchTerm = search;
 
-    // Bank transactions only — manual entries are not editable here.
     let rows = allTransactions.filter(tx => tx._source === 'bank');
 
     if (filter === 'unposted') {
@@ -461,21 +481,16 @@ async function assignSingleTransaction(transactionId, accountId) {
         showToast('Please select an account.', 'warning');
         return;
     }
-
     try {
         const response = await fetch(`${API_BASE}/api/accounting/bank/assign-single`, {
-            method: 'POST',
-            credentials: 'include',
-            mode: 'cors',
+            method: 'POST', credentials: 'include', mode: 'cors',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 transaction_id: parseInt(transactionId),
                 post_to: parseInt(accountId)
             })
         });
-
         const result = await response.json();
-
         if (result.status === 'success') {
             showToast(`✅ Transaction assigned to ${result.account_name || 'account'}`, 'success');
             await loadAllTransactions();
@@ -492,21 +507,11 @@ async function assignSingleTransaction(transactionId, accountId) {
 async function bulkAssignAccount() {
     const select = document.getElementById('bulk-account-select');
     const accountId = select?.value;
-
-    if (!accountId) {
-        showToast('Please select an account to assign.', 'warning');
-        return;
-    }
-
-    if (!currentSearchTerm) {
-        showToast('Please enter a search term first.', 'warning');
-        return;
-    }
+    if (!accountId) { showToast('Please select an account to assign.', 'warning'); return; }
+    if (!currentSearchTerm) { showToast('Please enter a search term first.', 'warning'); return; }
 
     const accountName = select.options[select.selectedIndex]?.text || 'selected account';
-    if (!confirm(`Assign all unposted transactions matching "${currentSearchTerm}" to ${accountName}?`)) {
-        return;
-    }
+    if (!confirm(`Assign all unposted transactions matching "${currentSearchTerm}" to ${accountName}?`)) return;
 
     try {
         const searchLower = currentSearchTerm.toLowerCase();
@@ -529,13 +534,10 @@ async function bulkAssignAccount() {
         }));
 
         const updateResponse = await fetch(`${API_BASE}/api/accounting/bank/bulk-assign`, {
-            method: 'POST',
-            credentials: 'include',
-            mode: 'cors',
+            method: 'POST', credentials: 'include', mode: 'cors',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ updates })
         });
-
         const result = await updateResponse.json();
 
         if (result.status === 'success') {
@@ -563,27 +565,21 @@ function cancelBulkAssign() {
 // ============================================================
 
 async function loadAccountsList() {
-    console.log('[ACCOUNTS] Loading accounts list...');
     const list = document.getElementById('accounts-list');
     if (!list) return;
-
     list.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">Loading...</div>';
-
     try {
         const response = await fetch(`${API_BASE}/api/accounting/accounts`, {
-            credentials: 'include',
-            mode: 'cors'
+            credentials: 'include', mode: 'cors'
         });
         if (!response.ok) throw new Error('Failed to load accounts');
         const data = await response.json();
-
         if (data.status === 'success') {
             renderAccounts(data.accounts || []);
         } else {
             list.innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Error loading accounts</div>';
         }
     } catch (err) {
-        console.error('[ACCOUNTS] Error:', err);
         list.innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Error: ' + err.message + '</div>';
     }
 }
@@ -591,20 +587,14 @@ async function loadAccountsList() {
 function renderAccounts(accounts) {
     const list = document.getElementById('accounts-list');
     if (!list) return;
-
     if (!accounts || accounts.length === 0) {
         list.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">No accounts found</div>';
         return;
     }
-
     const typeColors = {
-        asset: '#cce5ff',
-        liability: '#fff3cd',
-        equity: '#d4edda',
-        revenue: '#cce5ff',
-        expense: '#f8d7da'
+        asset: '#cce5ff', liability: '#fff3cd', equity: '#d4edda',
+        revenue: '#cce5ff', expense: '#f8d7da'
     };
-
     let html = '';
     accounts.forEach(acc => {
         const typeColor = typeColors[acc.type] || '#f8f9fa';
@@ -638,25 +628,16 @@ async function saveAccount() {
     const code = document.getElementById('account-form-code').value.trim();
     const name = document.getElementById('account-form-name').value.trim();
     const type = document.getElementById('account-form-type').value;
-
-    if (!code || !name || !type) {
-        showToast('Code, Name, and Type are required.', 'error');
-        return;
-    }
-
+    if (!code || !name || !type) { showToast('Code, Name, and Type are required.', 'error'); return; }
     try {
         const url = id ? `${API_BASE}/api/accounting/accounts/${id}` : `${API_BASE}/api/accounting/accounts`;
         const method = id ? 'PUT' : 'POST';
-
         const response = await fetch(url, {
-            method: method,
-            credentials: 'include',
-            mode: 'cors',
+            method, credentials: 'include', mode: 'cors',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ code, name, type, description: '' })
         });
         const data = await response.json();
-
         if (data.status === 'success') {
             showToast(id ? 'Account updated' : 'Account created', 'success');
             document.getElementById('add-account-modal').style.display = 'none';
@@ -676,27 +657,20 @@ async function saveAccount() {
 // ============================================================
 
 async function loadJournalEntries() {
-    console.log('[JOURNAL] Loading journal entries...');
     const list = document.getElementById('journal-list');
     if (!list) return;
-
     list.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">Loading...</div>';
-
     const search = document.getElementById('journal-search')?.value.trim() || '';
-
     try {
         const params = new URLSearchParams();
         params.append('page', journalCurrentPage);
         params.append('per_page', journalPageSize);
         if (search) params.append('search', search);
-
         const response = await fetch(`${API_BASE}/api/accounting/journal?${params.toString()}`, {
-            credentials: 'include',
-            mode: 'cors'
+            credentials: 'include', mode: 'cors'
         });
         if (!response.ok) throw new Error('Failed to load journal');
         const data = await response.json();
-
         if (data.status === 'success') {
             journalTotalEntries = data.total || 0;
             renderJournalEntries(data.entries || []);
@@ -704,7 +678,6 @@ async function loadJournalEntries() {
             list.innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Error loading journal</div>';
         }
     } catch (err) {
-        console.error('[JOURNAL] Error:', err);
         list.innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Error: ' + err.message + '</div>';
     }
 }
@@ -712,18 +685,15 @@ async function loadJournalEntries() {
 function renderJournalEntries(entries) {
     const list = document.getElementById('journal-list');
     if (!list) return;
-
     if (!entries || entries.length === 0) {
         list.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">No journal entries found</div>';
         return;
     }
-
     let html = '';
     entries.forEach(e => {
         const debitAmount = e.debit_amount ? '$' + parseFloat(e.debit_amount).toFixed(2) : '';
         const creditAmount = e.credit_amount ? '$' + parseFloat(e.credit_amount).toFixed(2) : '';
         const diff = (e.debit_amount || 0) - (e.credit_amount || 0);
-
         html += `
             <div style="display: flex; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; ${Math.abs(diff) > 0.01 ? 'background: #fff5f5;' : ''}">
                 <div style="flex: 1; min-width: 150px;">
@@ -756,34 +726,37 @@ function resetJournalFilters() {
 }
 
 // ============================================================
-// BALANCE TAB
+// BALANCE TAB (expandable)
+// ============================================================
+// Each account row is clickable. Clicking toggles the account's
+// transaction list, which shows every posting that contributed to
+// the balance. Rows within the expansion show date, description,
+// source (Bank / Manual), direction (in/out), and amount.
 // ============================================================
 
-async function loadBalances() {
-    console.log('[BALANCE] Loading balances...');
+function loadBalances() {
+    console.log('[BALANCE] Computing from in-memory transactions...');
     const list = document.getElementById('balance-list');
     if (!list) return;
 
-    list.innerHTML = '<div style="text-align: center; padding: 40px; color: #888;">Loading...</div>';
-
-    try {
-        const response = await fetch(`${API_BASE}/api/accounting/balances`, {
-            credentials: 'include',
-            mode: 'cors'
-        });
-        if (!response.ok) throw new Error('Failed to load balances');
-        const data = await response.json();
-
-        if (data.status === 'success') {
-            renderBalances(data.balances || []);
-        } else {
-            list.innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Error loading balances</div>';
-        }
-    } catch (err) {
-        console.error('[BALANCE] Error:', err);
-        list.innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Error: ' + err.message + '</div>';
+    if (!allTransactions || allTransactions.length === 0) {
+        list.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">No data loaded yet. Try the Refresh button.</div>';
+        return;
     }
+
+    const balances = computeBalances(allTransactions, bankAccounts);
+    renderBalances(balances);
 }
+
+window.toggleBalanceAccount = function(accountId) {
+    const key = String(accountId);
+    if (expandedBalanceAccounts.has(key)) {
+        expandedBalanceAccounts.delete(key);
+    } else {
+        expandedBalanceAccounts.add(key);
+    }
+    loadBalances();
+};
 
 function renderBalances(balances) {
     const list = document.getElementById('balance-list');
@@ -807,7 +780,15 @@ function renderBalances(balances) {
         if (types[type]) types[type].items.push(b);
     });
 
-    let html = '';
+    let html = `
+        <div style="background: #f8f9fa; padding: 10px 16px; border-radius: 6px; margin-bottom: 12px; font-size: 12px; color: #666; border-left: 3px solid #6c757d;">
+            ℹ️ <strong>Balances shown reflect net movement in recorded data.</strong>
+            Opening balances are not included, so bank and cash figures represent
+            change since the earliest loaded transaction, not current account value.
+            Click any account to expand and see its transactions.
+        </div>
+    `;
+
     Object.keys(types).forEach(key => {
         const group = types[key];
         if (group.items.length === 0) return;
@@ -817,24 +798,100 @@ function renderBalances(balances) {
         group.items.forEach(item => {
             const balance = item.balance || 0;
             const balanceColor = balance >= 0 ? '#28a745' : '#dc3545';
+            const key = String(item.id);
+            const isExpanded = expandedBalanceAccounts.has(key);
+            const txCount = item.transactions ? item.transactions.length : 0;
+            const chevron = isExpanded ? '▾' : '▸';
+
             html += `
-                <div style="display: flex; justify-content: space-between; padding: 6px 12px; border-bottom: 1px solid #f0f0f0; padding-left: 24px;">
-                    <span style="color: #333; font-size: 13px;">${item.code} - ${item.name}</span>
-                    <span style="font-weight: 600; color: ${balanceColor};">$${balance.toFixed(2)}</span>
-                </div>
+                <div style="border-bottom: 1px solid #f0f0f0;">
+                    <div onclick="toggleBalanceAccount(${item.id})"
+                         style="display: flex; justify-content: space-between; align-items: center; padding: 6px 12px 6px 24px; cursor: pointer; transition: background 0.15s;"
+                         onmouseover="this.style.background='#f8f9fa'"
+                         onmouseout="this.style.background='transparent'">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="color: #999; font-size: 11px; width: 12px; display: inline-block;">${chevron}</span>
+                            <span style="color: #333; font-size: 13px;">${item.code} - ${item.name}</span>
+                            <span style="color: #aaa; font-size: 11px;">(${txCount})</span>
+                        </div>
+                        <span style="font-weight: 600; color: ${balanceColor};">$${balance.toFixed(2)}</span>
+                    </div>
             `;
+
+            if (isExpanded) {
+                if (txCount === 0) {
+                    html += `<div style="padding: 10px 24px 14px 44px; color: #999; font-size: 12px; font-style: italic;">No transactions for this account.</div>`;
+                } else {
+                    html += `
+                        <div style="padding: 4px 12px 10px 44px; background: #fafafa;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid #e0e0e0;">
+                                        <th style="text-align: left; padding: 4px 6px; color: #666; font-weight: 600;">Date</th>
+                                        <th style="text-align: left; padding: 4px 6px; color: #666; font-weight: 600;">Description</th>
+                                        <th style="text-align: left; padding: 4px 6px; color: #666; font-weight: 600;">Source</th>
+                                        <th style="text-align: center; padding: 4px 6px; color: #666; font-weight: 600;">Dir</th>
+                                        <th style="text-align: right; padding: 4px 6px; color: #666; font-weight: 600;">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+
+                    item.transactions.forEach(tx => {
+                        // Sign shown depends on direction + debitNormal
+                        const rawAmt = Number(tx.amount) || 0;
+                        const direction = tx.direction;    // 'to' or 'from'
+
+                        // Determine effective sign for this account:
+                        //   debitNormal  (asset/expense):
+                        //       'to'   → +rawAmt
+                        //       'from' → -rawAmt
+                        //   creditNormal (liability/equity/revenue):
+                        //       'to'   → -rawAmt
+                        //       'from' → +rawAmt
+                        const debitNormal = item.debitNormal;
+                        let effectiveSign;
+                        if (direction === 'to') {
+                            effectiveSign = debitNormal ? 1 : -1;
+                        } else {
+                            effectiveSign = debitNormal ? -1 : 1;
+                        }
+                        const effectiveAmt = effectiveSign * Math.abs(rawAmt);
+
+                        const amtColor = effectiveAmt >= 0 ? '#28a745' : '#dc3545';
+                        const amtStr = (effectiveAmt >= 0 ? '+' : '-') + '$' + Math.abs(effectiveAmt).toFixed(2);
+                        const sourceLabel = tx.source === 'journal_manual' ? 'Manual' : 'Bank';
+                        const dirLabel = direction === 'to' ? '→ in' : '← out';
+                        const dirColor = direction === 'to' ? '#28a745' : '#dc3545';
+
+                        html += `
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 4px 6px; color: #333; white-space: nowrap;">${tx.transaction_date || ''}</td>
+                                <td style="padding: 4px 6px; color: #333;">${tx.description || ''}</td>
+                                <td style="padding: 4px 6px; color: #888;">${sourceLabel}</td>
+                                <td style="padding: 4px 6px; text-align: center; color: ${dirColor};">${dirLabel}</td>
+                                <td style="padding: 4px 6px; text-align: right; font-weight: 600; color: ${amtColor};">${amtStr}</td>
+                            </tr>
+                        `;
+                    });
+
+                    html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+            }
+
+            html += `</div>`;
         });
     });
 
-    list.innerHTML = html || '<div style="text-align: center; padding: 40px; color: #999;">No balances found</div>';
+    list.innerHTML = html;
 }
 
 // ============================================================
 // MONTHLY P&L BAR CHARTS
-// ============================================================
-// Only revenue and expense accounts appear on the bars.
-// Asset / liability / equity accounts are balance-sheet movements
-// and are excluded (e.g. transfers into Prepaid Rent).
 // ============================================================
 
 function loadMonthlyPLBarChart() {
@@ -888,16 +945,12 @@ function renderMonthlyPLChartsPage() {
     visibleMonths.forEach((month, index) => {
         const accounts = monthlyAggregate[month] || {};
         const acctList = Object.values(accounts);
-
-        // P&L filter: revenue and expense only
         const plAccounts = acctList.filter(a => a.type === 'revenue' || a.type === 'expense');
         const revenueItems = plAccounts.filter(a => a.total > 0);
         const expenseItems = plAccounts.filter(a => a.total < 0);
-
         const totalRevenue = revenueItems.reduce((s, a) => s + a.total, 0);
         const totalExpenses = expenseItems.reduce((s, a) => s + a.total, 0);
         const netIncome = totalRevenue + totalExpenses;
-
         const chartIndex = startIndex + index;
 
         html += `
@@ -932,25 +985,19 @@ function renderMonthlyPLChartsPage() {
         visibleMonths.forEach((month, index) => {
             const accounts = monthlyAggregate[month] || {};
             const acctList = Object.values(accounts);
-
             const plAccounts = acctList.filter(a => a.type === 'revenue' || a.type === 'expense');
             const revenueItems = plAccounts.filter(a => a.total > 0);
             const expenseItems = plAccounts.filter(a => a.total < 0);
-
             const totalRevenue = revenueItems.reduce((s, a) => s + a.total, 0);
             const totalExpenses = expenseItems.reduce((s, a) => s + a.total, 0);
             const netIncome = totalRevenue + totalExpenses;
 
-            const labels = [];
-            const values = [];
-            const colors = [];
-            const clickTargets = [];
+            const labels = [], values = [], colors = [], clickTargets = [];
 
             revenueItems.forEach(a => {
                 let label = a.name;
                 if (label.length > 15) label = label.substring(0, 13) + '...';
-                labels.push(label);
-                values.push(a.total);
+                labels.push(label); values.push(a.total);
                 colors.push('rgba(40, 167, 69, 0.85)');
                 clickTargets.push({ account_id: a.account_id });
             });
@@ -958,14 +1005,12 @@ function renderMonthlyPLChartsPage() {
             expenseItems.forEach(a => {
                 let label = a.name;
                 if (label.length > 15) label = label.substring(0, 13) + '...';
-                labels.push(label);
-                values.push(a.total);
+                labels.push(label); values.push(a.total);
                 colors.push('rgba(220, 53, 69, 0.75)');
                 clickTargets.push({ account_id: a.account_id });
             });
 
-            labels.push('Net Income');
-            values.push(netIncome);
+            labels.push('Net Income'); values.push(netIncome);
             colors.push(netIncome >= 0 ? 'rgba(40, 167, 69, 0.95)' : 'rgba(220, 53, 69, 0.95)');
             clickTargets.push(null);
 
@@ -975,7 +1020,6 @@ function renderMonthlyPLChartsPage() {
             if (!canvas) return;
 
             const ctx = canvas.getContext('2d');
-
             const chart = new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -1005,31 +1049,20 @@ function renderMonthlyPLChartsPage() {
                     scales: {
                         y: {
                             beginAtZero: true,
-                            ticks: {
-                                callback: function(value) { return '$' + value; },
-                                font: { size: 9 }
-                            }
+                            ticks: { callback: v => '$' + v, font: { size: 9 } }
                         },
                         x: {
-                            ticks: {
-                                maxRotation: 30,
-                                minRotation: 30,
-                                font: { size: 7 }
-                            }
+                            ticks: { maxRotation: 30, minRotation: 30, font: { size: 7 } }
                         }
                     },
                     onClick: function(e, elements) {
                         if (elements.length === 0) return;
-                        const element = elements[0];
-                        const idx = element.index;
+                        const idx = elements[0].index;
                         const target = clickTargets[idx];
-
                         if (target === null) {
-                            // Net Income bar — show only P&L transactions
                             showMonthlyTransactions(month, null, 'P&L Transactions');
                             return;
                         }
-
                         const accountId = target.account_id;
                         const bucket = monthlyAggregate[month]?.[String(accountId)];
                         const accountName = bucket ? bucket.name : 'Unknown';
@@ -1043,42 +1076,24 @@ function renderMonthlyPLChartsPage() {
 
         const prevBtn = document.getElementById('monthly-pl-prev');
         const nextBtn = document.getElementById('monthly-pl-next');
-
-        if (prevBtn) {
-            prevBtn.addEventListener('click', function() {
-                if (monthlyPLCurrentPage > 0) {
-                    monthlyPLCurrentPage--;
-                    renderMonthlyPLChartsPage();
-                }
-            });
-        }
-
-        if (nextBtn) {
-            nextBtn.addEventListener('click', function() {
-                const totalPages = Math.ceil(monthlyPLMonths.length / 6);
-                if (monthlyPLCurrentPage < totalPages - 1) {
-                    monthlyPLCurrentPage++;
-                    renderMonthlyPLChartsPage();
-                }
-            });
-        }
-
+        if (prevBtn) prevBtn.addEventListener('click', function() {
+            if (monthlyPLCurrentPage > 0) { monthlyPLCurrentPage--; renderMonthlyPLChartsPage(); }
+        });
+        if (nextBtn) nextBtn.addEventListener('click', function() {
+            const totalPages = Math.ceil(monthlyPLMonths.length / 6);
+            if (monthlyPLCurrentPage < totalPages - 1) { monthlyPLCurrentPage++; renderMonthlyPLChartsPage(); }
+        });
     }, 100);
 }
 
 // ============================================================
 // MONTHLY TRANSACTIONS MODAL
 // ============================================================
-// Reads from monthlyAggregate. Two modal modes:
-//   - accountId given  → single account's transactions
-//   - accountId null   → P&L-only transactions (revenue + expense)
-// ============================================================
 
 function showMonthlyTransactions(month, accountId, accountName) {
     const modal = document.getElementById('monthly-tx-modal');
     const body = document.getElementById('modal-body');
     const title = document.getElementById('modal-title');
-
     if (!modal || !body || !title) {
         showToast('Error: Modal elements not found', 'error');
         return;
@@ -1091,15 +1106,12 @@ function showMonthlyTransactions(month, accountId, accountName) {
                      String(d.getDate()).padStart(2, '0') + '/' +
                      String(d.getFullYear()).slice(2);
     const dateRange = fmt(firstDay) + ' - ' + fmt(lastDay);
-
     title.textContent = `${accountName} - ${dateRange}`;
     modal.style.display = 'flex';
 
     let rows = [];
     const accountsInMonth = monthlyAggregate[month] || {};
-
     if (accountId === null || accountId === undefined) {
-        // P&L view: only revenue + expense accounts
         for (const bucket of Object.values(accountsInMonth)) {
             if (bucket.type === 'revenue' || bucket.type === 'expense') {
                 rows = rows.concat(bucket.transactions);
@@ -1123,7 +1135,6 @@ function showMonthlyTransactions(month, accountId, accountName) {
 function renderModalTransactions(transactions, accountName, dateRange) {
     const body = document.getElementById('modal-body');
     if (!body) return;
-
     if (!transactions || transactions.length === 0) {
         body.innerHTML = '<p style="color: #000;">No transactions found for this period.</p>';
         return;
@@ -1156,7 +1167,6 @@ function renderModalTransactions(transactions, accountName, dateRange) {
         const sign = amt > 0 ? '+' : (amt < 0 ? '-' : '');
         const amtStr = amt !== 0 ? '$' + Math.abs(amt).toFixed(2) : '';
         const sourceLabel = tx._source === 'journal_manual' ? 'Manual' : 'Bank';
-
         html += `<tr style="border-bottom:1px solid #eee; color:#000;">
             <td style="padding:8px 12px; white-space:nowrap; color:#000;">${tx.transaction_date || ''}</td>
             <td style="padding:8px 12px; color:#000;">${tx.description || ''}</td>
@@ -1170,7 +1180,6 @@ function renderModalTransactions(transactions, accountName, dateRange) {
         <td style="padding:8px 12px; text-align:right; color:${total >= 0 ? '#28a745' : '#dc3545'};">${total >= 0 ? '+' : ''}${total !== 0 ? '$' + total.toFixed(2) : ''}</td>
     </tr>`;
     html += '</tbody></table>';
-
     body.innerHTML = html;
 }
 
@@ -1184,53 +1193,32 @@ function closeMonthlyModal() {
 
 async function initAccounting() {
     console.log('[INIT] initAccounting called');
-
     const container = document.getElementById('accounting-container');
-    if (!container) {
-        console.error('[INIT] Container not found');
-        return;
-    }
+    if (!container) { console.error('[INIT] Container not found'); return; }
 
     document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const sub = this.dataset.subtab;
-            console.log('[INIT] Tab clicked:', sub);
-
             document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(t => {
-                t.style.background = '#e9ecef';
-                t.style.color = '#333';
+                t.style.background = '#e9ecef'; t.style.color = '#333';
             });
-            this.style.background = '#007bff';
-            this.style.color = 'white';
-
+            this.style.background = '#007bff'; this.style.color = 'white';
             document.querySelectorAll('.sub-tab-content').forEach(c => c.style.display = 'none');
             const target = document.getElementById('sub-' + sub);
             if (target) target.style.display = 'flex';
 
-            if (sub === 'transactions') {
-                loadTransactions();
-            } else if (sub === 'accounts') {
-                loadAccountsList();
-            } else if (sub === 'journal') {
-                loadJournalEntries();
-            } else if (sub === 'balance') {
-                loadBalances();
-            } else if (sub === 'monthly-pl') {
-                loadMonthlyPLBarChart();
-            }
+            if (sub === 'transactions') loadTransactions();
+            else if (sub === 'accounts') loadAccountsList();
+            else if (sub === 'journal') loadJournalEntries();
+            else if (sub === 'balance') loadBalances();
+            else if (sub === 'monthly-pl') loadMonthlyPLBarChart();
         });
     });
 
-    document.getElementById('search-btn')?.addEventListener('click', function() {
-        loadTransactions();
+    document.getElementById('search-btn')?.addEventListener('click', () => loadTransactions());
+    document.getElementById('transaction-search')?.addEventListener('keypress', e => {
+        if (e.key === 'Enter') loadTransactions();
     });
-
-    document.getElementById('transaction-search')?.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            loadTransactions();
-        }
-    });
-
     document.getElementById('clear-search-btn')?.addEventListener('click', function() {
         document.getElementById('transaction-search').value = '';
         document.getElementById('bulk-assign-section').style.display = 'none';
@@ -1240,36 +1228,20 @@ async function initAccounting() {
     document.getElementById('refresh-btn')?.addEventListener('click', async function() {
         await loadAllTransactions();
         loadTransactions();
+        loadBalances();
     });
 
-    document.getElementById('unposted-filter')?.addEventListener('change', function() {
-        loadTransactions();
-    });
-
-    document.getElementById('bulk-assign-btn')?.addEventListener('click', function() {
-        bulkAssignAccount();
-    });
-
-    document.getElementById('bulk-cancel-btn')?.addEventListener('click', function() {
-        cancelBulkAssign();
-    });
-
-    document.getElementById('add-account-btn')?.addEventListener('click', function() {
-        showAddAccountModal();
-    });
-
+    document.getElementById('unposted-filter')?.addEventListener('change', () => loadTransactions());
+    document.getElementById('bulk-assign-btn')?.addEventListener('click', () => bulkAssignAccount());
+    document.getElementById('bulk-cancel-btn')?.addEventListener('click', () => cancelBulkAssign());
+    document.getElementById('add-account-btn')?.addEventListener('click', () => showAddAccountModal());
     document.getElementById('close-add-account-modal')?.addEventListener('click', function() {
         document.getElementById('add-account-modal').style.display = 'none';
     });
-
-    document.getElementById('save-account-btn')?.addEventListener('click', function() {
-        saveAccount();
-    });
-
+    document.getElementById('save-account-btn')?.addEventListener('click', () => saveAccount());
     document.getElementById('add-account-modal')?.addEventListener('click', function(e) {
         if (e.target === this) this.style.display = 'none';
     });
-
     document.getElementById('monthly-tx-modal')?.addEventListener('click', function(e) {
         if (e.target === this) this.style.display = 'none';
     });
