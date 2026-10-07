@@ -1,13 +1,46 @@
 // ============================================================
-// accounting.js – Accounting Module (DEBUG BUILD)
+// accounting.js – Accounting Module
 //
-// DEBUG: Extensive console logging added to trace why Rent Expense
-// does not produce a bar on the Monthly P&L chart.
+// DATA MODEL
+// ----------
+// Two source endpoints:
+//   1. /api/accounting/bank-transactions-full  → bank rows (dollars, signed)
+//   2. /api/accounting/manual-entries          → manual journal entries (cents)
 //
-// Search for [DEBUG] to find all diagnostic lines.
+// Every raw row is normalized into a flat list of "postings":
+//
+//   { id, transaction_date, description, additional_info,
+//     account_id, delta, direction, source, is_bank_side }
+//
+// BANK ROW  (raw: post_from=bank, post_to=category, amount signed)
+//   Bank-side posting:
+//       account_id = tx.post_from
+//       delta      = rawAmount (signed)
+//   Category-side posting (emitted ONLY when the category is not an asset):
+//       account_id = tx.post_to
+//       delta      = +abs(rawAmount)
+//
+//   Category postings are for classification of expense/revenue. They are
+//   NOT emitted when the category is another asset (a bank), because the
+//   receiving bank already has its own feed row for the same movement.
+//   Emitting both would double-count asset transfers.
+//
+// MANUAL ENTRY  (raw: post_from=source, post_to=dest, amount positive cents)
+//   posting 1 → account = post_to,   delta = +dollars
+//   posting 2 → account = post_from, delta = -dollars
+//
+// DERIVED VIEWS
+// -------------
+//   computeBalances()            → sum delta per account
+//   aggregateByMonthAndAccount() → bucket by account_id, apply P&L sign
+//
+// Retired endpoints:
+//   /api/accounting/monthly-pl
+//   /api/accounting/monthly-account-transactions
+//   /api/accounting/balances
 // ============================================================
 
-console.log('[ACCOUNTING] Script started loading (DEBUG BUILD)');
+console.log('[ACCOUNTING] Script started loading');
 
 // ===== API BASE URL =====
 const API_BASE = window.location.hostname === 'localhost' 
@@ -89,39 +122,12 @@ async function loadAllTransactions() {
     if (bankResult.status === 'rejected') console.error('[ACCT] bank fetch failed:', bankResult.reason);
     if (manualResult.status === 'rejected') console.error('[ACCT] manual fetch failed:', manualResult.reason);
 
-    // ===== DEBUG: what did the manual endpoint return? =====
-    console.log('[DEBUG] rawManualRows length:', rawManualRows.length);
-    if (rawManualRows.length > 0) {
-        console.log('[DEBUG] First 3 raw manual rows:');
-        rawManualRows.slice(0, 3).forEach((r, i) => {
-            console.log(`  [${i}]`, JSON.stringify(r));
-        });
-        const rentRows = rawManualRows.filter(r =>
-            String(r.post_from) === String(RENT_EXPENSE_ACCOUNT_ID) ||
-            String(r.post_to) === String(RENT_EXPENSE_ACCOUNT_ID)
-        );
-        console.log('[DEBUG] Manual rows touching account 51 (Rent Expense):', rentRows.length);
-    }
-
     const bankPostings = normalizeBankTransactions(rawBankRows);
     const manualPostings = normalizeManualEntries(rawManualRows);
-
-    // ===== DEBUG: postings for account 51 =====
-    const rentPostings = manualPostings.filter(p => Number(p.account_id) === RENT_EXPENSE_ACCOUNT_ID);
-    console.log('[DEBUG] Manual postings for account 51 (Rent Expense):', rentPostings.length);
-    rentPostings.forEach(p => console.log('  ', p.transaction_date, p.delta, p.direction));
 
     allTransactions = [...bankPostings, ...manualPostings];
     monthlyAggregate = aggregateByMonthAndAccount(allTransactions);
     monthlyPLMonths = Object.keys(monthlyAggregate).sort().reverse();
-
-    // ===== DEBUG: verify aggregate contains account 51 per month =====
-    const monthsWithRent = monthlyPLMonths.filter(m => monthlyAggregate[m] && monthlyAggregate[m]['51']);
-    console.log('[DEBUG] Months with Rent Expense bucket:', monthsWithRent);
-    monthsWithRent.forEach(m => {
-        const b = monthlyAggregate[m]['51'];
-        console.log(`  ${m}: total=${b.total} type=${b.type} txCount=${b.transactions.length}`);
-    });
 
     console.log(
         `[ACCT] Loaded ${rawBankRows.length} bank rows + ${rawManualRows.length} manual entries ` +
@@ -149,14 +155,28 @@ async function fetchManualEntries() {
     return data.entries || [];
 }
 
+/**
+ * Turn each bank row into up to two postings.
+ *
+ * Bank-side posting: the bank account (post_from) with the signed raw amount.
+ * Category-side posting: only emitted when the category (post_to) is NOT an
+ * asset account. Category postings represent expense/revenue classification.
+ * If the category is another bank, the other bank's own feed already has the
+ * corresponding row, so emitting a category posting would double-count.
+ */
 function normalizeBankTransactions(rows) {
     const postings = [];
+    const assetIds = new Set(
+        bankAccounts.filter(a => (a.type || '') === 'asset').map(a => String(a.id))
+    );
+
     for (const tx of rows) {
         const rawAmount = Number(tx.amount) || 0;
         const absAmount = Math.abs(rawAmount);
         const direction = rawAmount >= 0 ? 'in' : 'out';
         const baseId = `bank_${tx.id}`;
 
+        // Bank side
         if (tx.post_from !== null && tx.post_from !== undefined) {
             postings.push({
                 id: `${baseId}_bank`,
@@ -171,7 +191,10 @@ function normalizeBankTransactions(rows) {
                 is_bank_side: true
             });
         }
-        if (tx.post_to !== null && tx.post_to !== undefined) {
+
+        // Category side — only if category is set AND category is not an asset
+        if (tx.post_to !== null && tx.post_to !== undefined &&
+            !assetIds.has(String(tx.post_to))) {
             postings.push({
                 id: `${baseId}_cat`,
                 bank_transaction_id: tx.id,
@@ -189,13 +212,12 @@ function normalizeBankTransactions(rows) {
     return postings;
 }
 
+/**
+ * Turn each manual journal entry into two postings.
+ * Account 52 (Prepaid Rent) is skipped on both sides (legacy behavior).
+ */
 function normalizeManualEntries(entries) {
     const postings = [];
-    let rentSkippedFrom = 0;
-    let rentSkippedTo = 0;
-    let rentKeptFrom = 0;
-    let rentKeptTo = 0;
-
     for (const e of entries) {
         if (!e.transaction_date) continue;
         const cents = Number(e.amount) || 0;
@@ -215,11 +237,7 @@ function normalizeManualEntries(entries) {
                 direction: 'in',
                 source: 'journal_manual'
             });
-            if (Number(e.post_to) === RENT_EXPENSE_ACCOUNT_ID) rentKeptTo++;
-        } else if (Number(e.post_to) === PREPAID_RENT_ACCOUNT_ID) {
-            rentSkippedTo++;
         }
-
         if (e.post_from && Number(e.post_from) !== PREPAID_RENT_ACCOUNT_ID) {
             postings.push({
                 id: `${baseId}_from`,
@@ -232,21 +250,17 @@ function normalizeManualEntries(entries) {
                 direction: 'out',
                 source: 'journal_manual'
             });
-            if (Number(e.post_from) === RENT_EXPENSE_ACCOUNT_ID) rentKeptFrom++;
-        } else if (Number(e.post_from) === PREPAID_RENT_ACCOUNT_ID) {
-            rentSkippedFrom++;
         }
     }
-
-    console.log('[DEBUG normalizeManualEntries] Rent-related skips/keeps:');
-    console.log(`  post_to=52 (skipped): ${rentSkippedTo}`);
-    console.log(`  post_to=51 (kept):    ${rentKeptTo}`);
-    console.log(`  post_from=52 (skipped): ${rentSkippedFrom}`);
-    console.log(`  post_from=51 (kept):    ${rentKeptFrom}`);
-
     return postings;
 }
 
+/**
+ * Aggregate postings into month + account buckets.
+ * Bucket total is signed for the P&L chart:
+ *   revenue, asset            → +1
+ *   expense, liability, equity → -1
+ */
 function aggregateByMonthAndAccount(postings) {
     const accountMeta = {};
     for (const acc of bankAccounts) {
@@ -295,10 +309,15 @@ function computeBalances(postings, accounts) {
     const byId = {};
     for (const acc of accounts) {
         byId[String(acc.id)] = {
-            id: acc.id, code: acc.code, name: acc.name,
-            type: acc.type || 'asset', balance: 0, transactions: []
+            id: acc.id,
+            code: acc.code,
+            name: acc.name,
+            type: acc.type || 'asset',
+            balance: 0,
+            transactions: []
         };
     }
+
     for (const p of postings) {
         const key = String(p.account_id);
         const a = byId[key];
@@ -314,6 +333,7 @@ function computeBalances(postings, accounts) {
             source: p.source
         });
     }
+
     for (const acc of Object.values(byId)) {
         acc.transactions.sort((a, b) => {
             const da = String(a.transaction_date || '');
@@ -322,7 +342,10 @@ function computeBalances(postings, accounts) {
             return String(b.description).localeCompare(String(a.description));
         });
     }
-    return Object.values(byId).sort((a, b) => String(a.code).localeCompare(String(b.code)));
+
+    return Object.values(byId).sort((a, b) =>
+        String(a.code).localeCompare(String(b.code))
+    );
 }
 
 // ============================================================
@@ -340,9 +363,6 @@ async function loadAccounts() {
         if (data.status === 'success') {
             bankAccounts = data.accounts || [];
             console.log('[ACCOUNTS] Loaded', bankAccounts.length, 'accounts');
-            // DEBUG: is account 51 in bankAccounts?
-            const acc51 = bankAccounts.find(a => Number(a.id) === 51);
-            console.log('[DEBUG] Account 51 in bankAccounts:', acc51);
             populateBulkAccountSelect();
             return bankAccounts;
         }
@@ -846,28 +866,19 @@ function renderBalances(balances) {
 }
 
 // ============================================================
-// MONTHLY P&L BAR CHARTS (DEBUG-HEAVY)
+// MONTHLY P&L BAR CHARTS
 // ============================================================
 
 function loadMonthlyPLBarChart() {
     console.log('[MONTHLY-PL] loadMonthlyPLBarChart() called');
-    console.log('[DEBUG] monthlyPLMonths:', monthlyPLMonths);
-    console.log('[DEBUG] monthlyPLCurrentPage:', monthlyPLCurrentPage);
     renderMonthlyPLChartsPage();
 }
 
 function renderMonthlyPLChartsPage() {
-    console.log('[MONTHLY-PL] renderMonthlyPLChartsPage() called, page =', monthlyPLCurrentPage);
-
     const container = document.getElementById('monthly-pl-bar-chart-container');
-    if (!container) {
-        console.error('[DEBUG] container #monthly-pl-bar-chart-container NOT FOUND');
-        return;
-    }
-    console.log('[DEBUG] container found');
+    if (!container) return;
 
     if (!monthlyPLMonths || monthlyPLMonths.length === 0) {
-        console.warn('[DEBUG] no months to render');
         container.innerHTML = '<p style="text-align:center; padding:40px; color:#666;">No data available.</p>';
         return;
     }
@@ -875,8 +886,6 @@ function renderMonthlyPLChartsPage() {
     const startIndex = monthlyPLCurrentPage * 6;
     const endIndex = Math.min(startIndex + 6, monthlyPLMonths.length);
     const visibleMonths = monthlyPLMonths.slice(startIndex, endIndex);
-
-    console.log(`[DEBUG] rendering months ${startIndex} to ${endIndex - 1}:`, visibleMonths);
 
     if (visibleMonths.length === 0) {
         if (monthlyPLCurrentPage > 0) {
@@ -889,36 +898,6 @@ function renderMonthlyPLChartsPage() {
     const totalPages = Math.ceil(monthlyPLMonths.length / 6);
     const isFirstPage = monthlyPLCurrentPage === 0;
     const isLastPage = monthlyPLCurrentPage >= totalPages - 1;
-
-    // ===== First pass: build HTML =====
-    visibleMonths.forEach((month, index) => {
-        const accounts = monthlyAggregate[month] || {};
-        const acctList = Object.values(accounts);
-        const plAccounts = acctList.filter(a => a.type === 'revenue' || a.type === 'expense');
-        const revenueItems = plAccounts.filter(a => a.total > 0);
-        const expenseItems = plAccounts.filter(a => a.total < 0);
-
-        // ===== DEBUG: what did this month produce? =====
-        const hasRentBucket = !!accounts['51'];
-        const rentInPL = plAccounts.some(a => a.account_id === 51);
-        const rentInExpense = expenseItems.some(a => a.account_id === 51);
-
-        console.log(`[DEBUG] month ${month}:`);
-        console.log(`  total buckets: ${acctList.length}`);
-        console.log(`  P&L buckets: ${plAccounts.length}`);
-        console.log(`  revenue buckets: ${revenueItems.length}`);
-        console.log(`  expense buckets: ${expenseItems.length}`);
-        console.log(`  has account 51 bucket: ${hasRentBucket}`);
-        if (hasRentBucket) {
-            console.log(`    51 type=${accounts['51'].type} total=${accounts['51'].total}`);
-        }
-        console.log(`  account 51 in plAccounts: ${rentInPL}`);
-        console.log(`  account 51 in expenseItems: ${rentInExpense}`);
-        if (rentInExpense) {
-            const rent = expenseItems.find(a => a.account_id === 51);
-            console.log(`    Rent Expense total to plot: ${rent.total}`);
-        }
-    });
 
     let html = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 10px 15px; background: #f8f9fa; border-radius: 8px;">
@@ -969,20 +948,15 @@ function renderMonthlyPLChartsPage() {
 
     html += '</div>';
     container.innerHTML = html;
-    console.log('[DEBUG] HTML injected into container');
 
-    // ===== Destroy old chart instances =====
     Object.keys(monthlyPLChartInstances).forEach(key => {
         if (monthlyPLChartInstances[key]) {
             try { monthlyPLChartInstances[key].destroy(); } catch(e) {}
             delete monthlyPLChartInstances[key];
         }
     });
-    console.log('[DEBUG] old chart instances destroyed');
 
     setTimeout(() => {
-        console.log('[DEBUG] setTimeout fired, building charts');
-
         visibleMonths.forEach((month, index) => {
             const accounts = monthlyAggregate[month] || {};
             const acctList = Object.values(accounts);
@@ -1018,16 +992,7 @@ function renderMonthlyPLChartsPage() {
             const chartIndex = startIndex + index;
             const canvasId = `monthly-pl-chart-${chartIndex}`;
             const canvas = document.getElementById(canvasId);
-
-            console.log(`[DEBUG] chart ${chartIndex} (${month}): canvas ${canvas ? 'found' : 'MISSING'}`);
             if (!canvas) return;
-            if (typeof Chart === 'undefined') {
-                console.error('[DEBUG] Chart.js not loaded! typeof Chart =', typeof Chart);
-                return;
-            }
-
-            console.log(`[DEBUG] chart ${chartIndex} (${month}) labels:`, JSON.stringify(labels));
-            console.log(`[DEBUG] chart ${chartIndex} (${month}) values:`, JSON.stringify(values));
 
             const ctx = canvas.getContext('2d');
             const chart = new Chart(ctx, {
@@ -1077,7 +1042,6 @@ function renderMonthlyPLChartsPage() {
             });
 
             monthlyPLChartInstances[chartIndex] = chart;
-            console.log(`[DEBUG] chart ${chartIndex} (${month}) created and stored`);
         });
 
         const prevBtn = document.getElementById('monthly-pl-prev');
@@ -1089,8 +1053,6 @@ function renderMonthlyPLChartsPage() {
             const totalPages = Math.ceil(monthlyPLMonths.length / 6);
             if (monthlyPLCurrentPage < totalPages - 1) { monthlyPLCurrentPage++; renderMonthlyPLChartsPage(); }
         });
-
-        console.log('[DEBUG] renderMonthlyPLChartsPage complete');
     }, 100);
 }
 
@@ -1099,8 +1061,6 @@ function renderMonthlyPLChartsPage() {
 // ============================================================
 
 function showMonthlyTransactions(month, accountId, accountName) {
-    console.log('[DEBUG] showMonthlyTransactions', { month, accountId, accountName });
-
     const modal = document.getElementById('monthly-tx-modal');
     const body = document.getElementById('modal-body');
     const title = document.getElementById('modal-title');
@@ -1214,15 +1174,12 @@ function closeMonthlyModal() {
 
 async function initAccounting() {
     console.log('[INIT] initAccounting called');
-
     const container = document.getElementById('accounting-container');
     if (!container) { console.error('[INIT] Container not found'); return; }
 
     document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const sub = this.dataset.subtab;
-            console.log('[DEBUG] tab clicked:', sub);
-
             document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(t => {
                 t.style.background = '#e9ecef'; t.style.color = '#333';
             });
@@ -1250,7 +1207,6 @@ async function initAccounting() {
     });
 
     document.getElementById('refresh-btn')?.addEventListener('click', async function() {
-        console.log('[DEBUG] Refresh clicked');
         await loadAllTransactions();
         loadTransactions();
         loadBalances();
