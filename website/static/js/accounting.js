@@ -1,56 +1,13 @@
 // ============================================================
-// accounting.js – Accounting Module
+// accounting.js – Accounting Module (DEBUG BUILD)
 //
-// DATA MODEL
-// ----------
-// Two source endpoints:
-//   1. /api/accounting/bank-transactions-full  → bank rows (dollars, signed)
-//   2. /api/accounting/manual-entries          → manual journal entries (cents)
+// DEBUG: Extensive console logging added to trace why Rent Expense
+// does not produce a bar on the Monthly P&L chart.
 //
-// Every raw row is normalized into a flat list of "postings":
-//
-//   { id, transaction_date, description, additional_info,
-//     account_id, delta, direction, source }
-//
-// where:
-//   account_id  = the account this posting affects
-//   delta       = signed dollar change to that account's balance
-//                 (positive = increase, negative = decrease)
-//   direction   = 'in' | 'out' — for display only
-//   source      = 'bank' | 'journal_manual'
-//
-// BANK ROW  (raw: post_from=bank, post_to=category, amount signed)
-//   For a positive raw amount (money entered the bank):
-//       posting 1 → account = bank,     delta = +raw (bank increased)
-//       posting 2 → account = category, delta = +raw (category increased)
-//   For a negative raw amount (money left the bank):
-//       posting 1 → account = bank,     delta = raw  (bank decreased, raw is negative)
-//       posting 2 → account = category, delta = -raw (category increased)
-//
-// MANUAL ENTRY  (raw: post_from=source, post_to=dest, amount positive cents)
-//   posting 1 → account = post_to,   delta = +dollars (destination increased)
-//   posting 2 → account = post_from, delta = -dollars (source decreased)
-//
-// DERIVED VIEWS
-// -------------
-//   computeBalances()            → sum delta per account (natural-balance convention:
-//                                   expense balances read positive when expenses grew)
-//   aggregateByMonthAndAccount() → bucket by account_id, apply P&L sign
-//                                   (revenue/asset: +1, expense/liability/equity: -1)
-//
-// MODAL DISPLAY
-// -------------
-//   The monthly P&L modal shows transactions with a P&L-convention sign:
-//   expense postings display as negative, revenue postings as positive.
-//   The Balance tab retains the natural-balance convention (positive when healthy).
-//
-// Retired endpoints:
-//   /api/accounting/monthly-pl
-//   /api/accounting/monthly-account-transactions
-//   /api/accounting/balances
+// Search for [DEBUG] to find all diagnostic lines.
 // ============================================================
 
-console.log('[ACCOUNTING] Script started loading');
+console.log('[ACCOUNTING] Script started loading (DEBUG BUILD)');
 
 // ===== API BASE URL =====
 const API_BASE = window.location.hostname === 'localhost' 
@@ -59,6 +16,7 @@ const API_BASE = window.location.hostname === 'localhost'
 
 // ===== CONSTANTS =====
 const PREPAID_RENT_ACCOUNT_ID = 52;
+const RENT_EXPENSE_ACCOUNT_ID = 51;   // for debug filters
 
 // ===== GLOBAL VARIABLES =====
 let bankAccounts = [];
@@ -68,21 +26,18 @@ let journalTotalEntries = 0;
 let currentSearchTerm = '';
 let currentFilter = 'all';
 
-// Expanded-state tracking for the Balance tab
 const expandedBalanceAccounts = new Set();
 
-// ===== SINGLE SOURCE OF TRUTH =====
-let allTransactions = [];       // flat list of postings
-let rawBankRows = [];           // original bank rows (untransformed) for the Transactions tab
-let monthlyAggregate = {};      // { 'YYYY-MM': { '<account_id>': { name, code, type, total, transactions[] } } }
+let allTransactions = [];
+let rawBankRows = [];
+let monthlyAggregate = {};
 
-// Monthly P&L chart page state
 let monthlyPLMonths = [];
 let monthlyPLCurrentPage = 0;
 let monthlyPLChartInstances = {};
 
 // ============================================================
-// TOAST NOTIFICATION
+// TOAST
 // ============================================================
 
 function showToast(message, type = 'success') {
@@ -90,16 +45,9 @@ function showToast(message, type = 'success') {
     toast.className = `toast-notification ${type}`;
     toast.innerHTML = message;
     toast.style.cssText = `
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        padding: 12px 24px;
-        border-radius: 8px;
-        color: white;
-        font-weight: 500;
-        z-index: 10000;
-        animation: slideIn 0.3s ease;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        position: fixed; bottom: 20px; right: 20px; padding: 12px 24px;
+        border-radius: 8px; color: white; font-weight: 500; z-index: 10000;
+        animation: slideIn 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         background: ${type === 'success' ? '#28a745' : type === 'error' ? '#dc3545' : '#17a2b8'};
         max-width: 400px;
     `;
@@ -138,19 +86,42 @@ async function loadAllTransactions() {
     rawBankRows = bankResult.status === 'fulfilled' ? bankResult.value : [];
     const rawManualRows = manualResult.status === 'fulfilled' ? manualResult.value : [];
 
-    if (bankResult.status === 'rejected') {
-        console.error('[ACCT] bank fetch failed:', bankResult.reason);
-    }
-    if (manualResult.status === 'rejected') {
-        console.error('[ACCT] manual fetch failed:', manualResult.reason);
+    if (bankResult.status === 'rejected') console.error('[ACCT] bank fetch failed:', bankResult.reason);
+    if (manualResult.status === 'rejected') console.error('[ACCT] manual fetch failed:', manualResult.reason);
+
+    // ===== DEBUG: what did the manual endpoint return? =====
+    console.log('[DEBUG] rawManualRows length:', rawManualRows.length);
+    if (rawManualRows.length > 0) {
+        console.log('[DEBUG] First 3 raw manual rows:');
+        rawManualRows.slice(0, 3).forEach((r, i) => {
+            console.log(`  [${i}]`, JSON.stringify(r));
+        });
+        const rentRows = rawManualRows.filter(r =>
+            String(r.post_from) === String(RENT_EXPENSE_ACCOUNT_ID) ||
+            String(r.post_to) === String(RENT_EXPENSE_ACCOUNT_ID)
+        );
+        console.log('[DEBUG] Manual rows touching account 51 (Rent Expense):', rentRows.length);
     }
 
     const bankPostings = normalizeBankTransactions(rawBankRows);
     const manualPostings = normalizeManualEntries(rawManualRows);
 
+    // ===== DEBUG: postings for account 51 =====
+    const rentPostings = manualPostings.filter(p => Number(p.account_id) === RENT_EXPENSE_ACCOUNT_ID);
+    console.log('[DEBUG] Manual postings for account 51 (Rent Expense):', rentPostings.length);
+    rentPostings.forEach(p => console.log('  ', p.transaction_date, p.delta, p.direction));
+
     allTransactions = [...bankPostings, ...manualPostings];
     monthlyAggregate = aggregateByMonthAndAccount(allTransactions);
     monthlyPLMonths = Object.keys(monthlyAggregate).sort().reverse();
+
+    // ===== DEBUG: verify aggregate contains account 51 per month =====
+    const monthsWithRent = monthlyPLMonths.filter(m => monthlyAggregate[m] && monthlyAggregate[m]['51']);
+    console.log('[DEBUG] Months with Rent Expense bucket:', monthsWithRent);
+    monthsWithRent.forEach(m => {
+        const b = monthlyAggregate[m]['51'];
+        console.log(`  ${m}: total=${b.total} type=${b.type} txCount=${b.transactions.length}`);
+    });
 
     console.log(
         `[ACCT] Loaded ${rawBankRows.length} bank rows + ${rawManualRows.length} manual entries ` +
@@ -165,9 +136,7 @@ async function fetchBankTransactions() {
     const response = await fetch(url, { credentials: 'include', mode: 'cors' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-    if (data.status !== 'success') {
-        throw new Error(data.error || 'Failed to load bank transactions');
-    }
+    if (data.status !== 'success') throw new Error(data.error || 'Failed to load bank transactions');
     return data.transactions || [];
 }
 
@@ -176,18 +145,10 @@ async function fetchManualEntries() {
     const response = await fetch(url, { credentials: 'include', mode: 'cors' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-    if (data.status !== 'success') {
-        throw new Error(data.error || 'Failed to load manual entries');
-    }
+    if (data.status !== 'success') throw new Error(data.error || 'Failed to load manual entries');
     return data.entries || [];
 }
 
-/**
- * Turn each bank row into up to two postings.
- * - Always produce a posting for the bank account (post_from) with the signed raw amount.
- * - If the row has a category assigned (post_to != null), produce a posting for the
- *   category account with a positive amount (money arrived at the category).
- */
 function normalizeBankTransactions(rows) {
     const postings = [];
     for (const tx of rows) {
@@ -196,7 +157,6 @@ function normalizeBankTransactions(rows) {
         const direction = rawAmount >= 0 ? 'in' : 'out';
         const baseId = `bank_${tx.id}`;
 
-        // Bank side: the bank's balance changes by the signed raw amount.
         if (tx.post_from !== null && tx.post_from !== undefined) {
             postings.push({
                 id: `${baseId}_bank`,
@@ -211,8 +171,6 @@ function normalizeBankTransactions(rows) {
                 is_bank_side: true
             });
         }
-
-        // Category side: the category always increases by abs(rawAmount).
         if (tx.post_to !== null && tx.post_to !== undefined) {
             postings.push({
                 id: `${baseId}_cat`,
@@ -231,14 +189,13 @@ function normalizeBankTransactions(rows) {
     return postings;
 }
 
-/**
- * Turn each manual journal entry into two postings:
- * one for the destination account (increases) and one for the source (decreases).
- *
- * Account 52 (Prepaid Rent) is skipped, matching the legacy monthly-pl behavior.
- */
 function normalizeManualEntries(entries) {
     const postings = [];
+    let rentSkippedFrom = 0;
+    let rentSkippedTo = 0;
+    let rentKeptFrom = 0;
+    let rentKeptTo = 0;
+
     for (const e of entries) {
         if (!e.transaction_date) continue;
         const cents = Number(e.amount) || 0;
@@ -258,7 +215,11 @@ function normalizeManualEntries(entries) {
                 direction: 'in',
                 source: 'journal_manual'
             });
+            if (Number(e.post_to) === RENT_EXPENSE_ACCOUNT_ID) rentKeptTo++;
+        } else if (Number(e.post_to) === PREPAID_RENT_ACCOUNT_ID) {
+            rentSkippedTo++;
         }
+
         if (e.post_from && Number(e.post_from) !== PREPAID_RENT_ACCOUNT_ID) {
             postings.push({
                 id: `${baseId}_from`,
@@ -271,18 +232,21 @@ function normalizeManualEntries(entries) {
                 direction: 'out',
                 source: 'journal_manual'
             });
+            if (Number(e.post_from) === RENT_EXPENSE_ACCOUNT_ID) rentKeptFrom++;
+        } else if (Number(e.post_from) === PREPAID_RENT_ACCOUNT_ID) {
+            rentSkippedFrom++;
         }
     }
+
+    console.log('[DEBUG normalizeManualEntries] Rent-related skips/keeps:');
+    console.log(`  post_to=52 (skipped): ${rentSkippedTo}`);
+    console.log(`  post_to=51 (kept):    ${rentKeptTo}`);
+    console.log(`  post_from=52 (skipped): ${rentSkippedFrom}`);
+    console.log(`  post_from=51 (kept):    ${rentKeptFrom}`);
+
     return postings;
 }
 
-/**
- * Aggregate postings into month + account buckets.
- *
- * The bucket's `total` is signed according to the account's P&L direction:
- *   revenue, asset            → +1  (revenue up, asset up → positive)
- *   expense, liability, equity → -1  (expense up → negative)
- */
 function aggregateByMonthAndAccount(postings) {
     const accountMeta = {};
     for (const acc of bankAccounts) {
@@ -324,30 +288,17 @@ function aggregateByMonthAndAccount(postings) {
 }
 
 // ============================================================
-// COMPUTE ACCOUNT BALANCES (natural-balance convention)
-// ============================================================
-// Balances are the sum of deltas per account. The natural-balance
-// convention means every account reads positive when "healthy":
-//   asset     → positive when the asset grew
-//   expense   → positive when the expense grew
-//   liability → positive when the obligation grew
-//   equity    → positive when capital grew
-//   revenue   → positive when revenue was earned
+// BALANCES
 // ============================================================
 
 function computeBalances(postings, accounts) {
     const byId = {};
     for (const acc of accounts) {
         byId[String(acc.id)] = {
-            id: acc.id,
-            code: acc.code,
-            name: acc.name,
-            type: acc.type || 'asset',
-            balance: 0,
-            transactions: []
+            id: acc.id, code: acc.code, name: acc.name,
+            type: acc.type || 'asset', balance: 0, transactions: []
         };
     }
-
     for (const p of postings) {
         const key = String(p.account_id);
         const a = byId[key];
@@ -363,7 +314,6 @@ function computeBalances(postings, accounts) {
             source: p.source
         });
     }
-
     for (const acc of Object.values(byId)) {
         acc.transactions.sort((a, b) => {
             const da = String(a.transaction_date || '');
@@ -372,10 +322,7 @@ function computeBalances(postings, accounts) {
             return String(b.description).localeCompare(String(a.description));
         });
     }
-
-    return Object.values(byId).sort((a, b) =>
-        String(a.code).localeCompare(String(b.code))
-    );
+    return Object.values(byId).sort((a, b) => String(a.code).localeCompare(String(b.code)));
 }
 
 // ============================================================
@@ -393,6 +340,9 @@ async function loadAccounts() {
         if (data.status === 'success') {
             bankAccounts = data.accounts || [];
             console.log('[ACCOUNTS] Loaded', bankAccounts.length, 'accounts');
+            // DEBUG: is account 51 in bankAccounts?
+            const acc51 = bankAccounts.find(a => Number(a.id) === 51);
+            console.log('[DEBUG] Account 51 in bankAccounts:', acc51);
             populateBulkAccountSelect();
             return bankAccounts;
         }
@@ -429,14 +379,10 @@ function loadTransactions() {
     currentSearchTerm = search;
 
     let rows = rawBankRows.slice();
-
     const isPosted = tx => tx.post_to !== null && tx.post_to !== undefined;
 
-    if (filter === 'unposted') {
-        rows = rows.filter(tx => !isPosted(tx));
-    } else if (filter === 'posted') {
-        rows = rows.filter(tx => isPosted(tx));
-    }
+    if (filter === 'unposted') rows = rows.filter(tx => !isPosted(tx));
+    else if (filter === 'posted') rows = rows.filter(tx => isPosted(tx));
 
     if (search) {
         const s = search.toLowerCase();
@@ -476,11 +422,9 @@ function renderTransactions(transactions) {
         const rawAmt = Number(tx.amount) || 0;
         const isDebit = rawAmt < 0;
         const formattedAmount = (isDebit ? '-' : '+') + '$' + Math.abs(rawAmt).toFixed(2);
-
         const isProcessed = tx.post_to !== null && tx.post_to !== undefined;
         const statusColor = isProcessed ? '#28a745' : '#dc3545';
         const statusText = isProcessed ? '✅ Posted' : '⏳ Unposted';
-
         const postedToName = isProcessed ? tx.post_to_account_name : null;
 
         html += `
@@ -509,19 +453,15 @@ function renderTransactions(transactions) {
         btn.addEventListener('click', function() {
             const transactionId = this.dataset.transactionId;
             const select = document.querySelector(`.post-to-select[data-transaction-id="${transactionId}"]`);
-            if (select && select.value) {
-                assignSingleTransaction(transactionId, select.value);
-            } else {
-                showToast('Please select an account first.', 'warning');
-            }
+            if (select && select.value) assignSingleTransaction(transactionId, select.value);
+            else showToast('Please select an account first.', 'warning');
         });
     });
 
     document.querySelectorAll('.post-to-select').forEach(select => {
         select.addEventListener('keypress', function(e) {
             if (e.key === 'Enter' && this.value) {
-                const transactionId = this.dataset.transactionId;
-                assignSingleTransaction(transactionId, this.value);
+                assignSingleTransaction(this.dataset.transactionId, this.value);
             }
         });
     });
@@ -532,9 +472,7 @@ function updateBulkAssignSection(transactions) {
     const countSpan = document.getElementById('bulk-count');
     if (!section || !countSpan) return;
 
-    const unposted = transactions.filter(tx =>
-        tx.post_to === null || tx.post_to === undefined
-    );
+    const unposted = transactions.filter(tx => tx.post_to === null || tx.post_to === undefined);
 
     if (unposted.length > 0 && currentSearchTerm) {
         section.style.display = 'flex';
@@ -545,22 +483,16 @@ function updateBulkAssignSection(transactions) {
 }
 
 // ============================================================
-// ASSIGN FUNCTIONS
+// ASSIGN
 // ============================================================
 
 async function assignSingleTransaction(transactionId, accountId) {
-    if (!accountId) {
-        showToast('Please select an account.', 'warning');
-        return;
-    }
+    if (!accountId) { showToast('Please select an account.', 'warning'); return; }
     try {
         const response = await fetch(`${API_BASE}/api/accounting/bank/assign-single`, {
             method: 'POST', credentials: 'include', mode: 'cors',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                transaction_id: parseInt(transactionId),
-                post_to: parseInt(accountId)
-            })
+            body: JSON.stringify({ transaction_id: parseInt(transactionId), post_to: parseInt(accountId) })
         });
         const result = await response.json();
         if (result.status === 'success') {
@@ -645,11 +577,8 @@ async function loadAccountsList() {
         });
         if (!response.ok) throw new Error('Failed to load accounts');
         const data = await response.json();
-        if (data.status === 'success') {
-            renderAccounts(data.accounts || []);
-        } else {
-            list.innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Error loading accounts</div>';
-        }
+        if (data.status === 'success') renderAccounts(data.accounts || []);
+        else list.innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Error loading accounts</div>';
     } catch (err) {
         list.innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Error: ' + err.message + '</div>';
     }
@@ -662,10 +591,7 @@ function renderAccounts(accounts) {
         list.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">No accounts found</div>';
         return;
     }
-    const typeColors = {
-        asset: '#cce5ff', liability: '#fff3cd', equity: '#d4edda',
-        revenue: '#cce5ff', expense: '#f8d7da'
-    };
+    const typeColors = { asset: '#cce5ff', liability: '#fff3cd', equity: '#d4edda', revenue: '#cce5ff', expense: '#f8d7da' };
     let html = '';
     accounts.forEach(acc => {
         const typeColor = typeColors[acc.type] || '#f8f9fa';
@@ -675,9 +601,7 @@ function renderAccounts(accounts) {
                     <div style="font-weight: 600; color: #333; font-size: 13px;">${acc.code} - ${acc.name}</div>
                     <div style="font-size: 11px; color: #666;">${acc.type}</div>
                 </div>
-                <div>
-                    <span style="padding: 2px 12px; border-radius: 12px; font-size: 11px; background: ${typeColor}; color: #333;">${acc.type}</span>
-                </div>
+                <div><span style="padding: 2px 12px; border-radius: 12px; font-size: 11px; background: ${typeColor}; color: #333;">${acc.type}</span></div>
             </div>
         `;
     });
@@ -714,9 +638,7 @@ async function saveAccount() {
             document.getElementById('add-account-modal').style.display = 'none';
             loadAccountsList();
             loadAccounts();
-        } else {
-            showToast('Error: ' + (data.error || 'Failed to save'), 'error');
-        }
+        } else showToast('Error: ' + (data.error || 'Failed to save'), 'error');
     } catch (err) {
         console.error('[ACCOUNTS] Error:', err);
         showToast('Error: ' + err.message, 'error');
@@ -745,9 +667,7 @@ async function loadJournalEntries() {
         if (data.status === 'success') {
             journalTotalEntries = data.total || 0;
             renderJournalEntries(data.entries || []);
-        } else {
-            list.innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Error loading journal</div>';
-        }
+        } else list.innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Error loading journal</div>';
     } catch (err) {
         list.innerHTML = '<div style="text-align: center; padding: 40px; color: #dc3545;">Error: ' + err.message + '</div>';
     }
@@ -797,7 +717,7 @@ function resetJournalFilters() {
 }
 
 // ============================================================
-// BALANCE TAB (expandable)
+// BALANCE TAB
 // ============================================================
 
 function loadBalances() {
@@ -816,18 +736,14 @@ function loadBalances() {
 
 window.toggleBalanceAccount = function(accountId) {
     const key = String(accountId);
-    if (expandedBalanceAccounts.has(key)) {
-        expandedBalanceAccounts.delete(key);
-    } else {
-        expandedBalanceAccounts.add(key);
-    }
+    if (expandedBalanceAccounts.has(key)) expandedBalanceAccounts.delete(key);
+    else expandedBalanceAccounts.add(key);
     loadBalances();
 };
 
 function renderBalances(balances) {
     const list = document.getElementById('balance-list');
     if (!list) return;
-
     if (!balances || balances.length === 0) {
         list.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">No balances found</div>';
         return;
@@ -849,8 +765,7 @@ function renderBalances(balances) {
     let html = `
         <div style="background: #f8f9fa; padding: 10px 16px; border-radius: 6px; margin-bottom: 12px; font-size: 12px; color: #666; border-left: 3px solid #6c757d;">
             ℹ️ <strong>Balances shown reflect net movement in recorded data.</strong>
-            Opening balances are not included, so bank and cash figures represent
-            change since the earliest loaded transaction, not current account value.
+            Opening balances are not included.
             Click any account to expand and see its transactions.
         </div>
     `;
@@ -858,9 +773,7 @@ function renderBalances(balances) {
     Object.keys(types).forEach(key => {
         const group = types[key];
         if (group.items.length === 0) return;
-
         html += `<div style="font-weight: 700; color: ${group.color}; padding: 8px 12px; border-bottom: 2px solid ${group.color}; margin-top: 5px;">${group.label}</div>`;
-
         group.items.forEach(item => {
             const balance = item.balance || 0;
             const balanceColor = balance >= 0 ? '#28a745' : '#dc3545';
@@ -872,7 +785,7 @@ function renderBalances(balances) {
             html += `
                 <div style="border-bottom: 1px solid #f0f0f0;">
                     <div onclick="toggleBalanceAccount(${item.id})"
-                         style="display: flex; justify-content: space-between; align-items: center; padding: 6px 12px 6px 24px; cursor: pointer; transition: background 0.15s;"
+                         style="display: flex; justify-content: space-between; align-items: center; padding: 6px 12px 6px 24px; cursor: pointer;"
                          onmouseover="this.style.background='#f8f9fa'"
                          onmouseout="this.style.background='transparent'">
                         <div style="display: flex; align-items: center; gap: 8px;">
@@ -922,14 +835,9 @@ function renderBalances(balances) {
                         `;
                     });
 
-                    html += `
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
+                    html += `</tbody></table></div>`;
                 }
             }
-
             html += `</div>`;
         });
     });
@@ -938,19 +846,28 @@ function renderBalances(balances) {
 }
 
 // ============================================================
-// MONTHLY P&L BAR CHARTS
+// MONTHLY P&L BAR CHARTS (DEBUG-HEAVY)
 // ============================================================
 
 function loadMonthlyPLBarChart() {
-    console.log('[MONTHLY-PL] Rendering from aggregate');
+    console.log('[MONTHLY-PL] loadMonthlyPLBarChart() called');
+    console.log('[DEBUG] monthlyPLMonths:', monthlyPLMonths);
+    console.log('[DEBUG] monthlyPLCurrentPage:', monthlyPLCurrentPage);
     renderMonthlyPLChartsPage();
 }
 
 function renderMonthlyPLChartsPage() {
+    console.log('[MONTHLY-PL] renderMonthlyPLChartsPage() called, page =', monthlyPLCurrentPage);
+
     const container = document.getElementById('monthly-pl-bar-chart-container');
-    if (!container) return;
+    if (!container) {
+        console.error('[DEBUG] container #monthly-pl-bar-chart-container NOT FOUND');
+        return;
+    }
+    console.log('[DEBUG] container found');
 
     if (!monthlyPLMonths || monthlyPLMonths.length === 0) {
+        console.warn('[DEBUG] no months to render');
         container.innerHTML = '<p style="text-align:center; padding:40px; color:#666;">No data available.</p>';
         return;
     }
@@ -958,6 +875,8 @@ function renderMonthlyPLChartsPage() {
     const startIndex = monthlyPLCurrentPage * 6;
     const endIndex = Math.min(startIndex + 6, monthlyPLMonths.length);
     const visibleMonths = monthlyPLMonths.slice(startIndex, endIndex);
+
+    console.log(`[DEBUG] rendering months ${startIndex} to ${endIndex - 1}:`, visibleMonths);
 
     if (visibleMonths.length === 0) {
         if (monthlyPLCurrentPage > 0) {
@@ -970,6 +889,36 @@ function renderMonthlyPLChartsPage() {
     const totalPages = Math.ceil(monthlyPLMonths.length / 6);
     const isFirstPage = monthlyPLCurrentPage === 0;
     const isLastPage = monthlyPLCurrentPage >= totalPages - 1;
+
+    // ===== First pass: build HTML =====
+    visibleMonths.forEach((month, index) => {
+        const accounts = monthlyAggregate[month] || {};
+        const acctList = Object.values(accounts);
+        const plAccounts = acctList.filter(a => a.type === 'revenue' || a.type === 'expense');
+        const revenueItems = plAccounts.filter(a => a.total > 0);
+        const expenseItems = plAccounts.filter(a => a.total < 0);
+
+        // ===== DEBUG: what did this month produce? =====
+        const hasRentBucket = !!accounts['51'];
+        const rentInPL = plAccounts.some(a => a.account_id === 51);
+        const rentInExpense = expenseItems.some(a => a.account_id === 51);
+
+        console.log(`[DEBUG] month ${month}:`);
+        console.log(`  total buckets: ${acctList.length}`);
+        console.log(`  P&L buckets: ${plAccounts.length}`);
+        console.log(`  revenue buckets: ${revenueItems.length}`);
+        console.log(`  expense buckets: ${expenseItems.length}`);
+        console.log(`  has account 51 bucket: ${hasRentBucket}`);
+        if (hasRentBucket) {
+            console.log(`    51 type=${accounts['51'].type} total=${accounts['51'].total}`);
+        }
+        console.log(`  account 51 in plAccounts: ${rentInPL}`);
+        console.log(`  account 51 in expenseItems: ${rentInExpense}`);
+        if (rentInExpense) {
+            const rent = expenseItems.find(a => a.account_id === 51);
+            console.log(`    Rent Expense total to plot: ${rent.total}`);
+        }
+    });
 
     let html = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 10px 15px; background: #f8f9fa; border-radius: 8px;">
@@ -1020,15 +969,20 @@ function renderMonthlyPLChartsPage() {
 
     html += '</div>';
     container.innerHTML = html;
+    console.log('[DEBUG] HTML injected into container');
 
+    // ===== Destroy old chart instances =====
     Object.keys(monthlyPLChartInstances).forEach(key => {
         if (monthlyPLChartInstances[key]) {
-            monthlyPLChartInstances[key].destroy();
+            try { monthlyPLChartInstances[key].destroy(); } catch(e) {}
             delete monthlyPLChartInstances[key];
         }
     });
+    console.log('[DEBUG] old chart instances destroyed');
 
     setTimeout(() => {
+        console.log('[DEBUG] setTimeout fired, building charts');
+
         visibleMonths.forEach((month, index) => {
             const accounts = monthlyAggregate[month] || {};
             const acctList = Object.values(accounts);
@@ -1064,7 +1018,16 @@ function renderMonthlyPLChartsPage() {
             const chartIndex = startIndex + index;
             const canvasId = `monthly-pl-chart-${chartIndex}`;
             const canvas = document.getElementById(canvasId);
+
+            console.log(`[DEBUG] chart ${chartIndex} (${month}): canvas ${canvas ? 'found' : 'MISSING'}`);
             if (!canvas) return;
+            if (typeof Chart === 'undefined') {
+                console.error('[DEBUG] Chart.js not loaded! typeof Chart =', typeof Chart);
+                return;
+            }
+
+            console.log(`[DEBUG] chart ${chartIndex} (${month}) labels:`, JSON.stringify(labels));
+            console.log(`[DEBUG] chart ${chartIndex} (${month}) values:`, JSON.stringify(values));
 
             const ctx = canvas.getContext('2d');
             const chart = new Chart(ctx, {
@@ -1094,13 +1057,8 @@ function renderMonthlyPLChartsPage() {
                         }
                     },
                     scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: { callback: v => '$' + v, font: { size: 9 } }
-                        },
-                        x: {
-                            ticks: { maxRotation: 30, minRotation: 30, font: { size: 7 } }
-                        }
+                        y: { beginAtZero: true, ticks: { callback: v => '$' + v, font: { size: 9 } } },
+                        x: { ticks: { maxRotation: 30, minRotation: 30, font: { size: 7 } } }
                     },
                     onClick: function(e, elements) {
                         if (elements.length === 0) return;
@@ -1119,6 +1077,7 @@ function renderMonthlyPLChartsPage() {
             });
 
             monthlyPLChartInstances[chartIndex] = chart;
+            console.log(`[DEBUG] chart ${chartIndex} (${month}) created and stored`);
         });
 
         const prevBtn = document.getElementById('monthly-pl-prev');
@@ -1130,21 +1089,18 @@ function renderMonthlyPLChartsPage() {
             const totalPages = Math.ceil(monthlyPLMonths.length / 6);
             if (monthlyPLCurrentPage < totalPages - 1) { monthlyPLCurrentPage++; renderMonthlyPLChartsPage(); }
         });
+
+        console.log('[DEBUG] renderMonthlyPLChartsPage complete');
     }, 100);
 }
 
 // ============================================================
 // MONTHLY TRANSACTIONS MODAL
 // ============================================================
-// Displays transactions with a P&L-convention sign:
-//   revenue → positive
-//   expense → negative
-//   asset/liability/equity → natural sign (rarely shown here)
-//
-// The sign flip for expenses is applied at display time via _displaySign.
-// ============================================================
 
 function showMonthlyTransactions(month, accountId, accountName) {
+    console.log('[DEBUG] showMonthlyTransactions', { month, accountId, accountName });
+
     const modal = document.getElementById('monthly-tx-modal');
     const body = document.getElementById('modal-body');
     const title = document.getElementById('modal-title');
@@ -1167,26 +1123,18 @@ function showMonthlyTransactions(month, accountId, accountName) {
     const accountsInMonth = monthlyAggregate[month] || {};
 
     if (accountId === null || accountId === undefined) {
-        // P&L Transactions modal: concat all revenue + expense buckets.
-        // Apply the P&L sign per bucket's account type.
         for (const bucket of Object.values(accountsInMonth)) {
             if (bucket.type === 'revenue' || bucket.type === 'expense') {
                 const sign = (bucket.type === 'expense') ? -1 : 1;
-                for (const tx of bucket.transactions) {
-                    rows.push({ ...tx, _displaySign: sign });
-                }
+                for (const tx of bucket.transactions) rows.push({ ...tx, _displaySign: sign });
             }
         }
     } else {
         const bucket = accountsInMonth[String(accountId)];
         if (bucket) {
-            const isCreditNormal = (bucket.type === 'expense' ||
-                                    bucket.type === 'liability' ||
-                                    bucket.type === 'equity');
+            const isCreditNormal = (bucket.type === 'expense' || bucket.type === 'liability' || bucket.type === 'equity');
             const sign = isCreditNormal ? -1 : 1;
-            for (const tx of bucket.transactions) {
-                rows.push({ ...tx, _displaySign: sign });
-            }
+            for (const tx of bucket.transactions) rows.push({ ...tx, _displaySign: sign });
         }
     }
 
@@ -1208,11 +1156,8 @@ function renderModalTransactions(transactions, accountName, dateRange) {
         return;
     }
 
-    // Total in display convention
     let total = 0;
-    transactions.forEach(tx => {
-        total += (Number(tx.delta) || 0) * (tx._displaySign || 1);
-    });
+    transactions.forEach(tx => { total += (Number(tx.delta) || 0) * (tx._displaySign || 1); });
 
     const totalSign = total >= 0 ? '+' : '-';
     const totalColor = total >= 0 ? '#28a745' : '#dc3545';
@@ -1269,12 +1214,15 @@ function closeMonthlyModal() {
 
 async function initAccounting() {
     console.log('[INIT] initAccounting called');
+
     const container = document.getElementById('accounting-container');
     if (!container) { console.error('[INIT] Container not found'); return; }
 
     document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const sub = this.dataset.subtab;
+            console.log('[DEBUG] tab clicked:', sub);
+
             document.querySelectorAll('#accounting-sub-tabs .sub-tab').forEach(t => {
                 t.style.background = '#e9ecef'; t.style.color = '#333';
             });
@@ -1302,6 +1250,7 @@ async function initAccounting() {
     });
 
     document.getElementById('refresh-btn')?.addEventListener('click', async function() {
+        console.log('[DEBUG] Refresh clicked');
         await loadAllTransactions();
         loadTransactions();
         loadBalances();
