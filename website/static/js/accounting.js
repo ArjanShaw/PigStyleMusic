@@ -9,6 +9,12 @@
 // aggregated by `aggregateByMonthAndAccount()` into `monthlyAggregate`.
 // Every view derives from those two in-memory structures.
 //
+// P&L chart rules:
+//   - Only revenue and expense accounts appear on the bars.
+//   - Asset, liability, and equity accounts are balance-sheet movements
+//     and are excluded (e.g. transfers into Prepaid Rent).
+//   - Each bucket carries its account `type` so filters can trust it.
+//
 // Normalization rules for manual entries:
 //   - amount (cents) → dollars  : / 100
 //   - Each entry becomes TWO rows: the post_to side (+amount) and
@@ -39,7 +45,7 @@ let currentFilter = 'all';
 
 // ===== SINGLE SOURCE OF TRUTH =====
 let allTransactions = [];       // normalized: bank + manual (dollars)
-let monthlyAggregate = {};      // { 'YYYY-MM': { '<account_id>': { name, code, total, transactions[] } } }
+let monthlyAggregate = {};      // { 'YYYY-MM': { '<account_id>': { name, code, type, total, transactions[] } } }
 
 // Monthly P&L chart page state
 let monthlyPLMonths = [];       // derived from monthlyAggregate keys
@@ -236,8 +242,18 @@ function normalizeManualEntries(entries) {
 /**
  * Aggregate the flat transaction list into per-month, per-account buckets.
  * Only rows with a non-null post_to contribute to an account total.
+ *
+ * Each bucket carries the account `type` (revenue, expense, asset,
+ * liability, equity) so downstream views can filter on it. The type
+ * lookup uses `bankAccounts`, which must be loaded before this runs.
  */
 function aggregateByMonthAndAccount(transactions) {
+    // Build account-type lookup once
+    const accountTypeById = {};
+    for (const acc of bankAccounts) {
+        accountTypeById[String(acc.id)] = acc.type;
+    }
+
     const months = {};
 
     for (const tx of transactions) {
@@ -256,6 +272,7 @@ function aggregateByMonthAndAccount(transactions) {
                 account_id: tx.post_to,
                 name: tx.post_to_account_name || 'Unknown',
                 code: tx.post_to_account_code || '',
+                type: accountTypeById[accountId] || 'unknown',
                 total: 0,
                 transactions: []
             };
@@ -813,7 +830,11 @@ function renderBalances(balances) {
 }
 
 // ============================================================
-// MONTHLY P&L BAR CHARTS (bank + manual, aggregated client-side)
+// MONTHLY P&L BAR CHARTS
+// ============================================================
+// Only revenue and expense accounts appear on the bars.
+// Asset / liability / equity accounts are balance-sheet movements
+// and are excluded (e.g. transfers into Prepaid Rent).
 // ============================================================
 
 function loadMonthlyPLBarChart() {
@@ -868,8 +889,10 @@ function renderMonthlyPLChartsPage() {
         const accounts = monthlyAggregate[month] || {};
         const acctList = Object.values(accounts);
 
-        const revenueItems = acctList.filter(a => a.total > 0);
-        const expenseItems = acctList.filter(a => a.total < 0);
+        // P&L filter: revenue and expense only
+        const plAccounts = acctList.filter(a => a.type === 'revenue' || a.type === 'expense');
+        const revenueItems = plAccounts.filter(a => a.total > 0);
+        const expenseItems = plAccounts.filter(a => a.total < 0);
 
         const totalRevenue = revenueItems.reduce((s, a) => s + a.total, 0);
         const totalExpenses = expenseItems.reduce((s, a) => s + a.total, 0);
@@ -910,8 +933,9 @@ function renderMonthlyPLChartsPage() {
             const accounts = monthlyAggregate[month] || {};
             const acctList = Object.values(accounts);
 
-            const revenueItems = acctList.filter(a => a.total > 0);
-            const expenseItems = acctList.filter(a => a.total < 0);
+            const plAccounts = acctList.filter(a => a.type === 'revenue' || a.type === 'expense');
+            const revenueItems = plAccounts.filter(a => a.total > 0);
+            const expenseItems = plAccounts.filter(a => a.total < 0);
 
             const totalRevenue = revenueItems.reduce((s, a) => s + a.total, 0);
             const totalExpenses = expenseItems.reduce((s, a) => s + a.total, 0);
@@ -920,7 +944,7 @@ function renderMonthlyPLChartsPage() {
             const labels = [];
             const values = [];
             const colors = [];
-            const clickTargets = [];   // { account_id } or null for net income
+            const clickTargets = [];
 
             revenueItems.forEach(a => {
                 let label = a.name;
@@ -1001,7 +1025,8 @@ function renderMonthlyPLChartsPage() {
                         const target = clickTargets[idx];
 
                         if (target === null) {
-                            showMonthlyTransactions(month, null, 'All Transactions');
+                            // Net Income bar — show only P&L transactions
+                            showMonthlyTransactions(month, null, 'P&L Transactions');
                             return;
                         }
 
@@ -1044,6 +1069,10 @@ function renderMonthlyPLChartsPage() {
 // ============================================================
 // MONTHLY TRANSACTIONS MODAL
 // ============================================================
+// Reads from monthlyAggregate. Two modal modes:
+//   - accountId given  → single account's transactions
+//   - accountId null   → P&L-only transactions (revenue + expense)
+// ============================================================
 
 function showMonthlyTransactions(month, accountId, accountName) {
     const modal = document.getElementById('monthly-tx-modal');
@@ -1070,8 +1099,11 @@ function showMonthlyTransactions(month, accountId, accountName) {
     const accountsInMonth = monthlyAggregate[month] || {};
 
     if (accountId === null || accountId === undefined) {
+        // P&L view: only revenue + expense accounts
         for (const bucket of Object.values(accountsInMonth)) {
-            rows = rows.concat(bucket.transactions);
+            if (bucket.type === 'revenue' || bucket.type === 'expense') {
+                rows = rows.concat(bucket.transactions);
+            }
         }
     } else {
         const bucket = accountsInMonth[String(accountId)];
