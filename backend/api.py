@@ -13102,12 +13102,13 @@ def subscribe():
 
 
 # ==================== RECORD ORDERS ENDPOINT (NO EMAIL) ====================
-
 @app.route('/api/record-orders', methods=['POST'])
 def create_record_order():
     """
     Create a new record order request.
     Uses the separate record_orders table.
+    Accepts EITHER an email OR a phone number as contact info.
+    Optionally accepts a format (e.g. Vinyl, CD, Cassette).
     """
     try:
         data = request.get_json()
@@ -13115,18 +13116,34 @@ def create_record_order():
         if not data:
             return jsonify({'status': 'error', 'error': 'No data provided'}), 400
         
-        email = data.get('email', '').strip().lower() if data.get('email') else ''
+        contact = data.get('contact', '').strip() if data.get('contact') else ''
         artist = data.get('artist', '').strip() if data.get('artist') else ''
         title = data.get('title', '').strip() if data.get('title') else ''
+        format_value = data.get('format', '').strip() if data.get('format') else None
         
-        if not email or '@' not in email or '.' not in email:
-            return jsonify({'status': 'error', 'error': 'Valid email address required'}), 400
+        # Fallback: accept legacy 'email' key for backwards compatibility
+        if not contact and data.get('email'):
+            contact = data.get('email', '').strip().lower()
+        
+        if not contact:
+            return jsonify({'status': 'error', 'error': 'Email or phone number required'}), 400
+        
+        # Validate contact: either a valid email OR a valid phone number
+        is_email = re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', contact)
+        is_phone = re.match(r'^[\d\s\-\(\)\+\.]{7,}$', contact)
+        
+        if not is_email and not is_phone:
+            return jsonify({'status': 'error', 'error': 'Valid email address or phone number required'}), 400
         
         if not artist:
             return jsonify({'status': 'error', 'error': 'Artist name is required'}), 400
         
         if not title:
             return jsonify({'status': 'error', 'error': 'Record title is required'}), 400
+        
+        # Normalize email to lowercase if it's an email
+        if is_email:
+            contact = contact.lower()
         
         conn = get_db()
         cursor = conn.cursor()
@@ -13135,7 +13152,7 @@ def create_record_order():
             SELECT id, status, notified 
             FROM record_orders 
             WHERE email = ? AND artist = ? AND title = ?
-        ''', (email, artist, title))
+        ''', (contact, artist, title))
         
         existing = cursor.fetchone()
         
@@ -13178,22 +13195,37 @@ def create_record_order():
                 'already_exists': True
             }), 200
         
-        cursor.execute('''
-            INSERT INTO record_orders (
-                email, 
-                artist, 
-                title, 
-                status,
-                notified,
-                created_at
-            ) VALUES (?, ?, ?, 'pending', 0, CURRENT_TIMESTAMP)
-        ''', (email, artist, title))
+        # Attempt to store format if the column exists; otherwise ignore gracefully
+        try:
+            cursor.execute('''
+                INSERT INTO record_orders (
+                    email, 
+                    artist, 
+                    title, 
+                    format,
+                    status,
+                    notified,
+                    created_at
+                ) VALUES (?, ?, ?, ?, 'pending', 0, CURRENT_TIMESTAMP)
+            ''', (contact, artist, title, format_value))
+        except sqlite3.OperationalError:
+            # 'format' column doesn't exist yet — insert without it
+            cursor.execute('''
+                INSERT INTO record_orders (
+                    email, 
+                    artist, 
+                    title, 
+                    status,
+                    notified,
+                    created_at
+                ) VALUES (?, ?, ?, 'pending', 0, CURRENT_TIMESTAMP)
+            ''', (contact, artist, title))
         
         order_id = cursor.lastrowid
         conn.commit()
         conn.close()
         
-        app.logger.info(f"New order request: {email} - Artist: {artist}, Title: {title}")
+        app.logger.info(f"New order request: {contact} - Artist: {artist}, Title: {title}, Format: {format_value or 'Any'}")
         
         return jsonify({
             'status': 'success',
@@ -13206,31 +13238,37 @@ def create_record_order():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
- 
-
 
 @app.route('/api/record-orders', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def get_all_orders():
-    """Get all orders with filtering"""
+    """Get all record order requests with filtering and pagination"""
     try:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 50, type=int)
         status = request.args.get('status', 'all')
         search = request.args.get('search', '').strip()
-        
+
         offset = (page - 1) * per_page
-        
+
         conn = get_db()
         cursor = conn.cursor()
-        
-        query = '''
-            SELECT 
+
+        # Detect whether the format column exists so the SELECT stays valid
+        cursor.execute("PRAGMA table_info(record_orders)")
+        columns = {row['name'] for row in cursor.fetchall()}
+        has_format = 'format' in columns
+
+        format_select = ", format" if has_format else ", NULL AS format"
+
+        query = f'''
+            SELECT
                 id,
                 email,
                 artist,
-                title,
+                title
+                {format_select},
                 status,
                 notified,
                 created_at,
@@ -13239,27 +13277,30 @@ def get_all_orders():
             WHERE 1=1
         '''
         params = []
-        
+
         if status != 'all':
             query += ' AND status = ?'
             params.append(status)
-        
+
         if search:
             query += ''' AND (
-                email LIKE ? OR 
-                artist LIKE ? OR 
-                title LIKE ? OR 
+                email LIKE ? OR
+                artist LIKE ? OR
+                title LIKE ? OR
                 status LIKE ?
             )'''
             search_term = f'%{search}%'
             params.extend([search_term, search_term, search_term, search_term])
-        
+            if has_format:
+                query += ' OR format LIKE ?'
+                params.append(search_term)
+
         query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?'
         params.extend([per_page, offset])
-        
+
         cursor.execute(query, params)
         rows = cursor.fetchall()
-        
+
         count_query = 'SELECT COUNT(*) as total FROM record_orders WHERE 1=1'
         count_params = []
         if status != 'all':
@@ -13267,17 +13308,20 @@ def get_all_orders():
             count_params.append(status)
         if search:
             count_query += ''' AND (
-                email LIKE ? OR 
-                artist LIKE ? OR 
-                title LIKE ? OR 
+                email LIKE ? OR
+                artist LIKE ? OR
+                title LIKE ? OR
                 status LIKE ?
             )'''
             count_params.extend([search_term, search_term, search_term, search_term])
-        
+            if has_format:
+                count_query += ' OR format LIKE ?'
+                count_params.append(search_term)
+
         cursor.execute(count_query, count_params)
         total = cursor.fetchone()['total']
         conn.close()
-        
+
         orders_list = []
         for row in rows:
             orders_list.append({
@@ -13285,12 +13329,13 @@ def get_all_orders():
                 'email': row['email'],
                 'artist': row['artist'],
                 'title': row['title'],
+                'format': row['format'],
                 'status': row['status'],
                 'notified': bool(row['notified']) if row['notified'] is not None else False,
                 'created_at': row['created_at'],
                 'updated_at': row['updated_at']
             })
-        
+
         return jsonify({
             'status': 'success',
             'orders': orders_list,
@@ -13299,11 +13344,10 @@ def get_all_orders():
             'per_page': per_page,
             'total_pages': (total + per_page - 1) // per_page if total > 0 else 1
         })
-        
-    except Exception as e:
-        app.logger.error(f"Error getting orders: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
 
+    except Exception as e:
+        app.logger.error(f"Error getting record orders: {str(e)}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/record-orders/<int:order_id>', methods=['PUT'])
 @login_required
@@ -13594,8 +13638,15 @@ Questions? Reply to this email or contact us at the store.
 def get_unread_record_orders():
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT id, email, artist, title, status, created_at
+
+    cursor.execute("PRAGMA table_info(record_orders)")
+    columns = {row['name'] for row in cursor.fetchall()}
+    has_format = 'format' in columns
+
+    format_select = ", format" if has_format else ", NULL AS format"
+
+    cursor.execute(f'''
+        SELECT id, email, artist, title {format_select}, status, created_at
         FROM record_orders
         WHERE notified = 0 OR notified IS NULL
         ORDER BY created_at DESC
@@ -13603,10 +13654,23 @@ def get_unread_record_orders():
     ''')
     rows = cursor.fetchall()
     conn.close()
+
+    notifications = []
+    for row in rows:
+        notifications.append({
+            'id': row['id'],
+            'email': row['email'],
+            'artist': row['artist'],
+            'title': row['title'],
+            'format': row['format'],
+            'status': row['status'],
+            'created_at': row['created_at']
+        })
+
     return jsonify({
         'status': 'success',
-        'notifications': [dict(row) for row in rows],
-        'count': len(rows)
+        'notifications': notifications,
+        'count': len(notifications)
     })
 
 @app.route('/api/record-orders/unread-count', methods=['GET'])
