@@ -29,9 +29,6 @@
         <button onclick="purchasesRefresh()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
             <i class="fas fa-sync"></i> Refresh
         </button>
-        <button onclick="purchasesDelete()" id="purchases-delete-btn" style="display: none; padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
-            <i class="fas fa-trash"></i> Delete
-        </button>
     </div>
 
     <!-- Purchases Table -->
@@ -41,3 +38,37 @@
         </div>
     </div>
 </div>
+
+<!-- ========== BULK ACTION MODAL ========== -->
+<div id="purchases-action-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10001; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 16px; max-width: 480px; width: 95%; padding: 28px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 16px;">
+            <h2 id="purchases-action-title" style="margin: 0; color: #333; font-size: 20px;">Bulk Action</h2>
+            <button onclick="purchasesCloseActionModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
+        </div>
+
+        <p id="purchases-action-desc" style="color: #666; font-size: 14px; margin: 0 0 16px 0;"></p>
+
+        <div id="purchases-action-body">
+            <!-- Filled by JS -->
+        </div>
+
+        <div id="purchases-action-status" style="margin-top: 12px; display: none; padding: 10px; border-radius: 8px; font-size: 13px;"></div>
+
+        <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
+            <button onclick="purchasesCloseActionModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Cancel</button>
+            <button id="purchases-action-confirm" onclick="purchasesApplyBulkAction()" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                <i class="fas fa-check"></i> Apply
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .purchases-row-action-menu .pa-item:hover {
+        background: #f8f9fa;
+    }
+    #purchases-list tr[data-id]:hover {
+        background: #f1f8ff !important;
+    }
+</style>

@@ -13349,6 +13349,138 @@ def get_all_orders():
         app.logger.error(f"Error getting record orders: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
+# ==================== BULK RECORD UPDATE ====================
+
+@app.route('/api/records/bulk-update', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def bulk_update_records():
+    """
+    Apply one or more field updates to a list of records.
+
+    Body:
+        {
+          "record_ids": [1, 2, 3],
+          "format_id": 2,                  # optional
+          "status_id": 2,                  # optional
+          "location_id": 17,               # optional
+          "clear_location_index": true     # optional, default false
+        }
+
+    At least one of format_id / status_id / location_id must be present.
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+
+        record_ids = data.get('record_ids') or []
+        if not isinstance(record_ids, list) or not record_ids:
+            return jsonify({'status': 'error', 'error': 'record_ids must be a non-empty list'}), 400
+
+        # Coerce to ints, reject anything invalid
+        try:
+            record_ids = [int(rid) for rid in record_ids]
+        except (TypeError, ValueError):
+            return jsonify({'status': 'error', 'error': 'record_ids must be integers'}), 400
+
+        format_id = data.get('format_id')
+        status_id = data.get('status_id')
+        location_id = data.get('location_id')
+        clear_location_index = bool(data.get('clear_location_index', False))
+
+        if format_id is None and status_id is None and location_id is None:
+            return jsonify({'status': 'error', 'error': 'At least one of format_id, status_id, location_id is required'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Validate format_id if present
+        if format_id is not None:
+            try:
+                format_id = int(format_id)
+            except (TypeError, ValueError):
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'format_id must be an integer'}), 400
+            cursor.execute('SELECT id FROM formats WHERE id = ?', (format_id,))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({'status': 'error', 'error': f'format_id {format_id} not found'}), 400
+
+        # Validate status_id if present
+        if status_id is not None:
+            try:
+                status_id = int(status_id)
+            except (TypeError, ValueError):
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'status_id must be an integer'}), 400
+            cursor.execute('SELECT id FROM d_status WHERE id = ?', (status_id,))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({'status': 'error', 'error': f'status_id {status_id} not found'}), 400
+
+        # Validate location_id if present
+        if location_id is not None:
+            try:
+                location_id = int(location_id)
+            except (TypeError, ValueError):
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'location_id must be an integer'}), 400
+            cursor.execute('SELECT id FROM locations WHERE id = ?', (location_id,))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({'status': 'error', 'error': f'location_id {location_id} not found'}), 400
+
+        # Build a single UPDATE so it's atomic across the set
+        set_clauses = []
+        params = []
+
+        if format_id is not None:
+            set_clauses.append('format_id = ?')
+            params.append(format_id)
+
+        if status_id is not None:
+            set_clauses.append('status_id = ?')
+            params.append(status_id)
+
+        if location_id is not None:
+            set_clauses.append('location_id = ?')
+            params.append(location_id)
+            if clear_location_index:
+                set_clauses.append('location_index = NULL')
+            # A location move counts as a sighting
+            set_clauses.append('last_seen = ?')
+            params.append(datetime.now().strftime('%Y-%m-%d'))
+
+        placeholders = ','.join('?' for _ in record_ids)
+        params.extend(record_ids)
+
+        sql = f'UPDATE records SET {", ".join(set_clauses)} WHERE id IN ({placeholders})'
+
+        cursor.execute('BEGIN TRANSACTION')
+        cursor.execute(sql, params)
+        updated_count = cursor.rowcount
+        conn.commit()
+        conn.close()
+
+        app.logger.info(
+            f"Bulk update by {session.get('username')}: "
+            f"{updated_count} record(s) updated "
+            f"(format_id={format_id}, status_id={status_id}, location_id={location_id})"
+        )
+
+        return jsonify({
+            'status': 'success',
+            'updated_count': updated_count,
+            'record_ids': record_ids
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error in bulk_update_records: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 @app.route('/api/record-orders/<int:order_id>', methods=['PUT'])
 @login_required
 @role_required(['admin'])
