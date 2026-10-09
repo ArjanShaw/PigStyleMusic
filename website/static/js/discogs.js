@@ -1,6 +1,6 @@
 // ================================================================
 // FILE: /static/js/discogs.js
-// Discogs Orders tile
+// Discogs Orders tile — self-contained, loads orders on demand
 // ================================================================
 
 (function() {
@@ -75,15 +75,27 @@
         }
     }
 
+    function setLoadInfo(text) {
+        const el = document.getElementById('discogs-load-orders-info');
+        if (el) el.textContent = text;
+    }
+
     // ----------------------------------------------------------------
     // ORDERS LOAD / RENDER
     // ----------------------------------------------------------------
 
-    async function loadDiscogsOrders() {
+    window.discogsLoadOrders = async function() {
         const table = document.getElementById('discogs-orders-table');
+        const btn = document.getElementById('discogs-load-orders-btn');
+
         if (table) {
             table.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">Loading orders...</div>';
         }
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = '⏳ Loading...';
+        }
+        setLoadInfo('Fetching orders from Discogs...');
 
         try {
             const resp = await fetch(`${API_BASE}/api/discogs/orders?all=true`, {
@@ -98,13 +110,28 @@
 
             discogsOrders = data.orders || [];
             renderDiscogsOrders();
+
+            setLoadInfo(`✅ Loaded ${discogsOrders.length} order(s).`);
+            showDiscogsOrdersStatus(`✅ Loaded ${discogsOrders.length} order(s).`, 'success');
         } catch (err) {
             console.error('Failed to load Discogs orders:', err);
             if (table) {
                 table.innerHTML = `<div style="text-align:center;padding:20px;color:#dc3545;">Failed to load orders: ${escapeHtml(err.message)}</div>`;
             }
+            setLoadInfo(`❌ ${err.message}`);
+            showDiscogsOrdersStatus(`❌ ${escapeHtml(err.message)}`, 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = '📥 Load Orders';
+            }
         }
-    }
+    };
+
+    // Button click entry point (bound via addEventListener in init)
+    window.discogsLoadOrdersClick = function() {
+        window.discogsLoadOrders();
+    };
 
     function renderDiscogsOrders() {
         const table = document.getElementById('discogs-orders-table');
@@ -318,7 +345,7 @@
 
             const msg = `✅ Marked ${data.marked || 0} record(s) as sold. Skipped ${data.skipped || 0}, not found ${data.not_found || 0}.`;
             showDiscogsOrdersStatus(msg, 'success');
-            loadDiscogsOrders();
+            window.discogsLoadOrders();
         } catch (err) {
             console.error('Bulk mark sold failed:', err);
             showDiscogsOrdersStatus(`❌ ${escapeHtml(err.message)}`, 'error');
@@ -381,23 +408,47 @@
             return;
         }
 
-        // Placeholder: the actual PDF-merge logic lives server-side
         alert(`Label position: ${discogsSelectedLabelPosition}\nFile: ${fileInput.files[0].name}\n\n(Print pipeline to be wired up server-side.)`);
     };
 
     // ----------------------------------------------------------------
-    // INIT
+    // INIT — wires button + modal once the tile is in the DOM
     // ----------------------------------------------------------------
 
-    window.initDiscogsOrders = function() {
-        console.log('📦 Discogs Orders tile initialized');
+    function wireTile() {
+        const loadBtn = document.getElementById('discogs-load-orders-btn');
+        if (loadBtn && !loadBtn._wired) {
+            loadBtn._wired = true;
+            loadBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                window.discogsLoadOrders();
+            });
+        }
 
-        discogsOrders = [];
-        discogsCurrentOrderId = null;
-        discogsPendingLabelOrder = null;
-        discogsSelectedLabelPosition = 'LT';
+        const modal = document.getElementById('discogs-shipping-modal');
+        if (modal && !modal._wired) {
+            modal._wired = true;
+            modal.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    window.discogsCloseShippingModal();
+                }
+            });
+        }
+    }
 
-        loadDiscogsOrders();
+    // app.js calls window.initDiscogsHub when the tile renders.
+    window.initDiscogsHub = function() {
+        console.log('📦 Discogs tile init');
+        wireTile();
+        // Do not auto-load; user clicks the button.
     };
 
+    // Alias so other code paths can call it too.
+    window.initDiscogsOrders = function() {
+        console.log('📦 Discogs Orders tile initialized (auto-load)');
+        wireTile();
+        window.discogsLoadOrders();
+    };
+
+    console.log('✅ discogs.js loaded');
 })();

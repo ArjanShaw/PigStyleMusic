@@ -9,6 +9,17 @@
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
             <h2 style="color: #333; margin: 0 0 5px 0;">📦 Discogs Orders</h2>
 
+            <!-- Load Orders row -->
+            <div style="width: 100%; display: flex; gap: 12px; align-items: center; background: #fff8e1; padding: 10px 15px; border-radius: 8px; border: 1px solid #ffe082;">
+                <button id="discogs-load-orders-btn"
+                        style="padding: 8px 24px; background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 700; box-shadow: 0 2px 6px rgba(245,124,0,0.3);">
+                    📥 Load Orders
+                </button>
+                <span id="discogs-load-orders-info" style="font-size: 13px; color: #666;">
+                    Click to fetch orders from Discogs.
+                </span>
+            </div>
+
             <!-- Filters -->
             <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap; align-items: center;">
                 <select id="discogs-orders-status" style="padding: 8px; border: 2px solid #ddd; border-radius: 8px; min-width: 150px;">
@@ -36,7 +47,7 @@
             <!-- Orders Table Container -->
             <div id="discogs-orders-container" style="width: 100%; flex: 2; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px; transition: all 0.3s ease;">
                 <div id="discogs-orders-table" style="width: 100%;">
-                    <div style="text-align: center; padding: 20px; color: #999;">Loading orders...</div>
+                    <div style="text-align: center; padding: 20px; color: #999;">Click <strong>📥 Load Orders</strong> above to fetch orders.</div>
                 </div>
             </div>
 
@@ -117,39 +128,3 @@
         </div>
     </div>
 </div>
-
-<script>
-(function() {
-    'use strict';
-
-    let ordersInited = false;
-
-    // Kept as a no-op shim in case other code still calls it.
-    window.discogsHubTab = function() {
-        if (!ordersInited && typeof window.initDiscogsOrders === 'function') {
-            ordersInited = true;
-            window.initDiscogsOrders();
-        }
-    };
-
-    // Called by app.js when the page is opened
-    window.initDiscogsHub = function() {
-        ordersInited = false;
-
-        const modal = document.getElementById('discogs-shipping-modal');
-        if (modal && !modal._hubWired) {
-            modal.addEventListener('click', function(e) {
-                if (e.target === this && typeof window.discogsCloseShippingModal === 'function') {
-                    window.discogsCloseShippingModal();
-                }
-            });
-            modal._hubWired = true;
-        }
-
-        if (typeof window.initDiscogsOrders === 'function') {
-            ordersInited = true;
-            window.initDiscogsOrders();
-        }
-    };
-})();
-</script>
