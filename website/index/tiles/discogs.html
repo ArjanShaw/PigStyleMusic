@@ -1,102 +1,11 @@
 <!-- ================================================================ -->
 <!-- FILE: /tiles/discogs.html                                        -->
-<!-- Discogs hub — Post to Discogs + Discogs Orders in one tile       -->
+<!-- Discogs Orders tile                                              -->
 <!-- ================================================================ -->
 
 <div style="display: flex; flex-direction: column; height: 100%; width: 100%; background: white; border-radius: 16px; overflow: hidden;">
 
-    <!-- ===================== Tab bar ===================== -->
-    <div style="display: flex; gap: 4px; padding: 8px 10px 0 10px; background: #f8f9fa; border-bottom: 2px solid #e9ecef; flex-shrink: 0;">
-        <button id="discogs-tab-post" onclick="discogsHubTab('post')"
-                style="padding: 8px 20px; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 13px; font-weight: 600; background: white; color: #333; border-bottom: 2px solid #667eea;">
-            📤 Post to Discogs
-        </button>
-        <button id="discogs-tab-orders" onclick="discogsHubTab('orders')"
-                style="padding: 8px 20px; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 13px; font-weight: 600; background: #e9ecef; color: #666; border-bottom: 2px solid transparent;">
-            📦 Discogs Orders
-        </button>
-    </div>
-
-    <!-- ===================== Post to Discogs panel ===================== -->
-    <div id="discogs-panel-post" style="flex: 1; overflow: hidden; display: flex;">
-        <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
-            <h2 style="color: #333; margin: 0 0 5px 0;">📤 Post to Discogs</h2>
-
-            <!-- Markup Controls -->
-            <div style="width: 100%; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; background: #f8f9fa; padding: 10px 15px; border-radius: 8px; border: 1px solid #e9ecef;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label style="font-size: 13px; font-weight: 600; color: #333; white-space: nowrap;">Initial Markup:</label>
-                    <input type="number" id="discogs-markup-percent" min="-100" max="200" step="1"
-                           style="width: 60px; padding: 4px 6px; border: 1px solid #ced4da; border-radius: 4px; font-size: 13px; text-align: center;">
-                    <span style="font-size: 13px; color: #666;">%</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label style="font-size: 13px; font-weight: 600; color: #333; white-space: nowrap;">Weekly Step:</label>
-                    <input type="number" id="discogs-price-step" min="0" max="50" step="0.5"
-                           style="width: 60px; padding: 4px 6px; border: 1px solid #ced4da; border-radius: 4px; font-size: 13px; text-align: center;">
-                    <span style="font-size: 13px; color: #666;">%/wk</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <label style="font-size: 13px; font-weight: 600; color: #333; white-space: nowrap;">Max Markdown:</label>
-                    <input type="number" id="discogs-max-markdown" min="0" max="100" step="1"
-                           style="width: 60px; padding: 4px 6px; border: 1px solid #ced4da; border-radius: 4px; font-size: 13px; text-align: center;">
-                    <span style="font-size: 13px; color: #666;">% (max discount)</span>
-                </div>
-                <button onclick="updateDiscogsPrices()" id="update-prices-btn"
-                        style="padding: 5px 16px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
-                    🔄 Update Prices
-                </button>
-                <span id="price-calc-info" style="font-size: 12px; color: #888; margin-left: auto;">
-                    Ready
-                </span>
-            </div>
-
-            <!-- Load Records Row -->
-            <div style="width: 100%; display: flex; gap: 12px; align-items: center; background: #fff8e1; padding: 10px 15px; border-radius: 8px; border: 1px solid #ffe082;">
-                <button onclick="loadPostDiscogsRecords()" id="load-records-btn"
-                        style="padding: 8px 24px; background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 700; box-shadow: 0 2px 6px rgba(245,124,0,0.3);">
-                    📥 Load Records
-                </button>
-                <span id="load-records-info" style="font-size: 13px; color: #666;">
-                    Click to fetch records from the server. This may take a moment.
-                </span>
-            </div>
-
-            <!-- Selection Controls -->
-            <div style="width: 100%; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; padding: 5px 0;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <label style="font-size: 13px; font-weight: 600; color: #333;">
-                        <input type="checkbox" id="select-all-locations" onchange="toggleAllLocations()"> Select All Locations
-                    </label>
-                    <span id="selection-info" style="font-size: 13px; color: #666;">0 locations selected, 0 records</span>
-                </div>
-                <button onclick="postSelectedLocations()" id="post-selected-btn" disabled
-                        style="padding: 6px 20px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 13px; font-weight: 600;">
-                    📤 Post Selected
-                </button>
-                <button onclick="cancelPosting()" id="cancel-post-btn" disabled
-                        style="display: none; padding: 6px 20px; background: #dc3545; color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 13px; font-weight: 600;">
-                    ⏹️ Cancel
-                </button>
-                <span id="post-status-badge" style="font-size: 12px; color: #888; margin-left: auto;"></span>
-            </div>
-
-            <!-- Status / Progress -->
-            <div id="post-discogs-status" style="width: 100%; display: none; padding: 8px 12px; border-radius: 8px; font-size: 13px;"></div>
-
-            <!-- Locations Tree -->
-            <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
-                <div id="post-discogs-locations" style="width: 100%;">
-                    <div style="text-align: center; padding: 30px; color: #666;">
-                        Click <strong>📥 Load Records</strong> above to fetch records for posting.
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ===================== Discogs Orders panel ===================== -->
-    <div id="discogs-panel-orders" style="flex: 1; overflow: hidden; display: none; flex-direction: column;">
+    <div id="discogs-panel-orders" style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
             <h2 style="color: #333; margin: 0 0 5px 0;">📦 Discogs Orders</h2>
 
@@ -215,46 +124,11 @@
 
     let ordersInited = false;
 
-    window.discogsHubTab = function(which) {
-        const postPanel   = document.getElementById('discogs-panel-post');
-        const ordersPanel = document.getElementById('discogs-panel-orders');
-        const postBtn     = document.getElementById('discogs-tab-post');
-        const ordersBtn   = document.getElementById('discogs-tab-orders');
-
-        if (!postPanel || !ordersPanel) return;
-
-        if (which === 'post') {
-            postPanel.style.display = 'flex';
-            ordersPanel.style.display = 'none';
-
-            postBtn.style.background = 'white';
-            postBtn.style.color = '#333';
-            postBtn.style.borderBottom = '2px solid #667eea';
-
-            ordersBtn.style.background = '#e9ecef';
-            ordersBtn.style.color = '#666';
-            ordersBtn.style.borderBottom = '2px solid transparent';
-
-            if (typeof window.initPostDiscogs === 'function') {
-                window.initPostDiscogs();
-            }
-        } else {
-            postPanel.style.display = 'none';
-            ordersPanel.style.display = 'flex';
-
-            ordersBtn.style.background = 'white';
-            ordersBtn.style.color = '#333';
-            ordersBtn.style.borderBottom = '2px solid #667eea';
-
-            postBtn.style.background = '#e9ecef';
-            postBtn.style.color = '#666';
-            postBtn.style.borderBottom = '2px solid transparent';
-
-            // Discogs Orders loads its own data on init; only run once per visit
-            if (!ordersInited && typeof window.initDiscogsOrders === 'function') {
-                ordersInited = true;
-                window.initDiscogsOrders();
-            }
+    // Kept as a no-op shim in case other code still calls it.
+    window.discogsHubTab = function() {
+        if (!ordersInited && typeof window.initDiscogsOrders === 'function') {
+            ordersInited = true;
+            window.initDiscogsOrders();
         }
     };
 
@@ -272,7 +146,10 @@
             modal._hubWired = true;
         }
 
-        window.discogsHubTab('post');
+        if (typeof window.initDiscogsOrders === 'function') {
+            ordersInited = true;
+            window.initDiscogsOrders();
+        }
     };
 })();
 </script>
