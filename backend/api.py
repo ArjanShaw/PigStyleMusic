@@ -810,7 +810,6 @@ def require_discogs_auth(f):
         return f(*args, **kwargs)
     return decorated_function
 
-
 @app.route('/api/discogs/create-listing-single', methods=['POST'])
 def create_discogs_listing_single():
     """
@@ -823,6 +822,9 @@ def create_discogs_listing_single():
     Feature 3: consigned records (consignor_id NOT NULL) are rejected.
 
     Price is client-supplied. No fallback markup.
+
+    Location display string and location_index are appended to the
+    Discogs listing comments as "[PIGSTYLE ID: N] | Location: <loc> | idx:<n>".
     """
     try:
         data = request.json
@@ -884,9 +886,17 @@ def create_discogs_listing_single():
             'User-Agent': 'PigStyleMusic/1.0'
         }
 
+        # --- Build comments with PIGSTYLE ID, location, and index ---
         comments = f"[PIGSTYLE ID: {record['id']}]"
+
+        loc_bits = []
         if record.get('location'):
-            comments += f" | Location: {record.get('location')}"
+            loc_bits.append(str(record.get('location')).strip())
+        if record.get('location_index') is not None:
+            loc_bits.append(f"idx:{record.get('location_index')}")
+        if loc_bits:
+            comments += f" | Location: {' | '.join(loc_bits)}"
+
         if record.get('notes'):
             comments += f" | {record.get('notes')}"
 
@@ -901,7 +911,7 @@ def create_discogs_listing_single():
 
         app.logger.info(
             f"Creating listing for release {release_id} at ${discogs_price} "
-            f"(Record #{record['id']})"
+            f"(Record #{record['id']}) — comments: {comments[:200]}"
         )
 
         listing_response = requests.post(
@@ -2581,57 +2591,58 @@ def get_artists():
     conn.close()
     return jsonify({'status': 'success', 'artists': [dict(artist) for artist in artists]})
 
+
 @app.route('/records', methods=['POST'])
 def create_record():
     data = request.get_json()
     if not data:
         return jsonify({'status': 'error', 'error': 'No data provided'}), 400
-    
+
     required_fields = ['artist', 'title', 'store_price', 'batch_id']
     for field in required_fields:
         if field not in data or data[field] is None:
             return jsonify({'status': 'error', 'error': f'{field} is required'}), 400
-    
+
     batch_id = data.get('batch_id')
     if not batch_id:
         return jsonify({'status': 'error', 'error': 'batch_id must be a valid draft ID'}), 400
 
     conn = get_db()
     cursor = conn.cursor()
-    
+
     try:
         consignor_id = data.get('consignor_id')
         commission_rate = data.get('commission_rate')
         status_id = data.get('status_id', 1)
-        
+
         condition_sleeve_id = data.get('condition_sleeve_id')
         condition_disc_id = data.get('condition_disc_id')
-        
+
         if not condition_sleeve_id and data.get('condition'):
             cursor.execute('SELECT id FROM d_condition WHERE condition_name = ?', (data.get('condition'),))
             result = cursor.fetchone()
             if result:
                 condition_sleeve_id = result['id']
                 condition_disc_id = result['id']
-        
+
         discogs_genre_raw = data.get('discogs_genre_raw', '')
         notes = data.get('notes', '')
-        
+
         # Location fields - only location_id and location_index
         location_id = data.get('location_id')
         location_index = data.get('location_index')
         format_id = data.get('format_id')
-        
+
         # ===== Discogs release ID =====
         discogs_release_id = data.get('discogs_release_id')
-        
+
         # ===== GET last_seen from request or use CURRENT_TIMESTAMP =====
         last_seen = data.get('last_seen')
         if last_seen:
             last_seen_value = last_seen
         else:
             last_seen_value = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
+
         cursor.execute('''
             INSERT INTO records (
                 artist, title, barcode, image_url, catalog_number,
@@ -2642,16 +2653,16 @@ def create_record():
                 created_at, last_seen
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
         ''', (
-            data.get('artist'), 
-            data.get('title'), 
-            data.get('barcode', ''), 
-            data.get('image_url', ''), 
-            data.get('catalog_number', ''), 
+            data.get('artist'),
+            data.get('title'),
+            data.get('barcode', ''),
+            data.get('image_url', ''),
+            data.get('catalog_number', ''),
             condition_sleeve_id,
-            condition_disc_id, 
+            condition_disc_id,
             float(data.get('store_price', 0.0)),
-            consignor_id, 
-            float(commission_rate) if commission_rate else None, 
+            consignor_id,
+            float(commission_rate) if commission_rate else None,
             int(status_id),
             discogs_genre_raw,
             notes,
@@ -2662,9 +2673,57 @@ def create_record():
             discogs_release_id,
             last_seen_value
         ))
-        
+
         record_id = cursor.lastrowid
-        
+
+        # ===== POPULATE image_large_url FROM DISCOGS =====
+        # Fetch the signed full-size image URL now so ebay_list_item doesn't
+        # have to call the Discogs API at post time. Failures are non-fatal:
+        # the record is still created, and a later backfill can fill the gap.
+        if discogs_release_id:
+            try:
+                discogs_resp = requests.get(
+                    f'https://api.discogs.com/releases/{discogs_release_id}',
+                    headers={
+                        'Authorization': f'Discogs token={os.environ.get("DISCOGS_USER_TOKEN", "")}',
+                        'User-Agent': 'PigStyleMusic/1.0',
+                    },
+                    timeout=10
+                )
+                if discogs_resp.status_code == 200:
+                    images = discogs_resp.json().get('images') or []
+                    usable = [i for i in images if (i.get('width') or 0) >= 500 and i.get('uri')]
+                    if usable:
+                        best = max(usable, key=lambda i: i.get('width') or 0)
+                        cursor.execute(
+                            "UPDATE records SET image_large_url = ? WHERE id = ?",
+                            (best['uri'], record_id)
+                        )
+                        app.logger.info(
+                            f"Record {record_id}: populated image_large_url "
+                            f"({best.get('width')}x{best.get('height')})"
+                        )
+                    else:
+                        app.logger.warning(
+                            f"Record {record_id}: Discogs release {discogs_release_id} "
+                            f"has no image >= 500px; image_large_url left NULL"
+                        )
+                elif discogs_resp.status_code == 429:
+                    app.logger.warning(
+                        f"Record {record_id}: Discogs rate-limited during import; "
+                        f"image_large_url left NULL (will be picked up by backfill)"
+                    )
+                else:
+                    app.logger.warning(
+                        f"Record {record_id}: Discogs release API returned "
+                        f"{discogs_resp.status_code}; image_large_url left NULL"
+                    )
+            except Exception as e:
+                app.logger.warning(
+                    f"Record {record_id}: Discogs image fetch failed ({e}); "
+                    f"image_large_url left NULL"
+                )
+
         # ===== STORE CREDIT / GIFT CARD TRADE-IN LOGIC =====
         store_credit = data.get('store_credit', False)
         gift_card_code = data.get('gift_card_code', '').strip().upper()
@@ -2676,60 +2735,60 @@ def create_record():
                 conn.rollback()
                 conn.close()
                 return jsonify({'status': 'error', 'error': 'Gift card code required for store credit'}), 400
-            
+
             if not debtor_name:
                 conn.rollback()
                 conn.close()
                 return jsonify({'status': 'error', 'error': 'Debtor name required for store credit'}), 400
-            
+
             if total_offer <= 0:
                 conn.rollback()
                 conn.close()
                 return jsonify({'status': 'error', 'error': 'Total offer must be greater than 0'}), 400
-            
+
             store_credit_value = total_offer * 1.5
-            
+
             cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1050',))
             inventory = cursor.fetchone()
             cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
             liability = cursor.fetchone()
-            
+
             if not inventory or not liability:
                 conn.rollback()
                 conn.close()
                 return jsonify({'status': 'error', 'error': 'Required accounts not found'}), 500
-            
+
             cursor.execute('SELECT id FROM journal_entries WHERE source_type = "gift_card" AND source_id = ?', (gift_card_code,))
             if cursor.fetchone():
                 conn.rollback()
                 conn.close()
                 return jsonify({'status': 'error', 'error': 'Gift card code already exists'}), 400
-            
+
             value_cents = int(round(store_credit_value * 100))
             today = datetime.now().strftime('%Y-%m-%d')
             trade_notes = data.get('trade_notes', f'Trade-in: {data.get("record_count", 0)} records')
-            
+
             description = f"{debtor_name} | {gift_card_code} | ${store_credit_value:.2f} | Trade-in: {trade_notes}"
-            
+
             cursor.execute('''
                 INSERT INTO journal_entries (transaction_date, description, source_type, source_id)
                 VALUES (?, ?, ?, ?)
             ''', (today, description, 'gift_card', gift_card_code))
             entry_id = cursor.lastrowid
-            
+
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
             ''', (entry_id, inventory['id'], value_cents, 0))
-            
+
             cursor.execute('''
                 INSERT INTO journal_lines (journal_entry_id, account_id, debit_amount, credit_amount)
                 VALUES (?, ?, ?, ?)
             ''', (entry_id, liability['id'], 0, value_cents))
-            
+
             conn.commit()
             conn.close()
-            
+
             conn2 = get_db()
             cursor2 = conn2.cursor()
             cursor2.execute('''
@@ -2747,7 +2806,7 @@ def create_record():
             ''', (record_id,))
             record = cursor2.fetchone()
             conn2.close()
-            
+
             return jsonify({
                 'status': 'success',
                 'record': dict(record) if record else {},
@@ -2757,9 +2816,9 @@ def create_record():
                 'debtor_name': debtor_name,
                 'entry_id': entry_id
             })
-        
+
         conn.commit()
-        
+
         cursor.execute('''
             SELECT r.*, s.status_name, cs.condition_name as sleeve_condition_name,
             cd.condition_name as disc_condition_name,
@@ -2773,21 +2832,21 @@ def create_record():
             LEFT JOIN locations l ON r.location_id = l.id
             WHERE r.id = ?
         ''', (record_id,))
-        
+
         record = cursor.fetchone()
         conn.close()
-        
+
         return jsonify({
-            'status': 'success', 
-            'record': dict(record) if record else {}, 
+            'status': 'success',
+            'record': dict(record) if record else {},
             'message': f'Record added successfully with ID: {record_id}'
         })
-        
+
     except Exception as e:
         conn.rollback()
         conn.close()
         return jsonify({'status': 'error', 'error': f"Database error: {str(e)}"}), 500
- 
+
 
 @app.route('/records', methods=['GET'])
 def get_records():
@@ -2812,7 +2871,10 @@ def get_records():
         last_seen_after    YYYY-MM-DD. Deprecated.
         last_seen_before   YYYY-MM-DD.
         batch_id           Integer, or -1 for NULL.
-        visible_only       true/false. When true, apply Feature 1 bin-max rule.
+        visible_only       true/false. When true, apply Feature 1 bin-max rule:
+                           location_id must be set, last_seen must be set, and
+                           last_seen must equal the max last_seen date for that
+                           same bin among Active records.
         hide_consigned     true/false. When true, exclude consignor_id NOT NULL.
         order_by           Column name (whitelisted).
         order_dir          ASC/DESC.
@@ -2988,27 +3050,24 @@ def get_records():
                 where_clauses.append("r.batch_id = ?")
                 params.append(batch_id_int)
 
-        # --- Feature 1: per-bin last_seen visibility ---
+        # --- Feature 1: per-bin last_seen visibility (FIXED) ---
+        # A record is visible only if:
+        #   1. it is assigned to a location (location_id IS NOT NULL), and
+        #   2. it has a last_seen date, and
+        #   3. that date equals the most recent last_seen date for its bin
+        #      among Active records.
+        # Records with NULL location_id or NULL last_seen are hidden.
         visible_only = request.args.get('visible_only', 'false').lower() == 'true'
         if visible_only:
             where_clauses.append("""
-                (
-                    r.location_id IS NULL
-                    OR NOT EXISTS (
-                        SELECT 1 FROM records x
-                        WHERE x.location_id = r.location_id
-                          AND x.status_id = 2
-                          AND x.last_seen IS NOT NULL
-                    )
-                    OR (
-                        r.last_seen IS NOT NULL
-                        AND date(r.last_seen) = (
-                            SELECT MAX(date(y.last_seen))
-                            FROM records y
-                            WHERE y.location_id = r.location_id
-                              AND y.status_id = 2
-                        )
-                    )
+                r.location_id IS NOT NULL
+                AND r.last_seen IS NOT NULL
+                AND date(r.last_seen) = (
+                    SELECT MAX(date(y.last_seen))
+                    FROM records y
+                    WHERE y.location_id = r.location_id
+                      AND y.status_id = 2
+                      AND y.last_seen IS NOT NULL
                 )
             """)
 
@@ -3083,11 +3142,11 @@ def get_records():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
 @app.route('/api/genres-with-records', methods=['GET'])
 def get_genres_with_records():
-    """Genres that have visible Active records. Applies Feature 1 (per-bin
-    last_seen) unconditionally, plus the effective-genre resolution.
+    """Genres that have visible Active records. Applies the per-bin
+    last_seen rule unconditionally (location_id NOT NULL, last_seen NOT NULL,
+    and last_seen = bin max), plus the effective-genre resolution.
     """
     try:
         conn = get_db()
@@ -3125,25 +3184,16 @@ def get_genres_with_records():
                 query += f' AND r.location_id IN ({placeholders})'
                 params.extend(ids)
 
-        # Feature 1: per-bin visibility
+        # Per-bin visibility (same rule as /records visible_only=true)
         query += '''
-            AND (
-                r.location_id IS NULL
-                OR NOT EXISTS (
-                    SELECT 1 FROM records x
-                    WHERE x.location_id = r.location_id
-                      AND x.status_id = 2
-                      AND x.last_seen IS NOT NULL
-                )
-                OR (
-                    r.last_seen IS NOT NULL
-                    AND date(r.last_seen) = (
-                        SELECT MAX(date(y.last_seen))
-                        FROM records y
-                        WHERE y.location_id = r.location_id
-                          AND y.status_id = 2
-                    )
-                )
+            AND r.location_id IS NOT NULL
+            AND r.last_seen IS NOT NULL
+            AND date(r.last_seen) = (
+                SELECT MAX(date(y.last_seen))
+                FROM records y
+                WHERE y.location_id = r.location_id
+                  AND y.status_id = 2
+                  AND y.last_seen IS NOT NULL
             )
         '''
 
@@ -3165,11 +3215,11 @@ def get_genres_with_records():
         app.logger.error(f"Error getting genres with records: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-
 @app.route('/api/formats-with-records', methods=['GET'])
 def get_formats_with_records():
-    """Formats that have visible Active records. Applies Feature 1 (per-bin
-    last_seen) unconditionally. Format comes from records.format_id only.
+    """Formats that have visible Active records. Applies the per-bin
+    last_seen rule unconditionally (location_id NOT NULL, last_seen NOT NULL,
+    and last_seen = bin max). Format comes from records.format_id only.
     """
     try:
         conn = get_db()
@@ -3205,25 +3255,16 @@ def get_formats_with_records():
                 query += f' AND r.location_id IN ({placeholders})'
                 params.extend(ids)
 
-        # Feature 1: per-bin visibility
+        # Per-bin visibility (same rule as /records visible_only=true)
         query += '''
-            AND (
-                r.location_id IS NULL
-                OR NOT EXISTS (
-                    SELECT 1 FROM records x
-                    WHERE x.location_id = r.location_id
-                      AND x.status_id = 2
-                      AND x.last_seen IS NOT NULL
-                )
-                OR (
-                    r.last_seen IS NOT NULL
-                    AND date(r.last_seen) = (
-                        SELECT MAX(date(y.last_seen))
-                        FROM records y
-                        WHERE y.location_id = r.location_id
-                          AND y.status_id = 2
-                    )
-                )
+            AND r.location_id IS NOT NULL
+            AND r.last_seen IS NOT NULL
+            AND date(r.last_seen) = (
+                SELECT MAX(date(y.last_seen))
+                FROM records y
+                WHERE y.location_id = r.location_id
+                  AND y.status_id = 2
+                  AND y.last_seen IS NOT NULL
             )
         '''
 
@@ -3244,7 +3285,6 @@ def get_formats_with_records():
     except Exception as e:
         app.logger.error(f"Error getting formats with records: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 
 @app.route('/api/stats/last-seen-distribution', methods=['GET'])
@@ -7427,102 +7467,8 @@ def get_balances():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-@app.route('/api/accounting/monthly-pl', methods=['GET'])
-@login_required
-@role_required(['admin'])
-def monthly_pl():
-    """
-    Get monthly P&L data from BOTH bank_transactions AND journal_entries_simple (manual only).
-    """
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT id FROM accounts WHERE type = "asset"')
-        asset_rows = cursor.fetchall()
-        asset_ids = [str(row['id']) for row in asset_rows]
-        asset_ids_str = ','.join(asset_ids) if asset_ids else '0'
-        
-        cursor.execute('SELECT id FROM accounts WHERE code = "1016"')
-        private_row = cursor.fetchone()
-        private_id = str(private_row['id']) if private_row else '0'
-        
-        query = f'''
-            SELECT 
-                strftime('%Y-%m', bt.transaction_date) AS month,
-                a.type,
-                a.code,
-                a.name,
-                SUM(bt.amount) AS balance
-            FROM bank_transactions bt
-            LEFT JOIN accounts a ON a.id = bt.post_to
-            LEFT JOIN accounts f ON f.id = bt.post_from
-            WHERE bt.post_to IS NOT NULL
-              AND NOT (f.type = 'asset' AND a.type = 'asset')
-              AND bt.post_from != {private_id}
-              AND bt.post_to != {private_id}
-              AND bt.post_to != 52
-            GROUP BY strftime('%Y-%m', bt.transaction_date), a.id
-            
-            UNION ALL
-            
-            SELECT 
-                strftime('%Y-%m', je.transaction_date) AS month,
-                a.type,
-                a.code,
-                a.name,
-                SUM(
-                    CASE 
-                        WHEN je.post_from = a.id THEN -je.amount / 100.0
-                        WHEN je.post_to = a.id THEN je.amount / 100.0
-                        ELSE 0
-                    END
-                ) AS balance
-            FROM journal_entries_simple je
-            JOIN accounts a ON a.id = je.post_from OR a.id = je.post_to
-            WHERE je.source_type = 'manual'
-              AND a.id != 52
-            GROUP BY strftime('%Y-%m', je.transaction_date), a.id
-        '''
-        
-        cursor.execute(query)
-        rows = cursor.fetchall()
-        conn.close()
-        
-        from collections import defaultdict
-        aggregated = defaultdict(lambda: defaultdict(float))
-        
-        for row in rows:
-            month = row['month']
-            if not month:
-                continue
-            key = f"{row['code']}_{row['name']}"
-            aggregated[month][key] += float(row['balance'] or 0)
-        
-        result = []
-        for month, accounts in sorted(aggregated.items()):
-            for key, balance in accounts.items():
-                parts = key.split('_', 1)
-                code = parts[0] if len(parts) > 0 else ''
-                name = parts[1] if len(parts) > 1 else ''
-                result.append({
-                    'month': month,
-                    'code': code,
-                    'name': name,
-                    'balance': balance
-                })
-        
-        return jsonify({
-            'status': 'success',
-            'data': result,
-            'count': len(result)
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error in monthly_pl: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-     
+
+
 # ===== SINGLE TRANSACTION ASSIGN =====
 
 @app.route('/api/accounting/bank/assign-single', methods=['POST'])
@@ -7999,67 +7945,107 @@ def mark_sold_on_discogs():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
- 
+ # ============================================================
+# MANUAL JOURNAL ENTRIES ENDPOINT
+# ============================================================
+# Returns raw journal_entries_simple rows where source_type = 'manual',
+# joined with account names for both the post_from and post_to sides.
+#
+# Each row represents ONE side of a double entry. A typical manual
+# entry contributes TWO rows to the client: the "from" side (which
+# debits/credits the source account) and the "to" side (which does
+# the mirror). The client is expected to normalize these into the
+# shape used by the transaction aggregator.
+#
+# Amounts are returned in CENTS (as stored in journal_entries_simple)
+# to keep the raw data faithful. The client divides by 100.
+# ============================================================
 
-@app.route('/api/accounting/monthly-account-transactions', methods=['GET'])
+@app.route('/api/accounting/manual-entries', methods=['GET'])
 @login_required
 @role_required(['admin'])
-def monthly_account_transactions():
+def accounting_manual_entries():
     """
-    Return transactions for a given month directly from bank_transactions.
+    Fetch all manual journal entries from journal_entries_simple.
+
+    Query params (optional):
+        date_from     YYYY-MM-DD, inclusive lower bound
+        date_to       YYYY-MM-DD, inclusive upper bound
+        limit         default 5000
     """
-    month = request.args.get('month')
-    account_id = request.args.get('account_id', type=int)
-    exclude_orders = request.args.get('exclude_orders', 'false').lower() == 'true'
+    try:
+        date_from = request.args.get('date_from')
+        date_to = request.args.get('date_to')
+        limit = request.args.get('limit', 5000, type=int)
 
-    if not month:
-        return jsonify({'status': 'error', 'error': 'month required'}), 400
+        conn = get_db()
+        cursor = conn.cursor()
 
-    conn = get_db()
-    cursor = conn.cursor()
+        query = '''
+            SELECT 
+                jes.id,
+                jes.transaction_date,
+                jes.description,
+                jes.source_type,
+                jes.source_id,
+                jes.post_from,
+                jes.post_to,
+                jes.amount,
+                jes.created_at,
+                af.code AS post_from_code,
+                af.name AS post_from_name,
+                at.code AS post_to_code,
+                at.name AS post_to_name
+            FROM journal_entries_simple jes
+            LEFT JOIN accounts af ON af.id = jes.post_from
+            LEFT JOIN accounts at ON at.id = jes.post_to
+            WHERE jes.source_type = 'manual'
+        '''
+        params = []
 
-    query = '''
-        SELECT 
-            bt.id,
-            bt.transaction_date,
-            bt.description,
-            bt.amount,
-            bt.post_to,
-            a.name AS account_name,
-            bt.additional_info
-        FROM bank_transactions bt
-        LEFT JOIN accounts a ON a.id = bt.post_to
-        WHERE strftime('%Y-%m', bt.transaction_date) = ?
-    '''
-    params = [month]
+        if date_from:
+            query += ' AND date(jes.transaction_date) >= date(?)'
+            params.append(date_from)
+        if date_to:
+            query += ' AND date(jes.transaction_date) <= date(?)'
+            params.append(date_to)
 
-    if account_id is not None:
-        query += ' AND bt.post_to = ?'
-        params.append(account_id)
+        query += ' ORDER BY jes.transaction_date DESC, jes.id DESC LIMIT ?'
+        params.append(limit)
 
-    query += ' ORDER BY bt.transaction_date DESC, bt.id DESC'
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
 
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
+        entries = []
+        for row in rows:
+            entries.append({
+                'id': row['id'],
+                'transaction_date': row['transaction_date'],
+                'description': row['description'] or '',
+                'source_type': row['source_type'],
+                'source_id': row['source_id'],
+                'post_from': row['post_from'],
+                'post_to': row['post_to'],
+                'amount': row['amount'],          # cents, signed
+                'created_at': row['created_at'],
+                'post_from_code': row['post_from_code'],
+                'post_from_name': row['post_from_name'],
+                'post_to_code': row['post_to_code'],
+                'post_to_name': row['post_to_name']
+            })
 
-    transactions = []
-    for row in rows:
-        transactions.append({
-            'id': row['id'],
-            'transaction_date': row['transaction_date'],
-            'description': row['description'] or '',
-            'amount': row['amount'] or 0,
-            'account_name': row['account_name'] or '',
-            'additional_info': row['additional_info'] or '',
-            'processed': row['post_to'] is not None
+        return jsonify({
+            'status': 'success',
+            'entries': entries,
+            'count': len(entries)
         })
 
-    return jsonify({
-        'status': 'success',
-        'transactions': transactions
-    })
-
+    except Exception as e:
+        app.logger.error(f"Error fetching manual entries: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+ 
 @app.route('/api/accounting/bank-transactions/<int:transaction_id>/unpost', methods=['PUT'])
 @login_required
 @role_required(['admin'])
@@ -13116,12 +13102,13 @@ def subscribe():
 
 
 # ==================== RECORD ORDERS ENDPOINT (NO EMAIL) ====================
-
 @app.route('/api/record-orders', methods=['POST'])
 def create_record_order():
     """
     Create a new record order request.
     Uses the separate record_orders table.
+    Accepts EITHER an email OR a phone number as contact info.
+    Optionally accepts a format (e.g. Vinyl, CD, Cassette).
     """
     try:
         data = request.get_json()
@@ -13129,18 +13116,34 @@ def create_record_order():
         if not data:
             return jsonify({'status': 'error', 'error': 'No data provided'}), 400
         
-        email = data.get('email', '').strip().lower() if data.get('email') else ''
+        contact = data.get('contact', '').strip() if data.get('contact') else ''
         artist = data.get('artist', '').strip() if data.get('artist') else ''
         title = data.get('title', '').strip() if data.get('title') else ''
+        format_value = data.get('format', '').strip() if data.get('format') else None
         
-        if not email or '@' not in email or '.' not in email:
-            return jsonify({'status': 'error', 'error': 'Valid email address required'}), 400
+        # Fallback: accept legacy 'email' key for backwards compatibility
+        if not contact and data.get('email'):
+            contact = data.get('email', '').strip().lower()
+        
+        if not contact:
+            return jsonify({'status': 'error', 'error': 'Email or phone number required'}), 400
+        
+        # Validate contact: either a valid email OR a valid phone number
+        is_email = re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', contact)
+        is_phone = re.match(r'^[\d\s\-\(\)\+\.]{7,}$', contact)
+        
+        if not is_email and not is_phone:
+            return jsonify({'status': 'error', 'error': 'Valid email address or phone number required'}), 400
         
         if not artist:
             return jsonify({'status': 'error', 'error': 'Artist name is required'}), 400
         
         if not title:
             return jsonify({'status': 'error', 'error': 'Record title is required'}), 400
+        
+        # Normalize email to lowercase if it's an email
+        if is_email:
+            contact = contact.lower()
         
         conn = get_db()
         cursor = conn.cursor()
@@ -13149,7 +13152,7 @@ def create_record_order():
             SELECT id, status, notified 
             FROM record_orders 
             WHERE email = ? AND artist = ? AND title = ?
-        ''', (email, artist, title))
+        ''', (contact, artist, title))
         
         existing = cursor.fetchone()
         
@@ -13192,22 +13195,37 @@ def create_record_order():
                 'already_exists': True
             }), 200
         
-        cursor.execute('''
-            INSERT INTO record_orders (
-                email, 
-                artist, 
-                title, 
-                status,
-                notified,
-                created_at
-            ) VALUES (?, ?, ?, 'pending', 0, CURRENT_TIMESTAMP)
-        ''', (email, artist, title))
+        # Attempt to store format if the column exists; otherwise ignore gracefully
+        try:
+            cursor.execute('''
+                INSERT INTO record_orders (
+                    email, 
+                    artist, 
+                    title, 
+                    format,
+                    status,
+                    notified,
+                    created_at
+                ) VALUES (?, ?, ?, ?, 'pending', 0, CURRENT_TIMESTAMP)
+            ''', (contact, artist, title, format_value))
+        except sqlite3.OperationalError:
+            # 'format' column doesn't exist yet — insert without it
+            cursor.execute('''
+                INSERT INTO record_orders (
+                    email, 
+                    artist, 
+                    title, 
+                    status,
+                    notified,
+                    created_at
+                ) VALUES (?, ?, ?, 'pending', 0, CURRENT_TIMESTAMP)
+            ''', (contact, artist, title))
         
         order_id = cursor.lastrowid
         conn.commit()
         conn.close()
         
-        app.logger.info(f"New order request: {email} - Artist: {artist}, Title: {title}")
+        app.logger.info(f"New order request: {contact} - Artist: {artist}, Title: {title}, Format: {format_value or 'Any'}")
         
         return jsonify({
             'status': 'success',
@@ -13220,31 +13238,37 @@ def create_record_order():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
- 
-
 
 @app.route('/api/record-orders', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def get_all_orders():
-    """Get all orders with filtering"""
+    """Get all record order requests with filtering and pagination"""
     try:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 50, type=int)
         status = request.args.get('status', 'all')
         search = request.args.get('search', '').strip()
-        
+
         offset = (page - 1) * per_page
-        
+
         conn = get_db()
         cursor = conn.cursor()
-        
-        query = '''
-            SELECT 
+
+        # Detect whether the format column exists so the SELECT stays valid
+        cursor.execute("PRAGMA table_info(record_orders)")
+        columns = {row['name'] for row in cursor.fetchall()}
+        has_format = 'format' in columns
+
+        format_select = ", format" if has_format else ", NULL AS format"
+
+        query = f'''
+            SELECT
                 id,
                 email,
                 artist,
-                title,
+                title
+                {format_select},
                 status,
                 notified,
                 created_at,
@@ -13253,27 +13277,30 @@ def get_all_orders():
             WHERE 1=1
         '''
         params = []
-        
+
         if status != 'all':
             query += ' AND status = ?'
             params.append(status)
-        
+
         if search:
             query += ''' AND (
-                email LIKE ? OR 
-                artist LIKE ? OR 
-                title LIKE ? OR 
+                email LIKE ? OR
+                artist LIKE ? OR
+                title LIKE ? OR
                 status LIKE ?
             )'''
             search_term = f'%{search}%'
             params.extend([search_term, search_term, search_term, search_term])
-        
+            if has_format:
+                query += ' OR format LIKE ?'
+                params.append(search_term)
+
         query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?'
         params.extend([per_page, offset])
-        
+
         cursor.execute(query, params)
         rows = cursor.fetchall()
-        
+
         count_query = 'SELECT COUNT(*) as total FROM record_orders WHERE 1=1'
         count_params = []
         if status != 'all':
@@ -13281,17 +13308,20 @@ def get_all_orders():
             count_params.append(status)
         if search:
             count_query += ''' AND (
-                email LIKE ? OR 
-                artist LIKE ? OR 
-                title LIKE ? OR 
+                email LIKE ? OR
+                artist LIKE ? OR
+                title LIKE ? OR
                 status LIKE ?
             )'''
             count_params.extend([search_term, search_term, search_term, search_term])
-        
+            if has_format:
+                count_query += ' OR format LIKE ?'
+                count_params.append(search_term)
+
         cursor.execute(count_query, count_params)
         total = cursor.fetchone()['total']
         conn.close()
-        
+
         orders_list = []
         for row in rows:
             orders_list.append({
@@ -13299,12 +13329,13 @@ def get_all_orders():
                 'email': row['email'],
                 'artist': row['artist'],
                 'title': row['title'],
+                'format': row['format'],
                 'status': row['status'],
                 'notified': bool(row['notified']) if row['notified'] is not None else False,
                 'created_at': row['created_at'],
                 'updated_at': row['updated_at']
             })
-        
+
         return jsonify({
             'status': 'success',
             'orders': orders_list,
@@ -13313,11 +13344,142 @@ def get_all_orders():
             'per_page': per_page,
             'total_pages': (total + per_page - 1) // per_page if total > 0 else 1
         })
-        
+
     except Exception as e:
-        app.logger.error(f"Error getting orders: {str(e)}")
+        app.logger.error(f"Error getting record orders: {str(e)}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+
+# ==================== BULK RECORD UPDATE ====================
+
+@app.route('/api/records/bulk-update', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def bulk_update_records():
+    """
+    Apply one or more field updates to a list of records.
+
+    Body:
+        {
+          "record_ids": [1, 2, 3],
+          "format_id": 2,                  # optional
+          "status_id": 2,                  # optional
+          "location_id": 17,               # optional
+          "clear_location_index": true     # optional, default false
+        }
+
+    At least one of format_id / status_id / location_id must be present.
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+
+        record_ids = data.get('record_ids') or []
+        if not isinstance(record_ids, list) or not record_ids:
+            return jsonify({'status': 'error', 'error': 'record_ids must be a non-empty list'}), 400
+
+        # Coerce to ints, reject anything invalid
+        try:
+            record_ids = [int(rid) for rid in record_ids]
+        except (TypeError, ValueError):
+            return jsonify({'status': 'error', 'error': 'record_ids must be integers'}), 400
+
+        format_id = data.get('format_id')
+        status_id = data.get('status_id')
+        location_id = data.get('location_id')
+        clear_location_index = bool(data.get('clear_location_index', False))
+
+        if format_id is None and status_id is None and location_id is None:
+            return jsonify({'status': 'error', 'error': 'At least one of format_id, status_id, location_id is required'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Validate format_id if present
+        if format_id is not None:
+            try:
+                format_id = int(format_id)
+            except (TypeError, ValueError):
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'format_id must be an integer'}), 400
+            cursor.execute('SELECT id FROM formats WHERE id = ?', (format_id,))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({'status': 'error', 'error': f'format_id {format_id} not found'}), 400
+
+        # Validate status_id if present
+        if status_id is not None:
+            try:
+                status_id = int(status_id)
+            except (TypeError, ValueError):
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'status_id must be an integer'}), 400
+            cursor.execute('SELECT id FROM d_status WHERE id = ?', (status_id,))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({'status': 'error', 'error': f'status_id {status_id} not found'}), 400
+
+        # Validate location_id if present
+        if location_id is not None:
+            try:
+                location_id = int(location_id)
+            except (TypeError, ValueError):
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'location_id must be an integer'}), 400
+            cursor.execute('SELECT id FROM locations WHERE id = ?', (location_id,))
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify({'status': 'error', 'error': f'location_id {location_id} not found'}), 400
+
+        # Build a single UPDATE so it's atomic across the set
+        set_clauses = []
+        params = []
+
+        if format_id is not None:
+            set_clauses.append('format_id = ?')
+            params.append(format_id)
+
+        if status_id is not None:
+            set_clauses.append('status_id = ?')
+            params.append(status_id)
+
+        if location_id is not None:
+            set_clauses.append('location_id = ?')
+            params.append(location_id)
+            if clear_location_index:
+                set_clauses.append('location_index = NULL')
+            # A location move counts as a sighting
+            set_clauses.append('last_seen = ?')
+            params.append(datetime.now().strftime('%Y-%m-%d'))
+
+        placeholders = ','.join('?' for _ in record_ids)
+        params.extend(record_ids)
+
+        sql = f'UPDATE records SET {", ".join(set_clauses)} WHERE id IN ({placeholders})'
+
+        cursor.execute('BEGIN TRANSACTION')
+        cursor.execute(sql, params)
+        updated_count = cursor.rowcount
+        conn.commit()
+        conn.close()
+
+        app.logger.info(
+            f"Bulk update by {session.get('username')}: "
+            f"{updated_count} record(s) updated "
+            f"(format_id={format_id}, status_id={status_id}, location_id={location_id})"
+        )
+
+        return jsonify({
+            'status': 'success',
+            'updated_count': updated_count,
+            'record_ids': record_ids
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error in bulk_update_records: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/record-orders/<int:order_id>', methods=['PUT'])
 @login_required
@@ -13608,8 +13770,15 @@ Questions? Reply to this email or contact us at the store.
 def get_unread_record_orders():
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT id, email, artist, title, status, created_at
+
+    cursor.execute("PRAGMA table_info(record_orders)")
+    columns = {row['name'] for row in cursor.fetchall()}
+    has_format = 'format' in columns
+
+    format_select = ", format" if has_format else ", NULL AS format"
+
+    cursor.execute(f'''
+        SELECT id, email, artist, title {format_select}, status, created_at
         FROM record_orders
         WHERE notified = 0 OR notified IS NULL
         ORDER BY created_at DESC
@@ -13617,10 +13786,23 @@ def get_unread_record_orders():
     ''')
     rows = cursor.fetchall()
     conn.close()
+
+    notifications = []
+    for row in rows:
+        notifications.append({
+            'id': row['id'],
+            'email': row['email'],
+            'artist': row['artist'],
+            'title': row['title'],
+            'format': row['format'],
+            'status': row['status'],
+            'created_at': row['created_at']
+        })
+
     return jsonify({
         'status': 'success',
-        'notifications': [dict(row) for row in rows],
-        'count': len(rows)
+        'notifications': notifications,
+        'count': len(notifications)
     })
 
 @app.route('/api/record-orders/unread-count', methods=['GET'])
@@ -13708,67 +13890,7 @@ def mark_all_orders_read():
     return jsonify({'status': 'success', 'updated': updated})
 
 
-@app.route('/api/records/location-counts', methods=['GET'])
-def get_records_location_counts():
-    """Count of records per location, respecting the per-bin visibility rule.
-    Rows include the composed display name (e.g. "Bin 20/RT").
-    """
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
 
-        query = '''
-            SELECT
-                l.id      AS location_id,
-                l.name    AS leaf_name,
-                lp.name   AS parent_name,
-                COUNT(r.id) AS record_count
-            FROM locations l
-            LEFT JOIN locations lp ON l.parent_id = lp.id
-            LEFT JOIN records r ON r.location_id = l.id
-                AND r.status_id = 2
-                AND (
-                    r.last_seen IS NULL
-                    OR NOT EXISTS (
-                        SELECT 1 FROM records x
-                        WHERE x.location_id = r.location_id
-                          AND x.status_id = 2
-                          AND x.last_seen IS NOT NULL
-                    )
-                    OR date(r.last_seen) = (
-                        SELECT MAX(date(y.last_seen))
-                        FROM records y
-                        WHERE y.location_id = r.location_id
-                          AND y.status_id = 2
-                    )
-                )
-            GROUP BY l.id, l.name, lp.name
-            ORDER BY COALESCE(lp.name, l.name), l.name
-        '''
-
-        cursor.execute(query)
-        rows = cursor.fetchall()
-        conn.close()
-
-        result = []
-        for row in rows:
-            result.append({
-                'location_id': row['location_id'],
-                'location_name': row['leaf_name'],
-                'location_parent_name': row['parent_name'],
-                'location_display': build_location_display(row['parent_name'], row['leaf_name']),
-                'record_count': row['record_count'],
-            })
-
-        return jsonify({
-            'status': 'success',
-            'data': result,
-            'count': len(result),
-        })
-
-    except Exception as e:
-        app.logger.error(f"Error getting location counts: {str(e)}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/events', methods=['GET'])
 def get_events():
@@ -14906,17 +15028,79 @@ def ebay_auth_callback():
 
     return jsonify({'status': 'success', 'message': 'eBay account connected'})
 
+@app.route('/debug-pil')
+def debug_pil():
+    import sys, os
+    out = {
+        'python_version': sys.version,
+        'sys_executable': sys.executable,
+        'virtualenv': os.environ.get('VIRTUAL_ENV'),
+        'sys_path': sys.path,
+        'pil_check': None,
+        'pil_error': None,
+    }
+    try:
+        from PIL import Image
+        out['pil_check'] = Image.__version__
+    except Exception as e:
+        out['pil_error'] = str(e)
+    return jsonify(out)
+
 
 @app.route('/api/ebay/list', methods=['POST'])
 @login_required
 @role_required(['admin'])
 def ebay_list_item():
     """
-    List a record on eBay. Body: {"record_id": 123, "price": 29.99, "category_id": "176985"}
+    List a record on eBay.
+
+    Body:
+      {
+        "record_id": 15449,
+        "price": 12.59,
+        "quantity": 1,
+        "condition": "USED_EXCELLENT",       # optional, default USED_EXCELLENT
+        "category_id": "176985",             # optional, overrides formats.ebay_category_id
+        "location": "Bin 20/RT",             # optional, from client
+        "location_index": 42                 # optional, from client
+      }
+
+    HARD REQUIREMENTS (no fallbacks — the endpoint errors):
+      - record must exist
+      - record.consignor_id must be NULL (consigned records cannot be listed)
+      - record.format_id must resolve to a formats row with
+        ebay_category_id, ebay_format_aspect, ebay_type_aspect all set
+      - record.condition_disc_id must be set and resolve to a d_condition row
+      - For formats with ebay_has_sleeve = 1:
+          record.condition_sleeve_id must be set and resolve
+          d_condition.ebay_disc_blurb and ebay_sleeve_blurb must be non-empty
+      - For formats with ebay_has_sleeve = 0:
+          d_condition.ebay_blurb must be non-empty
+      - record must have image_large_url OR image_url set
+
+    Image handling:
+      - Prefer image_large_url, fall back to image_url.
+      - Download with browser UA + Discogs Referer.
+      - Upscale to 800px with PIL if longest side < 800.
+      - Save to static/images/ebay/<record_id>_<hex>.jpg.
+      - Use the local https://www.pigstylemusic.com/static/images/ebay/... URL.
+
+    Description footer line includes the internal record ID, catalog
+    number, SKU, and (when supplied by the client) the location display
+    string and location_index:
+      Cat. No. LPM 2782 · #15449 · SKU 100050 · Loc: Bin 20/RT / idx:42
+
+    Response includes listing_id, listing_url, format_name, category_used,
+    and category_label so the client can display and verify each posted item.
     """
     try:
         data = request.json or {}
         record_id = data.get('record_id')
+
+        # --- Capture location info from client (optional) ---
+        location_str = (data.get('location') or '').strip() if data.get('location') is not None else ''
+        location_index = data.get('location_index')
+
         if not record_id:
             return jsonify({'status': 'error', 'error': 'record_id required'}), 400
 
@@ -14929,12 +15113,32 @@ def ebay_list_item():
 
         base_url = 'https://api.sandbox.ebay.com' if env == 'sandbox' else 'https://api.ebay.com'
 
-        # --- Load record + config ---
+        # --- Load record + condition + format ---
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT id, artist, title, barcode, catalog_number, store_price, image_url, consignor_id
-            FROM records WHERE id = ?
+            SELECT
+                r.id, r.artist, r.title, r.barcode, r.catalog_number,
+                r.store_price, r.image_url, r.image_large_url, r.consignor_id,
+                r.discogs_release_id, r.discogs_genre_raw,
+                r.condition_disc_id, r.condition_sleeve_id,
+                f.name                AS format_name,
+                f.ebay_category_id    AS fmt_category_id,
+                f.ebay_format_aspect  AS fmt_format_aspect,
+                f.ebay_type_aspect    AS fmt_type_aspect,
+                f.ebay_has_sleeve     AS fmt_has_sleeve,
+                cd.abbreviation       AS disc_abbr,
+                cd.condition_name     AS disc_name,
+                cd.ebay_disc_blurb    AS disc_blurb,
+                cd.ebay_blurb         AS disc_other_blurb,
+                cs.abbreviation       AS sleeve_abbr,
+                cs.condition_name     AS sleeve_name,
+                cs.ebay_sleeve_blurb  AS sleeve_blurb
+            FROM records r
+            LEFT JOIN formats f       ON r.format_id = f.id
+            LEFT JOIN d_condition cd  ON r.condition_disc_id = cd.id
+            LEFT JOIN d_condition cs  ON r.condition_sleeve_id = cs.id
+            WHERE r.id = ?
         ''', (record_id,))
         record = cursor.fetchone()
 
@@ -14945,6 +15149,90 @@ def ebay_list_item():
         if record['consignor_id'] is not None:
             conn.close()
             return jsonify({'status': 'error', 'error': 'Consigned records cannot be listed'}), 400
+
+        # --- Format validation ---
+        if not record['format_name']:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Record {record_id} has no format_id set'
+            }), 400
+
+        if not record['fmt_category_id']:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Format "{record["format_name"]}" has no ebay_category_id set'
+            }), 400
+
+        if not record['fmt_format_aspect']:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Format "{record["format_name"]}" has no ebay_format_aspect set'
+            }), 400
+
+        if not record['fmt_type_aspect']:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Format "{record["format_name"]}" has no ebay_type_aspect set'
+            }), 400
+
+        # --- Condition validation ---
+        if record['condition_disc_id'] is None:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Record {record_id} has no condition_disc_id'
+            }), 400
+
+        if not record['disc_abbr']:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'condition_disc_id {record["condition_disc_id"]} has no abbreviation'
+            }), 500
+
+        has_sleeve = bool(record['fmt_has_sleeve'])
+
+        if has_sleeve:
+            if record['condition_sleeve_id'] is None:
+                conn.close()
+                return jsonify({
+                    'status': 'error',
+                    'error': f'Record {record_id} format "{record["format_name"]}" '
+                             f'requires a sleeve condition but condition_sleeve_id is not set'
+                }), 400
+
+            if not record['sleeve_abbr']:
+                conn.close()
+                return jsonify({
+                    'status': 'error',
+                    'error': f'condition_sleeve_id {record["condition_sleeve_id"]} has no abbreviation'
+                }), 500
+
+            if not (record['disc_blurb'] or '').strip():
+                conn.close()
+                return jsonify({
+                    'status': 'error',
+                    'error': f'Condition "{record["disc_name"]}" has no ebay_disc_blurb'
+                }), 400
+
+            if not (record['sleeve_blurb'] or '').strip():
+                conn.close()
+                return jsonify({
+                    'status': 'error',
+                    'error': f'Condition "{record["sleeve_name"]}" has no ebay_sleeve_blurb'
+                }), 400
+        else:
+            if not (record['disc_other_blurb'] or '').strip():
+                conn.close()
+                return jsonify({
+                    'status': 'error',
+                    'error': f'Condition "{record["disc_name"]}" has no ebay_blurb '
+                             f'(required for non-sleeve formats)'
+                }), 400
 
         cfg = {}
         for key in ['ebay_refresh_token', 'ebay_access_token', 'ebay_token_expires',
@@ -14957,11 +15245,75 @@ def ebay_list_item():
 
         if not cfg['ebay_refresh_token']:
             return jsonify({'status': 'error', 'error': 'eBay not connected. Visit /api/ebay/auth/url first.'}), 400
+        for req in ['ebay_merchant_location_key', 'ebay_fulfillment_policy_id',
+                    'ebay_payment_policy_id', 'ebay_return_policy_id']:
+            if not cfg[req]:
+                return jsonify({'status': 'error', 'error': f'{req} not configured'}), 500
 
-        for required in ['ebay_merchant_location_key', 'ebay_fulfillment_policy_id',
-                         'ebay_payment_policy_id', 'ebay_return_policy_id']:
-            if not cfg[required]:
-                return jsonify({'status': 'error', 'error': f'{required} not configured'}), 500
+        # --- Resolve source image ---
+        source_image_url = None
+        if record['image_large_url'] and record['image_large_url'].strip():
+            source_image_url = record['image_large_url'].strip()
+            app.logger.info(f"Record {record_id}: using image_large_url")
+        elif record['image_url'] and record['image_url'].strip():
+            source_image_url = record['image_url'].strip()
+            if source_image_url.startswith('/'):
+                source_image_url = f"https://www.pigstylemusic.com{source_image_url}"
+            app.logger.warning(
+                f"Record {record_id}: no image_large_url, falling back to image_url"
+            )
+        else:
+            return jsonify({'status': 'error', 'error': f'Record {record_id} has no image'}), 400
+
+        # --- Download, upscale if needed, save locally ---
+        try:
+            img_resp = requests.get(
+                source_image_url,
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                                  'AppleWebKit/537.36 (KHTML, like Gecko) '
+                                  'Chrome/122.0.0.0 Safari/537.36',
+                    'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Referer': 'https://www.discogs.com/',
+                },
+                timeout=20,
+                allow_redirects=True
+            )
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': f'Image download failed: {e}'}), 400
+
+        if img_resp.status_code != 200 or not img_resp.content:
+            return jsonify({
+                'status': 'error',
+                'error': f'Image download returned HTTP {img_resp.status_code}'
+            }), 400
+
+        try:
+            from PIL import Image
+            import io as _io
+            img = Image.open(_io.BytesIO(img_resp.content)).convert('RGB')
+
+            source_width = img.width
+            source_height = img.height
+            longest = max(img.width, img.height)
+            if longest < 800:
+                scale = 800.0 / longest
+                new_size = (int(round(img.width * scale)), int(round(img.height * scale)))
+                img = img.resize(new_size, Image.LANCZOS)
+                app.logger.info(f"Upscaled image for record {record_id} from {longest}px to {new_size[0]}x{new_size[1]}")
+
+            img_folder = os.path.join(os.path.dirname(__file__), 'static', 'images', 'ebay')
+            os.makedirs(img_folder, exist_ok=True)
+            filename = f"{record_id}_{uuid.uuid4().hex[:8]}.jpg"
+            filepath = os.path.join(img_folder, filename)
+            img.save(filepath, 'JPEG', quality=88, optimize=True)
+        except Exception as e:
+            app.logger.error(f"Image processing failed for record {record_id}: {e}")
+            app.logger.error(traceback.format_exc())
+            return jsonify({'status': 'error', 'error': f'Image processing failed: {e}'}), 500
+
+        hosted_image_url = f"https://www.pigstylemusic.com/static/images/ebay/{filename}"
 
         # --- Refresh access token if expired ---
         access_token = cfg['ebay_access_token']
@@ -15009,46 +15361,97 @@ def ebay_list_item():
             'Content-Language': 'en-US',
         }
 
-        # --- Build payload ---
         sku = f"PIGSTYLE-{record_id}"
         title = f"{record['artist']} - {record['title']}"
         if len(title) > 80:
             title = title[:77] + '...'
 
+        # --- Condition line ---
+        disc_str = f"{record['disc_abbr']} ({record['disc_blurb'].strip()})"
+        if has_sleeve:
+            sleeve_str = f"{record['sleeve_abbr']} ({record['sleeve_blurb'].strip()})"
+            condition_html = (
+                f"<strong>Media:</strong> {disc_str} &nbsp;|&nbsp; "
+                f"<strong>Sleeve:</strong> {sleeve_str}"
+            )
+            condition_description = f"Media: {disc_str}. Sleeve: {sleeve_str}."[:1000]
+        else:
+            disc_str = f"{record['disc_abbr']} ({record['disc_other_blurb'].strip()})"
+            condition_html = f"<strong>Media:</strong> {disc_str}"
+            condition_description = f"Media: {disc_str}."[:1000]
+
+        # --- Format line ---
+        format_line = f"{record['fmt_format_aspect']}, {record['fmt_type_aspect']}"
+
+        # --- Footer reference line (catalog, id, sku, location, idx) ---
+        ref_bits = []
+        if record['catalog_number']:
+            ref_bits.append(f"Cat. No. {record['catalog_number']}")
+        ref_bits.append(f"#{record['id']}")
+        if record['barcode']:
+            ref_bits.append(f"SKU {record['barcode']}")
+
+        loc_bits = []
+        if location_str:
+            loc_bits.append(location_str)
+        if location_index is not None:
+            loc_bits.append(f"idx:{location_index}")
+        if loc_bits:
+            ref_bits.append(f"Loc: {' / '.join(loc_bits)}")
+
+        ref_line = " · ".join(ref_bits)
+
         description = (
-            f"<h3>{record['artist']} - {record['title']}</h3>"
-            f"<p>Barcode: {record['barcode'] or 'N/A'}</p>"
-            f"<p>Catalog #: {record['catalog_number'] or 'N/A'}</p>"
-            f"<p>Condition: Pre-owned, sold as described.</p>"
-            f"<p>PigStyle Music</p>"
+            f"<h3 style=\"margin:0 0 6px 0;\">{record['artist']} - {record['title']}</h3>"
+            f"<p style=\"margin:0 0 6px 0;\"><strong>Format:</strong> {format_line}</p>"
+            f"<p style=\"margin:0 0 6px 0;\">{condition_html}</p>"
+            f"<p style=\"margin:0 0 6px 0;\">Pre-owned. Sold as described. "
+            f"All records are visually graded.</p>"
+            f"<p style=\"margin:0 0 6px 0;\">"
+            f"<em>Note: images are stock photos, not the actual item.</em> "
+            f"Message us if you'd like pictures of the exact copy you'll receive."
+            f"</p>"
+            + (f"<p style=\"margin:0;font-size:0.9em;color:#555;\">{ref_line}</p>" if ref_line else "")
+            + f"<p style=\"margin:6px 0 0 0;font-size:0.9em;color:#555;\">— PigStyle Music</p>"
         )
 
-        image_urls = []
-        if record['image_url']:
-            img = record['image_url']
-            if img.startswith('/'):
-                img = f"https://www.pigstylemusic.com{img}"
-            image_urls.append(img)
+        # --- Aspects from DB ---
+        aspects = {
+            'Artist': [record['artist'] or 'Unknown'],
+            'Format': [record['fmt_format_aspect']],
+            'Type':   [record['fmt_type_aspect']],
+        }
+        genre_raw = (record['discogs_genre_raw'] or '').strip()
+        if genre_raw:
+            genres = [g.strip() for g in genre_raw.split('/') if g.strip()]
+            if genres:
+                aspects['Genre'] = genres
 
-        # --- 1. Inventory item ---
+        # --- Category ---
+        category_to_use = str(data.get('category_id') or record['fmt_category_id'])
+
+        product_block = {
+            'title': title,
+            'description': description,
+            'aspects': aspects,
+            'imageUrls': [hosted_image_url],
+        }
+
+        inventory_payload = {
+            'product': product_block,
+            'condition': data.get('condition', 'USED_EXCELLENT'),
+            'conditionDescription': condition_description,
+            'availability': {
+                'shipToLocationAvailability': {
+                    'quantity': int(data.get('quantity', 1))
+                }
+            },
+        }
+
         inv_resp = requests.put(
             f'{base_url}/sell/inventory/v1/inventory_item/{sku}',
             headers=headers,
-            json={
-                'product': {
-                    'title': title,
-                    'description': description,
-                    'aspects': {'Artist': [record['artist']]},
-                    'imageUrls': image_urls,
-                },
-                'condition': data.get('condition', 'USED_EXCELLENT'),
-                'conditionDescription': data.get('conditionDescription', 'Pre-owned vinyl record. Sold as described.'),
-                'availability': {
-                    'shipToLocationAvailability': {
-                        'quantity': int(data.get('quantity', 1))
-                    }
-                },
-            },
+            json=inventory_payload,
             timeout=30
         )
         if inv_resp.status_code not in (200, 201, 204):
@@ -15057,7 +15460,6 @@ def ebay_list_item():
                 'error': f'eBay inventory item failed ({inv_resp.status_code}): {inv_resp.text[:500]}'
             }), 400
 
-        # --- 2. Delete any existing offer for this SKU ---
         offers_resp = requests.get(
             f'{base_url}/sell/inventory/v1/offer?sku={sku}',
             headers=headers,
@@ -15073,7 +15475,6 @@ def ebay_list_item():
                         timeout=30
                     )
 
-        # --- 3. Offer ---
         offer_resp = requests.post(
             f'{base_url}/sell/inventory/v1/offer',
             headers=headers,
@@ -15082,7 +15483,7 @@ def ebay_list_item():
                 'marketplaceId': 'EBAY_US',
                 'format': 'FIXED_PRICE',
                 'availableQuantity': int(data.get('quantity', 1)),
-                'categoryId': str(data.get('category_id', '176985')),
+                'categoryId': category_to_use,
                 'listingDescription': description,
                 'listingPolicies': {
                     'fulfillmentPolicyId': cfg['ebay_fulfillment_policy_id'],
@@ -15109,7 +15510,6 @@ def ebay_list_item():
         if not offer_id:
             return jsonify({'status': 'error', 'error': 'eBay did not return an offerId'}), 500
 
-        # --- 4. Publish ---
         pub_resp = requests.post(
             f'{base_url}/sell/inventory/v1/offer/{offer_id}/publish',
             headers=headers,
@@ -15121,16 +15521,265 @@ def ebay_list_item():
                 'error': f'eBay publish failed ({pub_resp.status_code}): {pub_resp.text[:500]}'
             }), 400
 
+        listing_id = None
+        listing_url = None
+        try:
+            pub_data = pub_resp.json()
+            listing_id = pub_data.get('listingId')
+            if listing_id:
+                listing_url = f"https://www.ebay.com/itm/{listing_id}"
+        except Exception as e:
+            app.logger.warning(f"Record {record_id}: could not parse publish response for listingId: {e}")
+
         return jsonify({
             'status': 'success',
             'message': f'Listed on eBay: {title}',
             'offer_id': offer_id,
+            'listing_id': listing_id,
+            'listing_url': listing_url,
+            'source_image_url': source_image_url,
+            'hosted_image_url': hosted_image_url,
+            'source_image_width': source_width,
+            'source_image_height': source_height,
+            'format_name': record['format_name'],
+            'category_used': category_to_use,
+            'category_label': format_line,
         })
 
     except Exception as e:
         app.logger.error(f'eBay listing error: {str(e)}')
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
+
+# ==================== EBAY: END ALL ACTIVE LISTINGS ====================
+
+@app.route('/api/ebay/end-all-active', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def ebay_end_all_active():
+    import re
+    import time as _time
+
+    try:
+        data = request.json or {}
+        sleep_ms = int(data.get('sleep_ms', 500))
+
+        client_id = os.environ.get('EBAY_CLIENT_ID')
+        client_secret = os.environ.get('EBAY_CLIENT_SECRET')
+        env = os.environ.get('EBAY_ENVIRONMENT', 'sandbox')
+
+        if not client_id or not client_secret:
+            return jsonify({'status': 'error', 'error': 'eBay credentials not configured'}), 500
+
+        api_base = 'https://api.sandbox.ebay.com' if env == 'sandbox' else 'https://api.ebay.com'
+        trading_url = 'https://api.sandbox.ebay.com/ws/api.dll' if env == 'sandbox' else 'https://api.ebay.com/ws/api.dll'
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'ebay_refresh_token'")
+        row = cursor.fetchone()
+        refresh_token = row['config_value'] if row else None
+
+        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'ebay_access_token'")
+        row = cursor.fetchone()
+        access_token = row['config_value'] if row else None
+
+        cursor.execute("SELECT config_value FROM app_config WHERE config_key = 'ebay_token_expires'")
+        row = cursor.fetchone()
+        expires_str = row['config_value'] if row else None
+        conn.close()
+
+        if not refresh_token:
+            return jsonify({'status': 'error', 'error': 'eBay not connected'}), 400
+
+        need_refresh = True
+        if access_token and expires_str:
+            try:
+                if datetime.now() < datetime.fromisoformat(expires_str):
+                    need_refresh = False
+            except Exception:
+                need_refresh = True
+
+        if need_refresh:
+            auth_str = base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
+            r = requests.post(
+                f'{api_base}/identity/v1/oauth2/token',
+                headers={
+                    'Authorization': f'Basic {auth_str}',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                data={
+                    'grant_type': 'refresh_token',
+                    'refresh_token': refresh_token,
+                    'scope': 'https://api.ebay.com/oauth/api_scope/sell.inventory',
+                },
+                timeout=30
+            )
+            if r.status_code != 200:
+                return jsonify({'status': 'error', 'error': f'token refresh failed: {r.text[:300]}'}), 500
+            rj = r.json()
+            access_token = rj['access_token']
+            expires_at = (datetime.now() + timedelta(seconds=rj.get('expires_in', 7200) - 60)).isoformat()
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'ebay_access_token'", (access_token,))
+            cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'ebay_token_expires'", (expires_at,))
+            conn.commit()
+            conn.close()
+
+        # ---- Collect all active item IDs ----
+        item_ids = []
+        page = 1
+        while page <= 50:
+            body = f"""<?xml version="1.0" encoding="utf-8"?>
+<GetMyeBaySellingRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <ActiveList>
+    <Include>true</Include>
+    <Pagination>
+      <EntriesPerPage>200</EntriesPerPage>
+      <PageNumber>{page}</PageNumber>
+    </Pagination>
+  </ActiveList>
+  <ErrorLanguage>en_US</ErrorLanguage>
+  <WarningLevel>High</WarningLevel>
+</GetMyeBaySellingRequest>"""
+            try:
+                resp = requests.post(
+                    trading_url,
+                    headers={
+                        'X-EBAY-API-CALL-NAME': 'GetMyeBaySelling',
+                        'X-EBAY-API-SITEID': '0',
+                        'X-EBAY-API-COMPATIBILITY-LEVEL': '1193',
+                        'X-EBAY-API-IAF-TOKEN': access_token,
+                        'Content-Type': 'text/xml',
+                    },
+                    data=body,
+                    timeout=60
+                )
+            except Exception as e:
+                return jsonify({'status': 'error', 'error': f'network: {e}'}), 500
+
+            text = resp.text
+            if '<Ack>Failure</Ack>' in text:
+                m = re.search(r'<LongMessage>(.*?)</LongMessage>', text)
+                return jsonify({'status': 'error', 'error': m.group(1) if m else text[:200]}), 500
+
+            ids_on_page = re.findall(r'<ItemID>(\d+)</ItemID>', text)
+            if not ids_on_page:
+                break
+            item_ids.extend(ids_on_page)
+            if len(ids_on_page) < 200:
+                break
+            page += 1
+
+        seen = set()
+        unique_ids = []
+        for i in item_ids:
+            if i not in seen:
+                seen.add(i)
+                unique_ids.append(i)
+
+        # ---- End each ----
+        ended = 0
+        failed = 0
+        errors = []
+
+        for n, item_id in enumerate(unique_ids, start=1):
+            body = f"""<?xml version="1.0" encoding="utf-8"?>
+<EndItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <ItemID>{item_id}</ItemID>
+  <EndingReason>NotAvailable</EndingReason>
+  <ErrorLanguage>en_US</ErrorLanguage>
+  <WarningLevel>High</WarningLevel>
+</EndItemRequest>"""
+
+            try:
+                resp = requests.post(
+                    trading_url,
+                    headers={
+                        'X-EBAY-API-CALL-NAME': 'EndItem',
+                        'X-EBAY-API-SITEID': '0',
+                        'X-EBAY-API-COMPATIBILITY-LEVEL': '1193',
+                        'X-EBAY-API-IAF-TOKEN': access_token,
+                        'Content-Type': 'text/xml',
+                    },
+                    data=body,
+                    timeout=60
+                )
+                text = resp.text
+            except Exception as e:
+                failed += 1
+                errors.append({'item_id': item_id, 'error': f'network: {e}'})
+                continue
+
+            if 'Invalid access token' in text or 'IAF token' in text:
+                auth_str = base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
+                rr = requests.post(
+                    f'{api_base}/identity/v1/oauth2/token',
+                    headers={
+                        'Authorization': f'Basic {auth_str}',
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    data={
+                        'grant_type': 'refresh_token',
+                        'refresh_token': refresh_token,
+                        'scope': 'https://api.ebay.com/oauth/api_scope/sell.inventory',
+                    },
+                    timeout=30
+                )
+                if rr.status_code == 200:
+                    rj = rr.json()
+                    access_token = rj['access_token']
+                    expires_at = (datetime.now() + timedelta(seconds=rj.get('expires_in', 7200) - 60)).isoformat()
+                    conn = get_db()
+                    cursor = conn.cursor()
+                    cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'ebay_access_token'", (access_token,))
+                    cursor.execute("UPDATE app_config SET config_value = ? WHERE config_key = 'ebay_token_expires'", (expires_at,))
+                    conn.commit()
+                    conn.close()
+                    try:
+                        resp = requests.post(
+                            trading_url,
+                            headers={
+                                'X-EBAY-API-CALL-NAME': 'EndItem',
+                                'X-EBAY-API-SITEID': '0',
+                                'X-EBAY-API-COMPATIBILITY-LEVEL': '1193',
+                                'X-EBAY-API-IAF-TOKEN': access_token,
+                                'Content-Type': 'text/xml',
+                            },
+                            data=body,
+                            timeout=60
+                        )
+                        text = resp.text
+                    except Exception as e:
+                        failed += 1
+                        errors.append({'item_id': item_id, 'error': f'retry: {e}'})
+                        continue
+
+            if '<Ack>Success</Ack>' in text or '<Ack>Warning</Ack>' in text:
+                ended += 1
+            else:
+                m = re.search(r'<LongMessage>(.*?)</LongMessage>', text)
+                failed += 1
+                errors.append({'item_id': item_id, 'error': m.group(1) if m else text[:200]})
+
+            if sleep_ms > 0 and n < len(unique_ids):
+                _time.sleep(sleep_ms / 1000.0)
+
+        return jsonify({
+            'status': 'success',
+            'found': len(unique_ids),
+            'ended': ended,
+            'failed': failed,
+            'errors': errors[:50]
+        })
+
+    except Exception as e:
+        app.logger.error(f'eBay end-all-active error: {str(e)}')
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/api/ebay/connection-status', methods=['GET'])
 @login_required
@@ -15232,6 +15881,141 @@ def ebay_connection_status():
 
     except Exception as e:
         app.logger.error(f'eBay connection status error: {str(e)}')
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/static/images/ebay/<path:filename>')
+def serve_ebay_image(filename):
+    ebay_folder = os.path.join(os.path.dirname(__file__), 'static', 'images', 'ebay')
+    return send_from_directory(ebay_folder, filename)
+
+    """
+    Post every eligible record in the given locations to Discogs.
+    Body: { "location_ids": [13, 14, ...] }
+    """
+    try:
+        data = request.json or {}
+        location_ids = data.get('location_ids', [])
+
+        if not location_ids:
+            return jsonify({'status': 'error', 'error': 'location_ids required'}), 400
+
+        placeholders = ','.join('?' for _ in location_ids)
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            SELECT id, store_price, created_at
+            FROM records
+            WHERE status_id = 2
+              AND location_id IN ({placeholders})
+              AND consignor_id IS NULL
+              AND store_price > 0
+              AND created_at IS NOT NULL
+            ORDER BY id
+        ''', location_ids)
+        rows = cursor.fetchall()
+        conn.close()
+
+        if not rows:
+            return jsonify({
+                'status': 'success',
+                'success': 0,
+                'failed': 0,
+                'errors': [],
+                'message': 'No eligible records in selected locations'
+            })
+
+        markup = float(_get_config_value('PRICING_MARKUP_PERCENT'))
+        step = float(_get_config_value('PRICING_PRICE_STEP'))
+        max_md = float(_get_config_value('PRICING_MAX_MARKDOWN'))
+
+        success = 0
+        failed = 0
+        errors = []
+
+        for row in rows:
+            record_id = row['id']
+            try:
+                created = row['created_at']
+                if isinstance(created, str):
+                    created = datetime.strptime(created.split('T')[0], '%Y-%m-%d')
+                days_old = (datetime.now() - created).days
+                weeks_old = max(0, days_old // 7)
+
+                floor = -abs(max_md)
+                eff_markup = markup - (weeks_old * step)
+                eff_markup = max(floor, eff_markup)
+                price = round(float(row['store_price']) * (1 + eff_markup / 100), 2)
+
+                conn2 = get_db()
+                cursor2 = conn2.cursor()
+                cursor2.execute('''
+                    SELECT r.id, r.artist, r.title, r.catalog_number, r.notes,
+                           r.discogs_release_id,
+                           cd.condition_name AS disc_condition_name,
+                           cs.condition_name AS sleeve_condition_name
+                    FROM records r
+                    LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
+                    LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+                    WHERE r.id = ?
+                ''', (record_id,))
+                rec = cursor2.fetchone()
+                conn2.close()
+
+                if not rec:
+                    failed += 1
+                    errors.append(f'Record #{record_id}: not found')
+                    continue
+
+                payload = {
+                    'record': {
+                        'id': rec['id'],
+                        'artist': rec['artist'] or 'Unknown',
+                        'title': rec['title'] or 'Unknown',
+                        'catalog_number': rec['catalog_number'] or '',
+                        'media_condition': rec['disc_condition_name'] or 'Very Good Plus (VG+)',
+                        'sleeve_condition': rec['sleeve_condition_name'] or 'Very Good Plus (VG+)',
+                        'price': price,
+                        'notes': rec['notes'] or '',
+                        'discogs_release_id': rec['discogs_release_id']
+                    }
+                }
+
+                r = requests.post(
+                    'http://localhost:5000/api/discogs/create-listing-single',
+                    json=payload,
+                    headers={'Authorization': request.headers.get('Authorization', '')},
+                    cookies=request.cookies,
+                    timeout=60
+                )
+
+                try:
+                    body = r.json()
+                except Exception:
+                    body = {}
+
+                if r.status_code == 200 and body.get('success'):
+                    success += 1
+                else:
+                    failed += 1
+                    errors.append(f'Record #{record_id}: {body.get("error") or r.text[:200]}')
+
+                time.sleep(3)  # Discogs rate limit
+
+            except Exception as e:
+                failed += 1
+                errors.append(f'Record #{record_id}: {str(e)}')
+
+        return jsonify({
+            'status': 'success',
+            'success': success,
+            'failed': failed,
+            'errors': errors
+        })
+
+    except Exception as e:
+        app.logger.error(f'Discogs bulk list error: {str(e)}')
+        app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 if __name__ == '__main__': 

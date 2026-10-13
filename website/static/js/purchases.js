@@ -12,6 +12,14 @@
     let purchaseRecords = [];
     let dependenciesLoaded = false;
 
+    // Bulk action modal state
+    let bulkActionType = null;   // 'format' | 'status' | 'location'
+    let bulkActionPurchaseId = null;
+
+    // Cached dropdown data
+    let cachedFormats = null;
+    let cachedLocations = null;
+
     // ===== CHECK DEPENDENCIES FOR LABEL PRINTING =====
     function checkDependencies() {
         if (typeof window.jspdf !== 'undefined' && typeof window.JsBarcode !== 'undefined') {
@@ -54,13 +62,9 @@
             }
         }
 
-        var buttons = document.querySelectorAll('.btn-print[data-purchase-id="' + purchaseId + '"]');
-        buttons.forEach(function(btn) { btn.disabled = true; });
-
         showStatus('📄 Fetching records for purchase #' + purchaseId + '...', 'info');
 
         try {
-            // FIX: status_ids=1,2,3,4 so draft (1) and active (2) records are both included
             var url = API_BASE + '/records?batch_id=' + purchaseId + '&status_ids=1,2,3,4&limit=1000';
             var response = await fetch(url, {
                 credentials: 'include',
@@ -81,7 +85,6 @@
 
             if (records.length === 0) {
                 showStatus('⚠️ No records found for purchase #' + purchaseId, 'warning');
-                buttons.forEach(function(btn) { btn.disabled = false; });
                 return;
             }
 
@@ -99,8 +102,6 @@
         } catch (error) {
             console.error('Print error:', error);
             showStatus('❌ Error printing labels: ' + error.message, 'error');
-        } finally {
-            buttons.forEach(function(btn) { btn.disabled = false; });
         }
     };
 
@@ -119,7 +120,7 @@
                 padding: 12px 20px;
                 border-radius: 8px;
                 font-weight: 600;
-                z-index: 10000;
+                z-index: 10002;
                 max-width: 400px;
                 display: none;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.15);
@@ -205,14 +206,12 @@
             return;
         }
 
-        // Remember which rows were expanded
         const expandedRows = new Set();
         document.querySelectorAll('#purchases-list tr.purchase-details').forEach(row => {
             const prev = row.previousElementSibling;
             if (prev && prev.dataset.id) expandedRows.add(prev.dataset.id);
         });
 
-        // Columns: ID, Seller, Contact, Description, Records, Amount, Bill, Created, Updated, Actions
         let html = `<table style="width: 100%; border-collapse: collapse; font-size: 13px;">
             <thead>
                 <tr style="background: #f8f9fa; border-bottom: 2px solid #ddd;">
@@ -224,7 +223,6 @@
                     <th style="padding: 8px 10px; text-align: right; color: #333;">Amount</th>
                     <th style="padding: 8px 10px; text-align: center; color: #333;">Bill</th>
                     <th style="padding: 8px 10px; text-align: left; color: #333;">Created</th>
-                    <th style="padding: 8px 10px; text-align: left; color: #333;">Updated</th>
                     <th style="padding: 8px 10px; text-align: center; color: #333;">Actions</th>
                 </tr>
             </thead>
@@ -234,18 +232,19 @@
             const isSelected = (p.id === selectedPurchaseId);
             const recordCount = p.record_count || 0;
             const createdAt = p.created_at ? new Date(p.created_at).toLocaleString() : '—';
-            const updatedAt = p.updated_at ? new Date(p.updated_at).toLocaleString() : '—';
 
-            // Editable-cell styling
             const editStyle = 'padding: 8px 10px; border-bottom: 1px solid #eee; color: #333; background: #fffbe6; outline: none; cursor: text;';
 
-            html += `<tr ${isSelected ? 'style="background: #e3f2fd;"' : ''} data-id="${p.id}">
+            html += `<tr ${isSelected ? 'style="background: #e3f2fd; cursor: pointer;"' : 'style="cursor: pointer;"'}
+                         data-id="${p.id}"
+                         onclick="purchasesRowClick(event, ${p.id})">
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #333; font-weight: 600;">${p.id}</td>
 
                 <td contenteditable="true"
                     data-field="seller_name"
                     data-purchase-id="${p.id}"
                     style="${editStyle} min-width: 120px;"
+                    onclick="event.stopPropagation();"
                     onblur="purchasesInlineEdit(this)"
                     onkeydown="purchasesCellKeydown(event, this)">${p.seller_name || ''}</td>
 
@@ -253,6 +252,7 @@
                     data-field="seller_contact"
                     data-purchase-id="${p.id}"
                     style="${editStyle} min-width: 120px;"
+                    onclick="event.stopPropagation();"
                     onblur="purchasesInlineEdit(this)"
                     onkeydown="purchasesCellKeydown(event, this)">${p.seller_contact || ''}</td>
 
@@ -260,6 +260,7 @@
                     data-field="description"
                     data-purchase-id="${p.id}"
                     style="${editStyle} min-width: 180px; max-width: 320px;"
+                    onclick="event.stopPropagation();"
                     onblur="purchasesInlineEdit(this)"
                     onkeydown="purchasesCellKeydown(event, this)">${p.description || ''}</td>
 
@@ -269,33 +270,49 @@
                     data-field="amount_spent"
                     data-purchase-id="${p.id}"
                     style="${editStyle} text-align: right;"
+                    onclick="event.stopPropagation();"
                     onblur="purchasesInlineEdit(this)"
                     onkeydown="purchasesCellKeydown(event, this)">${p.amount_spent && p.amount_spent > 0 ? p.amount_spent.toFixed(2) : ''}</td>
 
-                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center; color: #333;">
+                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center; color: #333;" onclick="event.stopPropagation();">
                     ${p.bill_of_sale_path
                         ? `<a href="${API_BASE}${p.bill_of_sale_path}" target="_blank" style="color: #007bff; text-decoration: none;" title="View bill">📄</a>`
                         : '<span style="color: #999;">—</span>'}
                 </td>
 
                 <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #666; white-space: nowrap; font-size: 12px;">${createdAt}</td>
-                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; color: #666; white-space: nowrap; font-size: 12px;">${updatedAt}</td>
 
-                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center;">
-                    <div style="display: flex; gap: 4px; flex-wrap: wrap; justify-content: center;">
-                        <button onclick="purchasesSelect(${p.id})" style="padding: 4px 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;" title="View records">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                        <button onclick="uploadPurchaseBill(${p.id})" style="padding: 4px 10px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;" title="Upload bill of sale">
-                            <i class="fas fa-file-upload"></i>
-                        </button>
-                        ${recordCount > 0 ? `
-                            <button class="btn-print" data-purchase-id="${p.id}" onclick="printPurchaseLabels(${p.id})"
-                                    style="padding: 4px 10px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;"
-                                    title="Print ${recordCount} labels">
-                                <i class="fas fa-print"></i> ${recordCount}
-                            </button>
-                        ` : ''}
+                <td style="padding: 8px 10px; border-bottom: 1px solid #eee; text-align: center; position: relative;" onclick="event.stopPropagation();">
+                    <button onclick="purchasesToggleRowActions(event, ${p.id})"
+                            style="padding: 5px 12px; background: #6f42c1; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 600;">
+                        <i class="fas fa-bolt"></i> Actions <i class="fas fa-caret-down"></i>
+                    </button>
+                    <div id="purchases-row-menu-${p.id}"
+                         class="purchases-row-action-menu"
+                         style="display: none; position: absolute; top: 100%; right: 8px; margin-top: 2px; background: white; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); z-index: 1000; min-width: 210px; padding: 6px 0; text-align: left;">
+                        <div class="pa-item" onclick="purchasesRowAction(${p.id}, 'view')" style="padding: 10px 16px; cursor: pointer; font-size: 13px; color: #333;">
+                            <i class="fas fa-eye" style="width: 20px; color: #007bff;"></i> View Records
+                        </div>
+                        <div class="pa-item" onclick="purchasesRowAction(${p.id}, 'upload-bill')" style="padding: 10px 16px; cursor: pointer; font-size: 13px; color: #333;">
+                            <i class="fas fa-file-upload" style="width: 20px; color: #6c757d;"></i> Upload Bill
+                        </div>
+                        <div class="pa-item" onclick="purchasesRowAction(${p.id}, 'print')" style="padding: 10px 16px; cursor: pointer; font-size: 13px; color: #333;">
+                            <i class="fas fa-print" style="width: 20px; color: #17a2b8;"></i> Print Labels ${recordCount > 0 ? `(${recordCount})` : ''}
+                        </div>
+                        <div style="height: 1px; background: #eee; margin: 4px 0;"></div>
+                        <div class="pa-item" onclick="purchasesRowAction(${p.id}, 'set-format')" style="padding: 10px 16px; cursor: pointer; font-size: 13px; color: #333;">
+                            <i class="fas fa-compact-disc" style="width: 20px; color: #e83e8c;"></i> Set Format…
+                        </div>
+                        <div class="pa-item" onclick="purchasesRowAction(${p.id}, 'set-status')" style="padding: 10px 16px; cursor: pointer; font-size: 13px; color: #333;">
+                            <i class="fas fa-toggle-on" style="width: 20px; color: #28a745;"></i> Set Status…
+                        </div>
+                        <div class="pa-item" onclick="purchasesRowAction(${p.id}, 'move-location')" style="padding: 10px 16px; cursor: pointer; font-size: 13px; color: #333;">
+                            <i class="fas fa-map-marker-alt" style="width: 20px; color: #fd7e14;"></i> Move to Location…
+                        </div>
+                        <div style="height: 1px; background: #eee; margin: 4px 0;"></div>
+                        <div class="pa-item" onclick="purchasesRowAction(${p.id}, 'delete')" style="padding: 10px 16px; cursor: pointer; font-size: 13px; color: #dc3545;">
+                            <i class="fas fa-trash" style="width: 20px;"></i> Delete Purchase
+                        </div>
                     </div>
                 </td>
             </tr>`;
@@ -304,7 +321,6 @@
         html += '</tbody></table>';
         list.innerHTML = html;
 
-        // Restore expanded rows
         expandedRows.forEach(id => {
             const row = list.querySelector(`tr[data-id="${id}"]`);
             if (row) {
@@ -313,14 +329,20 @@
         });
     }
 
-    // ===== CELL KEYBOARD HANDLER (commit on Enter, cancel on Escape) =====
+    // ===== ROW CLICK =====
+    window.purchasesRowClick = function(event, id) {
+        if (event.target.isContentEditable) return;
+        if (event.target.closest('a, button, input, select, .purchases-row-action-menu')) return;
+        purchasesSelect(id);
+    };
+
+    // ===== CELL KEYBOARD HANDLER =====
     window.purchasesCellKeydown = function(event, cell) {
         if (event.key === 'Enter') {
             event.preventDefault();
-            cell.blur(); // triggers onblur -> purchasesInlineEdit
+            cell.blur();
         } else if (event.key === 'Escape') {
             event.preventDefault();
-            // Revert: re-render from purchases array
             const purchaseId = cell.dataset.purchaseId;
             const field = cell.dataset.field;
             const purchase = purchases.find(p => String(p.id) === String(purchaseId));
@@ -346,7 +368,6 @@
         const purchase = purchases.find(p => String(p.id) === String(purchaseId));
         if (!purchase) return;
 
-        // Normalize for comparison
         let oldValue;
         let newValue;
 
@@ -368,19 +389,15 @@
             if (oldValue === newValue) return;
         }
 
-        // Visual feedback
         cell.style.background = '#fff3cd';
 
-        // Build the request payload
         const payload = {};
         if (field === 'amount_spent') {
-            // amount_spent edits go through the price endpoint
             payload.total_purchase_price = newValue;
         } else {
             payload[field] = newValue;
         }
 
-        // Choose the endpoint: price edits use /api/inventory-purchases, others use /api/purchases
         const url = field === 'amount_spent'
             ? `${API_BASE}/api/inventory-purchases/${purchaseId}`
             : `${API_BASE}/api/purchases/${purchaseId}`;
@@ -397,10 +414,8 @@
             const data = await response.json();
 
             if (data.status === 'success') {
-                // Update local model
                 purchase[field] = newValue;
 
-                // Normalize display
                 if (field === 'amount_spent') {
                     cell.textContent = newValue > 0 ? newValue.toFixed(2) : '';
                 }
@@ -408,10 +423,8 @@
                 cell.style.background = '#d4edda';
                 setTimeout(() => { cell.style.background = '#fffbe6'; }, 800);
 
-                // Refresh updated_at display by re-fetching in background (optional)
                 showStatus(`✅ Updated ${field.replace('_', ' ')}`, 'success');
             } else {
-                // Revert
                 if (field === 'amount_spent') {
                     cell.textContent = oldValue > 0 ? oldValue.toFixed(2) : '';
                 } else {
@@ -498,18 +511,10 @@
             row.style.background = row.dataset.id == id ? '#e3f2fd' : '';
         });
 
-        const deleteBtn = document.getElementById('purchases-delete-btn');
-        const purchase = purchases.find(p => p.id === id);
-        if (deleteBtn && purchase) {
-            deleteBtn.style.display = (purchase.record_count || 0) === 0 ? 'inline-block' : 'none';
-        }
-
         await loadPurchaseRecords(id);
     };
 
     // ===== LOAD PURCHASE RECORDS =====
-    // FIX: explicitly pass status_ids so draft records (status_id = 1) are included.
-    // Without this, /records defaults to status_id = 2 and hides drafts.
     async function loadPurchaseRecords(purchaseId) {
         const list = document.getElementById('purchases-list');
         if (!list) return;
@@ -520,7 +525,7 @@
         const existingDetails = row.nextElementSibling;
         if (existingDetails && existingDetails.classList && existingDetails.classList.contains('purchase-details')) {
             existingDetails.remove();
-            return; // toggle off
+            return;
         }
 
         try {
@@ -555,7 +560,7 @@
         if (!row) return;
 
         let html = `<tr class="purchase-details" style="background: #f8f9fa;">
-            <td colspan="10" style="padding: 10px;">
+            <td colspan="9" style="padding: 10px;">
                 <div style="font-weight: 600; color: #333; margin-bottom: 8px;">📀 Records (${records.length})</div>
                 <div style="max-height: 200px; overflow-y: auto;">`;
 
@@ -568,6 +573,8 @@
                         <th style="padding: 4px 8px; text-align: left; color: #333;">ID</th>
                         <th style="padding: 4px 8px; text-align: left; color: #333;">Artist</th>
                         <th style="padding: 4px 8px; text-align: left; color: #333;">Title</th>
+                        <th style="padding: 4px 8px; text-align: left; color: #333;">Format</th>
+                        <th style="padding: 4px 8px; text-align: left; color: #333;">Location</th>
                         <th style="padding: 4px 8px; text-align: left; color: #333;">Sleeve</th>
                         <th style="padding: 4px 8px; text-align: left; color: #333;">Disc</th>
                         <th style="padding: 4px 8px; text-align: right; color: #333;">Price</th>
@@ -580,10 +587,14 @@
                 const status = r.status_name || 'Unknown';
                 const sleeve = r.sleeve_condition_name || r.sleeve_display || '—';
                 const disc = r.disc_condition_name || r.disc_display || '—';
+                const format = r.format_name || '—';
+                const location = r.location_display || r.location_name || '—';
                 html += `<tr>
                     <td style="padding: 4px 8px; border-bottom: 1px solid #eee; color: #333;">${r.id}</td>
                     <td style="padding: 4px 8px; border-bottom: 1px solid #eee; color: #333;">${r.artist || 'Unknown'}</td>
                     <td style="padding: 4px 8px; border-bottom: 1px solid #eee; color: #333;">${r.title || 'Unknown'}</td>
+                    <td style="padding: 4px 8px; border-bottom: 1px solid #eee; color: #333;">${format}</td>
+                    <td style="padding: 4px 8px; border-bottom: 1px solid #eee; color: #333;">${location}</td>
                     <td style="padding: 4px 8px; border-bottom: 1px solid #eee; color: #333;">${sleeve}</td>
                     <td style="padding: 4px 8px; border-bottom: 1px solid #eee; color: #333;">${disc}</td>
                     <td style="padding: 4px 8px; border-bottom: 1px solid #eee; text-align: right; color: #333;">${r.store_price ? '$' + r.store_price.toFixed(2) : '—'}</td>
@@ -649,95 +660,348 @@
         showStatus('✅ Refreshed', 'success');
     };
 
-    // ===== ACCEPT DRAFT =====
-    window.purchasesAcceptDraft = async function() {
-        if (!selectedPurchaseId) {
-            showStatus('Please select a purchase first.', 'warning');
-            return;
+    // ============================================================
+    // ===== ROW ACTIONS DROPDOWN =====
+    // ============================================================
+
+    window.purchasesToggleRowActions = function(event, purchaseId) {
+        event.stopPropagation();
+
+        // Close all other open menus
+        document.querySelectorAll('.purchases-row-action-menu').forEach(m => {
+            if (m.id !== `purchases-row-menu-${purchaseId}`) {
+                m.style.display = 'none';
+            }
+        });
+
+        const menu = document.getElementById(`purchases-row-menu-${purchaseId}`);
+        if (!menu) return;
+        menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+    };
+
+    // Close row menus when clicking elsewhere
+    document.addEventListener('click', function(e) {
+        document.querySelectorAll('.purchases-row-action-menu').forEach(m => {
+            if (!m.contains(e.target) && !e.target.closest('button')) {
+                m.style.display = 'none';
+            }
+        });
+    });
+
+    function closeAllRowMenus() {
+        document.querySelectorAll('.purchases-row-action-menu').forEach(m => {
+            m.style.display = 'none';
+        });
+    }
+
+    window.purchasesRowAction = async function(purchaseId, action) {
+        closeAllRowMenus();
+
+        // Every action operates on the purchase that owns the row
+        selectedPurchaseId = purchaseId;
+
+        if (action === 'view') {
+            await loadPurchaseRecords(purchaseId);
         }
-        
-        const amount = prompt('Enter offer amount ($):');
-        if (amount === null) return;
-        const offerAmount = parseFloat(amount);
-        if (isNaN(offerAmount) || offerAmount <= 0) {
-            showStatus('Please enter a valid amount.', 'warning');
-            return;
+        else if (action === 'upload-bill') {
+            uploadPurchaseBill(purchaseId);
         }
-        
+        else if (action === 'print') {
+            printPurchaseLabels(purchaseId);
+        }
+        else if (action === 'set-format') {
+            await openBulkModal('format', purchaseId);
+        }
+        else if (action === 'set-status') {
+            await openBulkModal('status', purchaseId);
+        }
+        else if (action === 'move-location') {
+            await openBulkModal('location', purchaseId);
+        }
+        else if (action === 'delete') {
+            purchasesDelete(purchaseId);
+        }
+    };
+
+    // ============================================================
+    // ===== BULK ACTION MODAL =====
+    // ============================================================
+
+    async function openBulkModal(type, purchaseId) {
+        bulkActionType = type;
+        bulkActionPurchaseId = purchaseId;
+
+        const modal = document.getElementById('purchases-action-modal');
+        const titleEl = document.getElementById('purchases-action-title');
+        const descEl = document.getElementById('purchases-action-desc');
+        const bodyEl = document.getElementById('purchases-action-body');
+        const statusEl = document.getElementById('purchases-action-status');
+        const confirmBtn = document.getElementById('purchases-action-confirm');
+
+        statusEl.style.display = 'none';
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = '<i class="fas fa-check"></i> Apply';
+
+        // Count records first
+        let recordCount = 0;
         try {
-            // FIX: include status_ids so drafts are seen here too
-            const response = await fetch(`${API_BASE}/records?batch_id=${selectedPurchaseId}&status_ids=1,2,3,4&limit=500`, {
+            const resp = await fetch(`${API_BASE}/records?batch_id=${purchaseId}&status_ids=1,2,3,4&limit=1000`, {
                 credentials: 'include',
                 mode: 'cors',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Accept': 'application/json' }
             });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            
-            const data = await response.json();
-            const records = data.records || [];
-            
-            if (records.length === 0) {
-                showStatus('No records linked to this purchase.', 'warning');
+            const data = await resp.json();
+            recordCount = (data.records || []).length;
+        } catch (err) {
+            showStatus('❌ Could not load records: ' + err.message, 'error');
+            return;
+        }
+
+        if (recordCount === 0) {
+            showStatus('⚠️ Purchase #' + purchaseId + ' has no records.', 'warning');
+            return;
+        }
+
+        if (type === 'format') {
+            titleEl.textContent = '💿 Set Format — Purchase #' + purchaseId;
+            descEl.textContent = 'Apply a single format to all ' + recordCount + ' record(s) in this purchase.';
+            bodyEl.innerHTML = '<div style="text-align:center; padding:20px; color:#888;">Loading formats…</div>';
+            modal.style.display = 'flex';
+
+            const formats = await fetchFormats();
+            if (!formats.length) {
+                bodyEl.innerHTML = '<div style="color:#dc3545;">No formats available.</div>';
                 return;
             }
-            
-            const signatureMethod = confirm('Square POS signature? Click OK for Square POS, Cancel for Print & Upload.');
-            
-            const result = await fetch(`${API_BASE}/api/purchases/${selectedPurchaseId}`, {
-                method: 'PUT',
+            bodyEl.innerHTML = buildSelectHtml('format-select', formats.map(f => ({ value: f.id, label: f.name })), 'Choose a format…');
+        }
+        else if (type === 'status') {
+            titleEl.textContent = '✅ Set Status — Purchase #' + purchaseId;
+            descEl.textContent = 'Apply a single status to all ' + recordCount + ' record(s) in this purchase.';
+            const options = [
+                { value: 1, label: 'Draft (Inactive)' },
+                { value: 2, label: 'Active' }
+            ];
+            bodyEl.innerHTML = buildSelectHtml('status-select', options, 'Choose a status…');
+            modal.style.display = 'flex';
+        }
+        else if (type === 'location') {
+            titleEl.textContent = '📍 Move to Location — Purchase #' + purchaseId;
+            descEl.textContent = 'Move all ' + recordCount + ' record(s) in this purchase to a single location.';
+            bodyEl.innerHTML = '<div style="text-align:center; padding:20px; color:#888;">Loading locations…</div>';
+            modal.style.display = 'flex';
+
+            const locations = await fetchLocations();
+            if (!locations.length) {
+                bodyEl.innerHTML = '<div style="color:#dc3545;">No locations available.</div>';
+                return;
+            }
+            bodyEl.innerHTML =
+                buildSelectHtml('location-select', locations.map(l => ({ value: l.id, label: l.display_name || l.name })), 'Choose a location…') +
+                '<label style="display:flex; align-items:center; gap:8px; margin-top:12px; font-size:13px; color:#333;">' +
+                '<input type="checkbox" id="clear-location-index" checked> Clear bin index for all records' +
+                '</label>';
+        }
+    }
+
+    function buildSelectHtml(id, options, placeholder) {
+        let html = `<select id="${id}" style="width:100%; padding:10px; border:2px solid #ddd; border-radius:8px; font-size:14px; background:white; color:#333;">`;
+        html += `<option value="">${placeholder}</option>`;
+        options.forEach(o => {
+            html += `<option value="${o.value}">${o.label}</option>`;
+        });
+        html += `</select>`;
+        return html;
+    }
+
+    window.purchasesCloseActionModal = function() {
+        const modal = document.getElementById('purchases-action-modal');
+        if (modal) modal.style.display = 'none';
+        bulkActionType = null;
+        bulkActionPurchaseId = null;
+    };
+
+    function showModalStatus(message, type) {
+        const el = document.getElementById('purchases-action-status');
+        if (!el) return;
+        el.style.display = 'block';
+        el.textContent = message;
+        const colors = { success: '#d4edda', error: '#f8d7da', warning: '#fff3cd', info: '#cce5ff' };
+        const textColors = { success: '#155724', error: '#721c24', warning: '#856404', info: '#004085' };
+        el.style.background = colors[type] || '#f8f9fa';
+        el.style.color = textColors[type] || '#333';
+    }
+
+    // ============================================================
+    // ===== APPLY BULK ACTION =====
+    // ============================================================
+
+    window.purchasesApplyBulkAction = async function() {
+        if (!bulkActionType || !bulkActionPurchaseId) return;
+
+        const confirmBtn = document.getElementById('purchases-action-confirm');
+        const statusEl = document.getElementById('purchases-action-status');
+        statusEl.style.display = 'none';
+
+        let payload = {};
+
+        if (bulkActionType === 'format') {
+            const sel = document.getElementById('format-select');
+            const val = sel ? sel.value : '';
+            if (!val) { showModalStatus('Please choose a format.', 'warning'); return; }
+            payload.format_id = parseInt(val, 10);
+        }
+        else if (bulkActionType === 'status') {
+            const sel = document.getElementById('status-select');
+            const val = sel ? sel.value : '';
+            if (!val) { showModalStatus('Please choose a status.', 'warning'); return; }
+            payload.status_id = parseInt(val, 10);
+        }
+        else if (bulkActionType === 'location') {
+            const sel = document.getElementById('location-select');
+            const val = sel ? sel.value : '';
+            if (!val) { showModalStatus('Please choose a location.', 'warning'); return; }
+            payload.location_id = parseInt(val, 10);
+            const clearIdx = document.getElementById('clear-location-index');
+            payload.clear_location_index = clearIdx ? clearIdx.checked : true;
+        }
+
+        // Fetch the purchase's records to get IDs
+        let recordIds = [];
+        try {
+            const resp = await fetch(`${API_BASE}/records?batch_id=${bulkActionPurchaseId}&status_ids=1,2,3,4&limit=1000`, {
+                credentials: 'include',
+                mode: 'cors',
+                headers: { 'Accept': 'application/json' }
+            });
+            const data = await resp.json();
+            recordIds = (data.records || []).map(r => r.id);
+        } catch (err) {
+            showModalStatus('❌ Could not load records: ' + err.message, 'error');
+            return;
+        }
+
+        if (recordIds.length === 0) {
+            showModalStatus('⚠️ No records to update.', 'warning');
+            return;
+        }
+
+        const sel = document.getElementById(bulkActionType === 'format' ? 'format-select'
+                                        : bulkActionType === 'status' ? 'status-select'
+                                        : 'location-select');
+        const chosenLabel = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : '';
+        const actionWord = bulkActionType === 'format' ? 'format'
+                         : bulkActionType === 'status' ? 'status'
+                         : 'location';
+        if (!confirm(`Apply "${chosenLabel}" as new ${actionWord} to ${recordIds.length} record(s) in purchase #${bulkActionPurchaseId}?`)) {
+            return;
+        }
+
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Applying…';
+
+        try {
+            const response = await fetch(`${API_BASE}/api/records/bulk-update`, {
+                method: 'POST',
                 credentials: 'include',
                 mode: 'cors',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    offer_amount: offerAmount,
-                    signature_method: signatureMethod ? 'square' : 'upload',
-                    record_ids: records.map(r => r.id)
+                    record_ids: recordIds,
+                    ...payload
                 })
             });
-            
-            if (!result.ok) {
-                throw new Error(`HTTP ${result.status}`);
-            }
-            
-            const resultData = await result.json();
-            
-            if (resultData.status === 'success') {
-                showStatus('✅ Draft accepted! Offer: $' + offerAmount.toFixed(2), 'success');
-                loadPurchases();
-                if (selectedPurchaseId) {
-                    setTimeout(() => purchasesSelect(selectedPurchaseId), 300);
+
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                showModalStatus(`✅ Updated ${result.updated_count} record(s).`, 'success');
+                showStatus(`✅ Updated ${result.updated_count} record(s)`, 'success');
+
+                // Refresh the row's detail table if it's open
+                const list = document.getElementById('purchases-list');
+                const row = list ? list.querySelector(`tr[data-id="${bulkActionPurchaseId}"]`) : null;
+                if (row) {
+                    const details = row.nextElementSibling;
+                    if (details && details.classList && details.classList.contains('purchase-details')) {
+                        details.remove();
+                        loadPurchaseRecords(bulkActionPurchaseId);
+                    }
                 }
+
+                setTimeout(() => {
+                    purchasesCloseActionModal();
+                }, 900);
             } else {
-                showStatus('❌ Error: ' + (resultData.error || 'Failed to accept draft'), 'error');
+                showModalStatus('❌ ' + (result.error || 'Update failed'), 'error');
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = '<i class="fas fa-check"></i> Apply';
             }
         } catch (err) {
-            console.error('Error accepting draft:', err);
-            showStatus('❌ Error: ' + err.message, 'error');
+            showModalStatus('❌ ' + err.message, 'error');
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = '<i class="fas fa-check"></i> Apply';
         }
     };
 
+    // ============================================================
+    // ===== DROPDOWN DATA FETCHERS =====
+    // ============================================================
+
+    async function fetchFormats() {
+        if (cachedFormats) return cachedFormats;
+        try {
+            const resp = await fetch(`${API_BASE}/api/formats`, {
+                credentials: 'include',
+                mode: 'cors',
+                headers: { 'Accept': 'application/json' }
+            });
+            const data = await resp.json();
+            if (data.status === 'success' && Array.isArray(data.formats)) {
+                cachedFormats = data.formats;
+                return cachedFormats;
+            }
+        } catch (err) {
+            console.error('fetchFormats error:', err);
+        }
+        return [];
+    }
+
+    async function fetchLocations() {
+        if (cachedLocations) return cachedLocations;
+        try {
+            const resp = await fetch(`${API_BASE}/api/locations`, {
+                credentials: 'include',
+                mode: 'cors',
+                headers: { 'Accept': 'application/json' }
+            });
+            const data = await resp.json();
+            if (data.status === 'success' && Array.isArray(data.locations)) {
+                cachedLocations = data.locations;
+                return cachedLocations;
+            }
+        } catch (err) {
+            console.error('fetchLocations error:', err);
+        }
+        return [];
+    }
+
     // ===== DELETE PURCHASE =====
-    window.purchasesDelete = async function() {
-        if (!selectedPurchaseId) {
+    window.purchasesDelete = async function(purchaseId) {
+        closeAllRowMenus();
+
+        const id = purchaseId || selectedPurchaseId;
+        if (!id) {
             showStatus('Please select a purchase first.', 'warning');
             return;
         }
 
-        if (!confirm('Are you sure you want to delete purchase #' + selectedPurchaseId + '? Records will be unlinked (not deleted).')) {
+        if (!confirm('Are you sure you want to delete purchase #' + id + '? Records will be unlinked (not deleted).')) {
             return;
         }
 
-        const deleteBtn = document.getElementById('purchases-delete-btn');
-        if (deleteBtn) {
-            deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
-            deleteBtn.disabled = true;
-        }
-
         try {
-            const response = await fetch(`${API_BASE}/api/inventory-purchases/${selectedPurchaseId}`, {
+            const response = await fetch(`${API_BASE}/api/inventory-purchases/${id}`, {
                 method: 'DELETE',
                 credentials: 'include',
                 mode: 'cors',
@@ -751,9 +1015,7 @@
             const data = await response.json();
             if (data.status === 'success') {
                 showStatus('✅ Purchase deleted.', 'success');
-                selectedPurchaseId = null;
-                const deleteBtn2 = document.getElementById('purchases-delete-btn');
-                if (deleteBtn2) deleteBtn2.style.display = 'none';
+                if (selectedPurchaseId == id) selectedPurchaseId = null;
                 loadPurchases();
             } else {
                 showStatus('❌ Error: ' + (data.error || 'Failed to delete'), 'error');
@@ -761,17 +1023,13 @@
         } catch (err) {
             console.error('Error deleting purchase:', err);
             showStatus('❌ Error: ' + err.message, 'error');
-        } finally {
-            if (deleteBtn) {
-                deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
-                deleteBtn.disabled = false;
-            }
         }
     };
 
     // ===== INITIALIZE =====
     window.initPurchases = function() {
         console.log('Purchases initialized');
+        selectedPurchaseId = null;
         loadPurchases();
         setTimeout(checkDependencies, 1000);
     };

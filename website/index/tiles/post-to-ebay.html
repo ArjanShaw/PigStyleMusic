@@ -2,9 +2,8 @@
 <!-- FILE: /tiles/post-to-ebay.html                                   -->
 <!-- Post to eBay page - Location-based UI, mirrors post-discogs      -->
 <!--                                                                  -->
-<!-- The Connect button only opens the OAuth URL in a new tab.       -->
-<!-- No client-side connection state; the backend is the source of   -->
-<!-- truth. Token problems surface as normal posting errors.         -->
+<!-- Loads location counts automatically on init. No manual Load      -->
+<!-- button; records are lazily fetched per location on expand/post.  -->
 <!-- ================================================================ -->
 
 <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
@@ -50,17 +49,6 @@
         </span>
     </div>
 
-    <!-- Load Records Row -->
-    <div style="width: 100%; display: flex; gap: 12px; align-items: center; background: #fff8e1; padding: 10px 15px; border-radius: 8px; border: 1px solid #ffe082;">
-        <button onclick="loadPostEbayRecords()" id="ebay-load-records-btn"
-                style="padding: 8px 24px; background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 700; box-shadow: 0 2px 6px rgba(245,124,0,0.3);">
-            📥 Load Records
-        </button>
-        <span id="ebay-load-records-info" style="font-size: 13px; color: #666;">
-            Click to fetch records from the server. This may take a moment.
-        </span>
-    </div>
-
     <!-- Selection Controls -->
     <div style="width: 100%; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; padding: 5px 0;">
         <div style="display: flex; align-items: center; gap: 10px;">
@@ -87,7 +75,7 @@
     <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
         <div id="ebay-locations" style="width: 100%;">
             <div style="text-align: center; padding: 30px; color: #666;">
-                Click <strong>📥 Load Records</strong> above to fetch records for posting.
+                Loading locations...
             </div>
         </div>
     </div>

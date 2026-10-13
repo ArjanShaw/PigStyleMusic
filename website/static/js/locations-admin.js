@@ -2,6 +2,16 @@
 // FILE: /static/js/locations-admin.js
 // Locations admin - tree view, add child, add root, clear records,
 // delete location, with per-location record counts and latest last_seen.
+//
+// Also supports selecting any node (any generation) and posting the
+// selected subtree(s) to eBay or Discogs by looping client-side and
+// calling the EXISTING single-record endpoints:
+//   POST /api/ebay/list
+//   POST /api/discogs/create-listing-single
+//
+// Both posts include the location display string AND location_index.
+//
+// No new backend endpoints are required.
 // ================================================================
 
 (function() {
@@ -55,10 +65,11 @@
             .replace(/"/g, '&quot;');
     }
 
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
     // Build a nested tree from the flat /api/locations response.
-    // Each node carries `record_count` (own records), `subtree_count`
-    // (own + all descendants), and `latest_last_seen` (most recent
-    // last_seen timestamp at this exact location).
     function buildTree(rows) {
         const byId = {};
         rows.forEach(r => {
@@ -69,7 +80,7 @@
                 parent_id: r.parent_id,
                 parent_name: r.parent_name,
                 record_count: r.record_count || 0,
-                subtree_count: r.record_count || 0,   // updated below
+                subtree_count: r.record_count || 0,
                 latest_last_seen: r.latest_last_seen || null,
                 children: []
             };
@@ -93,7 +104,6 @@
         }
         sortSiblings(roots);
 
-        // Compute subtree_count bottom-up
         function computeSubtree(nodes) {
             nodes.forEach(n => {
                 computeSubtree(n.children);
@@ -120,22 +130,216 @@
         return { total, leaves };
     }
 
+    // ================================================================
+    //  PRICING CONFIG (editable inputs)
+    // ================================================================
+
+    let pricingConfig = {
+        markup: null,
+        step: null,
+        maxMarkdown: null
+    };
+
+    async function fetchRequiredConfig(key) {
+        const r = await fetch(`${API_BASE}/config/${key}`, {
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (!r.ok) throw new Error(`Config ${key} not available (HTTP ${r.status})`);
+        const d = await r.json();
+        if (d.status !== 'success') throw new Error(`Config ${key} returned non-success`);
+        if (d.config_value === null || d.config_value === undefined || d.config_value === '') {
+            throw new Error(`Config ${key} is missing in app_config`);
+        }
+        const v = parseFloat(d.config_value);
+        if (isNaN(v)) throw new Error(`Config ${key} is not a number (got "${d.config_value}")`);
+        return v;
+    }
+
+    async function loadPricingConfigFromServer() {
+        const markup = await fetchRequiredConfig('PRICING_MARKUP_PERCENT');
+        const step   = await fetchRequiredConfig('PRICING_PRICE_STEP');
+        const maxMd  = await fetchRequiredConfig('PRICING_MAX_MARKDOWN');
+
+        pricingConfig = {
+            markup: markup,
+            step: step,
+            maxMarkdown: Math.abs(maxMd)
+        };
+
+        const markupEl = document.getElementById('locations-pricing-markup');
+        if (markupEl) markupEl.value = pricingConfig.markup;
+        const stepEl = document.getElementById('locations-pricing-step');
+        if (stepEl) stepEl.value = pricingConfig.step;
+        const maxEl = document.getElementById('locations-pricing-max-markdown');
+        if (maxEl) maxEl.value = pricingConfig.maxMarkdown;
+
+        updatePricingInfo();
+    }
+
+    async function saveOneConfig(key, value) {
+        const r = await fetch(`${API_BASE}/config/${key}`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: getHeaders(),
+            body: JSON.stringify({ config_value: value })
+        });
+        if (!r.ok) {
+            let detail = '';
+            try { detail = (await r.json()).error || ''; } catch (_) {}
+            throw new Error(`Failed to save ${key} (HTTP ${r.status}) ${detail}`);
+        }
+        const d = await r.json();
+        if (d.status !== 'success') throw new Error(`Failed to save ${key}: ${d.error || 'unknown error'}`);
+    }
+
+    async function savePricingConfigToServer() {
+        await saveOneConfig('PRICING_MARKUP_PERCENT', pricingConfig.markup);
+        await saveOneConfig('PRICING_PRICE_STEP', pricingConfig.step);
+        await saveOneConfig('PRICING_MAX_MARKDOWN', pricingConfig.maxMarkdown);
+    }
+
+    function updatePricingInfo() {
+        const info = document.getElementById('locations-pricing-info');
+        if (!info) return;
+
+        if (pricingConfig.markup === null) {
+            info.textContent = 'Config not loaded';
+            return;
+        }
+
+        const totalRecords = Object.values(currentTreeById)
+            .reduce((sum, n) => sum + n.record_count, 0);
+
+        info.textContent =
+            `Markup: +${pricingConfig.markup}% -${pricingConfig.step}%/wk ` +
+            `(floor -${pricingConfig.maxMarkdown}%) | ` +
+            `${totalRecords} records across ${Object.keys(currentTreeById).length} locations`;
+    }
+
+    window.locationsUpdatePricing = async function() {
+        if (isPosting) {
+            showStatus('⚠️ Cannot update pricing while posting', 'error');
+            return;
+        }
+
+        const markupInput = document.getElementById('locations-pricing-markup');
+        const stepInput   = document.getElementById('locations-pricing-step');
+        const maxInput    = document.getElementById('locations-pricing-max-markdown');
+
+        const newMarkup = parseFloat(markupInput.value);
+        const newStep   = parseFloat(stepInput.value);
+        const newMax    = parseFloat(maxInput.value);
+
+        if (isNaN(newMarkup) || newMarkup < -100 || newMarkup > 200) {
+            alert('Initial Markup must be a number between -100 and 200');
+            return;
+        }
+        if (isNaN(newStep) || newStep < 0) {
+            alert('Weekly Step must be a positive number');
+            return;
+        }
+        if (isNaN(newMax) || newMax < 0 || newMax > 100) {
+            alert('Max Markdown must be a number between 0 and 100');
+            return;
+        }
+
+        pricingConfig = {
+            markup: newMarkup,
+            step: newStep,
+            maxMarkdown: Math.abs(newMax)
+        };
+
+        try {
+            showStatus('⚙️ Saving pricing config...', 'info');
+            await savePricingConfigToServer();
+            updatePricingInfo();
+            showStatus('✅ Pricing config saved', 'success');
+        } catch (err) {
+            showStatus(`❌ ${err.message}`, 'error');
+        }
+    };
+
+    // ================================================================
+    //  SELECTION STATE
+    // ================================================================
+
+    let selectedIds = new Set();
+    let currentTreeById = {};
+
+    let cancelRequested = false;
+    let isPosting = false;
+
+    function collectSubtreeIds(node) {
+        const ids = [];
+        (function walk(n) {
+            ids.push(n.id);
+            n.children.forEach(walk);
+        })(node);
+        return ids;
+    }
+
+    function findRootsForSelected() {
+        const roots = [];
+        for (const id of selectedIds) {
+            const node = currentTreeById[id];
+            if (!node) continue;
+            let covered = false;
+            let p = node.parent_id;
+            while (p) {
+                if (selectedIds.has(p)) { covered = true; break; }
+                const pn = currentTreeById[p];
+                p = pn ? pn.parent_id : null;
+            }
+            if (!covered) roots.push(node);
+        }
+        return roots;
+    }
+
+    function totalSelectedRecords() {
+        let total = 0;
+        for (const node of findRootsForSelected()) total += node.subtree_count;
+        return total;
+    }
+
+    function getSelectedLeafIds() {
+        const leafIds = new Set();
+        for (const root of findRootsForSelected()) {
+            (function collect(n) {
+                if (n.children.length === 0) leafIds.add(n.id);
+                else n.children.forEach(collect);
+            })(root);
+        }
+        return [...leafIds];
+    }
+
+    // ================================================================
+    //  RENDER
+    // ================================================================
+
+    function indexTree(roots) {
+        const byId = {};
+        function walk(nodes) {
+            nodes.forEach(n => {
+                byId[n.id] = n;
+                walk(n.children);
+            });
+        }
+        walk(roots);
+        return byId;
+    }
+
     function renderNode(node, depth) {
         const indent = depth * 20;
         const isParent = node.children.length > 0;
 
-        // Direct records at this location
         const directCount = node.record_count;
-        // Records at this location + all descendants
         const subtreeCount = node.subtree_count;
 
-        // Most recent last_seen timestamp at this exact location
         const latestSeen = node.latest_last_seen
             ? String(node.latest_last_seen).split('T')[0]
             : null;
 
-        // Delete is disabled if the location has any records assigned
-        // (direct) OR any children. The backend enforces the same rule.
         const canDelete = directCount === 0 && node.children.length === 0;
         const deleteDisabledAttr = canDelete ? '' : 'disabled';
         const deleteTitle = canDelete
@@ -148,6 +352,10 @@
         const deleteCursor = canDelete ? 'pointer' : 'not-allowed';
         const deleteColor = canDelete ? 'white' : '#666';
 
+        const ids = collectSubtreeIds(node);
+        const allSelected = ids.length > 0 && ids.every(id => selectedIds.has(id));
+        const anySelected = ids.some(id => selectedIds.has(id));
+
         let countBadge = '';
         if (isParent) {
             if (subtreeCount === 0) {
@@ -157,9 +365,7 @@
                     </span>
                 `;
             } else {
-                const directPart = directCount > 0
-                    ? `${directCount} here`
-                    : '';
+                const directPart = directCount > 0 ? `${directCount} here` : '';
                 const subtreePart = `${subtreeCount} total`;
                 countBadge = `
                     <span style="background: #e3f2fd; padding: 1px 8px; border-radius: 10px; font-size: 10px; color: #0d47a1; font-weight: 600;">
@@ -202,7 +408,11 @@
 
         let html = `
             <div data-loc-id="${node.id}"
-                 style="padding: 6px 8px 6px ${8 + indent}px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px;">
+                 style="padding: 6px 8px 6px ${8 + indent}px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; background: ${anySelected ? '#f0f8ff' : 'transparent'};">
+                <input type="checkbox"
+                       ${allSelected ? 'checked' : ''}
+                       onchange="locationsAdminToggleSelect(${node.id})"
+                       style="cursor: pointer; width: 15px; height: 15px; margin: 0;">
                 <span style="font-size: 14px; color: ${isParent ? '#333' : '#888'};">
                     ${isParent ? '📦' : '📍'}
                 </span>
@@ -245,19 +455,52 @@
         return html;
     }
 
-    // Cache the current tree so clear/delete can look up display names.
-    let currentTreeById = {};
-
-    function indexTree(roots) {
-        const byId = {};
-        function walk(nodes) {
-            nodes.forEach(n => {
-                byId[n.id] = n;
-                walk(n.children);
-            });
+    function updateSelectionUI() {
+        const infoEl = document.getElementById('locations-admin-selection-info');
+        if (infoEl) {
+            const count = selectedIds.size;
+            const records = totalSelectedRecords();
+            infoEl.textContent = count === 0
+                ? 'No locations selected'
+                : `${count} location${count === 1 ? '' : 's'} selected · ${records} record${records === 1 ? '' : 's'}`;
         }
-        walk(roots);
-        return byId;
+
+        const ebayBtn = document.getElementById('locations-admin-post-ebay');
+        const discogsBtn = document.getElementById('locations-admin-post-discogs');
+        const clearBtn = document.getElementById('locations-admin-clear-selection');
+        const cancelBtn = document.getElementById('locations-admin-cancel-post');
+
+        const disabled = selectedIds.size === 0;
+        if (ebayBtn) {
+            ebayBtn.disabled = disabled || isPosting;
+            ebayBtn.style.opacity = (disabled || isPosting) ? '0.5' : '1';
+            ebayBtn.style.cursor = (disabled || isPosting) ? 'not-allowed' : 'pointer';
+            ebayBtn.style.display = isPosting ? 'none' : 'inline-block';
+        }
+        if (discogsBtn) {
+            discogsBtn.disabled = disabled || isPosting;
+            discogsBtn.style.opacity = (disabled || isPosting) ? '0.5' : '1';
+            discogsBtn.style.cursor = (disabled || isPosting) ? 'not-allowed' : 'pointer';
+            discogsBtn.style.display = isPosting ? 'none' : 'inline-block';
+        }
+        if (clearBtn) {
+            clearBtn.disabled = disabled || isPosting;
+            clearBtn.style.opacity = (disabled || isPosting) ? '0.5' : '1';
+            clearBtn.style.cursor = (disabled || isPosting) ? 'not-allowed' : 'pointer';
+            clearBtn.style.display = isPosting ? 'none' : 'inline-block';
+        }
+        if (cancelBtn) {
+            cancelBtn.style.display = isPosting ? 'inline-block' : 'none';
+            cancelBtn.disabled = !isPosting;
+            cancelBtn.textContent = cancelRequested ? '⏹️ Cancelling…' : '⏹️ Cancel Posting';
+        }
+
+        const pricingBtn = document.getElementById('locations-pricing-update-btn');
+        if (pricingBtn) {
+            pricingBtn.disabled = isPosting;
+            pricingBtn.style.opacity = isPosting ? '0.5' : '1';
+            pricingBtn.style.cursor = isPosting ? 'not-allowed' : 'pointer';
+        }
     }
 
     async function loadLocations() {
@@ -286,6 +529,8 @@
             const roots = buildTree(rows);
             currentTreeById = indexTree(roots);
 
+            selectedIds = new Set([...selectedIds].filter(id => currentTreeById[id]));
+
             const { total, leaves } = countNodes(roots);
 
             const countEl = document.getElementById('locations-admin-count');
@@ -297,6 +542,7 @@
 
             if (roots.length === 0) {
                 treeEl.innerHTML = '<div style="text-align: center; padding: 30px; color: #999;">No locations found.</div>';
+                updateSelectionUI();
                 return;
             }
 
@@ -306,6 +552,8 @@
             });
             treeEl.innerHTML = html;
 
+            updateSelectionUI();
+            updatePricingInfo();
             clearStatus();
 
         } catch (err) {
@@ -389,7 +637,6 @@
         const node = currentTreeById[locationId];
         const displayName = node ? node.display_name : `location #${locationId}`;
 
-        // Client-side guard (mirrors the backend rule):
         if (node && (node.record_count > 0 || node.children.length > 0)) {
             showStatus(
                 node.record_count > 0
@@ -422,6 +669,354 @@
         }
     }
 
+    // ================================================================
+    //  SELECTION HANDLERS
+    // ================================================================
+
+    window.locationsAdminToggleSelect = function(locationId) {
+        const node = currentTreeById[locationId];
+        if (!node) return;
+
+        const ids = collectSubtreeIds(node);
+        const allSelected = ids.every(id => selectedIds.has(id));
+
+        if (allSelected) {
+            ids.forEach(id => selectedIds.delete(id));
+        } else {
+            ids.forEach(id => selectedIds.add(id));
+        }
+
+        rerenderFromCache();
+    };
+
+    window.locationsAdminClearSelection = function() {
+        selectedIds.clear();
+        rerenderFromCache();
+    };
+
+    window.locationsAdminCancelPost = function() {
+        if (isPosting) {
+            cancelRequested = true;
+            updateSelectionUI();
+            showStatus('⏹️ Cancelling… will stop after the current record finishes.', 'error');
+        }
+    };
+
+    function rerenderFromCache() {
+        const treeEl = document.getElementById('locations-admin-tree');
+        if (!treeEl) return;
+        const roots = Object.values(currentTreeById).filter(n => !n.parent_id || !currentTreeById[n.parent_id]);
+        roots.sort((a, b) => a.display_name.localeCompare(b.display_name, undefined, { numeric: true }));
+        let html = '';
+        roots.forEach(r => { html += renderNode(r, 0); });
+        treeEl.innerHTML = html;
+        updateSelectionUI();
+    }
+
+    // ================================================================
+    //  PRICE COMPUTATION
+    // ================================================================
+
+    function computePrice(storePrice, createdAt) {
+        if (!storePrice || storePrice <= 0 || !createdAt) return null;
+
+        if (pricingConfig.markup === null || pricingConfig.step === null || pricingConfig.maxMarkdown === null) {
+            throw new Error('Pricing config not loaded');
+        }
+
+        let createdDate;
+        if (typeof createdAt === 'string') {
+            createdDate = new Date(createdAt.split('T')[0].split(' ')[0]);
+        } else {
+            createdDate = new Date(createdAt);
+        }
+        if (isNaN(createdDate.getTime())) return null;
+
+        const today = new Date();
+        const daysOld = Math.floor((today - createdDate) / (1000 * 60 * 60 * 24));
+        const weeksOld = Math.floor(Math.max(0, daysOld) / 7);
+
+        const floor = -Math.abs(pricingConfig.maxMarkdown);
+        let markup = pricingConfig.markup - (weeksOld * pricingConfig.step);
+        markup = Math.max(floor, markup);
+
+        return Math.round(storePrice * (1 + markup / 100) * 100) / 100;
+    }
+
+    // ================================================================
+    //  POST SELECTED - client-side loop, existing endpoints
+    // ================================================================
+
+    async function fetchPostableRecordsForLeaves(leafIds) {
+        const allRecords = [];
+        const seenIds = new Set();
+
+        for (const locId of leafIds) {
+            const url = `${API_BASE}/records?status_ids=2&visible_only=true&hide_consigned=true&location_ids=${locId}`;
+            const r = await fetch(url, {
+                credentials: 'include',
+                headers: getHeaders()
+            });
+            if (!r.ok) throw new Error(`Failed to fetch records for location ${locId} (HTTP ${r.status})`);
+            const d = await r.json();
+            if (d.status !== 'success') throw new Error(d.error || `API error for location ${locId}`);
+
+            for (const rec of (d.records || [])) {
+                if (seenIds.has(rec.id)) continue;
+                seenIds.add(rec.id);
+                allRecords.push(rec);
+            }
+        }
+        return allRecords;
+    }
+
+    async function postSelectedToEbay() {
+        if (isPosting) return;
+
+        const leafIds = getSelectedLeafIds();
+        if (leafIds.length === 0) {
+            showStatus('⚠️ No leaf locations selected', 'error');
+            return;
+        }
+
+        if (!confirm(
+            `Post records from ${selectedIds.size} selected location(s) to eBay?\n\n` +
+            `This will resolve to ${leafIds.length} leaf location(s).\n\n` +
+            `Continue?`
+        )) return;
+
+        const statusPrefix = '🛒 eBay:';
+        isPosting = true;
+        cancelRequested = false;
+        updateSelectionUI();
+
+        try {
+            showStatus(`${statusPrefix} Loading pricing config...`, 'info');
+            await loadPricingConfigFromServer();
+
+            showStatus(`${statusPrefix} Loading records from ${leafIds.length} leaf location(s)...`, 'info');
+            const records = await fetchPostableRecordsForLeaves(leafIds);
+
+            if (records.length === 0) {
+                showStatus(`${statusPrefix} No eligible records found in selected locations.`, 'error');
+                return;
+            }
+
+            let success = 0;
+            let failed = 0;
+            let skipped = 0;
+            const errors = [];
+
+            for (let i = 0; i < records.length; i++) {
+                if (cancelRequested) {
+                    skipped = records.length - i;
+                    break;
+                }
+
+                const rec = records[i];
+                const price = computePrice(rec.store_price, rec.created_at);
+
+                if (!price) {
+                    failed++;
+                    errors.push(`Record #${rec.id}: cannot compute price`);
+                    continue;
+                }
+
+                showStatus(
+                    `${statusPrefix} ${i + 1}/${records.length} — posting #${rec.id} (${rec.artist || 'Unknown'} - ${rec.title || 'Unknown'}) @ $${price.toFixed(2)}`,
+                    'info'
+                );
+
+                try {
+                    const r = await fetch(`${API_BASE}/api/ebay/list`, {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: getHeaders(),
+                        body: JSON.stringify({
+                            record_id: rec.id,
+                            price: price,
+                            quantity: 1,
+                            location: rec.location_display || rec.location_name || '',
+                            location_index: rec.location_index !== undefined && rec.location_index !== null
+                                ? rec.location_index
+                                : null
+                        })
+                    });
+
+                    let body = {};
+                    try { body = await r.json(); } catch (_) {}
+
+                    if (r.ok && body.status === 'success') {
+                        success++;
+                    } else {
+                        failed++;
+                        errors.push(`Record #${rec.id}: ${body.error || body.message || `HTTP ${r.status}`}`);
+                    }
+                } catch (err) {
+                    failed++;
+                    errors.push(`Record #${rec.id}: ${err.message}`);
+                }
+
+                if (i < records.length - 1 && !cancelRequested) {
+                    await sleep(1000);
+                }
+            }
+
+            const cancelled = cancelRequested;
+            let summary;
+            if (cancelled) {
+                summary = `${statusPrefix} ⏹️ Cancelled. ✅ ${success} posted, ❌ ${failed} failed, ${skipped} skipped.`;
+            } else {
+                summary = `${statusPrefix} done. ✅ ${success} posted, ❌ ${failed} failed.`;
+            }
+
+            showStatus(
+                errors.length > 0
+                    ? `${summary} First error: ${errors[0]}`
+                    : summary,
+                (failed > 0 || cancelled) ? 'error' : 'success'
+            );
+
+        } catch (err) {
+            showStatus(`${statusPrefix} ❌ ${err.message}`, 'error');
+        } finally {
+            isPosting = false;
+            cancelRequested = false;
+            updateSelectionUI();
+        }
+    }
+
+    async function postSelectedToDiscogs() {
+        if (isPosting) return;
+
+        const leafIds = getSelectedLeafIds();
+        if (leafIds.length === 0) {
+            showStatus('⚠️ No leaf locations selected', 'error');
+            return;
+        }
+
+        if (!confirm(
+            `Post records from ${selectedIds.size} selected location(s) to Discogs?\n\n` +
+            `This will resolve to ${leafIds.length} leaf location(s).\n\n` +
+            `Continue?`
+        )) return;
+
+        const statusPrefix = '📀 Discogs:';
+        isPosting = true;
+        cancelRequested = false;
+        updateSelectionUI();
+
+        try {
+            showStatus(`${statusPrefix} Loading pricing config...`, 'info');
+            await loadPricingConfigFromServer();
+
+            showStatus(`${statusPrefix} Loading records from ${leafIds.length} leaf location(s)...`, 'info');
+            const records = await fetchPostableRecordsForLeaves(leafIds);
+
+            if (records.length === 0) {
+                showStatus(`${statusPrefix} No eligible records found in selected locations.`, 'error');
+                return;
+            }
+
+            let success = 0;
+            let failed = 0;
+            let skipped = 0;
+            const errors = [];
+
+            for (let i = 0; i < records.length; i++) {
+                if (cancelRequested) {
+                    skipped = records.length - i;
+                    break;
+                }
+
+                const rec = records[i];
+                const price = computePrice(rec.store_price, rec.created_at);
+
+                if (!price) {
+                    failed++;
+                    errors.push(`Record #${rec.id}: cannot compute price`);
+                    continue;
+                }
+
+                showStatus(
+                    `${statusPrefix} ${i + 1}/${records.length} — posting #${rec.id} (${rec.artist || 'Unknown'} - ${rec.title || 'Unknown'}) @ $${price.toFixed(2)}`,
+                    'info'
+                );
+
+                const payload = {
+                    record: {
+                        id: rec.id,
+                        artist: rec.artist || 'Unknown',
+                        title: rec.title || 'Unknown',
+                        catalog_number: rec.catalog_number || '',
+                        media_condition: rec.disc_condition_name || 'Very Good Plus (VG+)',
+                        sleeve_condition: rec.sleeve_condition_name || 'Very Good Plus (VG+)',
+                        price: price,
+                        notes: rec.notes || '',
+                        location: rec.location_display || rec.location_name || '',
+                        location_index: rec.location_index !== undefined && rec.location_index !== null
+                            ? rec.location_index
+                            : null,
+                        discogs_release_id: rec.discogs_release_id || null,
+                        format_id: rec.format_id || null
+                    }
+                };
+
+                try {
+                    const r = await fetch(`${API_BASE}/api/discogs/create-listing-single`, {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: getHeaders(),
+                        body: JSON.stringify(payload)
+                    });
+
+                    let body = {};
+                    try { body = await r.json(); } catch (_) {}
+
+                    if (r.ok && body.success) {
+                        success++;
+                    } else {
+                        failed++;
+                        errors.push(`Record #${rec.id}: ${body.error || body.message || `HTTP ${r.status}`}`);
+                    }
+                } catch (err) {
+                    failed++;
+                    errors.push(`Record #${rec.id}: ${err.message}`);
+                }
+
+                if (i < records.length - 1 && !cancelRequested) {
+                    await sleep(3000);
+                }
+            }
+
+            const cancelled = cancelRequested;
+            let summary;
+            if (cancelled) {
+                summary = `${statusPrefix} ⏹️ Cancelled. ✅ ${success} posted, ❌ ${failed} failed, ${skipped} skipped.`;
+            } else {
+                summary = `${statusPrefix} done. ✅ ${success} posted, ❌ ${failed} failed.`;
+            }
+
+            showStatus(
+                errors.length > 0
+                    ? `${summary} First error: ${errors[0]}`
+                    : summary,
+                (failed > 0 || cancelled) ? 'error' : 'success'
+            );
+
+        } catch (err) {
+            showStatus(`${statusPrefix} ❌ ${err.message}`, 'error');
+        } finally {
+            isPosting = false;
+            cancelRequested = false;
+            updateSelectionUI();
+        }
+    }
+
+    // ================================================================
+    //  PUBLIC API
+    // ================================================================
+
     window.locationsAdminRefresh = function() {
         loadLocations();
     };
@@ -442,8 +1037,24 @@
         deleteLocation(locationId);
     };
 
-    window.initLocationsAdmin = function() {
+    window.locationsAdminPostEbay = function() {
+        postSelectedToEbay();
+    };
+
+    window.locationsAdminPostDiscogs = function() {
+        postSelectedToDiscogs();
+    };
+
+    window.initLocationsAdmin = async function() {
         console.log('🗺️ Locations admin initialized');
+        selectedIds = new Set();
+        cancelRequested = false;
+        isPosting = false;
+        try {
+            await loadPricingConfigFromServer();
+        } catch (err) {
+            console.warn('Could not load pricing config on init:', err.message);
+        }
         loadLocations();
     };
 

@@ -1,27 +1,9 @@
 // ================================================================
 // FILE: /static/js/post-to-ebay.js
-// Post to eBay page - mirrors post-discogs.js structure
+// Post to eBay page - counts-first, lazy-load records per location
 //
-// Differences from Discogs:
-//   - Connect flow (OAuth) opens in a new tab; tokens are stored server-side
-//   - Shorter post delay (eBay's Inventory API is more permissive)
-//   - Backend constructs the listing; frontend sends record_id + price
-//
-// NO FRONTEND CONNECTION STATE:
-//   The backend is the sole source of truth. If tokens are missing or
-//   expired, /api/ebay/list returns an error, which we display like any
-//   other posting failure. The Connect button just triggers OAuth.
-//
-// MARKUP MODEL (single source of truth — shared with Discogs):
-//   Initial Markup  : starting markup %, e.g. 40
-//   Weekly Step     : markup drops this many points per week, e.g. 2
-//   Max Markdown    : maximum discount as a POSITIVE % (0-100), e.g. 50
-//                     → internally floor = -MaxMarkdown
-//
-// CONFIG KEYS (shared with post-discogs.js):
-//   PRICING_MARKUP_PERCENT
-//   PRICING_PRICE_STEP
-//   PRICING_MAX_MARKDOWN
+// Tree is built from /api/locations using parent_id, so any level
+// of the hierarchy can be posted (root, parent, leaf).
 // ================================================================
 
 (function() {
@@ -31,22 +13,24 @@
         ? 'http://localhost:5000'
         : 'https://www.pigstylemusic.com';
 
-    // eBay rate limit — much more permissive than Discogs
     const EBAY_POST_DELAY_MS = 1000;
 
-    let records = [];
+    let locationTree = [];
+    let locationById = {};
+    let recordsByLocation = new Map();
+
     let ebayMarkupPercent = null;
     let ebayPriceStep = null;
     let ebayMaxMarkdown = null;
+
     let isUpdating = false;
     let isPosting = false;
     let cancelPosting = false;
-    let isLoadingRecords = false;
+    let isLoadingLocations = false;
     let hasLoadedOnce = false;
 
     let expandedLocations = new Set();
     let selectedLocations = new Set();
-    let expandedSections = new Set();
 
     function getHeaders() {
         const headers = { 'Content-Type': 'application/json' };
@@ -55,22 +39,27 @@
         return headers;
     }
 
-    function buildLocationDisplay(record) {
-        const name = record.location_display || record.location_name || 'Unknown Location';
-        const idx = record.location_index;
-        if (idx === null || idx === undefined || idx === '') return name;
-        return `${name} (#${idx})`;
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     function getMarkdownFloor() {
         return -Math.abs(ebayMaxMarkdown);
     }
 
-    function sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+    function escapeHtml(s) {
+        if (s === null || s === undefined) return '';
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
     }
 
-    // ===== CONFIG (SHARED WITH DISCOGS) =====
+    // ----------------------------------------------------------------
+    // CONFIG
+    // ----------------------------------------------------------------
+
     async function fetchRequiredConfig(key) {
         const response = await fetch(`${API_BASE}/config/${key}`, {
             credentials: 'include',
@@ -89,8 +78,8 @@
 
     async function fetchEbayConfig() {
         const markup = await fetchRequiredConfig('PRICING_MARKUP_PERCENT');
-        const step = await fetchRequiredConfig('PRICING_PRICE_STEP');
-        const maxMd = await fetchRequiredConfig('PRICING_MAX_MARKDOWN');
+        const step   = await fetchRequiredConfig('PRICING_PRICE_STEP');
+        const maxMd  = await fetchRequiredConfig('PRICING_MAX_MARKDOWN');
 
         console.log(`📥 Loaded shared pricing config: markup=${markup}, step=${step}, maxMd=${maxMd}`);
 
@@ -102,8 +91,8 @@
         }
 
         ebayMarkupPercent = markup;
-        ebayPriceStep = step;
-        ebayMaxMarkdown = Math.abs(maxMd);
+        ebayPriceStep     = step;
+        ebayMaxMarkdown   = Math.abs(maxMd);
 
         const markupEl = document.getElementById('ebay-markup-percent');
         if (markupEl) markupEl.value = ebayMarkupPercent;
@@ -142,9 +131,10 @@
         console.log(`✅ Saved ${key} = ${value}`);
     }
 
-    // ===== CONNECT (OAuth) =====
-    // No client-side state. Just opens the auth URL. The backend stores
-    // tokens in app_config; whether they work is discovered on first post.
+    // ----------------------------------------------------------------
+    // CONNECT (OAuth)
+    // ----------------------------------------------------------------
+
     window.connectEbay = async function() {
         try {
             const response = await fetch(`${API_BASE}/api/ebay/auth/url`, {
@@ -168,11 +158,12 @@
         }
     };
 
-    // ===== PRICE CALCULATION (SHARED MODEL) =====
+    // ----------------------------------------------------------------
+    // PRICE CALCULATION
+    // ----------------------------------------------------------------
+
     function calculateEbayPrice(record) {
         if (!record || !record.created_at || !record.store_price || record.store_price <= 0) return null;
-
-        // Consigned records are excluded
         if (record.consignor_id !== null && record.consignor_id !== undefined) return null;
 
         if (ebayMarkupPercent === null || ebayPriceStep === null || ebayMaxMarkdown === null) {
@@ -205,6 +196,25 @@
         };
     }
 
+    function calculateEbayPricesForRecords(recordsToCalculate) {
+        if (!recordsToCalculate || recordsToCalculate.length === 0) return [];
+        return recordsToCalculate.map(r => {
+            const priceData = calculateEbayPrice(r);
+            if (priceData) {
+                r._ebayPrice     = priceData.ebay_price;
+                r._markupPercent = priceData.markup_percent;
+                r._daysOld       = priceData.days_old;
+                r._weeksOld      = priceData.weeks_old;
+            } else {
+                r._ebayPrice     = null;
+                r._markupPercent = null;
+                r._daysOld       = null;
+                r._weeksOld      = null;
+            }
+            return r;
+        });
+    }
+
     function updatePriceInfo() {
         const info = document.getElementById('ebay-price-calc-info');
         if (!info) return;
@@ -212,38 +222,14 @@
             info.textContent = 'Config not loaded';
             return;
         }
-        if (records.length === 0) {
-            info.textContent = `Markup: ${ebayMarkupPercent}% - ${ebayPriceStep}%/wk (max markdown: ${ebayMaxMarkdown}%) | no records loaded`;
-            return;
-        }
-        const withPrices = records.filter(r => r._ebayPrice && r._ebayPrice > 0);
-        info.textContent = `Markup: ${ebayMarkupPercent}% - ${ebayPriceStep}%/wk (max markdown: ${ebayMaxMarkdown}%) | ${withPrices.length} records have prices`;
-    }
-
-    function calculateEbayPricesForRecords(recordsToCalculate) {
-        if (!recordsToCalculate || recordsToCalculate.length === 0) return [];
-        console.log(`💰 Calculating eBay prices for ${recordsToCalculate.length} records...`);
-        return recordsToCalculate.map(r => {
-            const priceData = calculateEbayPrice(r);
-            if (priceData) {
-                r._ebayPrice = priceData.ebay_price;
-                r._markupPercent = priceData.markup_percent;
-                r._daysOld = priceData.days_old;
-                r._weeksOld = priceData.weeks_old;
-            } else {
-                r._ebayPrice = null;
-                r._markupPercent = null;
-                r._daysOld = null;
-                r._weeksOld = null;
-            }
-            return r;
-        });
+        const totalEligible = locationTree.reduce((s, n) => s + n.subtree_count, 0);
+        info.textContent = `Markup: ${ebayMarkupPercent}% - ${ebayPriceStep}%/wk (max markdown: ${ebayMaxMarkdown}%) | ${totalEligible} eligible records across ${Object.keys(locationById).length} locations`;
     }
 
     window.updateEbayPrices = async function() {
         if (isUpdating) return;
-        if (isLoadingRecords) {
-            alert('Please wait — records are still loading.');
+        if (isLoadingLocations) {
+            alert('Please wait — locations are still loading.');
             return;
         }
 
@@ -251,12 +237,12 @@
 
         try {
             const markupInput = document.getElementById('ebay-markup-percent');
-            const stepInput = document.getElementById('ebay-price-step');
-            const maxInput = document.getElementById('ebay-max-markdown');
+            const stepInput   = document.getElementById('ebay-price-step');
+            const maxInput    = document.getElementById('ebay-max-markdown');
 
             const newMarkup = parseFloat(markupInput.value);
-            const newStep = parseFloat(stepInput.value);
-            const newMax = parseFloat(maxInput.value);
+            const newStep   = parseFloat(stepInput.value);
+            const newMax    = parseFloat(maxInput.value);
 
             if (isNaN(newMarkup) || newMarkup < -100 || newMarkup > 200) {
                 alert('Initial Markup must be a number between -100 and 200');
@@ -272,20 +258,20 @@
             }
 
             ebayMarkupPercent = newMarkup;
-            ebayPriceStep = newStep;
-            ebayMaxMarkdown = Math.abs(newMax);
+            ebayPriceStep     = newStep;
+            ebayMaxMarkdown   = Math.abs(newMax);
 
             await saveEbayConfig();
 
-            if (records.length > 0) {
-                records = calculateEbayPricesForRecords(records);
-                renderRecords();
+            for (const [locId, recs] of recordsByLocation.entries()) {
+                recordsByLocation.set(locId, calculateEbayPricesForRecords(recs));
+            }
 
-                const withPrices = records.filter(r => r._ebayPrice && r._ebayPrice > 0);
-                const withMarkdown = records.filter(r => r._markupPercent && r._markupPercent < 0);
-                showStatus(`✅ Settings saved. ${withPrices.length} records priced (${withMarkdown.length} on markdown).`, 'info');
+            if (recordsByLocation.size > 0) {
+                renderRecords();
+                showStatus(`✅ Settings saved. Recalculated ${recordsByLocation.size} cached location(s).`, 'info');
             } else {
-                showStatus('✅ Settings saved. Load records to apply.', 'info');
+                showStatus('✅ Settings saved. Expand a location to load records.', 'info');
             }
 
             updatePriceInfo();
@@ -299,43 +285,9 @@
         }
     };
 
-    // ===== FETCH RECORDS =====
-    async function fetchAllRecords(onProgress) {
-        let allRecords = [];
-        let page = 1;
-        const perPage = 100;
-        let hasMore = true;
-        let total = 0;
-
-        console.log('📊 Fetching all records with pagination...');
-
-        while (hasMore) {
-            const url = `${API_BASE}/records?status_ids=2&visible_only=true&hide_consigned=true&limit=${perPage}&offset=${(page - 1) * perPage}`;
-            const response = await fetch(url, {
-                credentials: 'include',
-                mode: 'cors',
-                headers: getHeaders()
-            });
-            if (!response.ok) throw new Error(`Failed to fetch page ${page} (HTTP ${response.status})`);
-            const data = await response.json();
-            if (data.status !== 'success') throw new Error(data.error || `API error on page ${page}`);
-
-            const pageRecords = data.records || [];
-            total = data.total || 0;
-            allRecords = allRecords.concat(pageRecords);
-
-            if (onProgress) onProgress({ page, loaded: allRecords.length, total, finished: false });
-
-            if (allRecords.length >= total || pageRecords.length < perPage) {
-                hasMore = false;
-            } else {
-                page++;
-            }
-        }
-
-        if (onProgress) onProgress({ page, loaded: allRecords.length, total, finished: true });
-        return allRecords;
-    }
+    // ----------------------------------------------------------------
+    // LOAD LOCATIONS
+    // ----------------------------------------------------------------
 
     function showLoadProgressBar(label, loaded, total, extra) {
         const statusDiv = document.getElementById('ebay-status');
@@ -365,332 +317,335 @@
         statusDiv.innerHTML = `❌ ${msg}`;
     }
 
-    function updateLoadButtonState(loading) {
-        const btn = document.getElementById('ebay-load-records-btn');
-        const info = document.getElementById('ebay-load-records-info');
-        if (btn) {
-            btn.disabled = loading;
-            btn.style.opacity = loading ? '0.6' : '1';
-            btn.style.cursor = loading ? 'not-allowed' : 'pointer';
-            btn.textContent = loading ? '⏳ Loading...' : '📥 Load Records';
-        }
-        if (info && loading) info.textContent = 'Fetching records from the server...';
+    async function fetchLocationRows() {
+        const url = `${API_BASE}/api/locations`;
+        const response = await fetch(url, {
+            credentials: 'include',
+            mode: 'cors',
+            headers: getHeaders()
+        });
+        if (!response.ok) throw new Error(`Failed to fetch locations (HTTP ${response.status})`);
+        const data = await response.json();
+        if (data.status !== 'success') throw new Error(data.error || 'Locations API error');
+        return data.locations || [];
     }
 
-    window.loadPostEbayRecords = async function() {
-        if (isLoadingRecords) return;
+    function buildLocationTree(rows) {
+        const byId = {};
+        rows.forEach(r => {
+            byId[r.id] = {
+                id: r.id,
+                name: r.name,
+                display_name: r.display_name || r.name,
+                parent_id: r.parent_id,
+                parent_name: r.parent_name,
+                record_count: r.record_count || 0,
+                subtree_count: r.record_count || 0,
+                children: []
+            };
+        });
+
+        const roots = [];
+        rows.forEach(r => {
+            const node = byId[r.id];
+            if (r.parent_id && byId[r.parent_id]) {
+                byId[r.parent_id].children.push(node);
+            } else {
+                roots.push(node);
+            }
+        });
+
+        function sortSiblings(nodes) {
+            nodes.sort((a, b) =>
+                a.display_name.localeCompare(b.display_name, undefined, { numeric: true })
+            );
+            nodes.forEach(n => sortSiblings(n.children));
+        }
+        sortSiblings(roots);
+
+        function computeSubtree(nodes) {
+            nodes.forEach(n => {
+                computeSubtree(n.children);
+                n.subtree_count = n.record_count +
+                    n.children.reduce((sum, c) => sum + c.subtree_count, 0);
+            });
+        }
+        computeSubtree(roots);
+
+        return { roots, byId };
+    }
+
+    function findNode(id) {
+        return locationById[id] || null;
+    }
+
+    function collectSubtreeIds(node) {
+        const ids = [];
+        function walk(n) {
+            ids.push(n.id);
+            n.children.forEach(walk);
+        }
+        walk(node);
+        return ids;
+    }
+
+    async function loadLocations() {
+        if (isLoadingLocations) return;
         if (isPosting) {
-            alert('Please wait — a post is in progress.');
+            console.warn('Skipping load — a post is in progress.');
             return;
         }
 
-        isLoadingRecords = true;
-        updateLoadButtonState(true);
+        isLoadingLocations = true;
 
         const list = document.getElementById('ebay-locations');
-        if (list) list.innerHTML = '<div style="text-align:center;padding:30px;color:#666;">Fetching records...</div>';
+        if (list) list.innerHTML = '<div style="text-align:center;padding:30px;color:#666;">Loading locations...</div>';
 
         try {
             showLoadProgressBar('⚙️ Loading configuration...', 0, 0, '');
             await fetchEbayConfig();
 
-            const fetched = await fetchAllRecords(({ page, loaded, total, finished }) => {
-                const label = finished ? '✅ Records fetched' : `📥 Fetching page ${page}...`;
-                showLoadProgressBar(label, loaded, total, '');
-            });
+            showLoadProgressBar('📥 Loading locations...', 0, 0, '');
+            const rows = await fetchLocationRows();
+            const { roots, byId } = buildLocationTree(rows);
+            locationTree = roots;
+            locationById = byId;
 
-            if (fetched.length === 0) {
-                list.innerHTML = `<div style="text-align:center;padding:20px;color:#999;">No records found</div>`;
+            recordsByLocation.clear();
+            selectedLocations = new Set([...selectedLocations].filter(id => byId[id]));
+            expandedLocations = new Set([...expandedLocations].filter(id => byId[id]));
+
+            if (locationTree.length === 0) {
+                if (list) list.innerHTML = `<div style="text-align:center;padding:20px;color:#999;">No locations found</div>`;
                 showLoadProgressBar('✅ Loaded (empty)', 0, 0, '');
                 return;
             }
 
-            showLoadProgressBar('💰 Calculating prices...', fetched.length, fetched.length, '');
-            await sleep(30);
-
-            records = calculateEbayPricesForRecords(fetched);
             renderRecords();
             updatePriceInfo();
 
-            const withPrices = records.filter(r => r._ebayPrice && r._ebayPrice > 0);
-            const withMarkdown = records.filter(r => r._markupPercent && r._markupPercent < 0);
-            const statusMsg = withPrices.length > 0
-                ? `✅ Loaded ${records.length} records (${withPrices.length} with prices, ${withMarkdown.length} on markdown)`
-                : `Loaded ${records.length} records but NONE have eBay prices`;
-            showStatus(statusMsg, withPrices.length > 0 ? 'info' : 'warning');
-
-            const info = document.getElementById('ebay-load-records-info');
-            if (info) info.textContent = `Loaded ${records.length} records. Click again to refresh.`;
+            const totalEligible = locationTree.reduce((s, n) => s + n.subtree_count, 0);
+            showStatus(
+                `✅ Loaded ${Object.keys(locationById).length} locations (${totalEligible} eligible records). Expand any level to load its records.`,
+                'info'
+            );
 
             hasLoadedOnce = true;
             updateButtons();
 
         } catch (err) {
-            console.error('❌ Error loading records:', err);
-            showLoadError(err.message || 'Failed to load records');
+            console.error('❌ Error loading locations:', err);
+            showLoadError(err.message || 'Failed to load locations');
             if (list) {
-                list.innerHTML = `<div style="text-align:center;padding:20px;color:#dc3545;">Error: ${err.message}</div>`;
+                list.innerHTML = `<div style="text-align:center;padding:20px;color:#dc3545;">Error: ${escapeHtml(err.message)}</div>`;
             }
         } finally {
-            isLoadingRecords = false;
-            updateLoadButtonState(false);
+            isLoadingLocations = false;
         }
-    };
-
-    // ===== LOCATION GROUPING (identical logic to post-discogs) =====
-    function extractBinNumber(locationName) {
-        const match = locationName.match(/Bin\s*(\d+)/i);
-        if (match) return parseInt(match[1], 10);
-        return null;
     }
 
-    function extractBinSection(locationName) {
-        const match = locationName.match(/Bin\s*\d+\s*([A-Z]{2})/i);
-        if (match) return match[1].toUpperCase();
-        return null;
-    }
+    // ----------------------------------------------------------------
+    // LAZY-LOAD RECORDS
+    // ----------------------------------------------------------------
 
-    function isBinLocation(locationName) {
-        return /Bin\s*\d+/i.test(locationName);
-    }
+    async function ensureRecordsForLocation(locationId) {
+        if (recordsByLocation.has(locationId)) {
+            return recordsByLocation.get(locationId);
+        }
 
-    function getBinBaseName(locationName) {
-        const match = locationName.match(/(Bin\s*\d+)/i);
-        if (match) return match[1];
-        return locationName;
-    }
-
-    function sortBinSections(sections) {
-        const order = ['LT', 'RT', 'LB', 'RB'];
-        return sections.sort((a, b) => {
-            const indexA = order.indexOf(a.section);
-            const indexB = order.indexOf(b.section);
-            if (indexA === -1) return 1;
-            if (indexB === -1) return -1;
-            return indexA - indexB;
+        const url = `${API_BASE}/records?status_ids=2&visible_only=true&hide_consigned=true&location_ids=${locationId}`;
+        const response = await fetch(url, {
+            credentials: 'include',
+            mode: 'cors',
+            headers: getHeaders()
         });
+        if (!response.ok) throw new Error(`Failed to fetch records for location ${locationId} (HTTP ${response.status})`);
+        const data = await response.json();
+        if (data.status !== 'success') throw new Error(data.error || `API error for location ${locationId}`);
+
+        const records = calculateEbayPricesForRecords(data.records || []);
+        recordsByLocation.set(locationId, records);
+        return records;
     }
 
-    function groupRecordsByLocation(recordsArray) {
-        const groups = {};
-        const binSections = {};
-
-        for (const r of recordsArray) {
-            const locationId = r.location_id || 0;
-            const locationName = r.location_display || r.location_name || 'Unknown Location';
-            if (!groups[locationId]) {
-                groups[locationId] = { location_id: locationId, location_name: locationName, records: [] };
-            }
-            groups[locationId].records.push(r);
-            if (isBinLocation(locationName)) {
-                const baseName = getBinBaseName(locationName);
-                const section = extractBinSection(locationName);
-                if (!binSections[baseName]) binSections[baseName] = { base_name: baseName, sections: [] };
-                if (section) {
-                    binSections[baseName].sections.push({
-                        section, location_id: locationId, location_name: locationName,
-                        record_count: groups[locationId].records.length
-                    });
-                }
-            }
+    async function ensureRecordsForSubtree(node, progress) {
+        const leaves = [];
+        function collectLeaves(n) {
+            if (n.children.length === 0) leaves.push(n);
+            else n.children.forEach(collectLeaves);
         }
+        collectLeaves(node);
 
-        for (const baseName in binSections) {
-            binSections[baseName].sections = sortBinSections(binSections[baseName].sections);
+        const all = [];
+        for (let i = 0; i < leaves.length; i++) {
+            const leaf = leaves[i];
+            const recs = await ensureRecordsForLocation(leaf.id);
+            all.push(...recs);
+            if (progress) progress(i + 1, leaves.length, leaf.display_name);
         }
-
-        const result = [];
-        const nonBinGroups = [];
-        for (const locationId in groups) {
-            const group = groups[locationId];
-            if (isBinLocation(group.location_name)) result.push(group);
-            else nonBinGroups.push(group);
-        }
-
-        result.sort((a, b) => {
-            const numA = extractBinNumber(a.location_name);
-            const numB = extractBinNumber(b.location_name);
-            if (numA !== null && numB !== null) return numA - numB;
-            if (numA !== null) return -1;
-            if (numB !== null) return 1;
-            return a.location_name.localeCompare(b.location_name);
-        });
-
-        nonBinGroups.sort((a, b) => a.location_name.localeCompare(b.location_name));
-
-        const groupedBins = {};
-        for (const group of result) {
-            const baseName = getBinBaseName(group.location_name);
-            if (!groupedBins[baseName]) groupedBins[baseName] = { base_name: baseName, locations: [] };
-            groupedBins[baseName].locations.push(group);
-        }
-
-        const sortedBinKeys = Object.keys(groupedBins).sort((a, b) => {
-            const numA = extractBinNumber(a);
-            const numB = extractBinNumber(b);
-            if (numA !== null && numB !== null) return numA - numB;
-            if (numA !== null) return -1;
-            if (numB !== null) return 1;
-            return a.localeCompare(b);
-        });
-
-        const finalResult = [];
-        for (const key of sortedBinKeys) {
-            finalResult.push({ is_bin_section: true, base_name: key, locations: groupedBins[key].locations });
-        }
-        for (const group of nonBinGroups) {
-            finalResult.push({
-                is_bin_section: false, location_id: group.location_id,
-                location_name: group.location_name, records: group.records
-            });
-        }
-        return finalResult;
+        return all;
     }
 
-    // ===== RENDER =====
+    // ----------------------------------------------------------------
+    // RENDER
+    // ----------------------------------------------------------------
+
     function renderRecords() {
         const list = document.getElementById('ebay-locations');
         if (!list) return;
 
-        if (records.length === 0) {
-            list.innerHTML = `<div style="text-align:center;padding:20px;color:#999;">No records found</div>`;
+        if (locationTree.length === 0) {
+            list.innerHTML = `<div style="text-align:center;padding:20px;color:#999;">No locations loaded</div>`;
             return;
         }
 
-        const locationGroups = groupRecordsByLocation(records);
+        const totalEligible = locationTree.reduce((s, n) => s + n.subtree_count, 0);
+        const totalLocations = Object.keys(locationById).length;
 
         let html = `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; margin-bottom: 8px; background: #f8f9fa; border-radius: 4px;">
-                <span style="font-size: 13px; color: #666;">${records.length} total records</span>
-                <span style="font-size: 12px; color: #888;">${records.filter(r => r._ebayPrice && r._ebayPrice > 0).length} priced</span>
+                <span style="font-size: 13px; color: #666;">${totalEligible} eligible records across ${totalLocations} locations</span>
+                <span style="font-size: 12px; color: #888;">${recordsByLocation.size} location(s) loaded</span>
             </div>
         `;
 
-        for (const group of locationGroups) {
-            if (group.is_bin_section) {
-                const baseName = group.base_name;
-                const locations = group.locations;
-                const totalRecords = locations.reduce((sum, loc) => sum + loc.records.length, 0);
-                const isSectionExpanded = expandedSections.has(baseName);
-                const allSelected = locations.every(loc => selectedLocations.has(loc.location_id));
-                const anySelected = locations.some(loc => selectedLocations.has(loc.location_id));
-
-                html += `
-                    <div style="border: 2px solid #6c757d; border-radius: 8px; margin-bottom: 10px; background: ${anySelected ? '#f0f8ff' : 'white'};">
-                        <div style="display: flex; align-items: center; padding: 10px 14px; cursor: pointer; background: ${isSectionExpanded ? '#e9ecef' : 'white'}; border-radius: ${isSectionExpanded ? '8px 8px 0 0' : '8px'};"
-                             onclick="ebayToggleBinSection('${baseName}')">
-                            <span style="font-size: 16px; margin-right: 10px; color: #333;">${isSectionExpanded ? '▼' : '▶'}</span>
-                            <input type="checkbox" style="margin-right: 12px; cursor: pointer; width: 18px; height: 18px;"
-                                   ${allSelected ? 'checked' : ''}
-                                   onclick="event.stopPropagation(); ebayToggleAllLocationsInBin('${baseName}')">
-                            <span style="flex: 1; font-weight: 700; color: #333; font-size: 16px;">📦 ${baseName}</span>
-                            <span style="display: flex; gap: 8px; align-items: center; font-size: 12px; margin-right: 8px;">
-                                <span style="background: #e9ecef; padding: 2px 12px; border-radius: 12px; color: #495057; font-weight: 600;">
-                                    ${totalRecords} records
-                                </span>
-                                ${locations.some(l => l.records.some(r => r._ebayPrice && r._ebayPrice > 0)) ? `
-                                    <button onclick="event.stopPropagation(); ebayPostBinSection('${baseName}')"
-                                            style="padding: 4px 16px; background: linear-gradient(135deg, #0064d2 0%, #004a99 100%); color: white; border: none; border-radius: 14px; cursor: pointer; font-size: 12px; font-weight: 600;">
-                                        📤 Post This Bin
-                                    </button>
-                                ` : ''}
-                            </span>
-                        </div>
-                `;
-
-                if (isSectionExpanded) {
-                    for (const loc of locations) {
-                        const locationId = loc.location_id;
-                        const locationName = loc.location_name;
-                        const locationRecords = loc.records;
-                        const isExpanded = expandedLocations.has(locationId);
-                        const isLocSelected = selectedLocations.has(locationId);
-                        const withPrices = locationRecords.filter(r => r._ebayPrice && r._ebayPrice > 0);
-
-                        html += `
-                            <div style="border-top: 1px solid #dee2e6; padding-left: 20px; background: ${isLocSelected ? '#f8f9fa' : 'white'};">
-                                <div style="display: flex; align-items: center; padding: 6px 12px; cursor: pointer;"
-                                     onclick="ebayToggleLocation(${locationId})">
-                                    <span style="font-size: 13px; margin-right: 8px; color: ${locationRecords.length > 0 ? '#333' : '#999'};">
-                                        ${isExpanded ? '▼' : '▶'}
-                                    </span>
-                                    <input type="checkbox" style="margin-right: 10px; cursor: pointer;"
-                                           ${isLocSelected ? 'checked' : ''}
-                                           onclick="event.stopPropagation(); ebayToggleLocationSelection(${locationId})">
-                                    <span style="flex: 1; font-weight: 500; color: #333; font-size: 13px;">${locationName}</span>
-                                    <span style="display: flex; gap: 6px; align-items: center; font-size: 11px; margin-right: 8px;">
-                                        <span style="background: #e9ecef; padding: 1px 10px; border-radius: 10px; color: #495057;">
-                                            ${locationRecords.length} records
-                                        </span>
-                                        ${withPrices.length > 0 ? `
-                                            <button onclick="event.stopPropagation(); ebayPostLocation(${locationId})"
-                                                    style="padding: 2px 12px; background: #28a745; color: white; border: none; border-radius: 10px; cursor: pointer; font-size: 10px; font-weight: 600;">
-                                                Post
-                                            </button>
-                                        ` : ''}
-                                    </span>
-                                </div>
-                        `;
-
-                        if (isExpanded) {
-                            html += renderRecordsTable(locationRecords, 'small');
-                        }
-                        html += `</div>`;
-                    }
-                }
-                html += `</div>`;
-            } else {
-                const locationId = group.location_id;
-                const locationName = group.location_name;
-                const locationRecords = group.records;
-                const isExpanded = expandedLocations.has(locationId);
-                const isSelected = selectedLocations.has(locationId);
-                const withPrices = locationRecords.filter(r => r._ebayPrice && r._ebayPrice > 0);
-
-                html += `
-                    <div style="border: 1px solid #e9ecef; border-radius: 6px; margin-bottom: 6px; background: ${isSelected ? '#f0f8ff' : 'white'};">
-                        <div style="display: flex; align-items: center; padding: 8px 12px; cursor: pointer; background: ${isExpanded ? '#f8f9fa' : 'white'}; border-radius: ${isExpanded ? '6px 6px 0 0' : '6px'};"
-                             onclick="ebayToggleLocation(${locationId})">
-                            <span style="font-size: 14px; margin-right: 8px; color: ${locationRecords.length > 0 ? '#333' : '#999'};">
-                                ${isExpanded ? '▼' : '▶'}
-                            </span>
-                            <input type="checkbox" style="margin-right: 10px; cursor: pointer;"
-                                   ${isSelected ? 'checked' : ''}
-                                   onclick="event.stopPropagation(); ebayToggleLocationSelection(${locationId})">
-                            <span style="flex: 1; font-weight: 600; color: #333; font-size: 14px;">${locationName}</span>
-                            <span style="display: flex; gap: 6px; align-items: center; font-size: 12px; margin-right: 8px;">
-                                <span style="background: #e9ecef; padding: 2px 10px; border-radius: 12px; color: #495057;">
-                                    ${locationRecords.length} records
-                                </span>
-                                ${withPrices.length > 0 ? `
-                                    <button onclick="event.stopPropagation(); ebayPostLocation(${locationId})"
-                                            style="padding: 3px 14px; background: linear-gradient(135deg, #0064d2 0%, #004a99 100%); color: white; border: none; border-radius: 14px; cursor: pointer; font-size: 11px; font-weight: 600;">
-                                        📤 Post
-                                    </button>
-                                ` : ''}
-                            </span>
-                        </div>
-                `;
-
-                if (isExpanded) {
-                    html += renderRecordsTable(locationRecords, 'normal');
-                }
-                html += `</div>`;
-            }
-        }
+        for (const node of locationTree) html += renderNode(node, 0);
 
         list.innerHTML = html;
         updateSelectionInfo();
         updateButtons();
     }
 
-    function renderRecordsTable(locationRecords, size) {
-        const s = size === 'small'
-            ? { pad: '3px 6px', fs: '11px', idFs: '10px', ageFs: '9px', headerPad: '3px 6px', headerFs: '11px' }
-            : { pad: '4px 8px', fs: '12px', idFs: '11px', ageFs: '10px', headerPad: '4px 8px', headerFs: '11px' };
+    function renderNode(node, depth) {
+        const isLeaf = node.children.length === 0;
+        if (isLeaf) return renderLeafRow(node, depth);
+        return renderParentNode(node, depth);
+    }
+
+    function renderParentNode(node, depth) {
+        const isExpanded = expandedLocations.has(node.id);
+        const subtreeRecords = node.subtree_count;
+        const directRecords = node.record_count;
+
+        const nodeIds = collectSubtreeIds(node);
+        const allSelected = nodeIds.length > 0 && nodeIds.every(id => selectedLocations.has(id));
+        const anySelected = nodeIds.some(id => selectedLocations.has(id));
+        const totalSelectedRecords = nodeIds
+            .filter(id => selectedLocations.has(id))
+            .reduce((s, id) => s + (findNode(id)?.subtree_count || 0), 0);
+
+        const indent = depth * 16;
+        const childLabel = node.children.length === 1 ? 'child' : 'children';
 
         let html = `
-            <div style="padding: ${size === 'small' ? '6px 12px 10px 40px' : '10px 12px 12px 36px'}; border-top: 1px solid #f0f0f0; overflow-x: auto;">
+            <div style="border: 2px solid #6c757d; border-radius: 8px; margin-bottom: 8px; margin-left: ${indent}px; background: ${anySelected ? '#f0f8ff' : 'white'};">
+                <div style="display: flex; align-items: center; padding: 10px 14px; cursor: pointer; background: ${isExpanded ? '#e9ecef' : 'white'}; border-radius: ${isExpanded ? '8px 8px 0 0' : '8px'};"
+                     onclick="ebayToggleLocation(${node.id})">
+                    <span style="font-size: 14px; margin-right: 10px; color: #333;">
+                        ${isExpanded ? '▼' : '▶'}
+                    </span>
+                    <input type="checkbox"
+                           style="margin-right: 12px; cursor: pointer; width: 16px; height: 16px;"
+                           ${allSelected ? 'checked' : ''}
+                           onclick="event.stopPropagation(); ebayToggleLocationSelection(${node.id})">
+                    <span style="flex: 1; font-weight: 700; color: #333; font-size: 15px;">
+                        📦 ${escapeHtml(node.display_name)}
+                    </span>
+                    <span style="display: flex; gap: 8px; align-items: center; font-size: 12px; margin-right: 8px;">
+                        <span style="background: #e9ecef; padding: 2px 10px; border-radius: 12px; color: #495057; font-weight: 600;">
+                            ${node.children.length} ${childLabel}
+                        </span>
+                        <span style="background: #e3f2fd; padding: 2px 12px; border-radius: 12px; color: #0d47a1; font-weight: 600;">
+                            ${directRecords > 0 ? directRecords + ' here · ' : ''}${subtreeRecords} total
+                        </span>
+                        ${anySelected ? `<span style="color: #0064d2; font-weight: 600;">${totalSelectedRecords} selected</span>` : ''}
+                        ${subtreeRecords > 0 ? `
+                            <button onclick="event.stopPropagation(); ebayPostLocation(${node.id})"
+                                    style="padding: 4px 16px; background: linear-gradient(135deg, #0064d2 0%, #004a99 100%); color: white; border: none; border-radius: 14px; cursor: pointer; font-size: 12px; font-weight: 600;">
+                                📤 Post
+                            </button>
+                        ` : ''}
+                    </span>
+                </div>
+        `;
+
+        if (isExpanded) {
+            for (const child of node.children) html += renderNode(child, depth + 1);
+        }
+
+        html += `</div>`;
+        return html;
+    }
+
+    function renderLeafRow(node, depth) {
+        const locationId = node.id;
+        const count = node.record_count || 0;
+
+        const isExpanded   = expandedLocations.has(locationId);
+        const isSelected   = selectedLocations.has(locationId);
+        const records      = recordsByLocation.get(locationId);
+        const recordsLoaded = !!records;
+        const pricedCount  = recordsLoaded
+            ? records.filter(r => r._ebayPrice && r._ebayPrice > 0).length
+            : null;
+
+        const indent = depth * 16;
+
+        let html = `
+            <div style="border: 1px solid #e9ecef; border-radius: 6px; margin-bottom: 6px; margin-left: ${indent}px; background: ${isSelected ? '#f0f8ff' : 'white'};">
+                <div style="display: flex; align-items: center; padding: 8px 12px; cursor: pointer; background: ${isExpanded ? '#f8f9fa' : 'white'};"
+                     onclick="ebayToggleLocation(${locationId})">
+                    <span style="font-size: 13px; margin-right: 8px; color: ${count > 0 ? '#333' : '#999'};">
+                        ${isExpanded ? '▼' : '▶'}
+                    </span>
+                    <input type="checkbox" style="margin-right: 10px; cursor: pointer;"
+                           ${isSelected ? 'checked' : ''}
+                           onclick="event.stopPropagation(); ebayToggleLocationSelection(${locationId})">
+                    <span style="flex: 1; font-weight: 500; color: #333; font-size: 13px;">
+                        📍 ${escapeHtml(node.display_name)}
+                    </span>
+                    <span style="display: flex; gap: 6px; align-items: center; font-size: 12px; margin-right: 8px;">
+                        <span style="background: #e9ecef; padding: 1px 10px; border-radius: 10px; color: #495057;">
+                            ${count} records
+                        </span>
+                        ${pricedCount !== null ? `<span style="color: #0064d2; font-weight: 600;">${pricedCount} priced</span>` : ''}
+                        ${count > 0 ? `
+                            <button onclick="event.stopPropagation(); ebayPostLocation(${locationId})"
+                                    style="padding: 3px 14px; background: #28a745; color: white; border: none; border-radius: 12px; cursor: pointer; font-size: 11px; font-weight: 600;">
+                                📤 Post
+                            </button>
+                        ` : ''}
+                    </span>
+                </div>
+        `;
+
+        if (isExpanded) {
+            if (!recordsLoaded) {
+                html += `
+                    <div style="padding: 12px 20px; font-size: 12px; color: #666; border-top: 1px solid #f0f0f0;">
+                        ⏳ Loading records...
+                    </div>
+                `;
+            } else if (records.length === 0) {
+                html += `
+                    <div style="padding: 12px 20px; font-size: 12px; color: #999; border-top: 1px solid #f0f0f0;">
+                        No eligible records in this location.
+                    </div>
+                `;
+            } else {
+                html += renderRecordsTable(records);
+            }
+        }
+
+        html += `</div>`;
+        return html;
+    }
+
+    function renderRecordsTable(locationRecords) {
+        const s = { pad: '4px 8px', fs: '12px', idFs: '11px', ageFs: '10px', headerPad: '4px 8px', headerFs: '11px' };
+
+        let html = `
+            <div style="padding: 10px 12px 12px 36px; border-top: 1px solid #f0f0f0; overflow-x: auto;">
                 <table style="width: 100%; border-collapse: collapse; font-size: ${s.fs};">
                     <thead>
                         <tr style="background: #f1f3f5; border-bottom: 2px solid #dee2e6;">
@@ -724,8 +679,8 @@
             html += `
                 <tr style="${rowStyle} border-bottom: 1px solid #f0f0f0;">
                     <td style="padding: ${s.pad}; color: #666; font-size: ${s.idFs};">${r.id}</td>
-                    <td style="padding: ${s.pad}; color: #333;">${r.artist || 'Unknown'}</td>
-                    <td style="padding: ${s.pad}; color: #333;">${r.title || 'Unknown'}</td>
+                    <td style="padding: ${s.pad}; color: #333;">${escapeHtml(r.artist || 'Unknown')}</td>
+                    <td style="padding: ${s.pad}; color: #333;">${escapeHtml(r.title || 'Unknown')}</td>
                     <td style="padding: ${s.pad}; text-align: right; color: #666;">${r.store_price ? '$' + r.store_price.toFixed(2) : '—'}</td>
                     <td style="padding: ${s.pad}; text-align: right; color: ${hasPrice ? (isMarkdown ? '#dc3545' : '#0064d2') : '#999'}; font-weight: 600;">
                         ${hasPrice ? '$' + ebayPrice.toFixed(2) : '—'}
@@ -742,108 +697,119 @@
         return html;
     }
 
-    // ===== TOGGLES =====
-    window.ebayToggleBinSection = function(baseName) {
-        if (expandedSections.has(baseName)) expandedSections.delete(baseName);
-        else expandedSections.add(baseName);
-        renderRecords();
-    };
+    // ----------------------------------------------------------------
+    // TOGGLES
+    // ----------------------------------------------------------------
 
-    window.ebayToggleAllLocationsInBin = function(baseName) {
-        const allLocations = [];
-        for (const group of groupRecordsByLocation(records)) {
-            if (group.is_bin_section && group.base_name === baseName) {
-                for (const loc of group.locations) allLocations.push(loc.location_id);
-                break;
+    window.ebayToggleLocation = async function(locationId) {
+        const node = findNode(locationId);
+        if (!node) return;
+
+        if (expandedLocations.has(locationId)) {
+            expandedLocations.delete(locationId);
+            renderRecords();
+            return;
+        }
+        expandedLocations.add(locationId);
+        renderRecords();
+
+        if (node.children.length > 0) {
+            const leaves = [];
+            (function collect(n) {
+                if (n.children.length === 0) leaves.push(n);
+                else n.children.forEach(collect);
+            })(node);
+
+            const missing = leaves.filter(l => !recordsByLocation.has(l.id));
+            if (missing.length > 0) {
+                showStatus(`⏳ Loading ${missing.length} leaf location(s) under ${escapeHtml(node.display_name)}...`, 'info');
+                try {
+                    for (const leaf of missing) {
+                        await ensureRecordsForLocation(leaf.id);
+                    }
+                } catch (err) {
+                    showStatus(`❌ ${err.message}`, 'error');
+                }
+                renderRecords();
             }
+        } else if (!recordsByLocation.has(locationId)) {
+            try {
+                await ensureRecordsForLocation(locationId);
+            } catch (err) {
+                showStatus(`❌ Could not load records for location ${locationId}: ${err.message}`, 'error');
+            }
+            renderRecords();
         }
-        const allSelected = allLocations.every(id => selectedLocations.has(id));
-        if (allSelected) {
-            for (const id of allLocations) selectedLocations.delete(id);
-        } else {
-            for (const id of allLocations) selectedLocations.add(id);
-        }
-        renderRecords();
-        updateSelectionInfo();
-        updateButtons();
-    };
-
-    window.ebayToggleLocation = function(locationId) {
-        if (expandedLocations.has(locationId)) expandedLocations.delete(locationId);
-        else expandedLocations.add(locationId);
-        renderRecords();
     };
 
     window.ebayToggleLocationSelection = function(locationId) {
-        if (selectedLocations.has(locationId)) selectedLocations.delete(locationId);
-        else selectedLocations.add(locationId);
+        const node = findNode(locationId);
+        if (!node) return;
+
+        const ids = collectSubtreeIds(node);
+        const allSelected = ids.every(id => selectedLocations.has(id));
+
+        if (allSelected) {
+            ids.forEach(id => selectedLocations.delete(id));
+        } else {
+            ids.forEach(id => selectedLocations.add(id));
+        }
         renderRecords();
-        updateSelectionInfo();
-        updateButtons();
     };
 
     window.ebayToggleAllLocations = function() {
         const selectAll = document.getElementById('ebay-select-all-locations');
         const isChecked = selectAll.checked;
         if (isChecked) {
-            const locationIds = new Set();
-            for (const r of records) if (r.location_id) locationIds.add(r.location_id);
-            selectedLocations = locationIds;
+            Object.keys(locationById).forEach(id => selectedLocations.add(Number(id)));
         } else {
             selectedLocations.clear();
         }
         renderRecords();
-        updateSelectionInfo();
-        updateButtons();
     };
 
     function updateSelectionInfo() {
         const info = document.getElementById('ebay-selection-info');
         if (!info) return;
-        let recordCount = 0;
-        const grouped = groupRecordsByLocation(records);
-        for (const locationId of selectedLocations) {
-            const group = grouped.find(g => g.is_bin_section
-                ? g.locations.some(l => l.location_id === locationId)
-                : g.location_id === locationId);
-            if (!group) continue;
-            if (group.is_bin_section) {
-                for (const loc of group.locations) {
-                    if (loc.location_id === locationId) recordCount += loc.records.length;
-                }
-            } else {
-                recordCount += group.records.length;
+
+        let totalRecords = 0;
+        for (const id of selectedLocations) {
+            const node = findNode(id);
+            if (!node) continue;
+            let coveredByAncestor = false;
+            let p = node.parent_id;
+            while (p) {
+                if (selectedLocations.has(p)) { coveredByAncestor = true; break; }
+                const pn = findNode(p);
+                p = pn ? pn.parent_id : null;
             }
+            if (!coveredByAncestor) totalRecords += node.subtree_count;
         }
-        info.textContent = `${selectedLocations.size} locations selected, ${recordCount} records`;
+        info.textContent = `${selectedLocations.size} locations selected, ${totalRecords} records`;
     }
 
     function updateButtons() {
         const postSelectedBtn = document.getElementById('ebay-post-selected-btn');
-        const cancelBtn = document.getElementById('ebay-cancel-post-btn');
+        const cancelBtn       = document.getElementById('ebay-cancel-post-btn');
 
-        let selectedPriced = 0;
-        const grouped = groupRecordsByLocation(records);
-        for (const locationId of selectedLocations) {
-            const group = grouped.find(g => g.is_bin_section
-                ? g.locations.some(l => l.location_id === locationId)
-                : g.location_id === locationId);
-            if (!group) continue;
-            if (group.is_bin_section) {
-                for (const loc of group.locations) {
-                    if (loc.location_id === locationId) {
-                        selectedPriced += loc.records.filter(r => r._ebayPrice && r._ebayPrice > 0).length;
-                    }
-                }
-            } else {
-                selectedPriced += group.records.filter(r => r._ebayPrice && r._ebayPrice > 0).length;
+        let selectedRecords = 0;
+        for (const id of selectedLocations) {
+            const node = findNode(id);
+            if (!node) continue;
+            let coveredByAncestor = false;
+            let p = node.parent_id;
+            while (p) {
+                if (selectedLocations.has(p)) { coveredByAncestor = true; break; }
+                const pn = findNode(p);
+                p = pn ? pn.parent_id : null;
             }
+            if (!coveredByAncestor) selectedRecords += node.subtree_count;
         }
 
         if (postSelectedBtn) {
-            postSelectedBtn.disabled = selectedLocations.size === 0 || selectedPriced === 0 || isPosting;
-            if (selectedPriced > 0) {
-                postSelectedBtn.textContent = `📤 Post Selected (${selectedPriced} records)`;
+            postSelectedBtn.disabled = selectedLocations.size === 0 || selectedRecords === 0 || isPosting;
+            if (selectedRecords > 0) {
+                postSelectedBtn.textContent = `📤 Post Selected (${selectedRecords} records)`;
             } else {
                 postSelectedBtn.textContent = '📤 Post Selected';
             }
@@ -856,52 +822,18 @@
         }
     }
 
-    // ===== POSTING =====
-    window.ebayPostBinSection = async function(baseName) {
-        if (isPosting) return;
-        let recordsToPost = [];
-        let locationNames = [];
-        for (const group of groupRecordsByLocation(records)) {
-            if (group.is_bin_section && group.base_name === baseName) {
-                for (const loc of group.locations) {
-                    recordsToPost = recordsToPost.concat(loc.records.filter(r => r._ebayPrice && r._ebayPrice > 0));
-                    locationNames.push(loc.location_name);
-                }
-                break;
-            }
-        }
-        if (recordsToPost.length === 0) {
-            showStatus(`⚠️ No records with eBay prices in ${baseName}`, 'warning');
-            return;
-        }
-        await confirmAndPost(recordsToPost, locationNames, baseName);
-    };
+    // ----------------------------------------------------------------
+    // POSTING
+    // ----------------------------------------------------------------
 
     window.ebayPostLocation = async function(locationId) {
         if (isPosting) return;
-        let recordsToPost = [];
-        let locationName = '';
-        const group = groupRecordsByLocation(records).find(g => g.is_bin_section
-            ? g.locations.some(l => l.location_id === locationId)
-            : g.location_id === locationId);
-        if (!group) return;
-        if (group.is_bin_section) {
-            for (const loc of group.locations) {
-                if (loc.location_id === locationId) {
-                    recordsToPost = loc.records.filter(r => r._ebayPrice && r._ebayPrice > 0);
-                    locationName = loc.location_name;
-                    break;
-                }
-            }
-        } else {
-            recordsToPost = group.records.filter(r => r._ebayPrice && r._ebayPrice > 0);
-            locationName = group.location_name;
-        }
-        if (recordsToPost.length === 0) {
-            showStatus(`⚠️ No records with eBay prices in ${locationName}`, 'warning');
+        const node = findNode(locationId);
+        if (!node) {
+            showStatus(`⚠️ Location ${locationId} not found`, 'warning');
             return;
         }
-        await confirmAndPost(recordsToPost, [locationName], locationName);
+        await collectAndPost([node], node.display_name);
     };
 
     window.postSelectedEbayLocations = async function() {
@@ -910,38 +842,71 @@
             showStatus('⚠️ No locations selected', 'warning');
             return;
         }
-        let recordsToPost = [];
-        let locationNames = [];
-        const grouped = groupRecordsByLocation(records);
-        for (const locationId of selectedLocations) {
-            const group = grouped.find(g => g.is_bin_section
-                ? g.locations.some(l => l.location_id === locationId)
-                : g.location_id === locationId);
-            if (!group) continue;
-            if (group.is_bin_section) {
-                for (const loc of group.locations) {
-                    if (loc.location_id === locationId) {
-                        recordsToPost = recordsToPost.concat(loc.records.filter(r => r._ebayPrice && r._ebayPrice > 0));
-                        locationNames.push(loc.location_name);
-                    }
-                }
-            } else {
-                recordsToPost = recordsToPost.concat(group.records.filter(r => r._ebayPrice && r._ebayPrice > 0));
-                locationNames.push(group.location_name);
+
+        const roots = [];
+        for (const id of selectedLocations) {
+            const node = findNode(id);
+            if (!node) continue;
+            let coveredByAncestor = false;
+            let p = node.parent_id;
+            while (p) {
+                if (selectedLocations.has(p)) { coveredByAncestor = true; break; }
+                const pn = findNode(p);
+                p = pn ? pn.parent_id : null;
             }
+            if (!coveredByAncestor) roots.push(node);
         }
-        if (recordsToPost.length === 0) {
-            showStatus('⚠️ No records with eBay prices in selected locations', 'warning');
+
+        const label = roots.length === 1 ? roots[0].display_name : `${roots.length} selected locations`;
+        await collectAndPost(roots, label);
+    };
+
+    async function collectAndPost(nodes, scopeLabel) {
+        const statusDiv = document.getElementById('ebay-status');
+
+        if (statusDiv) {
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'status-message status-info';
+            statusDiv.innerHTML = `⏳ Loading records under ${escapeHtml(scopeLabel)}...`;
+        }
+
+        const recordsToPost = [];
+        const locationNames = [];
+
+        try {
+            for (const node of nodes) {
+                locationNames.push(node.display_name);
+                const recs = await ensureRecordsForSubtree(node, (done, total, leafName) => {
+                    if (statusDiv) {
+                        statusDiv.style.display = 'block';
+                        statusDiv.className = 'status-message status-info';
+                        statusDiv.innerHTML = `⏳ Loading ${done}/${total}: ${escapeHtml(leafName)}`;
+                    }
+                });
+                const eligible = recs.filter(r => r._ebayPrice && r._ebayPrice > 0);
+                recordsToPost.push(...eligible);
+            }
+        } catch (err) {
+            console.error('Failed loading records for post:', err);
+            showStatus(`❌ ${err.message}`, 'error');
             return;
         }
-        await confirmAndPost(recordsToPost, locationNames, `${selectedLocations.size} selected locations`);
-    };
+
+        renderRecords();
+
+        if (recordsToPost.length === 0) {
+            showStatus(`⚠️ No records with eBay prices in ${escapeHtml(scopeLabel)}`, 'warning');
+            return;
+        }
+
+        await confirmAndPost(recordsToPost, locationNames, scopeLabel);
+    }
 
     async function confirmAndPost(recordsToPost, locationNames, scopeLabel) {
         const withMarkdown = recordsToPost.filter(r => r._markupPercent && r._markupPercent < 0);
         const estMinutes = ((recordsToPost.length * EBAY_POST_DELAY_MS) / 60000).toFixed(1);
         let confirmMsg = `Post ${recordsToPost.length} record(s) from ${scopeLabel} to eBay?\n\n`;
-        confirmMsg += `Locations: ${locationNames.join(', ')}\n`;
+        confirmMsg += `Locations: ${locationNames.slice(0, 5).join(', ')}${locationNames.length > 5 ? ` (+${locationNames.length - 5} more)` : ''}\n`;
         confirmMsg += `Markup: ${ebayMarkupPercent}% - ${ebayPriceStep}%/wk (max markdown: ${ebayMaxMarkdown}%)\n`;
         confirmMsg += `${withMarkdown.length} records will be on markdown\n`;
         confirmMsg += `Estimated time: ~${estMinutes} minutes (${EBAY_POST_DELAY_MS / 1000}s between each)`;
@@ -974,6 +939,7 @@
         let success = 0;
         let failed = 0;
         let errorMessages = [];
+        let postedListings = [];
 
         for (let i = 0; i < recordsToPost.length; i++) {
             if (cancelPosting) {
@@ -1000,7 +966,7 @@
                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
                             <span>
                                 ⏳ ${current}/${total}: 
-                                <strong>${record.artist || 'Unknown'} - ${record.title || 'Unknown'}</strong>
+                                <strong>${escapeHtml(record.artist || 'Unknown')} - ${escapeHtml(record.title || 'Unknown')}</strong>
                                 <span style="color: ${priceColor}; font-weight: 600;">$${record._ebayPrice.toFixed(2)}</span>
                                 ${isMarkdown ? '🔻' : '📈'}
                             </span>
@@ -1016,6 +982,13 @@
                             <span>🕒 ${EBAY_POST_DELAY_MS / 1000}s between posts</span>
                             ${cancelPosting ? '<span style="color: #dc3545;">⏹️ Cancelling...</span>' : ''}
                         </div>
+                        ${postedListings.length > 0 ? `
+                            <div style="font-size: 11px; color: #555; background: #f0f8ff; padding: 4px 8px; border-radius: 4px; max-height: 100px; overflow-y: auto; border: 1px solid #d0e3f5;">
+                                ${postedListings.slice(-5).map(l =>
+                                    `✅ <strong>#${l.id}</strong> <a href="${l.url}" target="_blank" rel="noopener" style="color: #0064d2; text-decoration: none;">${l.url}</a>`
+                                ).join('<br>')}
+                            </div>
+                        ` : ''}
                         ${errorMessages.length > 0 ? `
                             <div style="font-size: 11px; color: #dc3545; background: #fff5f5; padding: 4px 8px; border-radius: 4px; max-height: 80px; overflow-y: auto;">
                                 ${errorMessages.slice(-3).join('<br>')}
@@ -1050,6 +1023,14 @@
 
                 if (listingResult.ok && data.status === 'success') {
                     success++;
+                    if (data.listing_url) {
+                        postedListings.push({
+                            id: record.id,
+                            artist: record.artist,
+                            title: record.title,
+                            url: data.listing_url
+                        });
+                    }
                 } else {
                     failed++;
                     const errorMsg = data.error || data.message || `HTTP ${listingResult.status}`;
@@ -1077,11 +1058,18 @@
                     </div>`;
                 }
             }
+            if (postedListings.length > 0) {
+                message += `<br><br><div style="font-size: 12px; background: #f0f8ff; padding: 8px 12px; border-radius: 4px; max-height: 200px; overflow-y: auto; text-align: left; border: 1px solid #d0e3f5;">
+                    <strong>Listings posted:</strong><br>${postedListings.map(l =>
+                        `✅ <strong>#${l.id}</strong> <a href="${l.url}" target="_blank" rel="noopener" style="color: #0064d2;">${l.url}</a>`
+                    ).join('<br>')}
+                </div>`;
+            }
             if (cancelPosting) message = `⏹️ Cancelled. ${success} posted, ${failed} failed`;
             statusDiv.innerHTML = message;
             statusDiv.className = failed > 0 || cancelPosting ? 'status-message status-warning' : 'status-message status-success';
             if (failed === 0 && !cancelPosting) {
-                setTimeout(() => { statusDiv.style.display = 'none'; }, 8000);
+                setTimeout(() => { statusDiv.style.display = 'none'; }, 15000);
             }
         }
 
@@ -1090,7 +1078,7 @@
         if (cancelBtn) { cancelBtn.disabled = true; cancelBtn.style.display = 'none'; }
         updateButtons();
 
-        if (hasLoadedOnce) window.loadPostEbayRecords();
+        if (hasLoadedOnce) loadLocations();
     }
 
     function showStatus(message, type) {
@@ -1104,20 +1092,20 @@
         }
     }
 
-    // ===== INIT =====
     window.initPostToEbay = function() {
-        console.log('🛒 Post to eBay initialized (manual load mode)');
+        console.log('🛒 Post to eBay initialized (auto-load mode)');
 
-        records = [];
+        locationTree = [];
+        locationById = {};
+        recordsByLocation.clear();
         selectedLocations.clear();
         expandedLocations.clear();
-        expandedSections.clear();
-        isLoadingRecords = false;
+        isLoadingLocations = false;
         hasLoadedOnce = false;
 
         const list = document.getElementById('ebay-locations');
         if (list) {
-            list.innerHTML = '<div style="text-align:center;padding:30px;color:#666;">Click <strong>📥 Load Records</strong> above to fetch records for posting.</div>';
+            list.innerHTML = '<div style="text-align:center;padding:30px;color:#666;">Loading locations...</div>';
         }
 
         const statusDiv = document.getElementById('ebay-status');
@@ -1126,20 +1114,13 @@
             statusDiv.innerHTML = '';
         }
 
-        const info = document.getElementById('ebay-load-records-info');
-        if (info) info.textContent = 'Click to fetch records from the server. This may take a moment.';
-
-        updateLoadButtonState(false);
         updateButtons();
 
-        fetchEbayConfig()
-            .then(() => console.log('✅ eBay config loaded into inputs'))
-            .catch(err => {
-                console.error('❌ Failed to load eBay config on init:', err);
-                showStatus(`❌ Could not load config: ${err.message}`, 'error');
-            });
+        loadLocations();
+    };
 
-        updatePriceInfo();
+    window.loadPostEbayRecords = function() {
+        return loadLocations();
     };
 
 })();

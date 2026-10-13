@@ -39,11 +39,11 @@
             notification: null
         },
         { 
-            page: 'post-discogs', 
-            icon: 'fa-share-alt', 
-            label: 'Post to Discogs', 
-            description: 'Post inventory to Discogs marketplace',
-            color: 'purple',
+            page: 'discogs', 
+            icon: 'fa-record-vinyl', 
+            label: 'Discogs', 
+            description: 'Manage Discogs orders',
+            color: 'pink',
             notification: null
         },
         { 
@@ -52,14 +52,6 @@
             label: 'Post to eBay', 
             description: 'Post inventory to eBay marketplace',
             color: 'info',
-            notification: null
-        },
-        { 
-            page: 'discogs-orders', 
-            icon: 'fa-shopping-bag', 
-            label: 'Discogs Orders', 
-            description: 'Manage orders from Discogs',
-            color: 'pink',
             notification: null
         },
         { 
@@ -537,11 +529,11 @@
 
         container.innerHTML = html;
 
+        // Kick off the notification refresh, then start the poll loop.
         setTimeout(() => {
             refreshNotificationCounts();
-        }, 500);
-
-        startPolling();
+            startPolling();
+        }, 300);
     };
 
     async function refreshNotificationCounts() {
@@ -630,7 +622,7 @@
         }
         
         if (btn) {
-            btn.textContent = '<i class="fas fa-check-double"></i> Mark All Read';
+            btn.innerHTML = '<i class="fas fa-check-double"></i> Mark All Read';
             btn.disabled = false;
         }
         
@@ -644,10 +636,14 @@
     };
 
     function startPolling() {
-        if (pollInterval) {
-            clearInterval(pollInterval);
-        }
-        pollInterval = setInterval(refreshNotificationCounts, POLL_INTERVAL);
+        stopPolling();
+        pollInterval = setInterval(() => {
+            // Only poll while the dashboard is actually visible
+            if (window.currentSlideName === 'admin-dashboard' ||
+                document.querySelector('.admin-dashboard')) {
+                refreshNotificationCounts();
+            }
+        }, POLL_INTERVAL);
         console.log(`🔔 Admin dashboard polling started (${POLL_INTERVAL/1000}s interval)`);
     }
 
@@ -693,8 +689,15 @@
         window.renderAdminDashboard();
     };
 
-    document.addEventListener('pageChange', function() {
-        stopPolling();
+    // Stop polling only when we LEAVE the admin dashboard.
+    // Previously this fired on every pageChange, including the one
+    // dispatched while rendering the dashboard itself, which killed
+    // the poll loop as soon as it was created.
+    document.addEventListener('pageChange', function(e) {
+        const newPage = e && e.detail && e.detail.page;
+        if (newPage !== 'admin-dashboard') {
+            stopPolling();
+        }
     });
 
     console.log('✅ Admin Dashboard module initialized');

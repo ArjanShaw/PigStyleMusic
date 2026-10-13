@@ -3,15 +3,18 @@
 // ADMIN ONLY - Restricted to admin/manager roles
 // Integrates with the global cart singleton
 // MERGED: Single unified view (records + custom + cart)
-// NO gift-card-specific logic — the cart treats every item generically.
-// Gift card balance redemption is handled by the Gift Cards page.
+// NO gift-card-specific logic in payment_entries.
+// Gift card redemption is an IMMEDIATE ledger event via
+// /api/gift-card/redeem. It is tracked separately from
+// cash/card/POS via a single `giftCardApplied` counter.
+// Partial checkout falls out of min(cardBalance, remainingOwed).
 // + RECEIPT: Auto-generates and downloads a .txt receipt on success.
 // ============================================================
 
 (function() {
     'use strict';
 
-    console.log('🚀 Custom Checkout module loaded (merged single-view, no gift-card logic, receipt enabled)');
+    console.log('🚀 Custom Checkout module loaded (merged single-view, gift card immediate redeem, receipt enabled)');
 
     // ===== API BASE URL =====
     const API_BASE = window.location.hostname === 'localhost' 
@@ -93,6 +96,7 @@
     let discountPercent = 0;
     let discountAmount = 0;
     let cashReceived = 0;
+    let giftCardApplied = 0;   // ← running total redeemed this session
     let outstandingBalance = 0;
     let paymentEntries = [];
     let isPaymentComplete = false;
@@ -140,6 +144,7 @@
         }
 
         cashReceived = 0;
+        giftCardApplied = 0;
         outstandingBalance = 0;
         paymentEntries = [];
         isPaymentComplete = false;
@@ -351,8 +356,9 @@
         }
         const finalTotal = totalWithTax - discountAmountTotal;
         
-        const remainingAfterCash = Math.max(0, finalTotal - cashReceived);
-        outstandingBalance = remainingAfterCash;
+        // Remaining = final total minus gift card applied minus cash received
+        const remainingAfterPayments = Math.max(0, finalTotal - giftCardApplied - cashReceived);
+        outstandingBalance = remainingAfterPayments;
         
         if (!items || items.length === 0) {
             return `
@@ -396,6 +402,7 @@
         const showCash = selectedPaymentMethod === 'cash';
         const showCard = selectedPaymentMethod === 'card';
         const showPos = selectedPaymentMethod === 'pos';
+        const showGiftCard = selectedPaymentMethod === 'giftcard';
 
         return `
             <div style="background: white; border-radius: 12px; border: 2px solid #28a745; overflow: hidden;">
@@ -420,6 +427,11 @@
                         <span style="font-weight: 600;">Discount:</span>
                         <span style="font-weight: 600;">-$${discountAmountTotal.toFixed(2)}</span>
                     </div>` : ''}
+                    ${giftCardApplied > 0 ? `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0; color: #6f42c1;">
+                        <span style="font-weight: 600;">🎁 Gift Card Applied:</span>
+                        <span style="font-weight: 600;">-$${giftCardApplied.toFixed(2)}</span>
+                    </div>` : ''}
                     ${cashReceived > 0 ? `
                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 0; color: #28a745;">
                         <span style="font-weight: 600;">Cash Paid:</span>
@@ -427,7 +439,7 @@
                     </div>` : ''}
                     <div style="border-bottom: 1px solid #e9ecef; padding-bottom: 8px; margin-bottom: 8px;"></div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <span style="font-weight: 600; color: #333; font-size: 16px;">${cashReceived > 0 && outstandingBalance <= 0.01 ? 'Paid in Full' : 'Remaining Balance:'}</span>
+                        <span style="font-weight: 600; color: #333; font-size: 16px;">${outstandingBalance <= 0.01 ? 'Paid in Full' : 'Remaining Balance:'}</span>
                         <span style="font-weight: bold; color: ${outstandingBalance <= 0.01 ? '#28a745' : '#dc3545'}; font-size: 20px;">${outstandingBalance <= 0.01 ? '✅ $0.00' : '$' + outstandingBalance.toFixed(2)}</span>
                     </div>
                     
@@ -449,6 +461,9 @@
                             </button>
                             <button onclick="selectPaymentMethod('pos')" id="pm-pos" class="payment-method-btn" style="padding: 8px 16px; background: white; color: #333; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s;">
                                 📟 POS Terminal
+                            </button>
+                            <button onclick="selectPaymentMethod('giftcard')" id="pm-giftcard" class="payment-method-btn" style="padding: 8px 16px; background: white; color: #333; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s;">
+                                🎁 Gift Card
                             </button>
                         </div>
                     </div>
@@ -487,6 +502,20 @@
                         <div id="pos-pending-note" style="display: ${posAwaitingManualComplete ? 'block' : 'none'}; margin-top: 8px; padding: 8px; background: #fff3cd; color: #856404; border-radius: 6px; font-size: 12px; text-align: center;">
                             ⏳ POS request sent. Waiting for terminal, or click Complete Payment to force close.
                         </div>
+                    </div>` : ''}
+
+                    ${showGiftCard ? `
+                    <div id="giftcard-payment-section" style="margin-bottom: 12px;">
+                        <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Gift Card Code</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="giftcard-code" placeholder="Scan or enter code..." 
+                                   style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; font-family: monospace; text-transform: uppercase; box-sizing: border-box;">
+                            <button onclick="applyGiftCard()" id="apply-giftcard-btn"
+                                    style="padding: 10px 20px; background: #6f42c1; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; white-space: nowrap;">
+                                <i class="fas fa-check"></i> Apply
+                            </button>
+                        </div>
+                        <div id="giftcard-status" style="margin-top: 6px; font-size: 13px; color: #666;"></div>
                     </div>` : ''}
 
                     <div id="pos-controls" style="display: none; margin-bottom: 12px;">
@@ -567,7 +596,7 @@
         if (!changeDisplay) return;
         
         const total = getTotalWithDiscount();
-        const remaining = Math.max(0, total - cashReceived);
+        const remaining = Math.max(0, total - giftCardApplied - cashReceived);
         const cashAmount = parseFloat(input?.value) || 0;
         
         if (total <= 0) {
@@ -731,6 +760,16 @@
         if (cashInput) {
             cashInput.addEventListener('input', updateCashDisplay);
             cashInput.addEventListener('change', updateCashDisplay);
+        }
+        
+        const giftCardInput = document.getElementById('giftcard-code');
+        if (giftCardInput) {
+            giftCardInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    applyGiftCard();
+                }
+            });
         }
         
         const statusEl = document.getElementById('payment-status');
@@ -1101,6 +1140,7 @@
             if (typeof window.cart !== 'undefined') {
                 window.cart.clear();
                 cashReceived = 0;
+                giftCardApplied = 0;
                 outstandingBalance = 0;
                 paymentEntries = [];
                 discountPercent = 0;
@@ -1108,6 +1148,136 @@
                 posPendingAmount = 0;
                 posAwaitingManualComplete = false;
                 renderCheckoutPanel();
+            }
+        }
+    };
+
+    // ============================================================
+    // GIFT CARD: IMMEDIATE REDEEM
+    // ============================================================
+    // Redemption is the accounting event. When the cashier clicks
+    // Apply, we look up the balance and immediately POST a redeem
+    // for min(balance, remainingOwed). The result is tracked in
+    // `giftCardApplied` (a simple counter) — not in paymentEntries,
+    // and not in any pending queue.
+    //
+    // Cancel/undo is intentionally NOT supported here. If a mistake
+    // is made, staff correct it via the accounting UI, same as any
+    // other journal entry.
+    // ============================================================
+    window.applyGiftCard = async function() {
+        const input = document.getElementById('giftcard-code');
+        const statusEl = document.getElementById('giftcard-status');
+        const code = (input?.value || '').trim().toUpperCase();
+
+        if (!code) {
+            if (statusEl) {
+                statusEl.textContent = '⚠️ Enter a gift card code';
+                statusEl.style.color = '#856404';
+            }
+            return;
+        }
+
+        const total = getTotalWithDiscount();
+        const remaining = Math.max(0, total - giftCardApplied - cashReceived);
+
+        if (remaining <= 0.01) {
+            if (statusEl) {
+                statusEl.textContent = '✅ Nothing left to cover';
+                statusEl.style.color = '#28a745';
+            }
+            return;
+        }
+
+        if (statusEl) {
+            statusEl.textContent = '⏳ Checking balance...';
+            statusEl.style.color = '#666';
+        }
+
+        // ---- Step 1: read balance ----
+        let balance = 0;
+        try {
+            const balRes = await fetch(`${API_BASE}/api/gift-card/balance/${encodeURIComponent(code)}`, {
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const balData = await balRes.json();
+
+            if (balData.status !== 'success') {
+                if (statusEl) {
+                    statusEl.textContent = `❌ ${balData.error || 'Card not found'}`;
+                    statusEl.style.color = '#dc3545';
+                }
+                return;
+            }
+
+            balance = parseFloat(balData.balance) || 0;
+            if (balance <= 0) {
+                if (statusEl) {
+                    statusEl.textContent = '❌ Card has no balance';
+                    statusEl.style.color = '#dc3545';
+                }
+                return;
+            }
+        } catch (err) {
+            if (statusEl) {
+                statusEl.textContent = `❌ Error checking balance: ${err.message}`;
+                statusEl.style.color = '#dc3545';
+            }
+            return;
+        }
+
+        // ---- Step 2: redeem min(balance, remaining) ----
+        const amountToApply = Math.min(balance, remaining);
+        const amountToApplyRounded = Math.round(amountToApply * 100) / 100;
+
+        if (statusEl) {
+            statusEl.textContent = `⏳ Redeeming $${amountToApplyRounded.toFixed(2)}...`;
+            statusEl.style.color = '#666';
+        }
+
+        try {
+            const redeemRes = await fetch(`${API_BASE}/api/gift-card/redeem`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    code: code,
+                    purchase_amount: amountToApplyRounded
+                })
+            });
+            const redeemData = await redeemRes.json();
+
+            if (redeemData.status !== 'success') {
+                if (statusEl) {
+                    statusEl.textContent = `❌ ${redeemData.error || 'Redemption failed'}`;
+                    statusEl.style.color = '#dc3545';
+                }
+                return;
+            }
+
+            const applied = parseFloat(redeemData.applied_amount) || amountToApplyRounded;
+            giftCardApplied += applied;
+
+            if (input) input.value = '';
+
+            renderCheckoutPanel();
+            // Re-select the current method so the highlighted button stays
+            setTimeout(() => selectPaymentMethod(selectedPaymentMethod), 50);
+
+            // Post-render status message
+            setTimeout(() => {
+                const newStatus = document.getElementById('giftcard-status');
+                if (newStatus) {
+                    newStatus.textContent = `✅ Applied $${applied.toFixed(2)} from ${code}. Remaining balance on card: $${(parseFloat(redeemData.new_balance) || 0).toFixed(2)}`;
+                    newStatus.style.color = '#28a745';
+                }
+            }, 120);
+
+        } catch (err) {
+            if (statusEl) {
+                statusEl.textContent = `❌ Redemption error: ${err.message}`;
+                statusEl.style.color = '#dc3545';
             }
         }
     };
@@ -1184,7 +1354,7 @@
             return;
         }
         
-        const remaining = Math.max(0, total - cashReceived);
+        const remaining = Math.max(0, total - giftCardApplied - cashReceived);
         if (remaining <= 0.01) {
             showToast('Nothing left to charge. Click Complete Payment.', 'info');
             return;
@@ -1273,7 +1443,7 @@
                         cashReceived += posPendingAmount;
                         posPendingAmount = 0;
                         
-                        const newRemaining = Math.max(0, getTotalWithDiscount() - cashReceived);
+                        const newRemaining = Math.max(0, getTotalWithDiscount() - giftCardApplied - cashReceived);
                         if (newRemaining <= 0.01) {
                             submitOrderWithPayments(getTotalWithDiscount(), items);
                         } else {
@@ -1360,7 +1530,8 @@
             
             if (typedCash > 0) {
                 paymentEntries = paymentEntries.filter(e => e.method !== 'Cash');
-                cashReceived = Math.min(typedCash, total);
+                const stillOwed = Math.max(0, total - giftCardApplied);
+                cashReceived = Math.min(typedCash, stillOwed);
                 paymentEntries.push({
                     method: 'Cash',
                     amount: cashReceived
@@ -1385,7 +1556,7 @@
             hidePosModal();
         }
         
-        const remaining = Math.max(0, total - cashReceived);
+        const remaining = Math.max(0, total - giftCardApplied - cashReceived);
         outstandingBalance = remaining;
         
         if (remaining > 0.01) {
@@ -1407,7 +1578,7 @@
                 }
             }
             
-            cashReceived = total;
+            cashReceived += remaining;
             outstandingBalance = 0;
         }
         
@@ -1423,9 +1594,11 @@
         
         let entries = paymentEntries.length > 0 ? [...paymentEntries] : [];
         const entriesSum = entries.reduce((s, e) => s + (e.amount || 0), 0);
-        const shortfall = Math.round((total - entriesSum) * 100) / 100;
+        // Account for gift card portion when checking shortfall
+        const totalCovered = entriesSum + giftCardApplied;
+        const shortfall = Math.round((total - totalCovered) * 100) / 100;
         
-        if (Math.abs(shortfall) > 0.01) {
+        if (Math.abs(shortfall) > 0.01 && shortfall > 0) {
             const methodLabel = {
                 cash: 'Cash',
                 card: 'Card (Square)',
@@ -1452,6 +1625,15 @@
                 .filter(item => item.type === 'record' && item.original_id)
                 .map(item => item.original_id);
             
+            // Notes string includes gift card line for the order record,
+            // but payment_entries sent to the backend excludes it — the
+            // gift-card journal entry was already written by /api/gift-card/redeem.
+            const notesEntries = [...entries];
+            if (giftCardApplied > 0) {
+                notesEntries.unshift({ method: 'Gift Card', amount: giftCardApplied });
+            }
+            const notesString = `Admin checkout - ${currentUserName} - Payment entries: ${notesEntries.map(e => `${e.method}: $${e.amount.toFixed(2)}`).join(', ')}`;
+            
             const orderData = {
                 items: window.cart.getCheckoutPayload(),
                 subtotal: window.cart.getTotal(),
@@ -1460,13 +1642,15 @@
                 shipping: { method: 'pickup', amount: 0 },
                 customer_name: currentUserName + ' (Admin)',
                 customer_email: '',
-                notes: `Admin checkout - ${currentUserName} - Payment entries: ${entries.map(e => `${e.method}: $${e.amount.toFixed(2)}`).join(', ')}`,
+                notes: notesString,
+                // Gift card excluded: it was already accounted for by the redeem call.
                 payment_entries: entries,
                 source: 'admin_checkout',
                 record_ids: recordIds,
                 discount_percent: discountPercent,
                 discount_amount: discountAmount,
                 cash_received: cashReceived,
+                gift_card_applied: giftCardApplied,
                 remaining_balance: 0
             };
             
@@ -1477,7 +1661,7 @@
                 
                 // ===== GENERATE + DOWNLOAD RECEIPT =====
                 try {
-                    const receiptText = buildReceiptText(items, entries, total, result.orderId);
+                    const receiptText = buildReceiptText(items, notesEntries, total, result.orderId);
                     const filename = buildReceiptFilename();
                     downloadReceipt(receiptText, filename);
                     console.log('✅ Receipt downloaded:', filename);
@@ -1489,6 +1673,7 @@
                 // Reset checkout state
                 window.cart.clear();
                 cashReceived = 0;
+                giftCardApplied = 0;
                 outstandingBalance = 0;
                 paymentEntries = [];
                 discountPercent = 0;
@@ -1968,5 +2153,5 @@
         }
     });
 
-    console.log('✅ Custom Checkout module initialized (merged single-view, no gift-card logic, receipt enabled)');
+    console.log('✅ Custom Checkout module initialized (merged single-view, gift card immediate redeem, receipt enabled)');
 })();
