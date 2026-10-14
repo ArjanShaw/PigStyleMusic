@@ -2,7 +2,7 @@
 <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
     <h2 style="color: #333; margin: 0 0 5px 0;">🎁 Gift Cards</h2>
     <p style="color: #666; margin: 0 0 10px 0;">Link credit to existing barcodes</p>
-    
+
     <!-- Actions -->
     <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap;">
         <button onclick="gcShowCreate()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
@@ -15,7 +15,7 @@
             <i class="fas fa-print"></i> Print Barcodes
         </button>
     </div>
-    
+
     <!-- Search -->
     <div style="display: flex; gap: 10px; width: 100%; flex-wrap: wrap;">
         <input type="text" id="gc-search" placeholder="Search by barcode or recipient..." style="flex: 1; min-width: 150px; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
@@ -26,7 +26,7 @@
             <i class="fas fa-times"></i> Clear
         </button>
     </div>
-    
+
     <!-- Gift Cards Table -->
     <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
         <div id="gc-list" style="width: 100%;">
@@ -43,14 +43,14 @@
             <h2 style="margin: 0; color: #333; font-size: 20px;">🔗 Link Credit to Barcode</h2>
             <button onclick="gcCloseModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
         </div>
-        
+
         <!-- Barcode Section -->
         <div style="margin-bottom: 12px;">
             <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">
                 Barcode / Card Code *
             </label>
             <div style="display: flex; gap: 8px; align-items: center;">
-                <input type="text" id="gc-barcode" placeholder="Scan or enter barcode..." 
+                <input type="text" id="gc-barcode" placeholder="Scan or enter barcode..."
                        style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; font-family: monospace; text-transform: uppercase;">
                 <button onclick="gcScanBarcode()" style="padding: 10px 16px; background: #6f42c1; color: white; border: none; border-radius: 8px; cursor: pointer;">
                     <i class="fas fa-camera"></i> Scan
@@ -58,21 +58,21 @@
             </div>
             <div id="gc-barcode-status" style="margin-top: 4px; font-size: 12px; color: #666;"></div>
         </div>
-        
+
         <!-- Record Info Display -->
         <div id="gc-record-info" style="display: none; padding: 10px; background: #e8f0fe; border-radius: 8px; margin-bottom: 12px; font-size: 13px;">
             <div id="gc-record-details"></div>
         </div>
-        
+
         <!-- Existing Gift Card Info -->
         <div id="gc-existing-card" style="display: none; padding: 10px; background: #fff3cd; border-radius: 8px; margin-bottom: 12px; font-size: 13px; border-left: 4px solid #ffc107;">
             <div id="gc-existing-details"></div>
         </div>
-        
+
         <!-- Card Value -->
         <div style="margin-bottom: 12px;">
             <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Credit Amount ($) *</label>
-            <input type="number" id="gc-value" placeholder="25.00" step="0.01" min="0.01" 
+            <input type="number" id="gc-value" placeholder="25.00" step="0.01" min="0.01"
                    style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
             <div style="display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap;">
                 <button onclick="document.getElementById('gc-value').value=10" style="padding: 4px 14px; background: #e9ecef; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px;">$10</button>
@@ -81,24 +81,24 @@
                 <button onclick="document.getElementById('gc-value').value=100" style="padding: 4px 14px; background: #e9ecef; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px;">$100</button>
             </div>
         </div>
-        
+
         <!-- Recipient Name -->
         <div style="margin-bottom: 12px;">
             <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Recipient Name *</label>
-            <input type="text" id="gc-recipient" placeholder="Recipient name" 
+            <input type="text" id="gc-recipient" placeholder="Recipient name"
                    style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
         </div>
-        
+
         <!-- Notes -->
         <div style="margin-bottom: 12px;">
             <label style="display: block; font-weight: 600; color: #555; font-size: 13px; margin-bottom: 4px;">Notes</label>
-            <input type="text" id="gc-notes" placeholder="Reason for gift card" 
+            <input type="text" id="gc-notes" placeholder="Reason for gift card"
                    style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
         </div>
-        
+
         <!-- Status Message -->
         <div id="gc-status" style="display: none; padding: 10px; border-radius: 8px; font-size: 13px; margin-top: 10px;"></div>
-        
+
         <!-- Buttons -->
         <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
             <button onclick="gcCloseModal()" style="padding: 10px 24px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Cancel</button>

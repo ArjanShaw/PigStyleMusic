@@ -12084,219 +12084,163 @@ def filter_records():
         'count': len(records)
     })
 
-
-@app.route('/api/gift-card/create', methods=['POST'])
+@app.route('/api/gift-card/adjust', methods=['POST'])
 @login_required
-def create_gift_card():
-    """Create a new gift card / store credit using journal_entries_simple"""
+def gift_card_adjust():
+    """
+    Add or remove credit on a gift card.
+
+    If the code does not yet exist as a gift card, this activates it.
+    If it exists, this adjusts the existing balance up or down.
+
+    Every write is recorded as source_type = 'gift_card' with a signed amount:
+      positive = credit added
+      negative = credit removed
+
+    Body:
+      {
+        "code": "GC-ABC123",
+        "delta": 25.00,             # positive = add, negative = remove
+        "recipient_name": "Jane",   # required on first activation
+        "reason": "Customer refund" # optional, appended to description
+      }
+
+    Refuses if the resulting balance would be < 0.
+    """
     try:
-        data = request.json
-        
-        code = data.get('code', '').upper().strip()
-        card_value = float(data.get('card_value', 0))
-        charge_amount = float(data.get('charge_amount', 0))
-        recipient_name = data.get('recipient_name', '').strip()
-        notes = data.get('notes', '').strip()
-        payment_method = data.get('payment_method', 'cash')
-        
+        data = request.json or {}
+        code = (data.get('code') or '').upper().strip()
+        reason = (data.get('reason') or '').strip()
+        recipient_name = (data.get('recipient_name') or '').strip()
+
         if not code:
-            return jsonify({'status': 'error', 'error': 'Barcode is required'}), 400
-        
-        if card_value <= 0:
-            return jsonify({'status': 'error', 'error': 'Card value must be greater than 0'}), 400
-        
-        if charge_amount < 0:
-            return jsonify({'status': 'error', 'error': 'Charge amount cannot be negative'}), 400
-        
-        if not recipient_name:
-            return jsonify({'status': 'error', 'error': 'Recipient name is required'}), 400
-        
+            return jsonify({'status': 'error', 'error': 'code is required'}), 400
+
+        try:
+            delta = float(data.get('delta', 0))
+        except (TypeError, ValueError):
+            return jsonify({'status': 'error', 'error': 'delta must be a number'}), 400
+
+        if delta == 0:
+            return jsonify({'status': 'error', 'error': 'delta cannot be zero'}), 400
+
         conn = get_db()
         cursor = conn.cursor()
-        
+
+        # Does this card already exist?
         cursor.execute('''
-            SELECT id, source_id 
-            FROM journal_entries_simple 
+            SELECT id, description FROM journal_entries_simple
             WHERE source_type = 'gift_card' AND source_id = ?
+            LIMIT 1
         ''', (code,))
         existing = cursor.fetchone()
-        
-        if existing:
-            cursor.execute('''
-                SELECT COALESCE(SUM(amount), 0) as balance
-                FROM journal_entries_simple
-                WHERE source_id = ? 
-                  AND source_type IN ('gift_card', 'gift_card_redeem')
-            ''', (code,))
-            
-            balance_result = cursor.fetchone()
-            current_balance = float(balance_result['balance']) / 100.0 if balance_result else 0
-            
+        is_new_card = existing is None
+
+        if is_new_card and not recipient_name:
             conn.close()
             return jsonify({
                 'status': 'error',
-                'error': f'Barcode "{code}" already has a gift card with balance ${current_balance:.2f}',
-                'existing_balance': current_balance,
-                'can_add_credit': True
+                'error': 'recipient_name is required when activating a new card'
             }), 400
-        
-        record_info = None
-        is_record_barcode = False
-        
-        if not code.startswith('GC-') and not code.startswith('GIFT-'):
-            cursor.execute('''
-                SELECT id, artist, title, barcode, status_id, store_price
-                FROM records 
-                WHERE barcode = ? OR id = ?
-            ''', (code, code))
-            record = cursor.fetchone()
-            
-            if record:
-                is_record_barcode = True
-                record_info = f"{record['artist']} - {record['title']}"
-                app.logger.info(f"Barcode {code} found in inventory: {record_info}")
-            else:
-                app.logger.info(f"Barcode {code} not found in inventory - treating as new gift card")
-        else:
-            app.logger.info(f"Barcode {code} is a gift card code - skipping inventory check")
-        
-        card_value_cents = int(round(card_value * 100))
-        charge_amount_cents = int(round(charge_amount * 100))
-        
-        today = datetime.now().strftime('%Y-%m-%d')
-        
-        if record_info:
-            description = f"{recipient_name} | {code} | ${card_value:.2f} | {record_info}"
-        else:
-            description = f"{recipient_name} | {code} | ${card_value:.2f} | NEW GIFT CARD"
-        
-        if notes:
-            description += f" | {notes}"
-        
+
+        # Current balance (0 for a new card)
+        cursor.execute('''
+            SELECT COALESCE(SUM(amount), 0) AS balance
+            FROM journal_entries_simple
+            WHERE source_id = ?
+              AND source_type IN ('gift_card', 'gift_card_redeem')
+        ''', (code,))
+        current_balance = float(cursor.fetchone()['balance']) / 100.0
+
+        new_balance = current_balance + delta
+        if new_balance < 0:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Cannot remove ${abs(delta):.2f}. '
+                         f'Card balance is only ${current_balance:.2f}.'
+            }), 400
+
+        # Accounts
         cursor.execute('SELECT id FROM accounts WHERE code = ?', ('2015',))
         liability = cursor.fetchone()
         if not liability:
             conn.close()
-            return jsonify({'status': 'error', 'error': 'Store Credit Liability account (2015) not found'}), 500
-        
-        account_map = {
-            'cash': '1015',
-            'square': '1030',
-            'card': '1015',
-            'venmo': '1015',
-            'paypal': '1020',
-            'store_credit': '2015'
-        }
-        payment_account_code = account_map.get(payment_method, '1015')
-        cursor.execute('SELECT id FROM accounts WHERE code = ?', (payment_account_code,))
-        payment_account = cursor.fetchone()
-        if not payment_account:
+            return jsonify({'status': 'error', 'error': 'Account 2015 not found'}), 500
+
+        cursor.execute('SELECT id FROM accounts WHERE code = ?', ('1015',))
+        cash = cursor.fetchone()
+        if not cash:
             conn.close()
-            return jsonify({'status': 'error', 'error': f'Payment account {payment_account_code} not found'}), 500
-        
+            return jsonify({'status': 'error', 'error': 'Account 1015 not found'}), 500
+
+        today = datetime.now().strftime('%Y-%m-%d')
+        amount_cents = int(round(abs(delta) * 100))
+        signed_amount = amount_cents if delta > 0 else -amount_cents
+
+        # Two sides of the entry. For additions: cash in, liability up.
+        # For removals: liability down, cash out.
+        if is_new_card:
+            description = f"{recipient_name} | {code} | ${delta:.2f} | NEW GIFT CARD"
+            if reason:
+                description += f" | {reason}"
+            post_from_id = cash['id']
+            post_to_id = liability['id']
+        else:
+            direction = 'ADD' if delta > 0 else 'REMOVE'
+            description = f"{code} | {direction} | ${abs(delta):.2f}"
+            if reason:
+                description += f" | {reason}"
+
+            if delta > 0:
+                post_from_id = cash['id']
+                post_to_id = liability['id']
+            else:
+                post_from_id = liability['id']
+                post_to_id = cash['id']
+
+        # Every change is stored as source_type = 'gift_card'.
         cursor.execute('''
             INSERT INTO journal_entries_simple (
-                transaction_date, 
-                description, 
-                source_type, 
-                source_id, 
-                post_from, 
-                post_to, 
+                transaction_date,
+                description,
+                source_type,
+                source_id,
+                post_from,
+                post_to,
                 amount,
                 created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, 'gift_card', ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ''', (
-            today, 
-            description, 
-            'gift_card', 
-            code, 
-            payment_account['id'],
-            liability['id'],
-            card_value_cents,
+            today,
+            description,
+            code,
+            post_from_id,
+            post_to_id,
+            signed_amount
         ))
-        
+
         entry_id = cursor.lastrowid
-        
-        diff_cents = card_value_cents - charge_amount_cents
-        if diff_cents > 0:
-            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('6010',))
-            promo_account = cursor.fetchone()
-            if promo_account:
-                cursor.execute('''
-                    INSERT INTO journal_entries_simple (
-                        transaction_date, 
-                        description, 
-                        source_type, 
-                        source_id, 
-                        post_from, 
-                        post_to, 
-                        amount,
-                        created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ''', (
-                    today, 
-                    f"{description} | PROMO", 
-                    'gift_card', 
-                    code, 
-                    promo_account['id'],
-                    payment_account['id'],
-                    -diff_cents,
-                ))
-        
-        if charge_amount_cents > card_value_cents:
-            excess_cents = charge_amount_cents - card_value_cents
-            cursor.execute('SELECT id FROM accounts WHERE code = ?', ('4000',))
-            revenue = cursor.fetchone()
-            if revenue:
-                cursor.execute('''
-                    INSERT INTO journal_entries_simple (
-                        transaction_date, 
-                        description, 
-                        source_type, 
-                        source_id, 
-                        post_from, 
-                        post_to, 
-                        amount,
-                        created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ''', (
-                    today, 
-                    f"{description} | EXCESS", 
-                    'gift_card', 
-                    code, 
-                    payment_account['id'],
-                    revenue['id'],
-                    excess_cents,
-                ))
-        
         conn.commit()
-        
-        cursor.execute('''
-            SELECT COALESCE(SUM(amount), 0) as balance
-            FROM journal_entries_simple
-            WHERE source_id = ? 
-              AND source_type IN ('gift_card', 'gift_card_redeem')
-        ''', (code,))
-        
-        balance_result = cursor.fetchone()
-        new_balance = float(balance_result['balance']) / 100.0 if balance_result else 0
-        
         conn.close()
-        
+
         return jsonify({
             'status': 'success',
-            'message': f'Gift card {code} activated with ${card_value:.2f}',
-            'entry_id': entry_id,
+            'message': (
+                f'Activated card {code} with ${delta:.2f}'
+                if is_new_card
+                else f'{"Added" if delta > 0 else "Removed"} ${abs(delta):.2f}'
+            ),
             'code': code,
-            'card_value': card_value,
-            'charge_amount': charge_amount,
-            'balance': new_balance,
-            'record_info': record_info or 'New Gift Card',
-            'is_record_barcode': is_record_barcode
+            'is_new_card': is_new_card,
+            'delta': delta,
+            'previous_balance': current_balance,
+            'new_balance': new_balance,
+            'entry_id': entry_id
         })
-        
+
     except Exception as e:
-        app.logger.error(f"Error creating gift card: {str(e)}")
+        app.logger.error(f'Gift card adjust error: {str(e)}')
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 

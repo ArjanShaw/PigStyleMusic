@@ -5,8 +5,8 @@
     let barcodeCheckResult = null;
     let isExistingCard = false;
 
-    const API_BASE = window.location.hostname === 'localhost' 
-        ? 'http://localhost:5000' 
+    const API_BASE = window.location.hostname === 'localhost'
+        ? 'http://localhost:5000'
         : 'https://www.pigstylemusic.com';
 
     function getHeaders() {
@@ -16,28 +16,50 @@
         return headers;
     }
 
+    // ============ Core submit helper ============
+    async function submitGiftCardChange(code, delta, recipientName, reason) {
+        const response = await fetch(`${API_BASE}/api/gift-card/adjust`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: getHeaders(),
+            body: JSON.stringify({
+                code: code,
+                delta: delta,
+                recipient_name: recipientName || '',
+                reason: reason || ''
+            })
+        });
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            const text = await response.text();
+            throw new Error('Server returned non-JSON response: ' + text.substring(0, 120));
+        }
+        return response.json();
+    }
+
     // ============ Load Gift Cards ============
     async function loadGiftCards() {
         const list = document.getElementById('gc-list');
         if (!list) return;
-        
+
         list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading...</div>';
-        
+
         try {
             const response = await fetch(`${API_BASE}/api/gift-card/list`, {
                 credentials: 'include',
                 headers: getHeaders()
             });
-            
+
             const contentType = response.headers.get('content-type');
             if (!contentType || !contentType.includes('application/json')) {
                 const text = await response.text();
                 console.error('Non-JSON response:', text.substring(0, 200));
                 throw new Error('Server returned non-JSON response');
             }
-            
+
             const data = await response.json();
-            
+
             if (data.status === 'success') {
                 giftCards = data.gift_cards || [];
                 filteredCards = [...giftCards];
@@ -55,17 +77,17 @@
     function renderGiftCards() {
         const list = document.getElementById('gc-list');
         if (!list) return;
-        
+
         const search = document.getElementById('gc-search')?.value.toLowerCase().trim() || '';
         let display = filteredCards;
         if (search) {
-            display = filteredCards.filter(c => 
+            display = filteredCards.filter(c =>
                 (c.code || '').toLowerCase().includes(search) ||
                 (c.recipient_name || '').toLowerCase().includes(search) ||
                 (c.record_info || '').toLowerCase().includes(search)
             );
         }
-        
+
         if (!display || display.length === 0) {
             list.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">No gift cards found</div>';
             return;
@@ -84,14 +106,14 @@
                 </tr>
             </thead>
             <tbody>`;
-        
+
         display.forEach(card => {
             const balance = card.balance || 0;
             const statusText = balance > 0 ? '✅ Active' : '⛔ Used';
             const statusColor = balance > 0 ? '#28a745' : '#dc3545';
             const recipient = card.recipient_name || '—';
             const recordInfo = card.record_info || '—';
-            
+
             html += `<tr>
                 <td style="padding: 6px 8px; border-bottom: 1px solid #eee; color: #333; font-family: monospace; font-size: 12px;">${card.code || '—'}</td>
                 <td style="padding: 6px 8px; border-bottom: 1px solid #eee; color: #333;">${recipient}</td>
@@ -101,14 +123,17 @@
                 <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: center;">
                     <span style="color: ${statusColor};">${statusText}</span>
                 </td>
-                <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: center;">
+                <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: center; white-space: nowrap;">
+                    <button onclick="gcAdjust('${card.code}')" style="padding: 4px 8px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; margin-right: 4px;">
+                        <i class="fas fa-sliders-h"></i>
+                    </button>
                     <button onclick="gcDelete('${card.code}')" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
                         <i class="fas fa-trash"></i>
                     </button>
                 </td>
             </tr>`;
         });
-        
+
         html += '</tbody></table>';
         list.innerHTML = html;
     }
@@ -118,18 +143,17 @@
         if (!barcode || barcode.length < 3) {
             return { exists: false, error: 'Barcode too short' };
         }
-        
+
         try {
-            // First check via the gift-card balance endpoint (checks if it's already a gift card)
             const balanceResponse = await fetch(`${API_BASE}/api/gift-card/balance/${encodeURIComponent(barcode)}`, {
                 credentials: 'include',
                 headers: getHeaders()
             });
-            
+
             let isGiftCard = false;
             let balance = 0;
             let recipient = '';
-            
+
             if (balanceResponse.ok) {
                 const balanceData = await balanceResponse.json();
                 if (balanceData.status === 'success') {
@@ -138,7 +162,7 @@
                     recipient = balanceData.recipient || '';
                 }
             }
-            
+
             if (isGiftCard) {
                 return {
                     exists: true,
@@ -148,11 +172,9 @@
                     message: `⚠️ This barcode already has a gift card with balance $${balance.toFixed(2)}`
                 };
             }
-            
-            // ====== NEW: Check if it's a gift card code format ======
-            // Gift card codes usually start with GC- or GIFT-
+
             const isGiftCardCode = barcode.startsWith('GC-') || barcode.startsWith('GIFT-');
-            
+
             if (isGiftCardCode) {
                 return {
                     exists: true,
@@ -161,17 +183,16 @@
                     isBlankGiftCard: true
                 };
             }
-            
-            // Check if barcode exists in records table (only for non-gift-card codes)
+
             const checkResponse = await fetch(`${API_BASE}/api/gift-card/check-barcode`, {
                 method: 'POST',
                 credentials: 'include',
                 headers: getHeaders(),
                 body: JSON.stringify({ code: barcode })
             });
-            
+
             const checkData = await checkResponse.json();
-            
+
             if (checkData.status === 'success' && checkData.exists) {
                 return {
                     exists: true,
@@ -180,15 +201,14 @@
                     message: `✅ Barcode found in inventory: ${checkData.record.artist} - ${checkData.record.title}`
                 };
             }
-            
-            // Barcode not found anywhere - but we'll allow it (it's a new barcode)
+
             return {
                 exists: false,
                 available: true,
                 type: 'new_barcode',
                 message: '✅ New barcode - ready to activate as gift card'
             };
-            
+
         } catch (err) {
             console.error('Error checking barcode:', err);
             return {
@@ -205,7 +225,6 @@
         document.getElementById('gc-value').value = '';
         document.getElementById('gc-recipient').value = '';
         document.getElementById('gc-notes').value = '';
-        // REMOVED: document.getElementById('gc-payment-method').value = 'cash';
         document.getElementById('gc-status').style.display = 'none';
         document.getElementById('gc-barcode-status').textContent = '';
         document.getElementById('gc-record-info').style.display = 'none';
@@ -239,7 +258,7 @@
         const existingCardDiv = document.getElementById('gc-existing-card');
         const recordDetailsDiv = document.getElementById('gc-record-details');
         const existingDetailsDiv = document.getElementById('gc-existing-details');
-        
+
         if (!barcode || barcode.length < 3) {
             statusDiv.textContent = '';
             recordInfoDiv.style.display = 'none';
@@ -248,13 +267,13 @@
             isExistingCard = false;
             return;
         }
-        
+
         statusDiv.textContent = '⏳ Checking barcode...';
         statusDiv.style.color = '#666';
-        
+
         const result = await checkBarcode(barcode);
         barcodeCheckResult = result;
-        
+
         if (result.error) {
             statusDiv.textContent = result.message || '❌ Error checking barcode';
             statusDiv.style.color = '#dc3545';
@@ -262,9 +281,8 @@
             existingCardDiv.style.display = 'none';
             return;
         }
-        
+
         if (result.type === 'gift_card') {
-            // Barcode already has a gift card
             statusDiv.textContent = result.message;
             statusDiv.style.color = '#856404';
             recordInfoDiv.style.display = 'none';
@@ -280,9 +298,8 @@
             isExistingCard = true;
             return;
         }
-        
+
         if (result.type === 'new_gift_card' || result.type === 'new_barcode') {
-            // Blank gift card barcode or new barcode - ready to activate
             statusDiv.textContent = result.message;
             statusDiv.style.color = '#28a745';
             existingCardDiv.style.display = 'none';
@@ -298,9 +315,8 @@
             isExistingCard = false;
             return;
         }
-        
+
         if (result.type === 'record') {
-            // Barcode found in records table
             statusDiv.textContent = result.message;
             statusDiv.style.color = '#17a2b8';
             existingCardDiv.style.display = 'none';
@@ -318,8 +334,7 @@
             isExistingCard = false;
             return;
         }
-        
-        // Barcode not found - but we'll allow it
+
         statusDiv.textContent = result.message || '✅ New barcode - ready to activate';
         statusDiv.style.color = '#28a745';
         recordInfoDiv.style.display = 'block';
@@ -339,28 +354,25 @@
         const value = parseFloat(document.getElementById('gc-value').value);
         const recipient = document.getElementById('gc-recipient').value.trim();
         const notes = document.getElementById('gc-notes').value.trim();
-        // REMOVED: const paymentMethod = document.getElementById('gc-payment-method').value;
-        
-        // Validation
+
         if (!barcode || barcode.length < 3) {
             showStatus('Please enter a valid barcode', 'error');
             return;
         }
-        
+
         if (!value || value <= 0) {
             showStatus('Please enter a valid credit amount', 'error');
             return;
         }
-        
+
         if (!recipient) {
             showStatus('Recipient name is required', 'error');
             return;
         }
-        
-        // Check if barcode exists in system (last check before submission)
+
         const checkResult = await checkBarcode(barcode);
+
         if (checkResult.type === 'gift_card') {
-            // Adding to existing card - confirm
             const confirmAdd = confirm(
                 `⚠️ This barcode already has a gift card.\n\n` +
                 `Current balance: $${checkResult.balance.toFixed(2)}\n` +
@@ -369,53 +381,33 @@
                 `Continue?`
             );
             if (!confirmAdd) return;
-        } else if (checkResult.type === 'new_gift_card' || checkResult.type === 'new_barcode' || checkResult.type === 'record') {
-            // All these are valid - proceed
-            // For records, we're linking credit to the record's barcode
-            // For new barcodes, we're activating a new gift card
-        } else {
-            // Should not happen, but just in case
+        } else if (
+            checkResult.type !== 'new_gift_card' &&
+            checkResult.type !== 'new_barcode' &&
+            checkResult.type !== 'record'
+        ) {
             showStatus('❌ Unable to verify barcode. Please try again.', 'error');
             return;
         }
-        
+
         const btn = document.getElementById('gc-btn');
         const originalText = btn.innerHTML;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
         btn.disabled = true;
-        
+
         try {
-            const response = await fetch(`${API_BASE}/api/gift-card/create`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: getHeaders(),
-                body: JSON.stringify({
-                    code: barcode,
-                    card_value: value,
-                    charge_amount: value,
-                    recipient_name: recipient,
-                    notes: notes || null
-                    // REMOVED: payment_method: paymentMethod
-                })
-            });
-            
-            const contentType = response.headers.get('content-type');
-            if (!contentType || !contentType.includes('application/json')) {
-                const text = await response.text();
-                console.error('Non-JSON response:', text.substring(0, 200));
-                throw new Error('Server returned non-JSON response');
-            }
-            
-            const data = await response.json();
-            
+            const data = await submitGiftCardChange(barcode, value, recipient, notes);
+
             if (data.status === 'success') {
-                let message = '';
+                let message;
                 if (checkResult.type === 'gift_card') {
                     message = `✅ Added $${value.toFixed(2)} to existing card ${barcode}`;
                 } else if (checkResult.type === 'record') {
                     message = `✅ Gift card linked to record barcode: ${barcode}`;
-                } else {
+                } else if (data.is_new_card) {
                     message = `✅ Gift card ${barcode} activated with $${value.toFixed(2)}`;
+                } else {
+                    message = `✅ ${data.message}`;
                 }
                 showStatus(message, 'success');
                 setTimeout(() => {
@@ -423,7 +415,7 @@
                     loadGiftCards();
                 }, 1500);
             } else {
-                showStatus(`❌ Error: ${data.error || 'Failed to create'}`, 'error');
+                showStatus(`❌ Error: ${data.error || 'Failed'}`, 'error');
             }
         } catch (err) {
             console.error('Error creating gift card:', err);
@@ -434,16 +426,66 @@
         }
     };
 
-    // ============ Delete Gift Card ============
-    window.gcDelete = async function(code) {
-        if (!code) return;
-        
+    // ============ Adjust Gift Card Balance ============
+    window.gcAdjust = function(code) {
         const card = giftCards.find(c => c.code === code);
         if (!card) {
             showToast('Gift card not found', 'error');
             return;
         }
-        
+
+        const balance = card.balance || 0;
+
+        const input = prompt(
+            `Adjust balance for ${code}\n\n` +
+            `Current balance: $${balance.toFixed(2)}\n\n` +
+            `Enter amount to ADD (e.g. 25) or REMOVE (e.g. -15):`
+        );
+        if (input === null) return;
+
+        const delta = parseFloat(input);
+        if (isNaN(delta) || delta === 0) {
+            showToast('Please enter a non-zero number', 'error');
+            return;
+        }
+
+        if (delta < 0 && Math.abs(delta) > balance) {
+            showToast(`Cannot remove $${Math.abs(delta).toFixed(2)} — balance is only $${balance.toFixed(2)}`, 'error');
+            return;
+        }
+
+        const reason = prompt('Reason (optional):', '') || '';
+
+        const action = delta > 0 ? 'Add' : 'Remove';
+        if (!confirm(`${action} $${Math.abs(delta).toFixed(2)} ${delta > 0 ? 'to' : 'from'} ${code}?\n\nNew balance will be $${(balance + delta).toFixed(2)}`)) {
+            return;
+        }
+
+        submitGiftCardChange(code, delta, '', reason)
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast(`✅ ${data.message}. New balance: $${data.new_balance.toFixed(2)}`, 'success');
+                    loadGiftCards();
+                } else {
+                    showToast(`❌ ${data.error || 'Adjust failed'}`, 'error');
+                }
+            })
+            .catch(err => {
+                console.error('Adjust error:', err);
+                showToast(`❌ ${err.message}`, 'error');
+            });
+    };
+
+    // ============ Delete Gift Card ============
+    window.gcDelete = async function(code) {
+        if (!code) return;
+
+        const card = giftCards.find(c => c.code === code);
+        if (!card) {
+            showToast('Gift card not found', 'error');
+            return;
+        }
+
         const balance = card.balance || 0;
         let confirmMsg = `Delete gift card ${code}?`;
         if (balance > 0) {
@@ -451,25 +493,25 @@
         } else {
             confirmMsg += '\n\nThis will remove all accounting records for this card.';
         }
-        
+
         if (!confirm(confirmMsg)) return;
-        
+
         try {
             const response = await fetch(`${API_BASE}/api/gift-card/${encodeURIComponent(code)}`, {
                 method: 'DELETE',
                 credentials: 'include',
                 headers: getHeaders()
             });
-            
+
             const contentType = response.headers.get('content-type');
             if (!contentType || !contentType.includes('application/json')) {
                 const text = await response.text();
                 console.error('Non-JSON response:', text.substring(0, 200));
                 throw new Error('Server returned non-JSON response');
             }
-            
+
             const data = await response.json();
-            
+
             if (data.status === 'success') {
                 showToast(`✅ Gift card ${code} deleted successfully`, 'success');
                 loadGiftCards();
@@ -498,21 +540,21 @@
             showToast('Please enter a number between 1 and 100', 'error');
             return;
         }
-        
+
         // Generate barcode codes and open print window
         const codes = [];
         for (let i = 0; i < count; i++) {
             const random = Math.random().toString(36).substring(2, 10).toUpperCase();
             codes.push(`GC-${random}`);
         }
-        
+
         // Open print window
         const printWindow = window.open('', '_blank', 'width=800,height=600');
         if (!printWindow) {
             showToast('Please allow popups for barcode printing', 'error');
             return;
         }
-        
+
         let html = `
         <!DOCTYPE html>
         <html>
@@ -533,7 +575,7 @@
             <h2>PigStyle Music - Gift Card Barcodes</h2>
             <p>Generated: ${new Date().toLocaleDateString()}</p>
             <div class="barcode-grid">`;
-        
+
         codes.forEach(code => {
             html += `
                 <div class="barcode-item">
@@ -542,7 +584,7 @@
                     <div class="code">${code}</div>
                 </div>`;
         });
-        
+
         html += `
             </div>
             <div class="no-print" style="margin-top: 20px; text-align: center;">
@@ -577,7 +619,7 @@
             <\/script>
         </body>
         </html>`;
-        
+
         printWindow.document.write(html);
         printWindow.document.close();
     };
@@ -653,7 +695,7 @@
             barcodeInput.addEventListener('input', function(e) {
                 onBarcodeInput(this.value.trim());
             });
-            
+
             barcodeInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
