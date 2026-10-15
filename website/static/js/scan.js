@@ -476,22 +476,52 @@
         const prevBtn = document.getElementById('scan-prev-btn');
         const nextBtn = document.getElementById('scan-next-btn');
 
+        // ==============================================================
+        // LOCATION CHANGE POLICY
+        // The select may only change when the user:
+        //   1. actively picks an option inside the dropdown, OR
+        //   2. clicks the prev/next arrow buttons.
+        // Initialization from localStorage is preserved.
+        //
+        // To enforce this we:
+        //   - return focus to the barcode input after any legitimate change
+        //   - strip printable keys from the select's native type-ahead
+        //   - swallow Space/Enter on the nav buttons
+        //   - route stray keystrokes anywhere else back to the barcode input
+        // ==============================================================
+
         if (locationSelect) {
             locationSelect.addEventListener('change', function() {
                 updateLocationPreview();
                 updateNavButtons();
+                if (scanInput) scanInput.focus();
+            });
+
+            locationSelect.addEventListener('keydown', function(e) {
+                const allowed = [
+                    'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+                    'Enter', 'Escape', 'Tab', 'Home', 'End', ' '
+                ];
+                if (!allowed.includes(e.key)) {
+                    e.preventDefault();
+                    if (scanInput && !scanInput.disabled) {
+                        scanInput.focus();
+                    }
+                }
             });
         }
 
         if (prevBtn) {
             prevBtn.addEventListener('click', function() {
                 window.scanNav('prev');
+                if (scanInput) scanInput.focus();
             });
         }
 
         if (nextBtn) {
             nextBtn.addEventListener('click', function() {
                 window.scanNav('next');
+                if (scanInput) scanInput.focus();
             });
         }
 
@@ -511,6 +541,28 @@
             });
             setTimeout(() => scanInput.focus(), 300);
         }
+
+        [prevBtn, nextBtn].forEach(btn => {
+            if (!btn) return;
+            btn.addEventListener('keydown', function(e) {
+                if (e.key === ' ' || e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            });
+        });
+
+        document.addEventListener('keydown', function(e) {
+            const t = e.target;
+            if (t === scanInput) return;
+            if (t === locationSelect) return;
+            if (t === prevBtn || t === nextBtn) return;
+            if (e.key.length === 1 || e.key === 'Enter') {
+                if (scanInput && !scanInput.disabled) {
+                    scanInput.focus();
+                }
+            }
+        }, true);
 
         updateNavButtons();
 
