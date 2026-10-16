@@ -4204,14 +4204,47 @@ def update_record(record_id):
     conn.close()
     return jsonify({'status': 'success', 'message': 'Record updated'})
 
+
 @app.route('/records/<int:record_id>', methods=['DELETE'])
 def delete_record(record_id):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM records WHERE id = ?', (record_id,))
-    conn.commit()
-    conn.close()
-    return jsonify({'status': 'success', 'message': 'Record deleted'})
+    """Delete a record by ID. Returns 404 if not found, otherwise
+    returns the deleted record's id and its artist/title so the client
+    can show a specific confirmation.
+    """
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            'SELECT id, artist, title FROM records WHERE id = ?',
+            (record_id,)
+        )
+        record = cursor.fetchone()
+
+        if not record:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Record #{record_id} not found'
+            }), 404
+
+        cursor.execute('DELETE FROM records WHERE id = ?', (record_id,))
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Record #{record_id} deleted',
+            'deleted_id': record['id'],
+            'artist': record['artist'],
+            'title': record['title']
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error deleting record {record_id}: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/records/search', methods=['GET'])
 def search_records():

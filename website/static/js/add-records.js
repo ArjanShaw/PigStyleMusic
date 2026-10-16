@@ -117,7 +117,6 @@
 
     async function loadRecentRecords() {
         try {
-            // status_ids=1,2 → include drafts (1) and active (2)
             const url = `${API_BASE}/records?status_ids=1,2&order_by=id&order_dir=DESC&limit=${RECENT_LIMIT}`;
             const response = await fetch(url, {
                 credentials: 'include',
@@ -201,6 +200,12 @@
                             ${consignorOptions(rec.consignor_id)}
                         </select>
                     </td>
+                    <td style="padding: 4px 6px; text-align: center;">
+                        <button class="recent-delete" data-id="${rec.id}" title="Delete record"
+                            style="padding: 3px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
                 </tr>
             `;
         }).join('');
@@ -215,6 +220,7 @@
                         <th style="text-align: left; padding: 4px 6px; font-size: 10px; color: #888; font-weight: 600;">Disc</th>
                         <th style="text-align: left; padding: 4px 6px; font-size: 10px; color: #888; font-weight: 600;">Price</th>
                         <th style="text-align: left; padding: 4px 6px; font-size: 10px; color: #888; font-weight: 600;">Consignor</th>
+                        <th style="text-align: center; padding: 4px 6px; font-size: 10px; color: #888; font-weight: 600;">Del</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
@@ -244,6 +250,9 @@
                 const v = el.value;
                 updateRecentField(el.dataset.id, 'store_price', v === '' ? null : parseFloat(v));
             });
+        });
+        container.querySelectorAll('.recent-delete').forEach(el => {
+            el.addEventListener('click', () => deleteRecentRecord(el.dataset.id));
         });
     }
 
@@ -284,6 +293,45 @@
         } catch (err) {
             console.error('Update error:', err);
             showStatus('Update error: ' + err.message, 'error');
+        }
+    }
+
+    async function deleteRecentRecord(recordId) {
+        const idNum = parseInt(recordId, 10);
+        const rec = recentRecords.find(r => r.id === idNum);
+        const label = rec ? `#${idNum} (${rec.artist || 'Unknown'} - ${rec.title || ''})` : `#${idNum}`;
+
+        if (!confirm(`Delete ${label}?\n\nThis cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/records/${idNum}`, {
+                method: 'DELETE',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                // Remove from local state and re-render immediately
+                recentRecords = recentRecords.filter(r => r.id !== idNum);
+                renderRecent();
+
+                // Reload from DB to make sure we're in sync (pulls the next
+                // record up into the top 20 if one exists)
+                await loadRecentRecords();
+
+                // Refresh purchase record counts
+                loadPurchases();
+
+                showStatus(`🗑️ Deleted #${idNum}`, 'success');
+            } else {
+                showStatus('Delete failed: ' + (result.error || 'unknown'), 'error');
+            }
+        } catch (err) {
+            console.error('Delete error:', err);
+            showStatus('Delete error: ' + err.message, 'error');
         }
     }
 
@@ -492,14 +540,11 @@
                 const releaseNote = record.discogs_id ? ` (Discogs #${record.discogs_id})` : ' (no release ID)';
                 showStatus(`✅ Added #${newId}: ${record.artist} - ${record.title}${releaseNote}`, 'success');
 
-                // ===== FORCE REFRESH OF RECENT TABLE FROM DB =====
-                // Clear search results
                 searchResults = [];
                 lastSearchTerm = '';
                 document.getElementById('add-results').innerHTML =
                     '<div style="text-align: center; padding: 20px; color: #999;">Select a purchase and search Discogs</div>';
 
-                // Refresh purchases (record counts) and recent table
                 loadPurchases();
                 setTimeout(() => {
                     const select = document.getElementById('add-purchase-select');
@@ -548,7 +593,7 @@
         }, 5000);
     }
 
-    // ==================== INIT (sequential so dropdowns populate first) ====================
+    // ==================== INIT ====================
 
     window.initAddRecords = async function() {
         console.log('Add Records initialized');
