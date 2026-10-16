@@ -2,7 +2,6 @@
 (function() {
     'use strict';
 
-    // ===== API BASE URL =====
     const API_BASE = window.location.hostname === 'localhost' 
         ? 'http://localhost:5000' 
         : 'https://www.pigstylemusic.com';
@@ -14,10 +13,13 @@
     let formats = [];
     let consignors = [];
     let searchResults = [];
-    let recentAdditions = [];
+    let recentRecords = [];
     let lastSearchTerm = '';
 
-    // Load purchases
+    const RECENT_LIMIT = 20;
+
+    // ==================== LOADERS ====================
+
     async function loadPurchases() {
         try {
             const response = await fetch(`${API_BASE}/api/inventory-purchases`, {
@@ -61,7 +63,6 @@
         }
     }
 
-    // Load conditions
     async function loadConditions() {
         try {
             const response = await fetch(`${API_BASE}/api/conditions`, {
@@ -71,20 +72,12 @@
             const data = await response.json();
             if (data.status === 'success') {
                 conditions = data.conditions || [];
-                const sleeveSelect = document.getElementById('add-default-sleeve');
-                const discSelect = document.getElementById('add-default-disc');
-                const opts = '<option value="">Select...</option>' + conditions.map(c => 
-                    `<option value="${c.id}">${c.display_name || c.condition_name}</option>`
-                ).join('');
-                if (sleeveSelect) sleeveSelect.innerHTML = opts;
-                if (discSelect) discSelect.innerHTML = opts;
             }
         } catch (err) {
             console.error('Failed to load conditions:', err);
         }
     }
 
-    // Load formats — used for the search-format dropdown next to the search bar
     async function loadFormats() {
         try {
             const response = await fetch(`${API_BASE}/api/formats`, {
@@ -95,10 +88,7 @@
             if (data.status === 'success') {
                 formats = data.formats || [];
                 const select = document.getElementById('add-search-format');
-                if (!select) {
-                    console.warn('⚠️ add-search-format not in DOM — skipping format dropdown populate');
-                    return;
-                }
+                if (!select) return;
                 select.innerHTML = '<option value="">All Formats</option>' + formats.map(f =>
                     `<option value="${f.name.toLowerCase()}">${f.name}</option>`
                 ).join('');
@@ -110,7 +100,6 @@
         }
     }
 
-    // Load consignors
     async function loadConsignors() {
         try {
             const response = await fetch(`${API_BASE}/users`, {
@@ -120,65 +109,193 @@
             const data = await response.json();
             if (data.status === 'success') {
                 consignors = (data.users || []).filter(u => u.role === 'consignor');
-                const select = document.getElementById('add-default-consignor');
-                if (select) {
-                    select.innerHTML = '<option value="none">None (store)</option>' + consignors.map(c => 
-                        `<option value="${c.id}">${c.username}${c.full_name ? ' (' + c.full_name + ')' : ''}</option>`
-                    ).join('');
-                }
             }
         } catch (err) {
             console.error('Failed to load consignors:', err);
         }
     }
 
-    // ===== BIND DEFAULT CHANGE EVENTS =====
-    function bindDefaultEvents() {
-        const defaultFields = [
-            'add-default-sleeve',
-            'add-default-disc',
-            'add-default-price',
-            'add-default-consignor'
-        ];
-
-        defaultFields.forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.addEventListener('change', function() {
-                    if (searchResults.length > 0) {
-                        renderResults(searchResults);
-                    }
-                });
-                el.addEventListener('input', function() {
-                    if (id === 'add-default-price') {
-                        if (searchResults.length > 0) {
-                            renderResults(searchResults);
-                        }
-                    }
-                });
-            }
-        });
-
-        // If format filter changes, re-run the search automatically
-        const searchFormat = document.getElementById('add-search-format');
-        if (searchFormat) {
-            searchFormat.addEventListener('change', function() {
-                const searchInput = document.getElementById('add-search-input');
-                if (searchInput && searchInput.value.trim()) {
-                    window.addRecordsSearch();
-                }
+    async function loadRecentRecords() {
+        try {
+            // status_ids=1,2 → include drafts (1) and active (2)
+            const url = `${API_BASE}/records?status_ids=1,2&order_by=id&order_dir=DESC&limit=${RECENT_LIMIT}`;
+            const response = await fetch(url, {
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' }
             });
+            const data = await response.json();
+            if (data.status === 'success') {
+                recentRecords = data.records || [];
+                console.log(`📀 Loaded ${recentRecords.length} recent records (newest id: ${recentRecords[0]?.id ?? 'none'})`);
+                renderRecent();
+            } else {
+                console.error('Failed to load recent records:', data.error);
+            }
+        } catch (err) {
+            console.error('Failed to load recent records:', err);
+        }
+    }
+
+    // ==================== RECENT TABLE RENDER ====================
+
+    function conditionOptions(selectedId) {
+        return conditions.map(c =>
+            `<option value="${c.id}" ${String(c.id) === String(selectedId) ? 'selected' : ''}>${c.display_name || c.condition_name}</option>`
+        ).join('');
+    }
+
+    function consignorOptions(selectedId) {
+        const noneSel = (!selectedId || selectedId === null) ? 'selected' : '';
+        return `<option value="none" ${noneSel}>None (store)</option>` +
+            consignors.map(c =>
+                `<option value="${c.id}" ${String(c.id) === String(selectedId) ? 'selected' : ''}>${c.username}</option>`
+            ).join('');
+    }
+
+    function renderRecent() {
+        const container = document.getElementById('add-recent');
+        if (!container) return;
+
+        if (!recentRecords.length) {
+            container.innerHTML = '<div style="text-align: center; padding: 10px; color: #999;">No records added yet</div>';
+            return;
         }
 
-        // ===== ENTER KEY: SEARCH THEN ADD-FIRST =====
+        const rows = recentRecords.map(rec => {
+            const price = (rec.store_price !== null && rec.store_price !== undefined)
+                ? Number(rec.store_price).toFixed(2)
+                : '';
+            return `
+                <tr data-record-id="${rec.id}" style="border-bottom: 1px solid #f5f5f5;">
+                    <td style="padding: 4px 6px; color: #999; font-size: 11px;">#${rec.id}</td>
+                    <td style="padding: 4px 6px; max-width: 220px;">
+                        <div style="font-weight: 600; color: #333; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            ${rec.artist || 'Unknown'}
+                        </div>
+                        <div style="color: #666; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            ${rec.title || ''}
+                        </div>
+                    </td>
+                    <td style="padding: 4px 6px;">
+                        <select class="recent-sleeve" data-id="${rec.id}"
+                            style="padding: 3px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; min-width: 130px;">
+                            <option value="">—</option>
+                            ${conditionOptions(rec.condition_sleeve_id)}
+                        </select>
+                    </td>
+                    <td style="padding: 4px 6px;">
+                        <select class="recent-disc" data-id="${rec.id}"
+                            style="padding: 3px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; min-width: 130px;">
+                            <option value="">—</option>
+                            ${conditionOptions(rec.condition_disc_id)}
+                        </select>
+                    </td>
+                    <td style="padding: 4px 6px;">
+                        <input type="number" step="0.01" class="recent-price" data-id="${rec.id}"
+                            value="${price}"
+                            style="width: 80px; padding: 3px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
+                    </td>
+                    <td style="padding: 4px 6px;">
+                        <select class="recent-consignor" data-id="${rec.id}"
+                            style="padding: 3px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; min-width: 130px;">
+                            ${consignorOptions(rec.consignor_id)}
+                        </select>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        container.innerHTML = `
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="border-bottom: 1px solid #ddd; background: #f8f9fa;">
+                        <th style="text-align: left; padding: 4px 6px; font-size: 10px; color: #888; font-weight: 600;">ID</th>
+                        <th style="text-align: left; padding: 4px 6px; font-size: 10px; color: #888; font-weight: 600;">Artist / Title</th>
+                        <th style="text-align: left; padding: 4px 6px; font-size: 10px; color: #888; font-weight: 600;">Sleeve</th>
+                        <th style="text-align: left; padding: 4px 6px; font-size: 10px; color: #888; font-weight: 600;">Disc</th>
+                        <th style="text-align: left; padding: 4px 6px; font-size: 10px; color: #888; font-weight: 600;">Price</th>
+                        <th style="text-align: left; padding: 4px 6px; font-size: 10px; color: #888; font-weight: 600;">Consignor</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+
+        bindRecentEvents();
+    }
+
+    function bindRecentEvents() {
+        const container = document.getElementById('add-recent');
+
+        container.querySelectorAll('.recent-sleeve').forEach(el => {
+            el.addEventListener('change', () => updateRecentField(el.dataset.id, 'condition_sleeve_id', el.value || null));
+        });
+        container.querySelectorAll('.recent-disc').forEach(el => {
+            el.addEventListener('change', () => updateRecentField(el.dataset.id, 'condition_disc_id', el.value || null));
+        });
+        container.querySelectorAll('.recent-consignor').forEach(el => {
+            el.addEventListener('change', () => {
+                const v = el.value;
+                updateRecentField(el.dataset.id, 'consignor_id', (v === 'none' || v === '') ? null : v);
+            });
+        });
+        container.querySelectorAll('.recent-price').forEach(el => {
+            el.addEventListener('change', () => {
+                const v = el.value;
+                updateRecentField(el.dataset.id, 'store_price', v === '' ? null : parseFloat(v));
+            });
+        });
+    }
+
+    async function updateRecentField(recordId, field, value) {
+        const idNum = parseInt(recordId, 10);
+        const body = {};
+        if (field === 'store_price') {
+            if (value === null || isNaN(value)) {
+                showStatus('Price must be a number', 'error');
+                return;
+            }
+            body[field] = value;
+        } else if (field === 'consignor_id') {
+            body[field] = (value === null || value === 'none') ? null : parseInt(value, 10);
+        } else {
+            body[field] = value === null ? null : parseInt(value, 10);
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/records/${idNum}`, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                const rec = recentRecords.find(r => r.id === idNum);
+                if (rec) {
+                    if (field === 'store_price') rec.store_price = value;
+                    else if (field === 'consignor_id') rec.consignor_id = body[field];
+                    else rec[field] = body[field];
+                }
+                showStatus(`Updated #${idNum} ${field}`, 'success');
+            } else {
+                showStatus('Update failed: ' + (result.error || 'unknown'), 'error');
+            }
+        } catch (err) {
+            console.error('Update error:', err);
+            showStatus('Update error: ' + err.message, 'error');
+        }
+    }
+
+    // ==================== ENTER KEY: SEARCH THEN ADD-FIRST ====================
+
+    function bindSearchInput() {
         const searchInput = document.getElementById('add-search-input');
         if (searchInput) {
             searchInput.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter' || e.keyCode === 13) {
                     e.preventDefault();
-
                     const currentTerm = searchInput.value.trim();
-
                     if (searchResults.length > 0 && currentTerm === lastSearchTerm) {
                         window.addRecord(0);
                     } else {
@@ -187,9 +304,20 @@
                 }
             });
         }
+
+        const searchFormat = document.getElementById('add-search-format');
+        if (searchFormat) {
+            searchFormat.addEventListener('change', function() {
+                const si = document.getElementById('add-search-input');
+                if (si && si.value.trim()) {
+                    window.addRecordsSearch();
+                }
+            });
+        }
     }
 
-    // Search Discogs
+    // ==================== SEARCH ====================
+
     window.addRecordsSearch = async function() {
         const purchaseSelect = document.getElementById('add-purchase-select');
         const purchaseId = purchaseSelect.value;
@@ -254,17 +382,18 @@
         if (searchInput) searchInput.focus();
     };
 
+    window.addReloadRecent = function() {
+        loadRecentRecords();
+    };
+
+    // ==================== SEARCH RESULT RENDER ====================
+
     function renderResults(results) {
         const resultsDiv = document.getElementById('add-results');
         if (!results || results.length === 0) {
             resultsDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">No results found</div>';
             return;
         }
-
-        const defaultSleeve = document.getElementById('add-default-sleeve').value;
-        const defaultDisc = document.getElementById('add-default-disc').value;
-        const defaultPrice = document.getElementById('add-default-price').value;
-        const defaultConsignor = document.getElementById('add-default-consignor').value;
 
         let html = '';
         results.forEach((record, idx) => {
@@ -278,11 +407,6 @@
                 `<img src="${image}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;">` : 
                 `<div style="width:50px;height:50px;background:#e0e0e0;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:20px;color:#bbb;">🎵</div>`;
 
-            const showSleeve = !defaultSleeve;
-            const showDisc = !defaultDisc;
-            const showPrice = !defaultPrice;
-            const showConsignor = !defaultConsignor || defaultConsignor === 'none';
-
             const releaseIdBadge = hasReleaseId 
                 ? `<span style="background:#d4edda;color:#155724;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:6px;">Discogs #${record.discogs_id}</span>`
                 : `<span style="background:#fff3cd;color:#856404;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:6px;">no release ID</span>`;
@@ -294,32 +418,8 @@
                         <div style="font-weight: 600; color: #333; font-size: 14px;">${artist}${releaseIdBadge}</div>
                         <div style="color: #666; font-size: 13px;">${title}</div>
                         <div style="color: #999; font-size: 11px;">Catalog: ${catalog}</div>
-                        ${!showPrice ? `<div style="color: #28a745; font-size: 11px; font-weight: 600;">Default Price: $${parseFloat(defaultPrice).toFixed(2)}</div>` : ''}
-                        ${!showSleeve ? `<div style="color: #888; font-size: 10px;">Sleeve: ${conditions.find(c => c.id == defaultSleeve)?.display_name || ''}</div>` : ''}
-                        ${!showDisc ? `<div style="color: #888; font-size: 10px;">Disc: ${conditions.find(c => c.id == defaultDisc)?.display_name || ''}</div>` : ''}
                     </div>
-                    <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
-                        ${showSleeve ? `
-                            <select class="add-sleeve-select" data-index="${idx}" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
-                                <option value="">Sleeve</option>
-                                ${conditions.map(c => `<option value="${c.id}">${c.display_name || c.condition_name}</option>`).join('')}
-                            </select>
-                        ` : ''}
-                        ${showDisc ? `
-                            <select class="add-disc-select" data-index="${idx}" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
-                                <option value="">Disc</option>
-                                ${conditions.map(c => `<option value="${c.id}">${c.display_name || c.condition_name}</option>`).join('')}
-                            </select>
-                        ` : ''}
-                        ${showPrice ? `
-                            <input type="number" class="add-price-input" data-index="${idx}" placeholder="Price" style="width:70px;padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:11px;">
-                        ` : ''}
-                        ${showConsignor ? `
-                            <select class="add-consignor-select" data-index="${idx}" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;">
-                                <option value="none">None</option>
-                                ${consignors.map(c => `<option value="${c.id}">${c.username}</option>`).join('')}
-                            </select>
-                        ` : ''}
+                    <div style="display: flex; gap: 6px; align-items: center;">
                         <button onclick="addRecord(${idx})" style="padding: 4px 14px; background: #28a745; color: white; border: none; border-radius: 20px; cursor: pointer; font-size: 12px;">
                             <i class="fas fa-plus"></i> Add
                         </button>
@@ -329,6 +429,8 @@
         });
         resultsDiv.innerHTML = html;
     }
+
+    // ==================== ADD RECORD (clone from most recent) ====================
 
     window.addRecord = async function(index) {
         const record = searchResults[index];
@@ -345,42 +447,17 @@
             return;
         }
 
-        const defaultSleeve = document.getElementById('add-default-sleeve').value;
-        const defaultDisc = document.getElementById('add-default-disc').value;
-        const defaultPrice = document.getElementById('add-default-price').value;
-        const defaultConsignor = document.getElementById('add-default-consignor').value;
+        const template = recentRecords.length > 0 ? recentRecords[0] : null;
 
-        const row = document.querySelectorAll('.add-sleeve-select')[index]?.closest('div');
+        const sleeveId = template ? template.condition_sleeve_id : null;
+        const discId = template ? template.condition_disc_id : null;
+        const price = template ? template.store_price : null;
+        const consignorId = template ? template.consignor_id : null;
 
-        const sleeveSelect = row?.querySelector('.add-sleeve-select');
-        const discSelect = row?.querySelector('.add-disc-select');
-        const priceInput = row?.querySelector('.add-price-input');
-        const consignorSelect = row?.querySelector('.add-consignor-select');
-
-        const sleeveId = sleeveSelect ? parseInt(sleeveSelect.value) : (defaultSleeve ? parseInt(defaultSleeve) : null);
-        const discId = discSelect ? parseInt(discSelect.value) : (defaultDisc ? parseInt(defaultDisc) : null);
-        const price = priceInput ? parseFloat(priceInput.value) : (defaultPrice ? parseFloat(defaultPrice) : null);
-        const consignorId = consignorSelect && consignorSelect.value !== 'none' ? parseInt(consignorSelect.value) : 
-                           (defaultConsignor && defaultConsignor !== 'none' ? parseInt(defaultConsignor) : null);
-
-        // ===== FORMAT: use the search-format dropdown (single source of truth) =====
         const searchFormatSelect = document.getElementById('add-search-format');
         const formatName = searchFormatSelect ? searchFormatSelect.value : '';
         const matchedFormat = formats.find(f => f.name.toLowerCase() === formatName);
         const formatId = matchedFormat ? matchedFormat.id : null;
-
-        if (!sleeveId) {
-            showStatus('Please select sleeve condition', 'error');
-            return;
-        }
-        if (!discId) {
-            showStatus('Please select disc condition', 'error');
-            return;
-        }
-        if (!price || price <= 0) {
-            showStatus('Please enter a valid price', 'error');
-            return;
-        }
 
         const now = new Date().toISOString();
 
@@ -411,20 +488,25 @@
             const result = await response.json();
 
             if (result.status === 'success') {
+                const newId = result.record?.id ?? '(unknown)';
                 const releaseNote = record.discogs_id ? ` (Discogs #${record.discogs_id})` : ' (no release ID)';
-                showStatus(`✅ Added: ${record.artist} - ${record.title}${releaseNote}`, record.discogs_id ? 'success' : 'warning');
-                addToRecent(record.artist || 'Unknown', record.title || 'Unknown', price);
+                showStatus(`✅ Added #${newId}: ${record.artist} - ${record.title}${releaseNote}`, 'success');
 
+                // ===== FORCE REFRESH OF RECENT TABLE FROM DB =====
+                // Clear search results
                 searchResults = [];
                 lastSearchTerm = '';
                 document.getElementById('add-results').innerHTML =
                     '<div style="text-align: center; padding: 20px; color: #999;">Select a purchase and search Discogs</div>';
 
+                // Refresh purchases (record counts) and recent table
                 loadPurchases();
                 setTimeout(() => {
                     const select = document.getElementById('add-purchase-select');
                     if (select) select.value = purchaseId;
                 }, 100);
+
+                await loadRecentRecords();
 
                 const searchInput = document.getElementById('add-search-input');
                 if (searchInput) {
@@ -440,42 +522,7 @@
         }
     };
 
-    function addToRecent(artist, title, price) {
-        recentAdditions.unshift({
-            artist: artist,
-            title: title,
-            price: price,
-            added: new Date().toLocaleTimeString()
-        });
-        if (recentAdditions.length > 20) {
-            recentAdditions.pop();
-        }
-        renderRecent();
-    }
-
-    function renderRecent() {
-        const recentDiv = document.getElementById('add-recent');
-        if (recentAdditions.length === 0) {
-            recentDiv.innerHTML = '<div style="text-align: center; padding: 10px; color: #999;">No records added yet</div>';
-            return;
-        }
-        let html = '';
-        recentAdditions.forEach(r => {
-            html += `
-                <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #f5f5f5; font-size: 13px;">
-                    <span>${r.artist} - ${r.title}</span>
-                    <span style="color: #28a745; font-weight: bold;">$${r.price.toFixed(2)}</span>
-                    <span style="color: #999; font-size: 11px;">${r.added}</span>
-                </div>
-            `;
-        });
-        recentDiv.innerHTML = html;
-    }
-
-    window.addClearRecent = function() {
-        recentAdditions = [];
-        renderRecent();
-    };
+    // ==================== STATUS ====================
 
     function showStatus(message, type) {
         const statusDiv = document.getElementById('add-status');
@@ -501,13 +548,16 @@
         }, 5000);
     }
 
-    window.initAddRecords = function() {
+    // ==================== INIT (sequential so dropdowns populate first) ====================
+
+    window.initAddRecords = async function() {
         console.log('Add Records initialized');
+        await loadConditions();
+        await loadConsignors();
+        await loadFormats();
         loadPurchases();
-        loadConditions();
-        loadFormats();
-        loadConsignors();
-        bindDefaultEvents();
+        await loadRecentRecords();
+        bindSearchInput();
 
         const searchInput = document.getElementById('add-search-input');
         if (searchInput) {

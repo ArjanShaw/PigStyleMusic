@@ -2878,10 +2878,7 @@ def get_records():
         last_seen_after    YYYY-MM-DD. Deprecated.
         last_seen_before   YYYY-MM-DD.
         batch_id           Integer, or -1 for NULL.
-        visible_only       true/false. When true, apply Feature 1 bin-max rule:
-                           location_id must be set, last_seen must be set, and
-                           last_seen must equal the max last_seen date for that
-                           same bin among Active records.
+        visible_only       true/false. When true, apply Feature 1 bin-max rule.
         hide_consigned     true/false. When true, exclude consignor_id NOT NULL.
         order_by           Column name (whitelisted).
         order_dir          ASC/DESC.
@@ -2891,6 +2888,7 @@ def get_records():
         location_name         Leaf name only (e.g. "RT")
         location_parent_name  Parent name or None (e.g. "Bin 20")
         location_display      Composed display string (e.g. "Bin 20/RT")
+        consignor_username    Username of the consignor, or NULL (store record)
     """
     try:
         conn = get_db()
@@ -2914,6 +2912,7 @@ def get_records():
                 cs.quality_index AS sleeve_quality,
                 cd.display_name AS disc_display,
                 cs.display_name AS sleeve_display,
+                u.username AS consignor_username,
                 CASE 
                     WHEN cd.quality_index IS NOT NULL AND cs.quality_index IS NOT NULL 
                     THEN (cd.quality_index + cs.quality_index) / 2.0 
@@ -2927,6 +2926,7 @@ def get_records():
             LEFT JOIN location_genres lg ON lg.location_id = r.location_id
             LEFT JOIN d_condition cd ON r.condition_disc_id = cd.id
             LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            LEFT JOIN users u ON r.consignor_id = u.id
             WHERE 1=1
         """
 
@@ -3057,13 +3057,7 @@ def get_records():
                 where_clauses.append("r.batch_id = ?")
                 params.append(batch_id_int)
 
-        # --- Feature 1: per-bin last_seen visibility (FIXED) ---
-        # A record is visible only if:
-        #   1. it is assigned to a location (location_id IS NOT NULL), and
-        #   2. it has a last_seen date, and
-        #   3. that date equals the most recent last_seen date for its bin
-        #      among Active records.
-        # Records with NULL location_id or NULL last_seen are hidden.
+        # --- Feature 1: per-bin last_seen visibility ---
         visible_only = request.args.get('visible_only', 'false').lower() == 'true'
         if visible_only:
             where_clauses.append("""
