@@ -5721,21 +5721,22 @@ def get_sales_over_time_daily_stats():
     })
 
 
-
 @app.route('/api/locations', methods=['GET'])
 def get_locations():
     """Get all locations with hierarchy info, composed display name,
-    count of Active records currently assigned to each location, and
-    the most recent last_seen timestamp among those records.
+    count of Active records currently assigned to each location, the
+    most recent last_seen timestamp among those records, and the
+    effective (inherited) pricing trio for each location.
+
+    Pricing inheritance: each of the three pricing columns resolves
+    independently by walking up the parent chain. The lowest level
+    where the column is non-NULL wins.
 
     Response row fields:
-        id
-        name                       leaf-only name (e.g. "RT")
-        parent_id                  parent's id, or null
-        parent_name                parent's name, or null
-        display_name               "Bin 20/RT" or standalone name
-        record_count               Active records assigned to this exact location
-        latest_last_seen           Max last_seen among Active records at this location
+        id, name, parent_id, parent_name, display_name
+        record_count, latest_last_seen
+        pricing_markup_percent, pricing_price_step, pricing_max_markdown   (raw on this row)
+        effective_markup, effective_step, effective_max_markdown           (resolved)
     """
     try:
         conn = get_db()
@@ -5747,11 +5748,36 @@ def get_locations():
             return jsonify({'status': 'success', 'locations': [], 'count': 0})
 
         cursor.execute('''
+            WITH RECURSIVE location_pricing(
+                location_id, effective_markup, effective_step, effective_max_markdown, depth
+            ) AS (
+                SELECT id,
+                       pricing_markup_percent,
+                       pricing_price_step,
+                       pricing_max_markdown,
+                       0
+                FROM locations
+                WHERE parent_id IS NULL
+                UNION ALL
+                SELECT l.id,
+                       COALESCE(l.pricing_markup_percent, lp.effective_markup),
+                       COALESCE(l.pricing_price_step,     lp.effective_step),
+                       COALESCE(l.pricing_max_markdown,   lp.effective_max_markdown),
+                       lp.depth + 1
+                FROM locations l
+                JOIN location_pricing lp ON l.parent_id = lp.location_id
+            )
             SELECT
                 l.id,
                 l.name,
                 l.parent_id,
                 p.name AS parent_name,
+                l.pricing_markup_percent,
+                l.pricing_price_step,
+                l.pricing_max_markdown,
+                lp.effective_markup,
+                lp.effective_step,
+                lp.effective_max_markdown,
                 (
                     SELECT COUNT(*)
                     FROM records r
@@ -5767,6 +5793,7 @@ def get_locations():
                 ) AS latest_last_seen
             FROM locations l
             LEFT JOIN locations p ON l.parent_id = p.id
+            LEFT JOIN location_pricing lp ON lp.location_id = l.id
             ORDER BY
                 COALESCE(p.name, l.name),
                 CASE WHEN l.parent_id IS NULL THEN 0 ELSE 1 END,
@@ -5785,6 +5812,12 @@ def get_locations():
                 'display_name': build_location_display(row['parent_name'], row['name']),
                 'record_count': row['record_count'] or 0,
                 'latest_last_seen': row['latest_last_seen'],
+                'pricing_markup_percent': row['pricing_markup_percent'],
+                'pricing_price_step': row['pricing_price_step'],
+                'pricing_max_markdown': row['pricing_max_markdown'],
+                'effective_markup': row['effective_markup'],
+                'effective_step': row['effective_step'],
+                'effective_max_markdown': row['effective_max_markdown'],
             })
 
         return jsonify({
@@ -5795,6 +5828,7 @@ def get_locations():
 
     except Exception as e:
         app.logger.error(f"Error getting locations: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
 
@@ -5806,18 +5840,16 @@ def create_location():
 
     Request body:
         {
-            "name": "LT",              # required
-            "parent_id": 162,          # optional, null for a root
-            "genre_id": 5,             # optional
-            "format_id": 1             # optional
+            "name": "LT",
+            "parent_id": 162,                 # optional
+            "genre_id": 5,                    # optional
+            "format_id": 1,                   # optional
+            "pricing_markup_percent": 60,     # optional, nullable
+            "pricing_price_step": 2,          # optional, nullable
+            "pricing_max_markdown": 50        # optional, nullable
         }
 
-    Rules:
-        - name is required and cannot be empty
-        - parent_id, if provided, must reference an existing location
-        - (name, parent_id) must be unique
-        - genre_id, if provided, must reference an existing genre
-        - format_id, if provided, must reference an existing format
+    Pricing fields are nullable. NULL means "inherit from parent".
     """
     try:
         data = request.get_json()
@@ -5832,51 +5864,74 @@ def create_location():
         genre_id = data.get('genre_id')
         format_id = data.get('format_id')
 
+        pricing_markup_percent = data.get('pricing_markup_percent')
+        pricing_price_step = data.get('pricing_price_step')
+        pricing_max_markdown = data.get('pricing_max_markdown')
+
         conn = get_db()
         cursor = conn.cursor()
 
-        # Validate parent if provided
         if parent_id is not None:
             cursor.execute('SELECT id FROM locations WHERE id = ?', (parent_id,))
             if not cursor.fetchone():
                 conn.close()
                 return jsonify({'status': 'error', 'error': f'parent_id {parent_id} not found'}), 400
 
-        # Validate genre if provided
         if genre_id is not None:
             cursor.execute('SELECT id FROM genres WHERE id = ?', (genre_id,))
             if not cursor.fetchone():
                 conn.close()
                 return jsonify({'status': 'error', 'error': f'genre_id {genre_id} not found'}), 400
 
-        # Validate format if provided
         if format_id is not None:
             cursor.execute('SELECT id FROM formats WHERE id = ?', (format_id,))
             if not cursor.fetchone():
                 conn.close()
                 return jsonify({'status': 'error', 'error': f'format_id {format_id} not found'}), 400
 
-        # Insert
         try:
             cursor.execute('''
-                INSERT INTO locations (name, genre_id, format_id, parent_id)
-                VALUES (?, ?, ?, ?)
-            ''', (name, genre_id, format_id, parent_id))
+                INSERT INTO locations (
+                    name, genre_id, format_id, parent_id,
+                    pricing_markup_percent, pricing_price_step, pricing_max_markdown
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                name, genre_id, format_id, parent_id,
+                pricing_markup_percent, pricing_price_step, pricing_max_markdown
+            ))
             new_id = cursor.lastrowid
             conn.commit()
         except sqlite3.IntegrityError as ie:
             conn.close()
             return jsonify({'status': 'error', 'error': f'Duplicate or invalid: {str(ie)}'}), 400
 
-        # Re-read the new row with its parent name for display
         cursor.execute('''
+            WITH RECURSIVE location_pricing(
+                location_id, effective_markup, effective_step, effective_max_markdown, depth
+            ) AS (
+                SELECT id,
+                       pricing_markup_percent,
+                       pricing_price_step,
+                       pricing_max_markdown,
+                       0
+                FROM locations
+                WHERE parent_id IS NULL
+                UNION ALL
+                SELECT l.id,
+                       COALESCE(l.pricing_markup_percent, lp.effective_markup),
+                       COALESCE(l.pricing_price_step,     lp.effective_step),
+                       COALESCE(l.pricing_max_markdown,   lp.effective_max_markdown),
+                       lp.depth + 1
+                FROM locations l
+                JOIN location_pricing lp ON l.parent_id = lp.location_id
+            )
             SELECT
-                l.id,
-                l.name,
-                l.parent_id,
-                p.name AS parent_name
+                l.id, l.name, l.parent_id, p.name AS parent_name,
+                l.pricing_markup_percent, l.pricing_price_step, l.pricing_max_markdown,
+                lp.effective_markup, lp.effective_step, lp.effective_max_markdown
             FROM locations l
             LEFT JOIN locations p ON l.parent_id = p.id
+            LEFT JOIN location_pricing lp ON lp.location_id = l.id
             WHERE l.id = ?
         ''', (new_id,))
         row = cursor.fetchone()
@@ -5890,11 +5945,155 @@ def create_location():
                 'parent_id': row['parent_id'],
                 'parent_name': row['parent_name'],
                 'display_name': build_location_display(row['parent_name'], row['name']),
+                'pricing_markup_percent': row['pricing_markup_percent'],
+                'pricing_price_step': row['pricing_price_step'],
+                'pricing_max_markdown': row['pricing_max_markdown'],
+                'effective_markup': row['effective_markup'],
+                'effective_step': row['effective_step'],
+                'effective_max_markdown': row['effective_max_markdown'],
             }
         }), 201
 
     except Exception as e:
         app.logger.error(f"Error creating location: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/locations/<int:location_id>/pricing', methods=['PUT'])
+@login_required
+@role_required(['admin'])
+def update_location_pricing(location_id):
+    """Set or clear the pricing trio on a single location.
+
+    Request body — any subset of:
+        {
+            "pricing_markup_percent": 60,   # number, or null to clear
+            "pricing_price_step": 2,
+            "pricing_max_markdown": 50
+        }
+
+    Omitted fields are left unchanged.
+    Explicit null clears that field (reverts to inheritance).
+
+    Returns the updated row including the resolved effective values.
+    """
+    try:
+        data = request.get_json()
+        if data is None:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT id FROM locations WHERE id = ?', (location_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'status': 'error', 'error': f'Location #{location_id} not found'}), 404
+
+        updates = []
+        params = []
+
+        if 'pricing_markup_percent' in data:
+            val = data['pricing_markup_percent']
+            if val is not None:
+                try:
+                    val = float(val)
+                except (TypeError, ValueError):
+                    conn.close()
+                    return jsonify({'status': 'error', 'error': 'pricing_markup_percent must be a number or null'}), 400
+            updates.append('pricing_markup_percent = ?')
+            params.append(val)
+
+        if 'pricing_price_step' in data:
+            val = data['pricing_price_step']
+            if val is not None:
+                try:
+                    val = float(val)
+                except (TypeError, ValueError):
+                    conn.close()
+                    return jsonify({'status': 'error', 'error': 'pricing_price_step must be a number or null'}), 400
+                if val < 0:
+                    conn.close()
+                    return jsonify({'status': 'error', 'error': 'pricing_price_step must be >= 0'}), 400
+            updates.append('pricing_price_step = ?')
+            params.append(val)
+
+        if 'pricing_max_markdown' in data:
+            val = data['pricing_max_markdown']
+            if val is not None:
+                try:
+                    val = abs(float(val))
+                except (TypeError, ValueError):
+                    conn.close()
+                    return jsonify({'status': 'error', 'error': 'pricing_max_markdown must be a number or null'}), 400
+                if val > 100:
+                    conn.close()
+                    return jsonify({'status': 'error', 'error': 'pricing_max_markdown must be <= 100'}), 400
+            updates.append('pricing_max_markdown = ?')
+            params.append(val)
+
+        if not updates:
+            conn.close()
+            return jsonify({'status': 'error', 'error': 'No pricing fields provided'}), 400
+
+        params.append(location_id)
+        cursor.execute(
+            f"UPDATE locations SET {', '.join(updates)} WHERE id = ?",
+            params
+        )
+        conn.commit()
+
+        cursor.execute('''
+            WITH RECURSIVE location_pricing(
+                location_id, effective_markup, effective_step, effective_max_markdown, depth
+            ) AS (
+                SELECT id,
+                       pricing_markup_percent,
+                       pricing_price_step,
+                       pricing_max_markdown,
+                       0
+                FROM locations
+                WHERE parent_id IS NULL
+                UNION ALL
+                SELECT l.id,
+                       COALESCE(l.pricing_markup_percent, lp.effective_markup),
+                       COALESCE(l.pricing_price_step,     lp.effective_step),
+                       COALESCE(l.pricing_max_markdown,   lp.effective_max_markdown),
+                       lp.depth + 1
+                FROM locations l
+                JOIN location_pricing lp ON l.parent_id = lp.location_id
+            )
+            SELECT
+                l.id, l.name, l.parent_id, p.name AS parent_name,
+                l.pricing_markup_percent, l.pricing_price_step, l.pricing_max_markdown,
+                lp.effective_markup, lp.effective_step, lp.effective_max_markdown
+            FROM locations l
+            LEFT JOIN locations p ON l.parent_id = p.id
+            LEFT JOIN location_pricing lp ON lp.location_id = l.id
+            WHERE l.id = ?
+        ''', (location_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'location': {
+                'id': row['id'],
+                'name': row['name'],
+                'parent_id': row['parent_id'],
+                'parent_name': row['parent_name'],
+                'display_name': build_location_display(row['parent_name'], row['name']),
+                'pricing_markup_percent': row['pricing_markup_percent'],
+                'pricing_price_step': row['pricing_price_step'],
+                'pricing_max_markdown': row['pricing_max_markdown'],
+                'effective_markup': row['effective_markup'],
+                'effective_step': row['effective_step'],
+                'effective_max_markdown': row['effective_max_markdown'],
+            }
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error updating location pricing: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 

@@ -11,7 +11,21 @@
 //
 // Both posts include the location display string AND location_index.
 //
-// No new backend endpoints are required.
+// Pricing is per-location. Each location carries three nullable fields
+// (pricing_markup_percent, pricing_price_step, pricing_max_markdown)
+// plus their resolved effective_* counterparts from the backend.
+// The lowest level at which a field is set wins. Fields that are set
+// on a given row are displayed inline; fields that are inherited are
+// left blank so it's visually obvious which level owns what.
+//
+// Backend endpoints used:
+//   GET    /api/locations
+//   POST   /api/locations
+//   PUT    /api/locations/<id>/pricing
+//   POST   /api/locations/<id>/clear-records
+//   DELETE /api/locations/<id>
+//   POST   /api/ebay/list
+//   POST   /api/discogs/create-listing-single
 // ================================================================
 
 (function() {
@@ -69,197 +83,6 @@
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    // Build a nested tree from the flat /api/locations response.
-    function buildTree(rows) {
-        const byId = {};
-        rows.forEach(r => {
-            byId[r.id] = {
-                id: r.id,
-                name: r.name,
-                display_name: r.display_name || r.name,
-                parent_id: r.parent_id,
-                parent_name: r.parent_name,
-                record_count: r.record_count || 0,
-                subtree_count: r.record_count || 0,
-                latest_last_seen: r.latest_last_seen || null,
-                children: []
-            };
-        });
-
-        const roots = [];
-        rows.forEach(r => {
-            const node = byId[r.id];
-            if (r.parent_id && byId[r.parent_id]) {
-                byId[r.parent_id].children.push(node);
-            } else {
-                roots.push(node);
-            }
-        });
-
-        function sortSiblings(nodes) {
-            nodes.sort((a, b) =>
-                a.display_name.localeCompare(b.display_name, undefined, { numeric: true })
-            );
-            nodes.forEach(n => sortSiblings(n.children));
-        }
-        sortSiblings(roots);
-
-        function computeSubtree(nodes) {
-            nodes.forEach(n => {
-                computeSubtree(n.children);
-                n.subtree_count = n.record_count +
-                    n.children.reduce((sum, c) => sum + c.subtree_count, 0);
-            });
-        }
-        computeSubtree(roots);
-
-        return roots;
-    }
-
-    function countNodes(roots) {
-        let total = 0;
-        let leaves = 0;
-        function walk(nodes) {
-            nodes.forEach(n => {
-                total++;
-                if (n.children.length === 0) leaves++;
-                walk(n.children);
-            });
-        }
-        walk(roots);
-        return { total, leaves };
-    }
-
-    // ================================================================
-    //  PRICING CONFIG (editable inputs)
-    // ================================================================
-
-    let pricingConfig = {
-        markup: null,
-        step: null,
-        maxMarkdown: null
-    };
-
-    async function fetchRequiredConfig(key) {
-        const r = await fetch(`${API_BASE}/config/${key}`, {
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        if (!r.ok) throw new Error(`Config ${key} not available (HTTP ${r.status})`);
-        const d = await r.json();
-        if (d.status !== 'success') throw new Error(`Config ${key} returned non-success`);
-        if (d.config_value === null || d.config_value === undefined || d.config_value === '') {
-            throw new Error(`Config ${key} is missing in app_config`);
-        }
-        const v = parseFloat(d.config_value);
-        if (isNaN(v)) throw new Error(`Config ${key} is not a number (got "${d.config_value}")`);
-        return v;
-    }
-
-    async function loadPricingConfigFromServer() {
-        const markup = await fetchRequiredConfig('PRICING_MARKUP_PERCENT');
-        const step   = await fetchRequiredConfig('PRICING_PRICE_STEP');
-        const maxMd  = await fetchRequiredConfig('PRICING_MAX_MARKDOWN');
-
-        pricingConfig = {
-            markup: markup,
-            step: step,
-            maxMarkdown: Math.abs(maxMd)
-        };
-
-        const markupEl = document.getElementById('locations-pricing-markup');
-        if (markupEl) markupEl.value = pricingConfig.markup;
-        const stepEl = document.getElementById('locations-pricing-step');
-        if (stepEl) stepEl.value = pricingConfig.step;
-        const maxEl = document.getElementById('locations-pricing-max-markdown');
-        if (maxEl) maxEl.value = pricingConfig.maxMarkdown;
-
-        updatePricingInfo();
-    }
-
-    async function saveOneConfig(key, value) {
-        const r = await fetch(`${API_BASE}/config/${key}`, {
-            method: 'PUT',
-            credentials: 'include',
-            headers: getHeaders(),
-            body: JSON.stringify({ config_value: value })
-        });
-        if (!r.ok) {
-            let detail = '';
-            try { detail = (await r.json()).error || ''; } catch (_) {}
-            throw new Error(`Failed to save ${key} (HTTP ${r.status}) ${detail}`);
-        }
-        const d = await r.json();
-        if (d.status !== 'success') throw new Error(`Failed to save ${key}: ${d.error || 'unknown error'}`);
-    }
-
-    async function savePricingConfigToServer() {
-        await saveOneConfig('PRICING_MARKUP_PERCENT', pricingConfig.markup);
-        await saveOneConfig('PRICING_PRICE_STEP', pricingConfig.step);
-        await saveOneConfig('PRICING_MAX_MARKDOWN', pricingConfig.maxMarkdown);
-    }
-
-    function updatePricingInfo() {
-        const info = document.getElementById('locations-pricing-info');
-        if (!info) return;
-
-        if (pricingConfig.markup === null) {
-            info.textContent = 'Config not loaded';
-            return;
-        }
-
-        const totalRecords = Object.values(currentTreeById)
-            .reduce((sum, n) => sum + n.record_count, 0);
-
-        info.textContent =
-            `Markup: +${pricingConfig.markup}% -${pricingConfig.step}%/wk ` +
-            `(floor -${pricingConfig.maxMarkdown}%) | ` +
-            `${totalRecords} records across ${Object.keys(currentTreeById).length} locations`;
-    }
-
-    window.locationsUpdatePricing = async function() {
-        if (isPosting) {
-            showStatus('⚠️ Cannot update pricing while posting', 'error');
-            return;
-        }
-
-        const markupInput = document.getElementById('locations-pricing-markup');
-        const stepInput   = document.getElementById('locations-pricing-step');
-        const maxInput    = document.getElementById('locations-pricing-max-markdown');
-
-        const newMarkup = parseFloat(markupInput.value);
-        const newStep   = parseFloat(stepInput.value);
-        const newMax    = parseFloat(maxInput.value);
-
-        if (isNaN(newMarkup) || newMarkup < -100 || newMarkup > 200) {
-            alert('Initial Markup must be a number between -100 and 200');
-            return;
-        }
-        if (isNaN(newStep) || newStep < 0) {
-            alert('Weekly Step must be a positive number');
-            return;
-        }
-        if (isNaN(newMax) || newMax < 0 || newMax > 100) {
-            alert('Max Markdown must be a number between 0 and 100');
-            return;
-        }
-
-        pricingConfig = {
-            markup: newMarkup,
-            step: newStep,
-            maxMarkdown: Math.abs(newMax)
-        };
-
-        try {
-            showStatus('⚙️ Saving pricing config...', 'info');
-            await savePricingConfigToServer();
-            updatePricingInfo();
-            showStatus('✅ Pricing config saved', 'success');
-        } catch (err) {
-            showStatus(`❌ ${err.message}`, 'error');
-        }
-    };
-
     // ================================================================
     //  SELECTION STATE
     // ================================================================
@@ -314,8 +137,74 @@
     }
 
     // ================================================================
-    //  RENDER
+    //  TREE BUILD + INDEX
     // ================================================================
+
+    function buildTree(rows) {
+        const byId = {};
+        rows.forEach(r => {
+            byId[r.id] = {
+                id: r.id,
+                name: r.name,
+                display_name: r.display_name || r.name,
+                parent_id: r.parent_id,
+                parent_name: r.parent_name,
+                record_count: r.record_count || 0,
+                subtree_count: r.record_count || 0,
+                latest_last_seen: r.latest_last_seen || null,
+                pricing_markup_percent: r.pricing_markup_percent,
+                pricing_price_step: r.pricing_price_step,
+                pricing_max_markdown: r.pricing_max_markdown,
+                effective_markup: r.effective_markup,
+                effective_step: r.effective_step,
+                effective_max_markdown: r.effective_max_markdown,
+                children: []
+            };
+        });
+
+        const roots = [];
+        rows.forEach(r => {
+            const node = byId[r.id];
+            if (r.parent_id && byId[r.parent_id]) {
+                byId[r.parent_id].children.push(node);
+            } else {
+                roots.push(node);
+            }
+        });
+
+        function sortSiblings(nodes) {
+            nodes.sort((a, b) =>
+                a.display_name.localeCompare(b.display_name, undefined, { numeric: true })
+            );
+            nodes.forEach(n => sortSiblings(n.children));
+        }
+        sortSiblings(roots);
+
+        function computeSubtree(nodes) {
+            nodes.forEach(n => {
+                computeSubtree(n.children);
+                n.subtree_count = n.record_count +
+                    n.children.reduce((sum, c) => sum + c.subtree_count, 0);
+            });
+        }
+        computeSubtree(roots);
+
+        return roots;
+    }
+
+    function countNodes(roots) {
+        let total = 0;
+        let leaves = 0;
+        function walk(nodes) {
+            nodes.forEach(n => {
+                total++;
+                if (n.children.length === 0) leaves++;
+                walk(n.children);
+            });
+        }
+        walk(roots);
+        return { total, leaves };
+    }
 
     function indexTree(roots) {
         const byId = {};
@@ -327,6 +216,199 @@
         }
         walk(roots);
         return byId;
+    }
+
+    // ================================================================
+    //  PRICE COMPUTATION (per-location effective values)
+    // ================================================================
+
+    function computePrice(storePrice, createdAt, pricing) {
+        if (!storePrice || storePrice <= 0 || !createdAt) return null;
+
+        if (!pricing ||
+            pricing.markup === null || pricing.markup === undefined ||
+            pricing.step === null || pricing.step === undefined ||
+            pricing.maxMarkdown === null || pricing.maxMarkdown === undefined) {
+            throw new Error('Pricing config not resolved for this location');
+        }
+
+        let createdDate;
+        if (typeof createdAt === 'string') {
+            createdDate = new Date(createdAt.split('T')[0].split(' ')[0]);
+        } else {
+            createdDate = new Date(createdAt);
+        }
+        if (isNaN(createdDate.getTime())) return null;
+
+        const today = new Date();
+        const daysOld = Math.floor((today - createdDate) / (1000 * 60 * 60 * 24));
+        const weeksOld = Math.floor(Math.max(0, daysOld) / 7);
+
+        const floor = -Math.abs(pricing.maxMarkdown);
+        let markup = pricing.markup - (weeksOld * pricing.step);
+        markup = Math.max(floor, markup);
+
+        return Math.round(storePrice * (1 + markup / 100) * 100) / 100;
+    }
+
+    function pricingForLocation(locationId) {
+        if (!locationId) return null;
+        const node = currentTreeById[locationId];
+        if (!node) return null;
+        return {
+            markup: node.effective_markup,
+            step: node.effective_step,
+            maxMarkdown: node.effective_max_markdown,
+        };
+    }
+
+    // ================================================================
+    //  PRICING EDIT (per-location, inline prompt-based)
+    // ================================================================
+
+    window.locationsAdminEditPricing = async function(locationId) {
+        if (isPosting) {
+            showStatus('⚠️ Cannot edit pricing while posting', 'error');
+            return;
+        }
+
+        const node = currentTreeById[locationId];
+        if (!node) return;
+
+        const curMarkup = node.pricing_markup_percent;
+        const curStep = node.pricing_price_step;
+        const curMaxMd = node.pricing_max_markdown;
+        const effMarkup = node.effective_markup;
+        const effStep = node.effective_step;
+        const effMaxMd = node.effective_max_markdown;
+
+        const fmtInherit = (raw, eff) => {
+            const rawStr = (raw === null || raw === undefined) ? 'inherit' : raw;
+            return `${rawStr} (eff: ${(eff === null || eff === undefined) ? '—' : eff})`;
+        };
+
+        const promptMarkup = prompt(
+            `Initial Markup % for "${node.display_name}".\n` +
+            `Leave blank to keep current. Type "clear" to reset to inherit.\n` +
+            `Current: ${fmtInherit(curMarkup, effMarkup)}`,
+            (curMarkup === null || curMarkup === undefined) ? '' : String(curMarkup)
+        );
+        if (promptMarkup === null) return;
+
+        const promptStep = prompt(
+            `Weekly Step % for "${node.display_name}".\n` +
+            `Leave blank to keep current. Type "clear" to reset to inherit.\n` +
+            `Current: ${fmtInherit(curStep, effStep)}`,
+            (curStep === null || curStep === undefined) ? '' : String(curStep)
+        );
+        if (promptStep === null) return;
+
+        const promptMax = prompt(
+            `Max Markdown % for "${node.display_name}".\n` +
+            `Leave blank to keep current. Type "clear" to reset to inherit.\n` +
+            `Current: ${fmtInherit(curMaxMd, effMaxMd)}`,
+            (curMaxMd === null || curMaxMd === undefined) ? '' : String(curMaxMd)
+        );
+        if (promptMax === null) return;
+
+        const parseField = (input) => {
+            const t = String(input).trim();
+            if (t === '') return { mode: 'omit' };
+            if (t.toLowerCase() === 'clear' || t.toLowerCase() === 'null') {
+                return { mode: 'set', value: null };
+            }
+            const n = parseFloat(t);
+            if (isNaN(n)) return { mode: 'invalid' };
+            return { mode: 'set', value: n };
+        };
+
+        const m = parseField(promptMarkup);
+        const s = parseField(promptStep);
+        const x = parseField(promptMax);
+
+        if (m.mode === 'invalid' || s.mode === 'invalid' || x.mode === 'invalid') {
+            alert('Invalid number entered. Nothing was changed.');
+            return;
+        }
+        if (s.mode === 'set' && s.value !== null && s.value < 0) {
+            alert('Weekly Step must be >= 0. Nothing was changed.');
+            return;
+        }
+        if (x.mode === 'set' && x.value !== null && Math.abs(x.value) > 100) {
+            alert('Max Markdown must be between 0 and 100. Nothing was changed.');
+            return;
+        }
+
+        const payload = {};
+        if (m.mode === 'set') payload.pricing_markup_percent = m.value;
+        if (s.mode === 'set') payload.pricing_price_step = s.value;
+        if (x.mode === 'set') payload.pricing_max_markdown = x.value === null ? null : Math.abs(x.value);
+
+        if (Object.keys(payload).length === 0) {
+            return;
+        }
+
+        try {
+            showStatus('⚙️ Saving location pricing...', 'info');
+            const r = await fetch(`${API_BASE}/api/locations/${locationId}/pricing`, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: getHeaders(),
+                body: JSON.stringify(payload)
+            });
+            let body = {};
+            try { body = await r.json(); } catch (_) {}
+            if (!r.ok || body.status !== 'success') {
+                throw new Error(body.error || `HTTP ${r.status}`);
+            }
+            showStatus(`✅ Pricing updated for "${node.display_name}"`, 'success');
+            await loadLocations();
+        } catch (err) {
+            showStatus(`❌ ${err.message}`, 'error');
+        }
+    };
+
+    // ================================================================
+    //  RENDER
+    // ================================================================
+
+    function renderPricingBadge(node) {
+        const rawM = node.pricing_markup_percent;
+        const rawS = node.pricing_price_step;
+        const rawX = node.pricing_max_markdown;
+
+        const hasAnyRaw =
+            (rawM !== null && rawM !== undefined) ||
+            (rawS !== null && rawS !== undefined) ||
+            (rawX !== null && rawX !== undefined);
+
+        // Nothing set on this row: all three values are inherited.
+        // Leave the badge area empty so it's visually obvious.
+        if (!hasAnyRaw) {
+            return '';
+        }
+
+        // Build a compact label showing only the fields this row sets,
+        // with inherited fields omitted.
+        const parts = [];
+        if (rawM !== null && rawM !== undefined) {
+            parts.push(`+${rawM}%`);
+        }
+        if (rawS !== null && rawS !== undefined) {
+            parts.push(`-${rawS}%/wk`);
+        }
+        if (rawX !== null && rawX !== undefined) {
+            parts.push(`floor -${Math.abs(rawX)}%`);
+        }
+
+        if (parts.length === 0) return '';
+
+        return `
+            <span title="Set on this location"
+                  style="background: #e1f5fe; padding: 1px 8px; border-radius: 10px; font-size: 10px; color: #01579b; font-weight: 600;">
+                ${escapeHtml(parts.join(' / '))}
+            </span>
+        `;
     }
 
     function renderNode(node, depth) {
@@ -406,6 +488,8 @@
             `;
         }
 
+        const pricingBadge = renderPricingBadge(node);
+
         let html = `
             <div data-loc-id="${node.id}"
                  style="padding: 6px 8px 6px ${8 + indent}px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; background: ${anySelected ? '#f0f8ff' : 'transparent'};">
@@ -426,9 +510,15 @@
                 ` : ''}
                 ${countBadge}
                 ${seenBadge}
+                ${pricingBadge}
                 <span style="margin-left: auto; color: #999; font-size: 11px; font-family: monospace;">
                     id=${node.id}
                 </span>
+                <button onclick="locationsAdminEditPricing(${node.id})"
+                        title="Edit pricing for this location (blank = keep, 'clear' = reset to inherit)"
+                        style="padding: 2px 10px; background: #6f42c1; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600;">
+                    ⚙️ Pricing
+                </button>
                 <button onclick="locationsAdminAddChild(${node.id})"
                         title="Add a child under this location"
                         style="padding: 2px 10px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600;">
@@ -494,13 +584,6 @@
             cancelBtn.disabled = !isPosting;
             cancelBtn.textContent = cancelRequested ? '⏹️ Cancelling…' : '⏹️ Cancel Posting';
         }
-
-        const pricingBtn = document.getElementById('locations-pricing-update-btn');
-        if (pricingBtn) {
-            pricingBtn.disabled = isPosting;
-            pricingBtn.style.opacity = isPosting ? '0.5' : '1';
-            pricingBtn.style.cursor = isPosting ? 'not-allowed' : 'pointer';
-        }
     }
 
     async function loadLocations() {
@@ -553,7 +636,6 @@
             treeEl.innerHTML = html;
 
             updateSelectionUI();
-            updatePricingInfo();
             clearStatus();
 
         } catch (err) {
@@ -714,36 +796,6 @@
     }
 
     // ================================================================
-    //  PRICE COMPUTATION
-    // ================================================================
-
-    function computePrice(storePrice, createdAt) {
-        if (!storePrice || storePrice <= 0 || !createdAt) return null;
-
-        if (pricingConfig.markup === null || pricingConfig.step === null || pricingConfig.maxMarkdown === null) {
-            throw new Error('Pricing config not loaded');
-        }
-
-        let createdDate;
-        if (typeof createdAt === 'string') {
-            createdDate = new Date(createdAt.split('T')[0].split(' ')[0]);
-        } else {
-            createdDate = new Date(createdAt);
-        }
-        if (isNaN(createdDate.getTime())) return null;
-
-        const today = new Date();
-        const daysOld = Math.floor((today - createdDate) / (1000 * 60 * 60 * 24));
-        const weeksOld = Math.floor(Math.max(0, daysOld) / 7);
-
-        const floor = -Math.abs(pricingConfig.maxMarkdown);
-        let markup = pricingConfig.markup - (weeksOld * pricingConfig.step);
-        markup = Math.max(floor, markup);
-
-        return Math.round(storePrice * (1 + markup / 100) * 100) / 100;
-    }
-
-    // ================================================================
     //  POST SELECTED - client-side loop, existing endpoints
     // ================================================================
 
@@ -791,9 +843,6 @@
         updateSelectionUI();
 
         try {
-            showStatus(`${statusPrefix} Loading pricing config...`, 'info');
-            await loadPricingConfigFromServer();
-
             showStatus(`${statusPrefix} Loading records from ${leafIds.length} leaf location(s)...`, 'info');
             const records = await fetchPostableRecordsForLeaves(leafIds);
 
@@ -814,7 +863,16 @@
                 }
 
                 const rec = records[i];
-                const price = computePrice(rec.store_price, rec.created_at);
+                const pricing = pricingForLocation(rec.location_id);
+
+                let price = null;
+                try {
+                    price = computePrice(rec.store_price, rec.created_at, pricing);
+                } catch (err) {
+                    failed++;
+                    errors.push(`Record #${rec.id}: ${err.message}`);
+                    continue;
+                }
 
                 if (!price) {
                     failed++;
@@ -907,9 +965,6 @@
         updateSelectionUI();
 
         try {
-            showStatus(`${statusPrefix} Loading pricing config...`, 'info');
-            await loadPricingConfigFromServer();
-
             showStatus(`${statusPrefix} Loading records from ${leafIds.length} leaf location(s)...`, 'info');
             const records = await fetchPostableRecordsForLeaves(leafIds);
 
@@ -930,7 +985,16 @@
                 }
 
                 const rec = records[i];
-                const price = computePrice(rec.store_price, rec.created_at);
+                const pricing = pricingForLocation(rec.location_id);
+
+                let price = null;
+                try {
+                    price = computePrice(rec.store_price, rec.created_at, pricing);
+                } catch (err) {
+                    failed++;
+                    errors.push(`Record #${rec.id}: ${err.message}`);
+                    continue;
+                }
 
                 if (!price) {
                     failed++;
@@ -1050,11 +1114,6 @@
         selectedIds = new Set();
         cancelRequested = false;
         isPosting = false;
-        try {
-            await loadPricingConfigFromServer();
-        } catch (err) {
-            console.warn('Could not load pricing config on init:', err.message);
-        }
         loadLocations();
     };
 
