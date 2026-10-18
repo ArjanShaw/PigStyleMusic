@@ -2,11 +2,20 @@
 (function() {
     'use strict';
 
-    let locations = [];
+    let locations = [];          // ALL locations (parents + leaves)
+    let leafLocations = [];      // deepest-generation only (navigable)
     let recentlyScanned = [];
     let locationIndexCache = {}; // Track next index per location
+    let locationLastSeen = {};   // location_id -> latest_last_seen (ISO string or null)
+    let parentIds = new Set();   // ids that are referenced as parent_id by someone
     const MAX_RECENT = 100;
     const STORAGE_KEY = 'pigstyle_recent_scans';
+    const URGENCY_KEY = 'pigstyle_scan_urgency_mode';
+    const IGNORE_EMPTY_KEY = 'pigstyle_scan_ignore_empty';
+
+    // Preferred leaf order within a bin. Anything not listed sorts after,
+    // alphabetically. Compared case-insensitively on the leaf name.
+    const LEAF_ORDER = ['lt', 'rt', 'lb', 'rb'];
 
     // ===== API BASE URL =====
     const API_BASE = window.location.hostname === 'localhost' 
@@ -60,12 +69,64 @@
         }
     }
 
+    // ===== FORMAT RELATIVE TIME =====
+    // Compact "how long ago" for the selected-location display.
+    // Returns "never" if timestamp is null/undefined.
+    function formatRelative(timestamp) {
+        if (!timestamp) return 'never';
+        let t;
+        try {
+            t = Date.parse(timestamp);
+        } catch (e) {
+            return 'never';
+        }
+        if (isNaN(t)) return 'never';
+
+        const diffMs = Date.now() - t;
+        if (diffMs < 0) return 'just now'; // clock skew
+
+        const min = Math.floor(diffMs / 60000);
+        if (min < 1) return 'just now';
+        if (min < 60) return `${min}m ago`;
+
+        const hrs = Math.floor(min / 60);
+        if (hrs < 24) return `${hrs}h ago`;
+
+        const days = Math.floor(hrs / 24);
+        if (days < 7) return `${days}d ago`;
+
+        const weeks = Math.floor(days / 7);
+        if (weeks < 5) return `${weeks}w ago`;
+
+        const months = Math.floor(days / 30);
+        if (months < 12) return `${months}mo ago`;
+
+        const years = Math.floor(days / 365);
+        return `${years}y ago`;
+    }
+
     // ===== GET LOCATION DISPLAY =====
-    // Prefers server-composed `display_name` ("Bin 20/RT").
-    // Falls back to `name` for standalone locations or older responses.
     function getLocationDisplay(loc) {
         if (!loc) return '';
         return loc.display_name || loc.name || '';
+    }
+
+    // ===== URGENCY MODE STATE =====
+    function isUrgencyMode() {
+        return localStorage.getItem(URGENCY_KEY) === '1';
+    }
+
+    function setUrgencyMode(on) {
+        localStorage.setItem(URGENCY_KEY, on ? '1' : '0');
+    }
+
+    // ===== IGNORE EMPTY MODE STATE =====
+    function isIgnoreEmpty() {
+        return localStorage.getItem(IGNORE_EMPTY_KEY) === '1';
+    }
+
+    function setIgnoreEmpty(on) {
+        localStorage.setItem(IGNORE_EMPTY_KEY, on ? '1' : '0');
     }
 
     // ===== LOAD LAST RECORDS BY LAST_SEEN =====
@@ -177,15 +238,128 @@
         if (counter) counter.textContent = recentlyScanned.length;
     }
 
-    // ===== GET LOCATION ORDER =====
-    // Sorts by display_name so "Bin 1/LB" comes before "Bin 1/LT", and
-    // "Bin 2/..." comes before "Bin 10/...". Falls back to name.
+    // ===== LEAF NAME / RANK =====
+    function getLeafName(loc) {
+        if (!loc) return '';
+        return String(loc.name || '');
+    }
+
+    function leafRank(loc) {
+        const leaf = getLeafName(loc).trim().toLowerCase();
+        const idx = LEAF_ORDER.indexOf(leaf);
+        return idx === -1 ? 99 : idx;
+    }
+
+    // ===== NORMAL COMPARATOR =====
+    function normalCmp(a, b) {
+        const aKey = getLocationDisplay(a);
+        const bKey = getLocationDisplay(b);
+        const keyCmp = aKey.localeCompare(bKey, undefined, { numeric: true });
+        if (keyCmp !== 0) {
+            const aParent = a.parent_name || '';
+            const bParent = b.parent_name || '';
+            if (aParent === bParent) {
+                const ra = leafRank(a);
+                const rb = leafRank(b);
+                if (ra !== rb) return ra - rb;
+                return getLeafName(a).localeCompare(getLeafName(b), undefined, { numeric: true });
+            }
+            return keyCmp;
+        }
+        return 0;
+    }
+
+    // ===== NAVIGABLE LEAF SET (respects ignore-empty) =====
+    // Returns the list of leaf locations eligible for selection/navigation
+    // under the current settings.
+    function getNavigableLocations() {
+        if (!isIgnoreEmpty()) return leafLocations;
+        return leafLocations.filter(loc => (loc.record_count || 0) > 0);
+    }
+
+    // ===== GET LOCATION ORDER (leaves only) =====
+    //   Normal  - by composed display_name (numeric bin order), with leaf
+    //             sub-order LT, RT, LB, RB inside each bin.
+    //   Urgent  - purely by latest_last_seen ascending (oldest first). NULL
+    //             (never scanned) sorts first. Ties fall back to normal order.
+    //
+    // Parents are never navigable — only the deepest generation (leaves).
+    // When "ignore empty" is on, empty bins are excluded from both modes.
     function getLocationOrder() {
-        return [...locations].sort((a, b) => {
-            const aKey = getLocationDisplay(a);
-            const bKey = getLocationDisplay(b);
-            return aKey.localeCompare(bKey, undefined, { numeric: true });
+        const base = [...getNavigableLocations()];
+
+        if (!isUrgencyMode()) {
+            return base.sort(normalCmp);
+        }
+
+        const seenValue = (loc) => {
+            const raw = locationLastSeen[loc.id];
+            if (!raw) return -Infinity;
+            const t = Date.parse(raw);
+            return isNaN(t) ? -Infinity : t;
+        };
+
+        return base.sort((a, b) => {
+            const sa = seenValue(a);
+            const sb = seenValue(b);
+            if (sa !== sb) return sa - sb;
+            return normalCmp(a, b);
         });
+    }
+
+    // ===== REBUILD DROPDOWN =====
+    // Re-sorts and repopulates. Preserves the current selection if possible;
+    // if the current selection is no longer available (e.g. its bin became
+    // empty and "ignore empty" is on), picks the first available location.
+    function rebuildLocationSelect() {
+        const select = document.getElementById('scan-location-select');
+        if (!select) return;
+
+        const currentValue = select.value;
+        const sorted = getLocationOrder();
+
+        select.innerHTML = '<option value="">-- Select Location --</option>';
+        sorted.forEach(loc => {
+            const opt = document.createElement('option');
+            opt.value = loc.id;
+            opt.textContent = getLocationDisplay(loc);
+            select.appendChild(opt);
+        });
+
+        const stillPresent = currentValue &&
+            sorted.some(l => String(l.id) === String(currentValue));
+
+        if (stillPresent) {
+            select.value = currentValue;
+        } else if (sorted.length > 0) {
+            // Current selection is no longer navigable: fall back to first.
+            select.value = String(sorted[0].id);
+        }
+
+        updateLocationPreview();
+        updateNavButtons();
+    }
+
+    // ===== JUMP TO TOP OF CURRENT ORDER =====
+    // Forces the selection to the first location in the current mode's
+    // order (normal → LT/RT/LB/RB; urgent → most urgent). Used when a
+    // toggle changes the navigable set so the user lands somewhere
+    // deterministic in the new ordering.
+    function selectTopOfOrder() {
+        const select = document.getElementById('scan-location-select');
+        if (!select) return;
+
+        const sorted = getLocationOrder();
+        if (sorted.length === 0) {
+            select.value = '';
+            updateLocationPreview();
+            updateNavButtons();
+            return;
+        }
+
+        select.value = String(sorted[0].id);
+        updateLocationPreview();
+        updateNavButtons();
     }
 
     // ===== NAVIGATE TO NEXT/PREVIOUS LOCATION =====
@@ -209,12 +383,7 @@
         
         if (currentIdx === -1) return;
 
-        let newIdx;
-        if (direction === 'next') {
-            newIdx = currentIdx + 1;
-        } else {
-            newIdx = currentIdx - 1;
-        }
+        let newIdx = direction === 'next' ? currentIdx + 1 : currentIdx - 1;
 
         if (newIdx >= 0 && newIdx < sorted.length) {
             select.value = sorted[newIdx].id;
@@ -258,27 +427,41 @@
             const data = await response.json();
             if (data.status === 'success') {
                 locations = data.locations || [];
-                
-                locations.sort((a, b) => {
-                    const aKey = getLocationDisplay(a);
-                    const bKey = getLocationDisplay(b);
-                    return aKey.localeCompare(bKey, undefined, { numeric: true });
-                });
-                
-                select.innerHTML = '<option value="">-- Select Location --</option>';
+
+                // Build parent id set. A location is a leaf iff no other
+                // location references it as parent_id.
+                parentIds = new Set();
                 locations.forEach(loc => {
-                    const opt = document.createElement('option');
-                    opt.value = loc.id;
-                    opt.textContent = getLocationDisplay(loc);
-                    select.appendChild(opt);
+                    if (loc.parent_id !== null && loc.parent_id !== undefined) {
+                        parentIds.add(loc.parent_id);
+                    }
+                });
+
+                leafLocations = locations.filter(loc => !parentIds.has(loc.id));
+
+                locationLastSeen = {};
+                locations.forEach(loc => {
+                    locationLastSeen[loc.id] = loc.latest_last_seen || null;
                 });
                 
-                const savedLocation = localStorage.getItem('pigstyle_scan_location');
-                if (savedLocation && locations.some(l => l.id == savedLocation)) {
-                    select.value = savedLocation;
+                // Populate the dropdown (sorted per current mode).
+                rebuildLocationSelect();
+                
+                if (isUrgencyMode()) {
+                    // In urgency mode the current location IS the most urgent.
+                    // Ignore any previously saved selection.
+                    selectTopOfOrder();
+                } else {
+                    // Normal mode: restore the saved location if it still
+                    // exists AND is navigable under current filters.
+                    const savedLocation = localStorage.getItem('pigstyle_scan_location');
+                    const navigable = getNavigableLocations();
+                    if (savedLocation && navigable.some(l => l.id == savedLocation)) {
+                        select.value = savedLocation;
+                    }
+                    updateLocationPreview();
+                    updateNavButtons();
                 }
-                updateLocationPreview();
-                updateNavButtons();
             }
         } catch (err) {
             console.error('Error loading locations:', err);
@@ -286,6 +469,8 @@
     }
 
     // ===== UPDATE LOCATION PREVIEW =====
+    // Shows "📍 Bin 24/RB · never · 42 rec" in the display span.
+    // Falls back to "No location selected" when nothing is chosen.
     function updateLocationPreview() {
         const select = document.getElementById('scan-location-select');
         const display = document.getElementById('scan-location-display');
@@ -298,13 +483,24 @@
         const loc = locations.find(l => l.id === locationId);
 
         if (loc) {
-            display.textContent = `📍 ${getLocationDisplay(loc)}`;
+            const name = getLocationDisplay(loc);
+            const seenRaw = locationLastSeen[loc.id];
+            const rel = formatRelative(seenRaw);
+            const count = loc.record_count || 0;
+
+            display.textContent = `📍 ${name} · ${rel} · ${count} rec`;
+
+            display.title = seenRaw
+                ? `Last scanned: ${formatTimestamp(seenRaw)} · ${count} record(s)`
+                : `Never scanned · ${count} record(s)`;
+
             display.style.color = '#28a745';
             input.disabled = false;
             btn.disabled = false;
             localStorage.setItem('pigstyle_scan_location', String(locationId));
         } else {
             display.textContent = 'No location selected';
+            display.title = '';
             display.style.color = '#dc3545';
             input.disabled = true;
             btn.disabled = true;
@@ -338,9 +534,7 @@
         }
 
         const input = document.getElementById('scan-input');
-        if (input) {
-            input.value = '';
-        }
+        if (input) input.value = '';
 
         try {
             const locationIndex = getNextLocationIndex(locationId);
@@ -360,9 +554,11 @@
 
             if (data.status === 'success' && data.record) {
                 locationIndexCache[locationId] = locationIndex;
+
+                // Just scanned this location: bump its last-seen so urgency
+                // order stays live without a full reload.
+                locationLastSeen[locationId] = data.record.last_seen || new Date().toISOString();
                 
-                // Use display_name composed by the server if provided,
-                // otherwise fall back to leaf-only location_name.
                 const composedLocation = data.record.location_display
                     || data.record.location_name
                     || 'Unknown';
@@ -385,6 +581,16 @@
                 saveRecentScans();
                 renderRecords();
                 updateCounter();
+
+                // If urgency mode is on, re-sort so the just-scanned location
+                // sinks to the bottom (least urgent). Selection stays put.
+                if (isUrgencyMode()) {
+                    rebuildLocationSelect();
+                } else {
+                    // Even in normal mode, the displayed "X ago" should
+                    // refresh to "just now" for the current bin.
+                    updateLocationPreview();
+                }
 
                 const timeStr = new Date(data.record.last_seen).toLocaleString('en-US', {
                     hour: '2-digit',
@@ -412,9 +618,7 @@
             playSound('error');
         }
 
-        if (input) {
-            setTimeout(() => input.focus(), 100);
-        }
+        if (input) setTimeout(() => input.focus(), 100);
     }
 
     // ===== SHOW STATUS =====
@@ -446,6 +650,7 @@
     // ===== REFRESH =====
     window.scanRefresh = function() {
         loadLastSeenRecords();
+        loadLocations();
         showStatus('🔄 Refreshed', 'info');
     };
 
@@ -475,20 +680,34 @@
         const scanInput = document.getElementById('scan-input');
         const prevBtn = document.getElementById('scan-prev-btn');
         const nextBtn = document.getElementById('scan-next-btn');
+        const urgencyToggle = document.getElementById('scan-urgency-toggle');
+        const ignoreEmptyToggle = document.getElementById('scan-ignore-empty-toggle');
 
-        // ==============================================================
-        // LOCATION CHANGE POLICY
-        // The select may only change when the user:
-        //   1. actively picks an option inside the dropdown, OR
-        //   2. clicks the prev/next arrow buttons.
-        // Initialization from localStorage is preserved.
-        //
-        // To enforce this we:
-        //   - return focus to the barcode input after any legitimate change
-        //   - strip printable keys from the select's native type-ahead
-        //   - swallow Space/Enter on the nav buttons
-        //   - route stray keystrokes anywhere else back to the barcode input
-        // ==============================================================
+        if (urgencyToggle) {
+            urgencyToggle.checked = isUrgencyMode();
+            urgencyToggle.addEventListener('change', function() {
+                setUrgencyMode(this.checked);
+                // Toggling urgency changes the top-of-order, so jump there
+                // in both directions. This keeps the selection deterministic
+                // and matches the "Ignore empty" toggle behavior.
+                rebuildLocationSelect();
+                selectTopOfOrder();
+                if (scanInput) scanInput.focus();
+            });
+        }
+
+        if (ignoreEmptyToggle) {
+            ignoreEmptyToggle.checked = isIgnoreEmpty();
+            ignoreEmptyToggle.addEventListener('change', function() {
+                setIgnoreEmpty(this.checked);
+                // Toggling the navigable set changes the top-of-order in
+                // both directions. Jump to the first location in the new
+                // order (which includes empty bins when unchecked).
+                rebuildLocationSelect();
+                selectTopOfOrder();
+                if (scanInput && !scanInput.disabled) scanInput.focus();
+            });
+        }
 
         if (locationSelect) {
             locationSelect.addEventListener('change', function() {
@@ -504,9 +723,7 @@
                 ];
                 if (!allowed.includes(e.key)) {
                     e.preventDefault();
-                    if (scanInput && !scanInput.disabled) {
-                        scanInput.focus();
-                    }
+                    if (scanInput && !scanInput.disabled) scanInput.focus();
                 }
             });
         }
@@ -557,10 +774,10 @@
             if (t === scanInput) return;
             if (t === locationSelect) return;
             if (t === prevBtn || t === nextBtn) return;
+            if (t === urgencyToggle) return;
+            if (t === ignoreEmptyToggle) return;
             if (e.key.length === 1 || e.key === 'Enter') {
-                if (scanInput && !scanInput.disabled) {
-                    scanInput.focus();
-                }
+                if (scanInput && !scanInput.disabled) scanInput.focus();
             }
         }, true);
 
