@@ -1,57 +1,16 @@
 // ============================================================
 // accounting.js – Accounting Module
-//
-// DATA MODEL
-// ----------
-// Two source endpoints:
-//   1. /api/accounting/bank-transactions-full  → bank rows (dollars, signed)
-//   2. /api/accounting/manual-entries          → manual journal entries (cents)
-//
-// Every raw row is normalized into a flat list of "postings":
-//
-//   { id, transaction_date, description, additional_info,
-//     account_id, delta, direction, source, is_bank_side }
-//
-// BANK ROW  (raw: post_from=bank, post_to=category, amount signed)
-//   Bank-side posting:
-//       account_id = tx.post_from
-//       delta      = rawAmount (signed)
-//   Category-side posting (emitted ONLY when the category is not an asset):
-//       account_id = tx.post_to
-//       delta      = +abs(rawAmount)
-//
-//   Category postings are for classification of expense/revenue. They are
-//   NOT emitted when the category is another asset (a bank), because the
-//   receiving bank already has its own feed row for the same movement.
-//   Emitting both would double-count asset transfers.
-//
-// MANUAL ENTRY  (raw: post_from=source, post_to=dest, amount positive cents)
-//   posting 1 → account = post_to,   delta = +dollars
-//   posting 2 → account = post_from, delta = -dollars
-//
-// DERIVED VIEWS
-// -------------
-//   computeBalances()            → sum delta per account
-//   aggregateByMonthAndAccount() → bucket by account_id, apply P&L sign
-//
-// Retired endpoints:
-//   /api/accounting/monthly-pl
-//   /api/accounting/monthly-account-transactions
-//   /api/accounting/balances
 // ============================================================
 
 console.log('[ACCOUNTING] Script started loading');
 
-// ===== API BASE URL =====
 const API_BASE = window.location.hostname === 'localhost' 
     ? 'http://localhost:5000' 
     : 'https://www.pigstylemusic.com';
 
-// ===== CONSTANTS =====
 const PREPAID_RENT_ACCOUNT_ID = 52;
-const RENT_EXPENSE_ACCOUNT_ID = 51;   // for debug filters
+const RENT_EXPENSE_ACCOUNT_ID = 51;
 
-// ===== GLOBAL VARIABLES =====
 let bankAccounts = [];
 let journalCurrentPage = 1;
 const journalPageSize = 20;
@@ -155,15 +114,6 @@ async function fetchManualEntries() {
     return data.entries || [];
 }
 
-/**
- * Turn each bank row into up to two postings.
- *
- * Bank-side posting: the bank account (post_from) with the signed raw amount.
- * Category-side posting: only emitted when the category (post_to) is NOT an
- * asset account. Category postings represent expense/revenue classification.
- * If the category is another bank, the other bank's own feed already has the
- * corresponding row, so emitting a category posting would double-count.
- */
 function normalizeBankTransactions(rows) {
     const postings = [];
     const assetIds = new Set(
@@ -176,7 +126,6 @@ function normalizeBankTransactions(rows) {
         const direction = rawAmount >= 0 ? 'in' : 'out';
         const baseId = `bank_${tx.id}`;
 
-        // Bank side
         if (tx.post_from !== null && tx.post_from !== undefined) {
             postings.push({
                 id: `${baseId}_bank`,
@@ -192,7 +141,6 @@ function normalizeBankTransactions(rows) {
             });
         }
 
-        // Category side — only if category is set AND category is not an asset
         if (tx.post_to !== null && tx.post_to !== undefined &&
             !assetIds.has(String(tx.post_to))) {
             postings.push({
@@ -212,10 +160,6 @@ function normalizeBankTransactions(rows) {
     return postings;
 }
 
-/**
- * Turn each manual journal entry into two postings.
- * Account 52 (Prepaid Rent) is skipped on both sides (legacy behavior).
- */
 function normalizeManualEntries(entries) {
     const postings = [];
     for (const e of entries) {
@@ -255,12 +199,6 @@ function normalizeManualEntries(entries) {
     return postings;
 }
 
-/**
- * Aggregate postings into month + account buckets.
- * Bucket total is signed for the P&L chart:
- *   revenue, asset            → +1
- *   expense, liability, equity → -1
- */
 function aggregateByMonthAndAccount(postings) {
     const accountMeta = {};
     for (const acc of bankAccounts) {
@@ -1169,6 +1107,115 @@ function closeMonthlyModal() {
 }
 
 // ============================================================
+// QUARTERLY GROSS SALES TAB
+// ============================================================
+
+function populateQuarterlyYearSelect() {
+    const select = document.getElementById('quarterly-gross-year');
+    if (!select) return;
+    const currentYear = new Date().getFullYear();
+    const years = [];
+    for (let y = currentYear; y >= currentYear - 5; y--) years.push(y);
+    select.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+}
+
+async function loadQuarterlyGrossSales() {
+    console.log('[QUARTERLY] loadQuarterlyGrossSales() called');
+    const container = document.getElementById('quarterly-gross-container');
+    const yearSelect = document.getElementById('quarterly-gross-year');
+    if (!container || !yearSelect) return;
+
+    populateQuarterlyYearSelect();
+
+    const year = parseInt(yearSelect.value) || new Date().getFullYear();
+    container.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">Loading...</div>';
+
+    try {
+        const url = `${API_BASE}/api/accounting/gross-sales-by-quarter?year=${year}`;
+        const res = await fetch(url, { credentials: 'include', mode: 'cors' });
+        const data = await res.json();
+
+        if (data.status !== 'success') {
+            throw new Error(data.error || 'Failed to load quarterly sales');
+        }
+
+        renderQuarterlyGrossSales(year, data, container);
+    } catch (err) {
+        console.error('[QUARTERLY] Error:', err);
+        container.innerHTML = `<div style="text-align: center; padding: 40px; color: #dc3545;">Error: ${err.message}</div>`;
+    }
+}
+
+function renderQuarterlyGrossSales(year, data, container) {
+    const quarters = data.quarters;
+    const yearTotal = data.year_total;
+    const order = ['Q1', 'Q2', 'Q3', 'Q4'];
+
+    let rowsHtml = '';
+
+    order.forEach(q => {
+        const d = quarters[q];
+        const hasData = d.net_gross !== 0 || d.entry_count > 0;
+
+        rowsHtml += `
+            <tr style="border-bottom: 1px solid #eee; ${hasData ? '' : 'opacity: 0.5;'}">
+                <td style="padding: 10px 12px; font-weight: 600; color: #333;">
+                    ${q}
+                    <div style="font-size: 11px; color: #888; font-weight: normal;">${d.start} → ${d.end}</div>
+                </td>
+                <td style="padding: 10px 12px; text-align: right; color: #007bff; font-weight: 600;">$${d.square.toFixed(2)}</td>
+                <td style="padding: 10px 12px; text-align: right; color: #28a745; font-weight: 600;">$${d.cash.toFixed(2)}</td>
+                <td style="padding: 10px 12px; text-align: right; color: #6f42c1; font-weight: 600;">$${d.paypal.toFixed(2)}</td>
+                <td style="padding: 10px 12px; text-align: right; color: #888;" title="In-store sales with undocumented payment method">
+                    $${d.in_store_undocumented.toFixed(2)}
+                </td>
+                <td style="padding: 10px 12px; text-align: right; color: #dc3545;">-$${d.returns.toFixed(2)}</td>
+                <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: ${d.net_gross >= 0 ? '#28a745' : '#dc3545'};">$${d.net_gross.toFixed(2)}</td>
+                <td style="padding: 10px 12px; text-align: right; color: #888;">${d.entry_count}</td>
+            </tr>
+        `;
+    });
+
+    const totalHtml = `
+        <tr style="background: #f8f9fa; border-top: 2px solid #333; font-weight: 700;">
+            <td style="padding: 12px; color: #000;">Year ${year} Total</td>
+            <td style="padding: 12px; text-align: right; color: #007bff;">$${yearTotal.square.toFixed(2)}</td>
+            <td style="padding: 12px; text-align: right; color: #28a745;">$${yearTotal.cash.toFixed(2)}</td>
+            <td style="padding: 12px; text-align: right; color: #6f42c1;">$${yearTotal.paypal.toFixed(2)}</td>
+            <td style="padding: 12px; text-align: right; color: #888;">$${yearTotal.in_store_undocumented.toFixed(2)}</td>
+            <td style="padding: 12px; text-align: right; color: #dc3545;">-$${yearTotal.returns.toFixed(2)}</td>
+            <td style="padding: 12px; text-align: right; color: ${yearTotal.net_gross >= 0 ? '#28a745' : '#dc3545'};">$${yearTotal.net_gross.toFixed(2)}</td>
+            <td style="padding: 12px;"></td>
+        </tr>
+    `;
+
+    container.innerHTML = `
+        <div style="background: #f8f9fa; padding: 10px 16px; border-radius: 6px; margin-bottom: 15px; font-size: 12px; color: #666; border-left: 3px solid #007bff;">
+            ℹ️ All figures from <strong>journal_entries_simple</strong>.
+            Historic in-store sales appear in <em>In-store (undoc.)</em>.
+        </div>
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px; background: white;">
+            <thead>
+                <tr style="background: #e9ecef; color: #000;">
+                    <th style="padding: 12px; text-align: left; border-bottom: 2px solid #ccc;">Quarter</th>
+                    <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc; color: #007bff;">Square</th>
+                    <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc; color: #28a745;">Cash</th>
+                    <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc; color: #6f42c1;">PayPal</th>
+                    <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc; color: #888;">In-store (undoc.)</th>
+                    <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc; color: #dc3545;">Returns</th>
+                    <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc;">Net Gross</th>
+                    <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc;">Entries</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rowsHtml}
+                ${totalHtml}
+            </tbody>
+        </table>
+    `;
+}
+
+// ============================================================
 // INITIALIZATION
 // ============================================================
 
@@ -1193,6 +1240,10 @@ async function initAccounting() {
             else if (sub === 'journal') loadJournalEntries();
             else if (sub === 'balance') loadBalances();
             else if (sub === 'monthly-pl') loadMonthlyPLBarChart();
+            else if (sub === 'quarterly-gross') {
+                populateQuarterlyYearSelect();
+                loadQuarterlyGrossSales();
+            }
         });
     });
 
@@ -1226,6 +1277,8 @@ async function initAccounting() {
     document.getElementById('monthly-tx-modal')?.addEventListener('click', function(e) {
         if (e.target === this) this.style.display = 'none';
     });
+
+    populateQuarterlyYearSelect();
 
     try {
         await loadAccounts();

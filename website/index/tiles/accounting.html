@@ -18,6 +18,9 @@
         <button class="sub-tab" data-subtab="monthly-pl" style="padding: 8px 16px; border: none; background: #e9ecef; color: #333; border-radius: 8px 8px 0 0; cursor: pointer; white-space: nowrap;">
             <i class="fas fa-chart-bar"></i> Monthly P&L
         </button>
+        <button class="sub-tab" data-subtab="quarterly-gross" style="padding: 8px 16px; border: none; background: #e9ecef; color: #333; border-radius: 8px 8px 0 0; cursor: pointer; white-space: nowrap;">
+            <i class="fas fa-calendar-alt"></i> Quarterly Gross Sales
+        </button>
     </div>
 
     <!-- TRANSACTIONS TAB -->
@@ -40,7 +43,6 @@
             </select>
         </div>
 
-        <!-- Bulk Assign Section -->
         <div id="bulk-assign-section" style="display: none; background: #f8f9fa; padding: 10px 15px; border-radius: 8px; margin-bottom: 10px; align-items: center; gap: 10px; flex-wrap: wrap; border: 1px solid #dee2e6;">
             <span style="font-weight: 600; color: #333; font-size: 13px;">
                 <i class="fas fa-check-double"></i> Bulk Assign: <span id="bulk-count">0</span> unposted transactions
@@ -113,6 +115,21 @@
         </div>
         <div id="monthly-pl-bar-chart-container" style="flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 15px; background: white; min-height: 500px;">
             <div style="text-align: center; padding: 40px; color: #999;">Loading monthly P&L charts...</div>
+        </div>
+    </div>
+
+    <!-- QUARTERLY GROSS SALES TAB -->
+    <div id="sub-quarterly-gross" class="sub-tab-content" style="width: 100%; flex: 1; overflow: hidden; display: none; flex-direction: column;">
+        <div style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; align-items: center;">
+            <label style="font-weight: 600; color: #333; font-size: 13px;">Year:</label>
+            <select id="quarterly-gross-year" style="padding: 8px 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 13px; color: #000; background: #fff; min-width: 100px;">
+            </select>
+            <button onclick="loadQuarterlyGrossSales()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                <i class="fas fa-sync"></i> Refresh
+            </button>
+        </div>
+        <div id="quarterly-gross-container" style="flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 15px; background: white;">
+            <div style="text-align: center; padding: 40px; color: #999;">Loading quarterly gross sales...</div>
         </div>
     </div>
 </div>
