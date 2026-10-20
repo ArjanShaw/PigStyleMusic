@@ -1151,6 +1151,12 @@ function renderQuarterlyGrossSales(year, data, container) {
     const yearTotal = data.year_total;
     const order = ['Q1', 'Q2', 'Q3', 'Q4'];
 
+    const fmtPair = (journalVal, bankVal) => {
+        const j = Number(journalVal) || 0;
+        const b = Number(bankVal) || 0;
+        return `$${j.toFixed(2)} <span style="color: #888; font-size: 12px;">($${b.toFixed(2)})</span>`;
+    };
+
     let rowsHtml = '';
 
     order.forEach(q => {
@@ -1163,14 +1169,22 @@ function renderQuarterlyGrossSales(year, data, container) {
                     ${q}
                     <div style="font-size: 11px; color: #888; font-weight: normal;">${d.start} → ${d.end}</div>
                 </td>
-                <td style="padding: 10px 12px; text-align: right; color: #007bff; font-weight: 600;">$${d.square.toFixed(2)}</td>
-                <td style="padding: 10px 12px; text-align: right; color: #28a745; font-weight: 600;">$${d.cash.toFixed(2)}</td>
-                <td style="padding: 10px 12px; text-align: right; color: #6f42c1; font-weight: 600;">$${d.paypal.toFixed(2)}</td>
+                <td style="padding: 10px 12px; text-align: right; color: #007bff; font-weight: 600;">
+                    ${fmtPair(d.square, d.square_bank)}
+                </td>
+                <td style="padding: 10px 12px; text-align: right; color: #28a745; font-weight: 600;">
+                    ${fmtPair(d.cash, d.cash_bank)}
+                </td>
+                <td style="padding: 10px 12px; text-align: right; color: #6f42c1; font-weight: 600;">
+                    ${fmtPair(d.paypal, d.paypal_bank)}
+                </td>
                 <td style="padding: 10px 12px; text-align: right; color: #888;" title="In-store sales with undocumented payment method">
                     $${d.in_store_undocumented.toFixed(2)}
                 </td>
                 <td style="padding: 10px 12px; text-align: right; color: #dc3545;">-$${d.returns.toFixed(2)}</td>
-                <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: ${d.net_gross >= 0 ? '#28a745' : '#dc3545'};">$${d.net_gross.toFixed(2)}</td>
+                <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: ${d.net_gross >= 0 ? '#28a745' : '#dc3545'};">
+                    ${fmtPair(d.net_gross, d.bank_derived_gross)}
+                </td>
                 <td style="padding: 10px 12px; text-align: right; color: #888;">${d.entry_count}</td>
             </tr>
         `;
@@ -1179,31 +1193,39 @@ function renderQuarterlyGrossSales(year, data, container) {
     const totalHtml = `
         <tr style="background: #f8f9fa; border-top: 2px solid #333; font-weight: 700;">
             <td style="padding: 12px; color: #000;">Year ${year} Total</td>
-            <td style="padding: 12px; text-align: right; color: #007bff;">$${yearTotal.square.toFixed(2)}</td>
-            <td style="padding: 12px; text-align: right; color: #28a745;">$${yearTotal.cash.toFixed(2)}</td>
-            <td style="padding: 12px; text-align: right; color: #6f42c1;">$${yearTotal.paypal.toFixed(2)}</td>
+            <td style="padding: 12px; text-align: right; color: #007bff;">
+                ${fmtPair(yearTotal.square, yearTotal.square_bank)}
+            </td>
+            <td style="padding: 12px; text-align: right; color: #28a745;">
+                ${fmtPair(yearTotal.cash, yearTotal.cash_bank)}
+            </td>
+            <td style="padding: 12px; text-align: right; color: #6f42c1;">
+                ${fmtPair(yearTotal.paypal, yearTotal.paypal_bank)}
+            </td>
             <td style="padding: 12px; text-align: right; color: #888;">$${yearTotal.in_store_undocumented.toFixed(2)}</td>
             <td style="padding: 12px; text-align: right; color: #dc3545;">-$${yearTotal.returns.toFixed(2)}</td>
-            <td style="padding: 12px; text-align: right; color: ${yearTotal.net_gross >= 0 ? '#28a745' : '#dc3545'};">$${yearTotal.net_gross.toFixed(2)}</td>
+            <td style="padding: 12px; text-align: right; color: ${yearTotal.net_gross >= 0 ? '#28a745' : '#dc3545'};">
+                ${fmtPair(yearTotal.net_gross, yearTotal.bank_derived_gross)}
+            </td>
             <td style="padding: 12px;"></td>
         </tr>
     `;
 
     container.innerHTML = `
         <div style="background: #f8f9fa; padding: 10px 16px; border-radius: 6px; margin-bottom: 15px; font-size: 12px; color: #666; border-left: 3px solid #007bff;">
-            ℹ️ All figures from <strong>journal_entries_simple</strong>.
-            Historic in-store sales appear in <em>In-store (undoc.)</em>.
+            ℹ️ <strong>Format:</strong> $Journal (<span style="color:#888;">$Bank</span>).
+            Journal = journal_entries_simple. Bank = bank_transactions categorized to the revenue account.
         </div>
         <table style="width: 100%; border-collapse: collapse; font-size: 14px; background: white;">
             <thead>
                 <tr style="background: #e9ecef; color: #000;">
                     <th style="padding: 12px; text-align: left; border-bottom: 2px solid #ccc;">Quarter</th>
-                    <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc; color: #007bff;">Square</th>
-                    <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc; color: #28a745;">Cash</th>
-                    <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc; color: #6f42c1;">PayPal</th>
+                    <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc; color: #007bff;">Square<br><span style="font-size: 10px; color: #888; font-weight: normal;">(journal / bank)</span></th>
+                    <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc; color: #28a745;">Cash<br><span style="font-size: 10px; color: #888; font-weight: normal;">(journal / bank)</span></th>
+                    <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc; color: #6f42c1;">PayPal<br><span style="font-size: 10px; color: #888; font-weight: normal;">(journal / bank)</span></th>
                     <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc; color: #888;">In-store (undoc.)</th>
                     <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc; color: #dc3545;">Returns</th>
-                    <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc;">Net Gross</th>
+                    <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc;">Net Gross<br><span style="font-size: 10px; color: #888; font-weight: normal;">(journal / bank-derived)</span></th>
                     <th style="padding: 12px; text-align: right; border-bottom: 2px solid #ccc;">Entries</th>
                 </tr>
             </thead>

@@ -7194,16 +7194,22 @@ def process_order_for_accounting(order, conn, cursor):
 
 # ==================== ACCOUNTING: RECONCILIATION UPLOAD ====================
 
+
 @app.route('/api/accounting/gross-sales-by-quarter', methods=['GET'])
 @login_required
 @role_required(['admin'])
 def gross_sales_by_quarter():
     """
-    Gross sales per calendar quarter, sourced from journal_entries_simple.
-    Revenue accounts:
-        4000 Square, 4001 Cash, 4003 PayPal,
-        4090 Returns (subtracted),
-        4091 In-Store Undocumented
+    Gross sales per calendar quarter.
+
+    Two figures per source:
+      - journal:  from journal_entries_simple (revenue accounts)
+      - bank:     from bank_transactions categorized to that revenue account
+      - cash_purchases: from journal_entries_simple purchase rows (post_from 1017)
+
+    cash_purchases are added to the bank-derived cash figure to approximate
+    the total cash sales that occurred (cash that never reached the bank
+    because it was spent on inventory purchases).
     """
     try:
         year = request.args.get('year', type=int) or datetime.now().year
@@ -7213,7 +7219,7 @@ def gross_sales_by_quarter():
 
         cursor.execute("""
             SELECT id, code FROM accounts
-            WHERE code IN ('4000','4001','4003','4090','4091')
+            WHERE code IN ('4000','4001','4003','4090','4091','1017')
         """)
         acc_map = {row['code']: row['id'] for row in cursor.fetchall()}
 
@@ -7232,8 +7238,11 @@ def gross_sales_by_quarter():
             totals = {
                 'square': 0.0, 'cash': 0.0, 'paypal': 0.0, 'returns': 0.0,
                 'in_store_undocumented': 0.0,
+                'square_bank': 0.0, 'cash_bank': 0.0, 'paypal_bank': 0.0,
+                'cash_purchases': 0.0,
             }
 
+            # ---- Journal-derived revenue ----
             for code in ('4000', '4001', '4003', '4090', '4091'):
                 acc_id = acc_map.get(code)
                 if not acc_id:
@@ -7270,10 +7279,48 @@ def gross_sales_by_quarter():
                     elif code == '4003': totals['paypal'] = net
                     elif code == '4091': totals['in_store_undocumented'] = net
 
+            # ---- Bank-derived revenue ----
+            # bank_transactions.amount is stored in dollars.
+            cursor.execute("""
+                SELECT
+                    COALESCE(SUM(CASE WHEN a2.code = '4000' THEN bt.amount ELSE 0 END), 0) AS square_bank,
+                    COALESCE(SUM(CASE WHEN a2.code = '4003' THEN bt.amount ELSE 0 END), 0) AS paypal_bank,
+                    COALESCE(SUM(CASE WHEN a2.code = '4001' THEN bt.amount ELSE 0 END), 0) AS cash_bank
+                FROM bank_transactions bt
+                JOIN accounts a2 ON a2.id = bt.post_to
+                WHERE a2.code IN ('4000', '4001', '4003')
+                  AND date(bt.transaction_date) BETWEEN date(?) AND date(?)
+            """, (start, end))
+            bank_row = cursor.fetchone()
+            totals['square_bank'] = round(float(bank_row['square_bank'] or 0), 2)
+            totals['paypal_bank'] = round(float(bank_row['paypal_bank'] or 0), 2)
+            totals['cash_bank'] = round(float(bank_row['cash_bank'] or 0), 2)
+
+            # ---- Cash purchases (journal_entries_simple, cents) ----
+            cash_1017 = acc_map.get('1017')
+            if cash_1017:
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0) AS purchase_cents
+                    FROM journal_entries_simple
+                    WHERE source_type = 'purchase'
+                      AND post_from = ?
+                      AND date(transaction_date) BETWEEN date(?) AND date(?)
+                """, (cash_1017, start, end))
+                row = cursor.fetchone()
+                totals['cash_purchases'] = round((row['purchase_cents'] or 0) / 100.0, 2)
+
+            # ---- Net gross from journal ----
             net_gross = round(
                 totals['square'] + totals['cash'] + totals['paypal']
                 + totals['in_store_undocumented']
                 - totals['returns'],
+                2
+            )
+
+            # ---- Bank-derived gross (sanity figure) ----
+            bank_derived_gross = round(
+                totals['square_bank'] + totals['paypal_bank']
+                + totals['cash_bank'] + totals['cash_purchases'],
                 2
             )
 
@@ -7290,6 +7337,7 @@ def gross_sales_by_quarter():
                 'end': end,
                 **totals,
                 'net_gross': net_gross,
+                'bank_derived_gross': bank_derived_gross,
                 'entry_count': entry_count,
             }
 
@@ -7297,7 +7345,10 @@ def gross_sales_by_quarter():
 
         year_total = {
             'square': 0.0, 'cash': 0.0, 'paypal': 0.0, 'returns': 0.0,
-            'in_store_undocumented': 0.0, 'net_gross': 0.0,
+            'in_store_undocumented': 0.0,
+            'square_bank': 0.0, 'cash_bank': 0.0, 'paypal_bank': 0.0,
+            'cash_purchases': 0.0,
+            'net_gross': 0.0, 'bank_derived_gross': 0.0,
         }
         for qe in results.values():
             for k in year_total:
@@ -7314,7 +7365,6 @@ def gross_sales_by_quarter():
         app.logger.error(f"Error in gross_sales_by_quarter: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
-
 
 @app.route('/api/accounting/reconcile/upload', methods=['POST'])
 @login_required
