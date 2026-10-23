@@ -83,6 +83,22 @@
 
             var records = data.records || [];
 
+            // ===== DECORATE RECORDS WITH NUMERIC ADDED-DATE LABEL =====
+            // e.g. "10/26" — derived from created_at, no DB changes needed.
+            records = records.map(function(r) {
+                var addedLabel = '';
+                if (r.created_at) {
+                    var d = new Date(r.created_at);
+                    if (!isNaN(d)) {
+                        var mm = String(d.getMonth() + 1).padStart(2, '0');
+                        var yy = String(d.getFullYear()).slice(-2);
+                        addedLabel = mm + '/' + yy;
+                    }
+                }
+                r._added_label = addedLabel;
+                return r;
+            });
+
             if (records.length === 0) {
                 showStatus('⚠️ No records found for purchase #' + purchaseId, 'warning');
                 return;

@@ -172,6 +172,30 @@
                 doc.text(priceText, x + (labelWidth - priceWidth) / 2, y + priceYPos);
 
                 // ============================================================
+                // ADDED-DATE CORNER TAG (numeric MM/YY)
+                // record._added_label is set by the caller (purchases.js)
+                // as a short string like "10/26". If absent, nothing draws.
+                // Position: right-aligned, 0.5 cm (≈14.17 pt) in from the
+                // right edge, and 0.5 cm lower than the top edge.
+                // ============================================================
+                if (record._added_label) {
+                    const dateInsetFromRight = 0.5 * 10 * mmToPt;  // 0.5 cm → pt
+                    const dateInsetFromTop   = 0.5 * 10 * mmToPt;  // 0.5 cm → pt
+
+                    doc.setFontSize(6);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(90, 90, 90);
+                    doc.text(
+                        record._added_label,
+                        x + labelWidth - dateInsetFromRight,
+                        y + dateInsetFromTop,
+                        { align: 'right' }
+                    );
+                    // Restore for anything drawn after
+                    doc.setTextColor(0, 0, 0);
+                }
+
+                // ============================================================
                 // BARCODE — value parsed to a positive integer
                 // Canvas is reset before and after to release its bitmap.
                 // ============================================================
