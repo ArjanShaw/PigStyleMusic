@@ -4,6 +4,12 @@
 // delete location, rename location, with per-location record counts
 // and latest last_seen.
 //
+// NEW: Expandable rows. Clicking the disclosure triangle on any node
+// loads and shows the records directly assigned to that location
+// (id, artist, title, format name). Uses the existing
+// GET /records?location_ids=<id>&status_ids=2 endpoint. No new
+// backend endpoints.
+//
 // Also supports selecting any node (any generation) and posting the
 // selected subtree(s) to eBay or Discogs by looping client-side and
 // calling the EXISTING single-record endpoints:
@@ -12,13 +18,6 @@
 //
 // Both posts include the location display string AND location_index.
 //
-// Pricing is per-location. Each location carries three nullable fields
-// (pricing_markup_percent, pricing_price_step, pricing_max_markdown)
-// plus their resolved effective_* counterparts from the backend.
-// The lowest level at which a field is set wins. Fields that are set
-// on a given row are displayed inline; fields that are inherited are
-// left blank so it's visually obvious which level owns what.
-//
 // Backend endpoints used:
 //   GET    /api/locations
 //   POST   /api/locations
@@ -26,6 +25,7 @@
 //   PUT    /api/locations/<id>/pricing
 //   POST   /api/locations/<id>/clear-records
 //   DELETE /api/locations/<id>
+//   GET    /records?location_ids=<id>&status_ids=2
 //   POST   /api/ebay/list
 //   POST   /api/discogs/create-listing-single
 // ================================================================
@@ -86,11 +86,14 @@
     }
 
     // ================================================================
-    //  SELECTION STATE
+    //  SELECTION + EXPAND STATE
     // ================================================================
 
     let selectedIds = new Set();
     let currentTreeById = {};
+
+    // locationId -> { loading: bool, error: string|null, records: [] }
+    const expandedState = new Map();
 
     let cancelRequested = false;
     let isPosting = false;
@@ -371,6 +374,138 @@
     };
 
     // ================================================================
+    //  EXPAND / COLLAPSE
+    // ================================================================
+
+    window.locationsAdminToggleExpand = async function(locationId) {
+        // Toggle off if already expanded
+        if (expandedState.has(locationId)) {
+            expandedState.delete(locationId);
+            rerenderFromCache();
+            return;
+        }
+
+        // Set loading state and rerender
+        expandedState.set(locationId, { loading: true, error: null, records: [] });
+        rerenderFromCache();
+
+        try {
+            const url = `${API_BASE}/records?status_ids=2&location_ids=${locationId}&order_by=artist&order_dir=ASC`;
+            const r = await fetch(url, {
+                credentials: 'include',
+                headers: getHeaders()
+            });
+
+            let body = {};
+            try { body = await r.json(); } catch (_) {}
+
+            if (!r.ok || body.status !== 'success') {
+                throw new Error(body.error || `HTTP ${r.status}`);
+            }
+
+            const records = (body.records || []).map(rec => ({
+                id: rec.id,
+                artist: rec.artist || '',
+                title: rec.title || '',
+                format_name: rec.format_name || '',
+                location_index: rec.location_index
+            }));
+
+            expandedState.set(locationId, { loading: false, error: null, records });
+
+            // If the record count on this node differs from what the tree
+            // showed, update it so the badge reflects reality.
+            const node = currentTreeById[locationId];
+            if (node && records.length !== node.record_count) {
+                node.record_count = records.length;
+                // Note: subtree_count is stale here; we skip recomputation
+                // rather than walk the tree. Next full refresh fixes it.
+            }
+
+            rerenderFromCache();
+        } catch (err) {
+            expandedState.set(locationId, { loading: false, error: err.message, records: [] });
+            rerenderFromCache();
+        }
+    };
+
+    function renderExpandedSection(node) {
+        const state = expandedState.get(node.id);
+        if (!state) return '';
+
+        const indent = 48;
+
+        if (state.loading) {
+            return `
+                <div style="padding: 8px 8px 8px ${indent}px; font-size: 12px; color: #666; background: #fafbfc; border-bottom: 1px solid #f0f0f0;">
+                    ⏳ Loading records…
+                </div>
+            `;
+        }
+
+        if (state.error) {
+            return `
+                <div style="padding: 8px 8px 8px ${indent}px; font-size: 12px; color: #dc3545; background: #fff5f5; border-bottom: 1px solid #f0f0f0;">
+                    ❌ ${escapeHtml(state.error)}
+                </div>
+            `;
+        }
+
+        if (state.records.length === 0) {
+            return `
+                <div style="padding: 8px 8px 8px ${indent}px; font-size: 12px; color: #999; background: #fafbfc; border-bottom: 1px solid #f0f0f0;">
+                    No active records directly assigned to this location.
+                </div>
+            `;
+        }
+
+        const rows = state.records.map(rec => {
+            const idx = (rec.location_index !== null && rec.location_index !== undefined)
+                ? `<span style="background: #eceff1; padding: 1px 6px; border-radius: 4px; font-size: 10px; color: #455a64; font-weight: 600;">#${rec.location_index}</span>`
+                : '';
+
+            return `
+                <tr style="border-bottom: 1px solid #f5f5f5;">
+                    <td style="padding: 4px 8px; font-size: 11px; color: #666; font-family: monospace; white-space: nowrap;">
+                        ${escapeHtml(rec.id)}
+                    </td>
+                    <td style="padding: 4px 8px; font-size: 12px; color: #333;">
+                        ${escapeHtml(rec.artist)}
+                    </td>
+                    <td style="padding: 4px 8px; font-size: 12px; color: #333;">
+                        ${escapeHtml(rec.title)}
+                    </td>
+                    <td style="padding: 4px 8px; font-size: 11px; color: #555; white-space: nowrap;">
+                        ${escapeHtml(rec.format_name)}
+                    </td>
+                    <td style="padding: 4px 8px; text-align: right;">
+                        ${idx}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        return `
+            <div style="padding: 6px 8px 8px ${indent}px; background: #fafbfc; border-bottom: 1px solid #f0f0f0;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #e0e0e0;">
+                            <th style="text-align: left; padding: 4px 8px; font-size: 10px; color: #999; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">ID</th>
+                            <th style="text-align: left; padding: 4px 8px; font-size: 10px; color: #999; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Artist</th>
+                            <th style="text-align: left; padding: 4px 8px; font-size: 10px; color: #999; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Title</th>
+                            <th style="text-align: left; padding: 4px 8px; font-size: 10px; color: #999; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Format</th>
+                            <th style="text-align: right; padding: 4px 8px; font-size: 10px; color: #999; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Idx</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    // ================================================================
     //  RENDER
     // ================================================================
 
@@ -384,24 +519,12 @@
             (rawS !== null && rawS !== undefined) ||
             (rawX !== null && rawX !== undefined);
 
-        // Nothing set on this row: all three values are inherited.
-        // Leave the badge area empty so it's visually obvious.
-        if (!hasAnyRaw) {
-            return '';
-        }
+        if (!hasAnyRaw) return '';
 
-        // Build a compact label showing only the fields this row sets,
-        // with inherited fields omitted.
         const parts = [];
-        if (rawM !== null && rawM !== undefined) {
-            parts.push(`+${rawM}%`);
-        }
-        if (rawS !== null && rawS !== undefined) {
-            parts.push(`-${rawS}%/wk`);
-        }
-        if (rawX !== null && rawX !== undefined) {
-            parts.push(`floor -${Math.abs(rawX)}%`);
-        }
+        if (rawM !== null && rawM !== undefined) parts.push(`+${rawM}%`);
+        if (rawS !== null && rawS !== undefined) parts.push(`-${rawS}%/wk`);
+        if (rawX !== null && rawX !== undefined) parts.push(`floor -${Math.abs(rawX)}%`);
 
         if (parts.length === 0) return '';
 
@@ -416,6 +539,7 @@
     function renderNode(node, depth) {
         const indent = depth * 20;
         const isParent = node.children.length > 0;
+        const isExpanded = expandedState.has(node.id);
 
         const directCount = node.record_count;
         const subtreeCount = node.subtree_count;
@@ -439,6 +563,16 @@
         const ids = collectSubtreeIds(node);
         const allSelected = ids.length > 0 && ids.every(id => selectedIds.has(id));
         const anySelected = ids.some(id => selectedIds.has(id));
+
+        // Disclosure triangle: always clickable (even on empty leaves)
+        const canExpand = true;
+        const triangle = canExpand
+            ? `<button onclick="locationsAdminToggleExpand(${node.id})"
+                       title="${isExpanded ? 'Collapse' : 'Expand and show records at this location'}"
+                       style="background: transparent; border: none; cursor: pointer; padding: 0 4px; font-size: 12px; color: ${isExpanded ? '#007bff' : '#999'}; line-height: 1;">
+                    ${isExpanded ? '▼' : '▶'}
+               </button>`
+            : '';
 
         let countBadge = '';
         if (isParent) {
@@ -495,6 +629,7 @@
         let html = `
             <div data-loc-id="${node.id}"
                  style="padding: 6px 8px 6px ${8 + indent}px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; background: ${anySelected ? '#f0f8ff' : 'transparent'};">
+                ${triangle}
                 <input type="checkbox"
                        ${allSelected ? 'checked' : ''}
                        onchange="locationsAdminToggleSelect(${node.id})"
@@ -545,6 +680,12 @@
             </div>
         `;
 
+        // Expanded section for THIS node
+        if (isExpanded) {
+            html += renderExpandedSection(node);
+        }
+
+        // Render children
         node.children.forEach(child => {
             html += renderNode(child, depth + 1);
         });
@@ -620,6 +761,11 @@
             currentTreeById = indexTree(roots);
 
             selectedIds = new Set([...selectedIds].filter(id => currentTreeById[id]));
+
+            // Drop expand state for locations that no longer exist
+            for (const id of [...expandedState.keys()]) {
+                if (!currentTreeById[id]) expandedState.delete(id);
+            }
 
             const { total, leaves } = countNodes(roots);
 
@@ -761,6 +907,11 @@
 
             if (data.status === 'success') {
                 showStatus(`✅ Cleared ${data.cleared} record(s) from "${displayName}"`, 'success');
+                // Any location in the subtree may now be empty; clear expand cache for all
+                const node = currentTreeById[locationId];
+                if (node) {
+                    collectSubtreeIds(node).forEach(id => expandedState.delete(id));
+                }
                 await loadLocations();
             } else {
                 showStatus(`❌ ${data.error || 'Failed to clear records'}`, 'error');
@@ -797,6 +948,7 @@
 
             if (data.status === 'success') {
                 showStatus(`✅ Deleted "${displayName}"`, 'success');
+                expandedState.delete(locationId);
                 await loadLocations();
             } else {
                 showStatus(`❌ ${data.error || 'Failed to delete location'}`, 'error');
@@ -1171,6 +1323,7 @@
     window.initLocationsAdmin = async function() {
         console.log('🗺️ Locations admin initialized');
         selectedIds = new Set();
+        expandedState.clear();
         cancelRequested = false;
         isPosting = false;
         loadLocations();
