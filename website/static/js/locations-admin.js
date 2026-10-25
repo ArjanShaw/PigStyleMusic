@@ -1,7 +1,8 @@
 // ================================================================
 // FILE: /static/js/locations-admin.js
 // Locations admin - tree view, add child, add root, clear records,
-// delete location, with per-location record counts and latest last_seen.
+// delete location, rename location, with per-location record counts
+// and latest last_seen.
 //
 // Also supports selecting any node (any generation) and posting the
 // selected subtree(s) to eBay or Discogs by looping client-side and
@@ -21,6 +22,7 @@
 // Backend endpoints used:
 //   GET    /api/locations
 //   POST   /api/locations
+//   PUT    /api/locations/<id>              (rename)
 //   PUT    /api/locations/<id>/pricing
 //   POST   /api/locations/<id>/clear-records
 //   DELETE /api/locations/<id>
@@ -514,6 +516,11 @@
                 <span style="margin-left: auto; color: #999; font-size: 11px; font-family: monospace;">
                     id=${node.id}
                 </span>
+                <button onclick="locationsAdminRename(${node.id})"
+                        title="Rename this location"
+                        style="padding: 2px 10px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600;">
+                    ✏️ Rename
+                </button>
                 <button onclick="locationsAdminEditPricing(${node.id})"
                         title="Edit pricing for this location (blank = keep, 'clear' = reset to inherit)"
                         style="padding: 2px 10px; background: #6f42c1; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600;">
@@ -681,6 +688,54 @@
             } else {
                 showStatus(`❌ ${data.error || 'Failed to create location'}`, 'error');
             }
+        } catch (err) {
+            showStatus(`❌ ${err.message}`, 'error');
+        }
+    }
+
+    async function renameLocation(locationId) {
+        if (isPosting) {
+            showStatus('⚠️ Cannot rename while posting', 'error');
+            return;
+        }
+
+        const node = currentTreeById[locationId];
+        if (!node) return;
+
+        const newName = prompt(
+            `Rename "${node.display_name}".\n\n` +
+            `Enter the new leaf name (not the parent prefix):`,
+            node.name
+        );
+        if (newName === null) return;
+
+        const trimmed = newName.trim();
+        if (!trimmed) {
+            showStatus('❌ Name cannot be empty', 'error');
+            return;
+        }
+        if (trimmed === node.name) {
+            return;
+        }
+
+        try {
+            showStatus('✏️ Renaming location...', 'info');
+            const r = await fetch(`${API_BASE}/api/locations/${locationId}`, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: getHeaders(),
+                body: JSON.stringify({ name: trimmed })
+            });
+
+            let body = {};
+            try { body = await r.json(); } catch (_) {}
+
+            if (!r.ok || body.status !== 'success') {
+                throw new Error(body.error || `HTTP ${r.status}`);
+            }
+
+            showStatus(`✅ Renamed to "${body.location.display_name}"`, 'success');
+            await loadLocations();
         } catch (err) {
             showStatus(`❌ ${err.message}`, 'error');
         }
@@ -1091,6 +1146,10 @@
 
     window.locationsAdminAddRoot = function() {
         addLocation(null);
+    };
+
+    window.locationsAdminRename = function(locationId) {
+        renameLocation(locationId);
     };
 
     window.locationsAdminClearRecords = function(locationId) {

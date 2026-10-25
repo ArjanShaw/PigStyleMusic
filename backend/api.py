@@ -7366,6 +7366,74 @@ def gross_sales_by_quarter():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/locations/<int:location_id>', methods=['PUT'])
+@login_required
+@role_required(['admin'])
+def rename_location(location_id):
+    """Rename a location.
+
+    Request body:
+        { "name": "RT" }
+
+    Refuses if the new name would be empty or if the location does
+    not exist. Allows renaming to the same name (no-op).
+    """
+    try:
+        data = request.get_json()
+        if data is None:
+            return jsonify({'status': 'error', 'error': 'No data provided'}), 400
+
+        new_name = (data.get('name') or '').strip()
+        if not new_name:
+            return jsonify({'status': 'error', 'error': 'name is required'}), 400
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT id, name FROM locations WHERE id = ?', (location_id,))
+        loc = cursor.fetchone()
+        if not loc:
+            conn.close()
+            return jsonify({'status': 'error', 'error': f'Location #{location_id} not found'}), 404
+
+        try:
+            cursor.execute(
+                'UPDATE locations SET name = ? WHERE id = ?',
+                (new_name, location_id)
+            )
+            conn.commit()
+        except sqlite3.IntegrityError as ie:
+            conn.close()
+            return jsonify({
+                'status': 'error',
+                'error': f'Name conflict or constraint violation: {str(ie)}'
+            }), 400
+
+        cursor.execute('''
+            SELECT l.id, l.name, l.parent_id, p.name AS parent_name
+            FROM locations l
+            LEFT JOIN locations p ON l.parent_id = p.id
+            WHERE l.id = ?
+        ''', (location_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'location': {
+                'id': row['id'],
+                'name': row['name'],
+                'parent_id': row['parent_id'],
+                'parent_name': row['parent_name'],
+                'display_name': build_location_display(row['parent_name'], row['name']),
+            }
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error renaming location: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 @app.route('/api/accounting/reconcile/upload', methods=['POST'])
 @login_required
 @role_required(['admin'])
