@@ -1,0 +1,30 @@
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+    <h2 style="color: #333; margin: 0 0 5px 0;">🔍 Unaccounted Records</h2>
+    <p style="color: #666; margin: 0 0 10px 0; text-align: center;">Active records that were added but never scanned since creation</p>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; width: 100%;">
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #dc3545;" id="ur-total-unaccounted">0</div>
+            <div style="font-size: 10px; color: #666;">Unaccounted</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #007bff;" id="ur-cutoff-date">—</div>
+            <div style="font-size: 10px; color: #666;">Last Inventory Scan</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #28a745;" id="ur-oldest-days">0</div>
+            <div style="font-size: 10px; color: #666;">Oldest (days)</div>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap; margin-top: 6px;">
+        <input type="text" id="ur-search" placeholder="Search by artist, title, or ID..." style="flex: 1; min-width: 150px; padding: 8px; border: 2px solid #ddd; border-radius: 6px; font-size: 13px;">
+        <button onclick="urSearch()" style="padding: 6px 14px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer;"><i class="fas fa-search"></i></button>
+        <button onclick="urClearSearch()" style="padding: 6px 14px; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer;"><i class="fas fa-times"></i></button>
+        <button onclick="urRefresh()" style="padding: 6px 14px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer;"><i class="fas fa-sync"></i> Refresh</button>
+    </div>
+
+    <div id="ur-list" style="flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px; width: 100%;">
+        <div style="text-align: center; padding: 20px; color: #999;">Loading unaccounted records...</div>
+    </div>
+</div>
