@@ -9,12 +9,17 @@
 // cash/card/POS via a single `giftCardApplied` counter.
 // Partial checkout falls out of min(cardBalance, remainingOwed).
 // + RECEIPT: Auto-generates and downloads a .txt receipt on success.
+//
+// CRITICAL: /api/order/complete is ALWAYS called after a successful
+// /api/checkout/process. No if-guard, no swallowed exceptions.
+// If the order fails to journal, an unhandled error is raised and
+// surfaced to the cashier.
 // ============================================================
 
 (function() {
     'use strict';
 
-    console.log('🚀 Custom Checkout module loaded (merged single-view, gift card immediate redeem, receipt enabled)');
+    console.log('🚀 Custom Checkout module loaded (unconditional /api/order/complete)');
 
     // ===== API BASE URL =====
     const API_BASE = window.location.hostname === 'localhost' 
@@ -71,7 +76,6 @@
                 console.warn(`⚠️ Could not load store setting ${key}:`, e.message);
             }
         }
-        // Sync TAX_RATE
         const parsed = parseFloat(storeSettings.TAX_RATE);
         if (!isNaN(parsed) && parsed > 0) {
             TAX_RATE = parsed / 100;
@@ -96,7 +100,7 @@
     let discountPercent = 0;
     let discountAmount = 0;
     let cashReceived = 0;
-    let giftCardApplied = 0;   // ← running total redeemed this session
+    let giftCardApplied = 0;
     let outstandingBalance = 0;
     let paymentEntries = [];
     let isPaymentComplete = false;
@@ -158,7 +162,6 @@
 
         container.innerHTML = customCheckoutTemplate();
         
-        // Load store settings (for receipt + tax) then wire up events
         loadStoreSettings().then(() => {
             setTimeout(() => {
                 initCustomCheckoutEvents();
@@ -168,7 +171,7 @@
         });
     };
 
-    // ========== TEMPLATE (UNIFIED SINGLE VIEW) ==========
+    // ========== TEMPLATE ==========
     function customCheckoutTemplate() {
         return `
             <div style="display: flex; flex-direction: column; gap: 16px; padding: 20px; max-width: 1400px; margin: 0 auto; width: 100%;">
@@ -188,16 +191,11 @@
 
                 <div id="custom-checkout-status" style="display: none; padding: 12px; border-radius: 8px; font-weight: 500; text-align: center;"></div>
 
-                <!-- ========== UNIFIED TWO-COLUMN LAYOUT ========== -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start;">
-                    
-                    <!-- ===== LEFT COLUMN: Add Items ===== -->
                     <div style="display: flex; flex-direction: column; gap: 16px;">
                         ${recordsSectionTemplate()}
                         ${customSectionTemplate()}
                     </div>
-
-                    <!-- ===== RIGHT COLUMN: Cart / Checkout (sticky) ===== -->
                     <div style="position: sticky; top: 16px;">
                         <div id="checkout-panel">
                             ${checkoutPanelTemplate()}
@@ -206,7 +204,6 @@
                 </div>
             </div>
 
-            <!-- ===== MODALS ===== -->
             <div id="pos-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10003; align-items: center; justify-content: center;">
                 <div style="background: white; border-radius: 16px; max-width: 450px; width: 95%; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center;">
                     <div style="font-size: 48px; margin-bottom: 16px;">📟</div>
@@ -261,7 +258,6 @@
         `;
     }
 
-    // ===== RECORDS SECTION TEMPLATE =====
     function recordsSectionTemplate() {
         return `
             <div style="background: white; border-radius: 12px; padding: 20px; border: 2px solid #6f42c1;">
@@ -287,7 +283,6 @@
         `;
     }
 
-    // ===== CUSTOM ITEMS SECTION TEMPLATE =====
     function customSectionTemplate() {
         return `
             <div style="display: flex; flex-direction: column; gap: 12px;">
@@ -323,7 +318,6 @@
         `;
     }
 
-    // ===== GET TOTAL WITH DISCOUNT =====
     function getTotalWithDiscount() {
         const items = window.cart ? window.cart.getItems() : [];
         if (!items || items.length === 0) return 0;
@@ -341,7 +335,6 @@
         return Math.max(0, totalWithTax);
     }
 
-    // ===== CHECKOUT PANEL TEMPLATE =====
     function checkoutPanelTemplate() {
         const items = window.cart ? window.cart.getItems() : [];
         const subtotal = window.cart ? window.cart.getTotal() : 0;
@@ -356,7 +349,6 @@
         }
         const finalTotal = totalWithTax - discountAmountTotal;
         
-        // Remaining = final total minus gift card applied minus cash received
         const remainingAfterPayments = Math.max(0, finalTotal - giftCardApplied - cashReceived);
         outstandingBalance = remainingAfterPayments;
         
@@ -553,7 +545,6 @@
         `;
     }
 
-    // ===== SELECT PAYMENT METHOD =====
     window.selectPaymentMethod = function(method) {
         selectedPaymentMethod = method;
         
@@ -588,7 +579,6 @@
         }, 50);
     };
 
-    // ===== UPDATE CASH DISPLAY =====
     function updateCashDisplay() {
         const changeDisplay = document.getElementById('cash-change-display');
         const input = document.getElementById('cash-amount');
@@ -617,7 +607,6 @@
         }
     }
 
-    // ===== DISCOUNT FUNCTIONS =====
     let discountType = 'percent';
 
     window.showDiscountModal = function() {
@@ -748,7 +737,6 @@
         showToast('Discount removed.', 'info');
     };
 
-    // ===== RENDER CHECKOUT PANEL =====
     function renderCheckoutPanel() {
         const container = document.getElementById('checkout-panel');
         if (!container) return;
@@ -778,28 +766,19 @@
         if (errorEl) errorEl.style.display = 'none';
     }
 
-    // ========== INIT EVENTS ==========
     function initCustomCheckoutEvents() {
         console.log('🔧 initCustomCheckoutEvents called');
 
-        // Custom item keyboard navigation
         document.getElementById('custom-item-name')?.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                document.getElementById('custom-item-price')?.focus();
-            }
+            if (e.key === 'Enter') document.getElementById('custom-item-price')?.focus();
         });
         document.getElementById('custom-item-price')?.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                document.getElementById('custom-item-qty')?.focus();
-            }
+            if (e.key === 'Enter') document.getElementById('custom-item-qty')?.focus();
         });
         document.getElementById('custom-item-qty')?.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                addCustomItem();
-            }
+            if (e.key === 'Enter') addCustomItem();
         });
 
-        // Record search keyboard navigation
         document.getElementById('record-search-input')?.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -807,7 +786,6 @@
             }
         });
 
-        // Record search auto-search on typing
         document.getElementById('record-search-input')?.addEventListener('input', function(e) {
             clearTimeout(recordSearchTimeout);
             const query = e.target.value.trim();
@@ -820,13 +798,11 @@
             }
         });
 
-        // Listen for cart updates
         document.addEventListener('cartUpdated', function() {
             renderCheckoutPanel();
         });
     }
 
-    // ========== RECORD SEARCH ==========
     window.searchRecords = async function() {
         const input = document.getElementById('record-search-input');
         const query = input?.value?.trim();
@@ -854,9 +830,7 @@
                 headers: { 'Content-Type': 'application/json' }
             });
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
             const data = await response.json();
             
@@ -866,7 +840,6 @@
                 if (countEl) countEl.textContent = `${recordSearchResults.length} found`;
                 
                 if (recordSearchResults.length === 1) {
-                    console.log('🎯 Single result found - auto-adding to cart');
                     const record = recordSearchResults[0];
                     const price = parseFloat(record.store_price) || 0;
                     if (price > 0) {
@@ -875,9 +848,7 @@
                             showToast(`⚠️ "${record.artist} - ${record.title}" is already in the cart.`, 'warning');
                         } else {
                             addRecordToCart(record.id);
-                            setTimeout(() => {
-                                clearRecordSearch();
-                            }, 500);
+                            setTimeout(() => clearRecordSearch(), 500);
                         }
                     } else {
                         showToast('⚠️ This record has no price set.', 'warning');
@@ -975,7 +946,6 @@
         recordSearchResults = [];
     };
 
-    // ========== ADD RECORD TO CART ==========
     window.addRecordToCart = function(recordId, quantity = 1) {
         if (!isAdmin()) {
             showToast('🔒 Admin access required.', 'error');
@@ -1031,7 +1001,6 @@
         }
     };
 
-    // ========== ADD CUSTOM ITEM ==========
     window.addCustomItem = function() {
         if (!isAdmin()) {
             const statusEl = document.getElementById('custom-checkout-status');
@@ -1093,7 +1062,6 @@
         }
     };
 
-    // ========== ADD BERNIE ITEM ==========
     window.addBernieItem = function() {
         if (!isAdmin()) {
             showToast('🔒 Admin access required to add Bernie donations.');
@@ -1126,7 +1094,6 @@
         showToast('🌹 Added Bernie donation ($0.99) to cart!');
     };
 
-    // ========== REMOVE CART ITEM ==========
     window.removeCartItem = function(itemId) {
         if (typeof window.cart !== 'undefined') {
             window.cart.removeItem(itemId);
@@ -1134,7 +1101,6 @@
         }
     };
 
-    // ========== CLEAR CART ==========
     window.clearCart = function() {
         if (confirm('Are you sure you want to clear your cart?')) {
             if (typeof window.cart !== 'undefined') {
@@ -1152,19 +1118,6 @@
         }
     };
 
-    // ============================================================
-    // GIFT CARD: IMMEDIATE REDEEM
-    // ============================================================
-    // Redemption is the accounting event. When the cashier clicks
-    // Apply, we look up the balance and immediately POST a redeem
-    // for min(balance, remainingOwed). The result is tracked in
-    // `giftCardApplied` (a simple counter) — not in paymentEntries,
-    // and not in any pending queue.
-    //
-    // Cancel/undo is intentionally NOT supported here. If a mistake
-    // is made, staff correct it via the accounting UI, same as any
-    // other journal entry.
-    // ============================================================
     window.applyGiftCard = async function() {
         const input = document.getElementById('giftcard-code');
         const statusEl = document.getElementById('giftcard-status');
@@ -1194,7 +1147,6 @@
             statusEl.style.color = '#666';
         }
 
-        // ---- Step 1: read balance ----
         let balance = 0;
         try {
             const balRes = await fetch(`${API_BASE}/api/gift-card/balance/${encodeURIComponent(code)}`, {
@@ -1227,7 +1179,6 @@
             return;
         }
 
-        // ---- Step 2: redeem min(balance, remaining) ----
         const amountToApply = Math.min(balance, remaining);
         const amountToApplyRounded = Math.round(amountToApply * 100) / 100;
 
@@ -1262,10 +1213,8 @@
             if (input) input.value = '';
 
             renderCheckoutPanel();
-            // Re-select the current method so the highlighted button stays
             setTimeout(() => selectPaymentMethod(selectedPaymentMethod), 50);
 
-            // Post-render status message
             setTimeout(() => {
                 const newStatus = document.getElementById('giftcard-status');
                 if (newStatus) {
@@ -1282,7 +1231,6 @@
         }
     };
 
-    // ========== CHECK SQUARE AVAILABILITY ==========
     async function checkSquareAvailability() {
         try {
             console.log('📟 Checking Square terminals...');
@@ -1292,19 +1240,16 @@
             });
             
             if (!response.ok) {
-                console.warn('⚠️ Square terminals API returned', response.status);
                 squareAvailable = false;
                 availableTerminals = [];
                 return false;
             }
             
             const data = await response.json();
-            console.log('📟 Terminals response:', data);
             
             if (data.status === 'success' && data.terminals && data.terminals.length > 0) {
                 squareAvailable = true;
                 availableTerminals = data.terminals;
-                console.log(`✅ ${availableTerminals.length} Square terminals available`);
                 const statusText = document.getElementById('pos-status-text');
                 if (statusText) {
                     statusText.innerHTML = `✅ ${availableTerminals.length} terminal(s) available`;
@@ -1314,7 +1259,6 @@
             } else {
                 squareAvailable = false;
                 availableTerminals = [];
-                console.log('📟 No Square terminals found');
                 const statusText = document.getElementById('pos-status-text');
                 if (statusText) {
                     statusText.innerHTML = '❌ No terminals available';
@@ -1323,19 +1267,12 @@
                 return false;
             }
         } catch (err) {
-            console.warn('⚠️ Square check failed:', err.message);
             squareAvailable = false;
             availableTerminals = [];
-            const statusText = document.getElementById('pos-status-text');
-            if (statusText) {
-                statusText.innerHTML = '⚠️ Connection error';
-                statusText.style.color = '#dc3545';
-            }
             return false;
         }
     }
 
-    // ========== SEND TO POS ==========
     window.sendToPos = async function() {
         if (posInProgress) {
             showToast('⏳ POS request already in progress...', 'warning');
@@ -1495,7 +1432,6 @@
         }
     };
 
-    // ========== EXECUTE PAYMENT (Complete Payment) ==========
     window.executePayment = async function() {
         if (isProcessingPayment) {
             showToast('⏳ Payment already in progress...', 'warning');
@@ -1585,7 +1521,6 @@
         await submitOrderWithPayments(total, items);
     };
 
-    // ===== SUBMIT ORDER WITH PAYMENTS =====
     async function submitOrderWithPayments(total, items) {
         isProcessingPayment = true;
         const statusEl = document.getElementById('payment-status');
@@ -1594,7 +1529,6 @@
         
         let entries = paymentEntries.length > 0 ? [...paymentEntries] : [];
         const entriesSum = entries.reduce((s, e) => s + (e.amount || 0), 0);
-        // Account for gift card portion when checking shortfall
         const totalCovered = entriesSum + giftCardApplied;
         const shortfall = Math.round((total - totalCovered) * 100) / 100;
         
@@ -1625,9 +1559,6 @@
                 .filter(item => item.type === 'record' && item.original_id)
                 .map(item => item.original_id);
             
-            // Notes string includes gift card line for the order record,
-            // but payment_entries sent to the backend excludes it — the
-            // gift-card journal entry was already written by /api/gift-card/redeem.
             const notesEntries = [...entries];
             if (giftCardApplied > 0) {
                 notesEntries.unshift({ method: 'Gift Card', amount: giftCardApplied });
@@ -1643,7 +1574,6 @@
                 customer_name: currentUserName + ' (Admin)',
                 customer_email: '',
                 notes: notesString,
-                // Gift card excluded: it was already accounted for by the redeem call.
                 payment_entries: entries,
                 source: 'admin_checkout',
                 record_ids: recordIds,
@@ -1659,7 +1589,6 @@
             if (result.success) {
                 lastOrderId = result.orderId;
                 
-                // ===== GENERATE + DOWNLOAD RECEIPT =====
                 try {
                     const receiptText = buildReceiptText(items, notesEntries, total, result.orderId);
                     const filename = buildReceiptFilename();
@@ -1670,7 +1599,6 @@
                     showToast('⚠️ Receipt could not be downloaded: ' + receiptErr.message, 'warning');
                 }
                 
-                // Reset checkout state
                 window.cart.clear();
                 cashReceived = 0;
                 giftCardApplied = 0;
@@ -1707,9 +1635,6 @@
         }
     }
 
-    // ============================================================
-    // RECEIPT GENERATION
-    // ============================================================
     function buildReceiptText(items, entries, grandTotal, orderId) {
         const now = new Date();
         const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -1720,13 +1645,11 @@
         const storePhone = storeSettings.STORE_PHONE || '';
         const footer = storeSettings.RECEIPT_FOOTER || 'Thank you!';
 
-        // ---- Calculate subtotal from items ----
         let subtotal = 0;
         items.forEach(it => {
             subtotal += (it.price || 0) * (it.quantity || 1);
         });
 
-        // ---- Compute discount applied (to the total) ----
         const taxAmount = calculateTax(subtotal);
         const grossTotal = subtotal + taxAmount;
 
@@ -1738,11 +1661,8 @@
         }
 
         const netTotal = Math.max(0, grossTotal - discountApplied);
-
-        // Use actual passed-in total (should equal netTotal)
         const finalTotal = typeof grandTotal === 'number' ? grandTotal : netTotal;
 
-        // ---- Build receipt ----
         let r = '';
         r += `${storeName}\n`;
         if (storeAddress) r += `${storeAddress}\n`;
@@ -1754,7 +1674,6 @@
         r += 'ITEMS:\n';
         r += '------------------------------------\n';
 
-        // Items
         items.forEach(item => {
             const qty = item.quantity || 1;
             const price = item.price || 0;
@@ -1773,7 +1692,6 @@
                 desc = item.title || 'Item';
             }
 
-            // Truncate long descriptions
             const maxDescLen = 38;
             let displayDesc = tag + desc;
             if (displayDesc.length > maxDescLen) {
@@ -1783,7 +1701,6 @@
             const qtyStr = qty > 1 ? `${qty}x ` : '';
             const priceStr = qty > 1 ? `  ${qty} x $${price.toFixed(2)}` : '';
 
-            // Line: description left, line total right
             r += `${displayDesc}\n`;
             r += `    ${qtyStr}@ $${price.toFixed(2)}${' '.repeat(Math.max(1, 30 - qtyStr.length - price.toFixed(2).length))}$${lineTotal.toFixed(2)}\n`;
         });
@@ -1849,7 +1766,6 @@
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        // Revoke after a small delay to ensure the download starts
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
@@ -1872,7 +1788,6 @@
         isProcessingPayment = false;
     }
 
-    // ===== SHOW POS MODAL =====
     function showPosModal(message, isError) {
         const modal = document.getElementById('pos-modal');
         const statusEl = document.getElementById('pos-modal-status');
@@ -1902,7 +1817,6 @@
         if (modal) modal.style.display = 'none';
     };
 
-    // ===== CANCEL POS PAYMENT =====
     window.cancelPosPayment = async function() {
         const cancelId = posCheckoutId;
         
@@ -1957,7 +1871,6 @@
         setTimeout(() => selectPaymentMethod(selectedPaymentMethod), 50);
     };
 
-    // ===== RETRY POS PAYMENT =====
     window.retryPosPayment = function() {
         const statusEl = document.getElementById('payment-status');
         const errorEl = document.getElementById('payment-error');
@@ -1975,7 +1888,6 @@
         window.sendToPos();
     };
 
-    // ===== WAIT FOR POS COMPLETION =====
     function waitForPosCompletion(checkoutId, timeout = 120000) {
         return new Promise((resolve, reject) => {
             let attempts = 0;
@@ -1996,21 +1908,15 @@
                         headers: { 'Content-Type': 'application/json' }
                     });
                     
-                    if (!response.ok) {
-                        console.warn('POS status check failed:', response.status);
-                        return;
-                    }
+                    if (!response.ok) return;
                     
                     const data = await response.json();
                     
-                    if (data.status !== 'success' || !data.checkout) {
-                        return;
-                    }
+                    if (data.status !== 'success' || !data.checkout) return;
                     
                     const status = data.checkout.status;
                     
                     if (status !== lastStatus) {
-                        console.log(`📟 POS status: ${status} (attempt ${attempts}/${maxAttempts})`);
                         lastStatus = status;
                         showPosModal(`POS status: ${status}...`, false);
                     }
@@ -2035,7 +1941,6 @@
                         reject(new Error('POS payment timed out. Please check the terminal.'));
                     }
                 } catch (err) {
-                    console.warn('POS polling error:', err.message);
                     if (attempts > 5) {
                         console.error('POS polling failed repeatedly:', err);
                     }
@@ -2044,52 +1949,55 @@
         });
     }
 
-    // ===== SUBMIT ORDER =====
+    // ============================================================
+    // SUBMIT ORDER — UNCONDITIONAL /api/order/complete
+    // ============================================================
     async function submitOrder(orderData) {
-        try {
-            console.log('📦 Submitting order:', orderData);
-            
-            const response = await fetch(`${API_BASE}/api/checkout/process`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(orderData)
-            });
-            
-            if (!response.ok) {
-                const errData = await response.json().catch(() => ({}));
-                throw new Error(errData.error || `HTTP ${response.status}`);
-            }
-            
-            const data = await response.json();
-            
-            if (data.status === 'success') {
-                if (orderData.record_ids && orderData.record_ids.length > 0) {
-                    try {
-                        await fetch(`${API_BASE}/api/order/complete`, {
-                            method: 'POST',
-                            credentials: 'include',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                order_id: data.order_id,
-                                transaction_id: 'admin_checkout_' + Date.now()
-                            })
-                        });
-                    } catch (err) {
-                        console.warn('Could not mark records as sold:', err);
-                    }
-                }
-                return { success: true, orderId: data.order_id };
-            } else {
-                throw new Error(data.error || 'Order submission failed.');
-            }
-        } catch (err) {
-            console.error('Order submission error:', err);
-            throw new Error(`Order submission failed: ${err.message}`);
+        console.log('📦 Submitting order:', orderData);
+        
+        const response = await fetch(`${API_BASE}/api/checkout/process`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(orderData)
+        });
+        
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `HTTP ${response.status}`);
         }
+        
+        const data = await response.json();
+        
+        if (data.status !== 'success') {
+            throw new Error(data.error || 'Order submission failed.');
+        }
+
+        // ---- UNCONDITIONAL: always call /api/order/complete ----
+        console.log('📞 Calling /api/order/complete for order', data.order_id);
+
+        const completeRes = await fetch(`${API_BASE}/api/order/complete`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                order_id: data.order_id,
+                transaction_id: 'admin_checkout_' + Date.now()
+            })
+        });
+
+        const completeBody = await completeRes.json().catch(() => ({}));
+        console.log('📞 /api/order/complete status:', completeRes.status, completeBody);
+
+        if (!completeRes.ok) {
+            throw new Error(
+                `Order complete failed (HTTP ${completeRes.status}): ${completeBody.error || completeBody.message || 'unknown error'}`
+            );
+        }
+
+        return { success: true, orderId: data.order_id };
     }
 
-    // ========== HELPERS ==========
     function showStatus(el, message, type = 'info') {
         if (!el) return;
         el.style.display = 'block';
@@ -2142,7 +2050,6 @@
         }, 4000);
     }
 
-    // ========== LISTEN FOR CART UPDATES ==========
     document.addEventListener('cartUpdated', function() {
         renderCheckoutPanel();
     });
@@ -2153,5 +2060,5 @@
         }
     });
 
-    console.log('✅ Custom Checkout module initialized (merged single-view, gift card immediate redeem, receipt enabled)');
+    console.log('✅ Custom Checkout module initialized (unconditional /api/order/complete)');
 })();

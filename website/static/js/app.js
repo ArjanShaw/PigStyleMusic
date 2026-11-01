@@ -29,6 +29,7 @@ const ADMIN_TILES = [
     'email-list', 'online-orders', 'sticky-notes', 'stats', 'creditors',
     'users', 'print-settings', 'store-settings', 'gift-cards',
     'config-keys', 'locations-admin', 'cache-management', 'system-info', 'db-query',
+    'unaccounted-records',
     'dashboard', 'login'
 ];
 
@@ -161,7 +162,8 @@ const INIT_MAP = {
     'db-query': 'initDbQuery',
     'email-list': 'initEmailList',
     'confirmation': 'initConfirmation',
-    'online-orders': 'initOnlineOrders'
+    'online-orders': 'initOnlineOrders',
+    'unaccounted-records': 'initUnaccountedRecords'
 };
 
 // ==================== SLIDE TRACK SETUP ====================
