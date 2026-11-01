@@ -22,6 +22,7 @@ const CUSTOMER_TILES = [
 
 const ADMIN_TILES = [
     'admin-dashboard',
+    'consignor-overview',        // ← ADDED: consignor's page
     'add-records', 'accounting', 'purchases', 'scan', 'discogs',
     'post-to-ebay',
     'edit-records', 'accessories', 'custom-labels', 'shipping-labels',
@@ -72,6 +73,10 @@ function updateMenu() {
     const existingDashboard = nav.querySelector('[data-page="dashboard"]');
     if (existingDashboard) existingDashboard.remove();
 
+    // ← ADDED: also clear any previously-injected consignor button
+    const existingConsignorOverview = nav.querySelector('[data-page="consignor-overview"]');
+    if (existingConsignorOverview) existingConsignorOverview.remove();
+
     ADMIN_TILES.forEach(page => {
         const existing = nav.querySelector(`[data-page="${page}"]`);
         if (existing) existing.remove();
@@ -90,15 +95,16 @@ function updateMenu() {
             nav.insertBefore(adminToggle, loginBtn);
         }
 
+        // ← CHANGED: consignor button now targets consignor-overview
         if (user.role === 'consignor') {
-            const dashboardBtn = document.createElement('button');
-            dashboardBtn.setAttribute('data-page', 'dashboard');
-            dashboardBtn.innerHTML = '<i class="fas fa-chart-pie"></i>';
-            dashboardBtn.title = 'Dashboard';
-            dashboardBtn.onclick = function() {
-                window.showPage('dashboard', this);
+            const consignorBtn = document.createElement('button');
+            consignorBtn.setAttribute('data-page', 'consignor-overview');
+            consignorBtn.innerHTML = '<i class="fas fa-chart-pie"></i>';
+            consignorBtn.title = 'My Consignment';
+            consignorBtn.onclick = function() {
+                window.showPage('consignor-overview', this);
             };
-            nav.insertBefore(dashboardBtn, loginBtn);
+            nav.insertBefore(consignorBtn, loginBtn);
         }
 
         if (loginBtn) {
@@ -134,6 +140,7 @@ const INIT_MAP = {
     'email': 'initEmail',
     'login': 'initLogin',
     'dashboard': 'initDashboard',
+    'consignor-overview': 'initConsignorOverview',   // ← ADDED
     'add-records': 'initAddRecords',
     'accounting': 'initAccounting',
     'purchases': 'initPurchases',
@@ -533,7 +540,10 @@ async function renderAdminPage(page, btnElement) {
 
 // ==================== SHOW PAGE (dispatcher) ====================
 async function showPage(page, btnElement) {
-    const adminOnly = ADMIN_TILES.filter(p => p !== 'dashboard' && p !== 'login');
+    // ← CHANGED: consignor-overview is exempt from the admin-only gate
+    const adminOnly = ADMIN_TILES.filter(p =>
+        p !== 'dashboard' && p !== 'login' && p !== 'consignor-overview'
+    );
 
     if (adminOnly.includes(page)) {
         const user = getUser();

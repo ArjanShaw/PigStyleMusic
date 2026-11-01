@@ -4389,6 +4389,118 @@ def get_user_records(user_id):
     return jsonify({'status': 'success', 'records': records_list})
 
 
+@app.route('/api/consignor/summary', methods=['GET'])
+@login_required
+@role_required(['consignor'])
+def consignor_summary():
+    """
+    Return a consignor's full overview:
+      - on_consignment: count, value, and list of active records
+      - sold: count, gross, commission, and list of sold records
+      - payouts: paid total, owed, last payout date, and payout list
+
+    Auth: session-based (Flask session cookie), gated to role='consignor'.
+    Payouts are read from journal_entries_simple where
+    source_type='consignor_payout' and source_id=str(consignor_id).
+    """
+    try:
+        consignor_id = session['user_id']
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # All records for this consignor, with status + sleeve condition
+        cursor.execute('''
+            SELECT r.id, r.artist, r.title, r.catalog_number, r.store_price,
+                   r.commission_rate, r.status_id, r.date_sold, r.created_at,
+                   s.status_name, cs.condition_name AS condition_name
+            FROM records r
+            LEFT JOIN d_status s  ON r.status_id = s.id
+            LEFT JOIN d_condition cs ON r.condition_sleeve_id = cs.id
+            WHERE r.consignor_id = ?
+            ORDER BY r.created_at DESC
+        ''', (consignor_id,))
+        rows = [dict(r) for r in cursor.fetchall()]
+
+        SOLD_STATUSES = {'sold', 'sold_on_discogs', 'Sold Online'}
+        active_records, sold_records = [], []
+        active_value_cents = sold_gross_cents = sold_commission_cents = 0
+
+        for r in rows:
+            price_cents = int(round((r.get('store_price') or 0) * 100))
+            rate = float(r.get('commission_rate') or 0.0)
+            commission_cents = int(round(price_cents * rate))
+            status = (r.get('status_name') or '').strip()
+
+            if status == 'active':
+                active_records.append({
+                    'id': r['id'],
+                    'artist': r['artist'],
+                    'title': r['title'],
+                    'catalog_number': r['catalog_number'],
+                    'condition': r.get('condition_name'),
+                    'store_price_cents': price_cents
+                })
+                active_value_cents += price_cents
+            elif status in SOLD_STATUSES:
+                sold_records.append({
+                    'id': r['id'],
+                    'artist': r['artist'],
+                    'title': r['title'],
+                    'date_sold': r.get('date_sold'),
+                    'status_name': status,
+                    'store_price_cents': price_cents,
+                    'commission_cents': commission_cents
+                })
+                sold_gross_cents += price_cents
+                sold_commission_cents += commission_cents
+
+        # Payouts already made to this consignor
+        cursor.execute('''
+            SELECT id, transaction_date, description, amount
+            FROM journal_entries_simple
+            WHERE source_type = 'consignor_payout'
+              AND source_id   = ?
+            ORDER BY transaction_date DESC, id DESC
+        ''', (str(consignor_id),))
+        payout_rows = [dict(p) for p in cursor.fetchall()]
+        paid_cents = sum(int(round((p.get('amount') or 0))) for p in payout_rows)
+        last_payout_date = payout_rows[0]['transaction_date'] if payout_rows else None
+
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'on_consignment': {
+                'count': len(active_records),
+                'value_cents': active_value_cents,
+                'records': active_records
+            },
+            'sold': {
+                'count': len(sold_records),
+                'gross_cents': sold_gross_cents,
+                'commission_cents': sold_commission_cents,
+                'records': sold_records
+            },
+            'payouts': {
+                'paid_cents': paid_cents,
+                'owed_cents': max(0, sold_commission_cents - paid_cents),
+                'last_payout_date': last_payout_date,
+                'records': [
+                    {
+                        'id': p['id'],
+                        'transaction_date': p['transaction_date'],
+                        'description': p['description'],
+                        'amount_cents': int(round((p.get('amount') or 0)))
+                    } for p in payout_rows
+                ]
+            }
+        })
+
+    except Exception as e:
+        app.logger.error(f"Consignor summary error: {str(e)}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 # ==================== CONDITIONS ENDPOINTS ====================
 
 @app.route('/api/conditions', methods=['GET'])
