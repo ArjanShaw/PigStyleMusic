@@ -2385,6 +2385,7 @@ def youtube_search():
 # ==================== USER MANAGEMENT ENDPOINTS ====================
 
 @app.route('/users', methods=['POST'])
+@role_required(['admin'])
 def create_user():
     data = request.get_json()
     if not data:
@@ -2434,8 +2435,8 @@ def create_user():
 
     return jsonify({'status': 'success', 'message': 'User created successfully', 'user_id': user_id})
 
-
 @app.route('/users', methods=['GET'])
+@role_required(['admin'])
 def get_users():
     conn = get_db()
     cursor = conn.cursor()
@@ -2462,8 +2463,8 @@ def get_users():
 
     return jsonify({'status': 'success', 'count': len(users_list), 'users': users_list})
 
-
 @app.route('/users/<int:user_id>', methods=['GET'])
+@role_required(['admin'])
 def get_user(user_id):
     conn = get_db()
     cursor = conn.cursor()
@@ -2489,8 +2490,8 @@ def get_user(user_id):
     else:
         return jsonify({'error': 'User not found'}), 404
 
-
 @app.route('/users/<int:user_id>', methods=['PUT'])
+@role_required(['admin'])
 def update_user(user_id):
     data = request.get_json()
     if not data:
@@ -2523,8 +2524,8 @@ def update_user(user_id):
 
     return jsonify({'status': 'success', 'message': 'User updated'})
 
-
 @app.route('/users/<int:user_id>/reset-password', methods=['POST'])
+@role_required(['admin'])
 def reset_password(user_id):
     data = request.get_json()
     if not data or 'new_password' not in data:
@@ -2541,12 +2542,9 @@ def reset_password(user_id):
 
     return jsonify({'status': 'success', 'message': 'Password reset successfully'})
 
-
 @app.route('/users/<int:user_id>', methods=['DELETE'])
+@role_required(['admin'])
 def delete_user(user_id):
-    if not session.get('logged_in') or session.get('role') != 'admin':
-        return jsonify({'status': 'error', 'error': 'Admin access required'}), 403
-    
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('SELECT id, username FROM users WHERE id = ?', (user_id,))
@@ -2568,7 +2566,6 @@ def delete_user(user_id):
     conn.close()
     
     return jsonify({'status': 'success', 'message': f'User {user["username"]} deleted successfully'})
-
 
 # ==================== GENRE-RELATED ENDPOINTS REMOVED ====================
 # The following endpoints have been removed:
@@ -2878,6 +2875,7 @@ def get_records():
         last_seen_after    YYYY-MM-DD. Deprecated.
         last_seen_before   YYYY-MM-DD.
         batch_id           Integer, or -1 for NULL.
+        consignor_id       Integer. Exact match on records.consignor_id.
         visible_only       true/false. When true, apply Feature 1 bin-max rule.
         hide_consigned     true/false. When true, exclude consignor_id NOT NULL.
         order_by           Column name (whitelisted).
@@ -3057,6 +3055,15 @@ def get_records():
                 where_clauses.append("r.batch_id = ?")
                 params.append(batch_id_int)
 
+        # --- consignor_id: exact match on records.consignor_id ---
+        consignor_id = request.args.get('consignor_id')
+        if consignor_id:
+            try:
+                where_clauses.append("r.consignor_id = ?")
+                params.append(int(consignor_id))
+            except ValueError:
+                pass
+
         # --- Feature 1: per-bin last_seen visibility ---
         visible_only = request.args.get('visible_only', 'false').lower() == 'true'
         if visible_only:
@@ -3142,6 +3149,7 @@ def get_records():
         app.logger.error(f"Error in get_records: {e}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 @app.route('/api/genres-with-records', methods=['GET'])
 def get_genres_with_records():
