@@ -31,7 +31,8 @@
         { page: 'store-settings', icon: 'fa-store', label: 'Store Settings', description: 'Configure store information and settings', color: 'pink', notification: null },
         { page: 'gift-cards', icon: 'fa-gift', label: 'Gift Cards', description: 'Manage and create gift cards', color: 'primary', notification: null },
         { page: 'config-keys', icon: 'fa-key', label: 'Config Keys', description: 'Manage system configuration keys', color: 'success', notification: null },
-        { page: 'db-query', icon: 'fa-database', label: 'DB Query', description: 'Run database queries (advanced)', color: 'danger', notification: null }
+        { page: 'db-query', icon: 'fa-database', label: 'DB Query', description: 'Run database queries (advanced)', color: 'danger', notification: null },
+        { page: 'unaccounted-records', icon: 'fa-search-minus', label: 'Unaccounted Records', description: 'Active records added but never scanned since creation', color: 'danger', notification: null }
     ];
 
     // Track notification counts
@@ -119,17 +120,6 @@
 
         notificationCounts = results;
         return results;
-    }
-
-    // ========== FILTERING ==========
-    function filterFeatures(features, query) {
-        if (!query || !query.trim()) return features;
-        const q = query.trim().toLowerCase();
-        return features.filter(f =>
-            f.label.toLowerCase().includes(q) ||
-            f.description.toLowerCase().includes(q) ||
-            f.page.toLowerCase().includes(q)
-        );
     }
 
     // ========== RENDER ITEM (one row in the list) ==========
