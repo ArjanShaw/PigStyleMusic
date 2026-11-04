@@ -72,6 +72,7 @@
         setText('co-ov-sales', money(totalSalesCents));
         setText('co-ov-commission', money(commissionCents));
         setText('co-ov-earned', money(earnedCents));
+        setText('co-ov-paid', money(paidCents));
         setText('co-ov-owed', money(owedCents));
 
         const lpEl = document.getElementById('coLastPayout');
