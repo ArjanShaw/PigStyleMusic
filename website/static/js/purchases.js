@@ -12,6 +12,9 @@
     let purchaseRecords = [];
     let dependenciesLoaded = false;
 
+    // Search state
+    let searchQuery = '';
+
     // Bulk action modal state
     let bulkActionType = null;   // 'format' | 'status' | 'location'
     let bulkActionPurchaseId = null;
@@ -201,7 +204,7 @@
 
             if (data.status === 'success') {
                 purchases = data.purchases || [];
-                renderPurchases(purchases);
+                renderPurchases(getFilteredPurchases());
                 updateStats(purchases);
             } else {
                 list.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'Failed to load'}</div>`;
@@ -212,13 +215,96 @@
         }
     }
 
+    // ===== SEARCH: FILTER LOGIC =====
+    function getFilteredPurchases() {
+        if (!searchQuery) return purchases;
+
+        const q = searchQuery.toLowerCase();
+        const terms = q.split(/\s+/).filter(Boolean);
+
+        return purchases.filter(p => {
+            const haystack = [
+                p.id,
+                p.seller_name,
+                p.seller_contact,
+                p.description,
+                p.amount_spent
+            ]
+                .filter(v => v !== null && v !== undefined)
+                .join(' ')
+                .toLowerCase();
+
+            return terms.every(t => haystack.includes(t));
+        });
+    }
+
+    // ===== SEARCH: INPUT HANDLER =====
+    window.purchasesSearch = function(value) {
+        searchQuery = (value || '').trim();
+
+        const clearEl = document.getElementById('purchases-search-clear');
+        if (clearEl) clearEl.style.display = searchQuery ? 'block' : 'none';
+
+        renderPurchases(getFilteredPurchases());
+        updateSearchInfo();
+    };
+
+    // ===== SEARCH: CLEAR HANDLER =====
+    window.purchasesClearSearch = function() {
+        searchQuery = '';
+        const input = document.getElementById('purchases-search');
+        if (input) {
+            input.value = '';
+            input.focus();
+        }
+        const clearEl = document.getElementById('purchases-search-clear');
+        if (clearEl) clearEl.style.display = 'none';
+
+        renderPurchases(getFilteredPurchases());
+        updateSearchInfo();
+    };
+
+    // ===== SEARCH: RESULT INDICATOR =====
+    function updateSearchInfo() {
+        const infoEl = document.getElementById('purchases-search-info');
+        if (!infoEl) return;
+
+        if (!searchQuery) {
+            infoEl.style.display = 'none';
+            infoEl.textContent = '';
+            return;
+        }
+
+        const shown = getFilteredPurchases().length;
+        infoEl.style.display = 'block';
+        infoEl.innerHTML = `🔍 Showing <strong>${shown}</strong> of <strong>${purchases.length}</strong> purchase(s) matching "<strong>${escapeHtml(searchQuery)}</strong>" — <a href="#" onclick="purchasesClearSearch(); return false;" style="color:#007bff;">clear</a>`;
+    }
+
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     // ===== RENDER PURCHASES =====
     function renderPurchases(purchasesList) {
         const list = document.getElementById('purchases-list');
         if (!list) return;
 
         if (!purchasesList || purchasesList.length === 0) {
-            list.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">No purchases found. Click "New Purchase" to create one.</div>';
+            if (searchQuery) {
+                list.innerHTML = `<div style="text-align: center; padding: 20px; color: #999;">
+                    No purchases match "<strong>${escapeHtml(searchQuery)}</strong>".
+                    <div style="margin-top: 10px;">
+                        <button onclick="purchasesClearSearch()" style="padding: 6px 16px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">Clear Search</button>
+                    </div>
+                </div>`;
+            } else {
+                list.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">No purchases found. Click "New Purchase" to create one.</div>';
+            }
             return;
         }
 
@@ -440,6 +526,12 @@
                 setTimeout(() => { cell.style.background = '#fffbe6'; }, 800);
 
                 showStatus(`✅ Updated ${field.replace('_', ' ')}`, 'success');
+
+                // Re-apply search filter in case the edited field affects the match
+                if (searchQuery) {
+                    renderPurchases(getFilteredPurchases());
+                    updateSearchInfo();
+                }
             } else {
                 if (field === 'amount_spent') {
                     cell.textContent = oldValue > 0 ? oldValue.toFixed(2) : '';
@@ -1046,6 +1138,13 @@
     window.initPurchases = function() {
         console.log('Purchases initialized');
         selectedPurchaseId = null;
+        searchQuery = '';
+        const searchInput = document.getElementById('purchases-search');
+        if (searchInput) searchInput.value = '';
+        const clearEl = document.getElementById('purchases-search-clear');
+        if (clearEl) clearEl.style.display = 'none';
+        const infoEl = document.getElementById('purchases-search-info');
+        if (infoEl) infoEl.style.display = 'none';
         loadPurchases();
         setTimeout(checkDependencies, 1000);
     };
