@@ -8,49 +8,81 @@
         <div id="coLastPayout" style="font-size:12px;color:#888;"></div>
     </div>
 
-    <!-- Summary cards -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
-        <div class="co-card" style="background:#f8f9fa;border-radius:12px;padding:16px;text-align:center;border:1px solid #eee;">
-            <div style="font-size:22px;">🎵</div>
-            <div style="font-size:12px;color:#666;margin-top:4px;">On Consignment</div>
-            <div id="co-active-count" style="font-size:22px;font-weight:700;color:#333;">0</div>
-            <div id="co-active-value" style="font-size:12px;color:#888;">$0.00 asking</div>
-        </div>
-        <div class="co-card" style="background:#f8f9fa;border-radius:12px;padding:16px;text-align:center;border:1px solid #eee;">
-            <div style="font-size:22px;">✅</div>
-            <div style="font-size:12px;color:#666;margin-top:4px;">Sold</div>
-            <div id="co-sold-count" style="font-size:22px;font-weight:700;color:#333;">0</div>
-            <div id="co-sold-gross" style="font-size:12px;color:#888;">$0.00 gross</div>
-        </div>
-        <div class="co-card" style="background:#f8f9fa;border-radius:12px;padding:16px;text-align:center;border:1px solid #eee;">
-            <div style="font-size:22px;">💰</div>
-            <div style="font-size:12px;color:#666;margin-top:4px;">Commission Earned</div>
-            <div id="co-earned" style="font-size:22px;font-weight:700;color:#28a745;">$0.00</div>
-            <div style="font-size:12px;color:#888;">your share</div>
-        </div>
-        <div class="co-card" style="background:#fff8f0;border-radius:12px;padding:16px;text-align:center;border:1px solid #ffe0b2;">
-            <div style="font-size:22px;">🧾</div>
-            <div style="font-size:12px;color:#666;margin-top:4px;">Owed to You</div>
-            <div id="co-owed" style="font-size:22px;font-weight:700;color:#dc3545;">$0.00</div>
-            <div id="co-paid" style="font-size:12px;color:#888;">$0.00 paid</div>
-        </div>
-    </div>
-
     <!-- Tabs -->
     <div style="display:flex;gap:6px;border-bottom:2px solid #eee;">
-        <button class="co-tab co-tab-active" data-tab="active" style="padding:8px 16px;background:none;border:none;border-bottom:3px solid #6d4fc6;color:#6d4fc6;font-weight:600;cursor:pointer;font-size:14px;">On Consignment</button>
-        <button class="co-tab" data-tab="sold" style="padding:8px 16px;background:none;border:none;border-bottom:3px solid transparent;color:#888;font-weight:600;cursor:pointer;font-size:14px;">Sold</button>
-        <button class="co-tab" data-tab="payouts" style="padding:8px 16px;background:none;border:none;border-bottom:3px solid transparent;color:#888;font-weight:600;cursor:pointer;font-size:14px;">Payouts</button>
+        <button class="co-tab co-tab-active" data-tab="overview" style="padding:8px 16px;background:none;border:none;border-bottom:3px solid #6d4fc6;color:#6d4fc6;font-weight:600;cursor:pointer;font-size:14px;">Overview</button>
+        <button class="co-tab" data-tab="records" style="padding:8px 16px;background:none;border:none;border-bottom:3px solid transparent;color:#888;font-weight:600;cursor:pointer;font-size:14px;">Records</button>
     </div>
 
-    <div id="co-tab-content" style="flex:1;min-height:0;overflow-y:auto;"></div>
+    <!-- Overview tab -->
+    <div id="co-tab-overview" style="display:flex;flex-direction:column;gap:16px;">
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+            <thead>
+                <tr style="background:#f8f9fa;">
+                    <th style="text-align:left;padding:10px 12px;border-bottom:2px solid #eee;color:#333;">Metric</th>
+                    <th style="text-align:right;padding:10px 12px;border-bottom:2px solid #eee;color:#333;">Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;color:#666;">Records on Consignment</td>
+                    <td id="co-ov-on-consignment" style="padding:10px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#333;">0</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;color:#666;">Records Sold</td>
+                    <td id="co-ov-sold" style="padding:10px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#333;">0</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;color:#666;">Records Unsold (Active)</td>
+                    <td id="co-ov-unsold" style="padding:10px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#333;">0</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;color:#666;">Total Sales</td>
+                    <td id="co-ov-sales" style="padding:10px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#007bff;">$0.00</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;color:#666;">Commission (store share)</td>
+                    <td id="co-ov-commission" style="padding:10px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#dc3545;">$0.00</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;color:#666;">You Earned</td>
+                    <td id="co-ov-earned" style="padding:10px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#28a745;">$0.00</td>
+                </tr>
+                <tr>
+                    <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;color:#666;">Owed to You</td>
+                    <td id="co-ov-owed" style="padding:10px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#6f42c1;">$0.00</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Records tab -->
+    <div id="co-tab-records" style="display:none;flex-direction:column;gap:12px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="co-filter" data-filter="all" style="padding:8px 16px;border-radius:20px;border:1px solid #6d4fc6;background:#6d4fc6;color:white;font-size:13px;font-weight:600;cursor:pointer;">All</button>
+            <button class="co-filter" data-filter="active" style="padding:8px 16px;border-radius:20px;border:1px solid #ddd;background:white;color:#666;font-size:13px;font-weight:600;cursor:pointer;">Active</button>
+            <button class="co-filter" data-filter="sold" style="padding:8px 16px;border-radius:20px;border:1px solid #ddd;background:white;color:#666;font-size:13px;font-weight:600;cursor:pointer;">Sold</button>
+        </div>
+        <div style="flex:1;min-height:0;overflow-y:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead>
+                    <tr style="background:#f8f9fa;">
+                        <th style="text-align:left;padding:8px 10px;border-bottom:2px solid #eee;color:#333;">Artist</th>
+                        <th style="text-align:left;padding:8px 10px;border-bottom:2px solid #eee;color:#333;">Title</th>
+                        <th style="text-align:right;padding:8px 10px;border-bottom:2px solid #eee;color:#333;">Price</th>
+                        <th style="text-align:right;padding:8px 10px;border-bottom:2px solid #eee;color:#333;">Commission Rate</th>
+                        <th style="text-align:left;padding:8px 10px;border-bottom:2px solid #eee;color:#333;">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="co-tab-content">
+                    <tr><td colspan="5" style="text-align:center;padding:20px;color:#999;">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
 
     <style>
         .co-tab.co-tab-active { border-bottom-color:#6d4fc6 !important; color:#6d4fc6 !important; }
-        .co-row { display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid #f0f0f0;font-size:13px; }
-        .co-row:last-child { border-bottom:none; }
-        .co-row .co-title { font-weight:600;color:#333; }
-        .co-row .co-sub { color:#999;font-size:11px; }
         .co-empty { text-align:center;padding:32px;color:#aaa;font-size:13px; }
     </style>
 </div>
