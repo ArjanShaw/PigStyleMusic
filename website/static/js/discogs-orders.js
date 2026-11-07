@@ -1,5 +1,5 @@
 // ================================================================
-// FILE: /static/js/discogs.js
+// FILE: /static/js/discogs-orders.js
 // Discogs Orders tile — self-contained, loads orders on demand
 // ================================================================
 
@@ -31,7 +31,8 @@
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     function formatMoney(v) {
@@ -85,12 +86,17 @@
     // ----------------------------------------------------------------
 
     window.discogsLoadOrders = async function() {
+        console.log('📥 discogsLoadOrders() called');
+
         const table = document.getElementById('discogs-orders-table');
         const btn = document.getElementById('discogs-load-orders-btn');
 
-        if (table) {
-            table.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">Loading orders...</div>';
+        if (!table) {
+            console.warn('⚠️ #discogs-orders-table not found — tile not in DOM yet');
+            return;
         }
+
+        table.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">Loading orders...</div>';
         if (btn) {
             btn.disabled = true;
             btn.textContent = '⏳ Loading...';
@@ -128,7 +134,6 @@
         }
     };
 
-    // Button click entry point (bound via addEventListener in init)
     window.discogsLoadOrdersClick = function() {
         window.discogsLoadOrders();
     };
@@ -199,7 +204,7 @@
                     <td style="padding:8px; text-align:right; color:#0064d2; font-weight:600;">${total}</td>
                     <td style="padding:8px; text-align:center; color:#666;">${items}</td>
                     <td style="padding:8px; text-align:center;">
-                        <button onclick="discogsViewOrder('${escapeHtml(String(orderId))}')"
+                        <button data-discogs-view="${escapeHtml(String(orderId))}"
                                 style="padding:4px 12px; background:#667eea; color:white; border:none; border-radius:14px; cursor:pointer; font-size:12px; font-weight:600;">
                             View
                         </button>
@@ -412,28 +417,58 @@
     };
 
     // ----------------------------------------------------------------
-    // INIT — wires button + modal once the tile is in the DOM
+    // WIRING — event delegation, survives re-renders and load order
     // ----------------------------------------------------------------
 
     function wireTile() {
-        const loadBtn = document.getElementById('discogs-load-orders-btn');
-        if (loadBtn && !loadBtn._wired) {
-            loadBtn._wired = true;
-            loadBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                window.discogsLoadOrders();
-            });
-        }
+        if (document._discogsTileWired) return;
+        document._discogsTileWired = true;
 
-        const modal = document.getElementById('discogs-shipping-modal');
-        if (modal && !modal._wired) {
-            modal._wired = true;
-            modal.addEventListener('click', function(e) {
-                if (e.target === this) {
+        document.addEventListener('click', function(e) {
+            // Load Orders
+            const loadBtn = e.target.closest('#discogs-load-orders-btn');
+            if (loadBtn) {
+                e.preventDefault();
+                console.log('📥 Load Orders button clicked');
+                window.discogsLoadOrders();
+                return;
+            }
+
+            // View order row button
+            const viewBtn = e.target.closest('[data-discogs-view]');
+            if (viewBtn) {
+                e.preventDefault();
+                const id = viewBtn.getAttribute('data-discogs-view');
+                if (id) window.discogsViewOrder(id);
+                return;
+            }
+
+            // Shipping modal backdrop
+            const modal = document.getElementById('discogs-shipping-modal');
+            if (modal && e.target === modal) {
+                window.discogsCloseShippingModal();
+            }
+        });
+
+        // Enter key in search box applies filters; Escape closes modal
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && e.target && e.target.id === 'discogs-orders-search') {
+                e.preventDefault();
+                window.discogsOrdersApplyFilters();
+            }
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('discogs-shipping-modal');
+                if (modal && modal.style.display === 'flex') {
                     window.discogsCloseShippingModal();
                 }
-            });
-        }
+            }
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', wireTile);
+    } else {
+        wireTile();
     }
 
     // app.js calls window.initDiscogsHub when the tile renders.
@@ -450,5 +485,5 @@
         window.discogsLoadOrders();
     };
 
-    console.log('✅ discogs.js loaded');
+    console.log('✅ discogs-orders.js loaded');
 })();

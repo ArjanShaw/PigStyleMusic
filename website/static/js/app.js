@@ -22,7 +22,7 @@ const CUSTOMER_TILES = [
 
 const ADMIN_TILES = [
     'admin-dashboard',
-    'consignor-overview',        // ← ADDED: consignor's page
+    'consignor-overview',
     'add-records', 'accounting', 'purchases', 'scan', 'discogs',
     'post-to-ebay',
     'edit-records', 'accessories', 'custom-labels', 'shipping-labels',
@@ -73,7 +73,6 @@ function updateMenu() {
     const existingDashboard = nav.querySelector('[data-page="dashboard"]');
     if (existingDashboard) existingDashboard.remove();
 
-    // ← ADDED: also clear any previously-injected consignor button
     const existingConsignorOverview = nav.querySelector('[data-page="consignor-overview"]');
     if (existingConsignorOverview) existingConsignorOverview.remove();
 
@@ -95,7 +94,6 @@ function updateMenu() {
             nav.insertBefore(adminToggle, loginBtn);
         }
 
-        // ← CHANGED: consignor button now targets consignor-overview
         if (user.role === 'consignor') {
             const consignorBtn = document.createElement('button');
             consignorBtn.setAttribute('data-page', 'consignor-overview');
@@ -140,7 +138,7 @@ const INIT_MAP = {
     'email': 'initEmail',
     'login': 'initLogin',
     'dashboard': 'initDashboard',
-    'consignor-overview': 'initConsignorOverview',   // ← ADDED
+    'consignor-overview': 'initConsignorOverview',
     'add-records': 'initAddRecords',
     'accounting': 'initAccounting',
     'purchases': 'initPurchases',
@@ -172,6 +170,47 @@ const INIT_MAP = {
     'online-orders': 'initOnlineOrders',
     'unaccounted-records': 'initUnaccountedRecords'
 };
+
+// ==================== INIT DISPATCH HELPER ====================
+// Calls window[fnName] if defined. If the script that defines it hasn't
+// loaded yet when the tile is navigated to, warn and retry for ~3s
+// instead of silently skipping (which leaves the tile's buttons unwired).
+function runTileInit(page, mode) {
+    const initFn = INIT_MAP[page];
+    if (!initFn) return;
+
+    if (typeof window[initFn] === 'function') {
+        console.log('🔧 Initializing' + (mode ? ' (' + mode + ')' : '') + ':', page);
+        try {
+            window[initFn]();
+        } catch (err) {
+            console.error('❌ Init function ' + initFn + ' threw for page "' + page + '":', err);
+        }
+        return;
+    }
+
+    console.warn('⚠️ Init function "' + initFn + '" not defined yet for page "' + page +
+                 '" — retrying (script may still be loading)');
+
+    let attempts = 0;
+    const maxAttempts = 20;   // 20 × 150ms ≈ 3s
+    const timer = setInterval(function() {
+        attempts++;
+        if (typeof window[initFn] === 'function') {
+            clearInterval(timer);
+            console.log('🔧 Initializing (delayed, attempt ' + attempts + '):', page);
+            try {
+                window[initFn]();
+            } catch (err) {
+                console.error('❌ Init function ' + initFn + ' threw for page "' + page + '":', err);
+            }
+        } else if (attempts >= maxAttempts) {
+            clearInterval(timer);
+            console.error('❌ Gave up waiting for init function "' + initFn +
+                          '" for page "' + page + '" — check that its script is loaded.');
+        }
+    }, 150);
+}
 
 // ==================== SLIDE TRACK SETUP ====================
 function ensureSlideTrack() {
@@ -443,11 +482,7 @@ async function renderCustomerPage(page, btnElement) {
 
     goToSlide(page);
 
-    const initFn = INIT_MAP[page];
-    if (initFn && typeof window[initFn] === 'function') {
-        console.log('🔧 Initializing:', page);
-        window[initFn]();
-    }
+    runTileInit(page, 'customer');
 
     document.dispatchEvent(new CustomEvent('pageChange', {
         detail: { page, mode: 'customer' }
@@ -518,11 +553,7 @@ async function renderAdminPage(page, btnElement) {
             };
         });
 
-        const initFn = INIT_MAP[page];
-        if (initFn && typeof window[initFn] === 'function') {
-            console.log('🔧 Initializing (admin):', page);
-            window[initFn]();
-        }
+        runTileInit(page, 'admin');
 
         if (page === 'confirmation' && typeof window.checkSquareReturn === 'function') {
             console.log('🔵 Confirmation page loaded, checking for order...');
@@ -540,7 +571,6 @@ async function renderAdminPage(page, btnElement) {
 
 // ==================== SHOW PAGE (dispatcher) ====================
 async function showPage(page, btnElement) {
-    // ← CHANGED: consignor-overview is exempt from the admin-only gate
     const adminOnly = ADMIN_TILES.filter(p =>
         p !== 'dashboard' && p !== 'login' && p !== 'consignor-overview'
     );
@@ -734,10 +764,10 @@ document.addEventListener('DOMContentLoaded', function() {
 // Scoped IIFE. Runs whenever the 'home' customer tile becomes active.
 // ================================================================
 (function initHomePhotoAlbum() {
-    const IMAGE_PATH   = '/images/';           // absolute — works from /tiles/home.html
+    const IMAGE_PATH   = '/images/';
     const IMAGE_PREFIX = 'front_page_image';
     const IMAGE_EXT    = '.png';
-    const MAX_IMAGES   = 30;                    // safety cap
+    const MAX_IMAGES   = 30;
 
     let imageUrls = [];
     let currentIndex = 0;
@@ -758,7 +788,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const url = IMAGE_PATH + IMAGE_PREFIX + i + IMAGE_EXT;
             const ok = await imageExists(url);
             if (ok) found.push(url);
-            else break; // stop at first gap
+            else break;
         }
         return found;
     }
@@ -829,7 +859,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (nextBtn) nextBtn.disabled = false;
         }
 
-        // Wire navigation once
         if (prevBtn && !prevBtn.dataset.wired) {
             prevBtn.dataset.wired = '1';
             prevBtn.addEventListener('click', function(e) {
@@ -860,8 +889,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function setupAlbum() {
         const stack = document.getElementById('albumStack');
-        if (!stack) return;                 // home tile not loaded — nothing to do
-        if (albumInitialized) return;       // already done this session
+        if (!stack) return;
+        if (albumInitialized) return;
         albumInitialized = true;
 
         imageUrls = await discoverImages();
@@ -869,14 +898,12 @@ document.addEventListener('DOMContentLoaded', function() {
         renderAlbum();
     }
 
-    // Re-run setup when home becomes active (also handles the very first load)
     document.addEventListener('pageChange', function(e) {
         if (e && e.detail && e.detail.page === 'home') {
             setupAlbum();
         }
     });
 
-    // In case 'home' is the initial page and pageChange already fired before we attached
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function() {
             setTimeout(setupAlbum, 300);
