@@ -22,14 +22,28 @@
     </div>
 
     <!-- Actions -->
-    <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap;">
+    <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap; align-items: center;">
         <button onclick="purchasesCreate()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
             <i class="fas fa-plus"></i> New Purchase
         </button>
         <button onclick="purchasesRefresh()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
             <i class="fas fa-sync"></i> Refresh
         </button>
+        <div style="flex: 1; min-width: 180px; position: relative;">
+            <input type="text"
+                   id="purchases-search"
+                   placeholder="🔍 Search seller, contact, description, ID…"
+                   oninput="purchasesSearch(this.value)"
+                   style="width: 100%; padding: 8px 30px 8px 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 13px; color: #333; box-sizing: border-box; outline: none;">
+            <span id="purchases-search-clear"
+                  onclick="purchasesClearSearch()"
+                  style="display: none; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #999; font-size: 16px; font-weight: bold;"
+                  title="Clear search">&times;</span>
+        </div>
     </div>
+
+    <!-- Search result indicator -->
+    <div id="purchases-search-info" style="display: none; width: 100%; font-size: 12px; color: #666; margin-top: -4px;"></div>
 
     <!-- Purchases Table -->
     <div style="width: 100%; flex: 1; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px;">
@@ -70,5 +84,9 @@
     }
     #purchases-list tr[data-id]:hover {
         background: #f1f8ff !important;
+    }
+    #purchases-search:focus {
+        border-color: #007bff;
+        box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
     }
 </style>

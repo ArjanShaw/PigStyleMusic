@@ -4438,7 +4438,8 @@ def consignor_summary():
                     'title': r['title'],
                     'catalog_number': r['catalog_number'],
                     'condition': r.get('condition_name'),
-                    'store_price_cents': price_cents
+                    'store_price_cents': price_cents,
+                    'commission_rate': r.get('commission_rate')
                 })
                 active_value_cents += price_cents
             elif status in SOLD_STATUSES:
@@ -4449,7 +4450,8 @@ def consignor_summary():
                     'date_sold': r.get('date_sold'),
                     'status_name': status,
                     'store_price_cents': price_cents,
-                    'commission_cents': commission_cents
+                    'commission_cents': commission_cents,
+                    'commission_rate': r.get('commission_rate')
                 })
                 sold_gross_cents += price_cents
                 sold_commission_cents += commission_cents
@@ -4500,6 +4502,7 @@ def consignor_summary():
         app.logger.error(f"Consignor summary error: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
+
 
 # ==================== CONDITIONS ENDPOINTS ====================
 

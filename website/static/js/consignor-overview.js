@@ -11,7 +11,7 @@
     const API_BASE = getAPIBase();
 
     let coData = null;
-    let coTab  = 'active';
+    let coFilter = 'all';
 
     function getUser() {
         try {
@@ -23,6 +23,11 @@
     function money(cents) {
         const n = (Number(cents) || 0) / 100;
         return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function rateText(rate) {
+        if (rate === null || rate === undefined || rate === '') return 'null';
+        return String(rate);
     }
 
     async function loadOverview() {
@@ -40,8 +45,8 @@
             renderOverview();
         } catch (err) {
             console.error('Consignor overview load failed:', err);
-            const content = document.getElementById('co-tab-content');
-            if (content) content.innerHTML = '<div class="co-empty">Failed to load overview: ' + err.message + '</div>';
+            const body = document.getElementById('co-tab-content');
+            if (body) body.innerHTML = '<tr><td colspan="5" class="co-empty">Failed to load: ' + err.message + '</td></tr>';
         }
     }
 
@@ -55,13 +60,20 @@
         const sold   = coData.sold || {};
         const pay    = coData.payouts || {};
 
-        setText('co-active-count', active.count || 0);
-        setText('co-active-value', money(active.value_cents));
-        setText('co-sold-count',   sold.count || 0);
-        setText('co-sold-gross',   money(sold.gross_cents));
-        setText('co-earned',       money(sold.commission_cents));
-        setText('co-owed',         money(pay.owed_cents));
-        setText('co-paid',         money(pay.paid_cents) + ' paid');
+        const totalSalesCents = sold.gross_cents || 0;
+        const commissionCents = sold.commission_cents || 0;
+        const earnedCents = Math.max(0, totalSalesCents - commissionCents);
+        const paidCents = pay.paid_cents || 0;
+        const owedCents = earnedCents - paidCents;
+
+        setText('co-ov-on-consignment', active.count || 0);
+        setText('co-ov-sold', sold.count || 0);
+        setText('co-ov-unsold', active.count || 0);
+        setText('co-ov-sales', money(totalSalesCents));
+        setText('co-ov-commission', money(commissionCents));
+        setText('co-ov-earned', money(earnedCents));
+        setText('co-ov-paid', money(paidCents));
+        setText('co-ov-owed', money(owedCents));
 
         const lpEl = document.getElementById('coLastPayout');
         if (lpEl) {
@@ -70,7 +82,7 @@
                 : 'No payouts yet';
         }
 
-        renderTab();
+        renderRecords();
     }
 
     function setText(id, val) {
@@ -78,52 +90,61 @@
         if (el) el.textContent = val;
     }
 
-    function renderTab() {
-        const content = document.getElementById('co-tab-content');
-        if (!content || !coData) return;
+    function renderRecords() {
+        const body = document.getElementById('co-tab-content');
+        if (!body || !coData) return;
 
-        document.querySelectorAll('.co-tab').forEach(tab => {
-            tab.classList.toggle('co-tab-active', tab.dataset.tab === coTab);
+        const activeRows = (coData.on_consignment && coData.on_consignment.records) || [];
+        const soldRows = (coData.sold && coData.sold.records) || [];
+
+        const activeMapped = activeRows.map(function(r) {
+            return {
+                id: r.id,
+                artist: r.artist,
+                title: r.title,
+                store_price_cents: r.store_price_cents,
+                commission_rate: r.commission_rate,
+                status_name: 'Active',
+                sold: false
+            };
+        });
+        const soldMapped = soldRows.map(function(r) {
+            return {
+                id: r.id,
+                artist: r.artist,
+                title: r.title,
+                store_price_cents: r.store_price_cents,
+                commission_rate: r.commission_rate,
+                status_name: r.status_name || 'Sold',
+                sold: true
+            };
         });
 
         let rows = [];
-        if (coTab === 'active') {
-            rows = (coData.on_consignment && coData.on_consignment.records) || [];
-            content.innerHTML = rows.length ? rows.map(r => `
-                <div class="co-row">
-                    <div>
-                        <div class="co-title">${esc(r.artist || 'Unknown')} — ${esc(r.title || 'Untitled')}</div>
-                        <div class="co-sub">${esc(r.catalog_number || '')} ${r.condition ? '· ' + esc(r.condition) : ''}</div>
-                    </div>
-                    <div style="font-weight:700;color:#333;">${money(r.store_price_cents)}</div>
-                </div>
-            `).join('') : '<div class="co-empty">No records currently on consignment.</div>';
-        } else if (coTab === 'sold') {
-            rows = (coData.sold && coData.sold.records) || [];
-            content.innerHTML = rows.length ? rows.map(r => `
-                <div class="co-row">
-                    <div>
-                        <div class="co-title">${esc(r.artist || 'Unknown')} — ${esc(r.title || 'Untitled')}</div>
-                        <div class="co-sub">Sold ${esc(r.date_sold || '—')} · ${esc(r.status_name || '')}</div>
-                    </div>
-                    <div style="text-align:right;">
-                        <div style="font-weight:700;color:#333;">${money(r.store_price_cents)}</div>
-                        <div style="font-size:11px;color:#28a745;">you: ${money(r.commission_cents)}</div>
-                    </div>
-                </div>
-            `).join('') : '<div class="co-empty">No sales yet.</div>';
+        if (coFilter === 'sold') {
+            rows = soldMapped;
+        } else if (coFilter === 'active') {
+            rows = activeMapped;
         } else {
-            const payouts = (coData.payouts && coData.payouts.records) || [];
-            content.innerHTML = payouts.length ? payouts.map(p => `
-                <div class="co-row">
-                    <div>
-                        <div class="co-title">${money(p.amount_cents)}</div>
-                        <div class="co-sub">${esc(p.description || 'Payout')}</div>
-                    </div>
-                    <div style="font-size:12px;color:#999;">${esc(p.transaction_date || '')}</div>
-                </div>
-            `).join('') : '<div class="co-empty">No payouts recorded yet.</div>';
+            rows = activeMapped.concat(soldMapped);
         }
+
+        if (!rows.length) {
+            body.innerHTML = '<tr><td colspan="5" class="co-empty">No records.</td></tr>';
+            return;
+        }
+
+        body.innerHTML = rows.map(function(r) {
+            const statusColor = r.sold ? '#28a745' : '#007bff';
+            return ''
+                + '<tr>'
+                +   '<td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;color:#333;">' + esc(r.artist || 'Unknown') + '</td>'
+                +   '<td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;color:#333;">' + esc(r.title || 'Untitled') + '</td>'
+                +   '<td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;text-align:right;color:#333;">' + money(r.store_price_cents) + '</td>'
+                +   '<td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;text-align:right;color:#333;">' + esc(rateText(r.commission_rate)) + '</td>'
+                +   '<td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;color:' + statusColor + ';font-weight:600;">' + esc(r.status_name) + '</td>'
+                + '</tr>';
+        }).join('');
     }
 
     function esc(s) {
@@ -132,11 +153,49 @@
             .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     }
 
-    function wireTabs() {
-        document.querySelectorAll('.co-tab').forEach(tab => {
+    function showTab(tabName) {
+        const overview = document.getElementById('co-tab-overview');
+        const records = document.getElementById('co-tab-records');
+        if (!overview || !records) return;
+
+        if (tabName === 'overview') {
+            overview.style.display = 'flex';
+            records.style.display = 'none';
+        } else {
+            overview.style.display = 'none';
+            records.style.display = 'flex';
+        }
+
+        document.querySelectorAll('.co-tab').forEach(function(tab) {
+            tab.classList.toggle('co-tab-active', tab.dataset.tab === tabName);
+        });
+    }
+
+    function setFilter(filter) {
+        coFilter = filter;
+        document.querySelectorAll('.co-filter').forEach(function(btn) {
+            if (btn.dataset.filter === filter) {
+                btn.style.background = '#6d4fc6';
+                btn.style.color = 'white';
+                btn.style.borderColor = '#6d4fc6';
+            } else {
+                btn.style.background = 'white';
+                btn.style.color = '#666';
+                btn.style.borderColor = '#ddd';
+            }
+        });
+        renderRecords();
+    }
+
+    function wireEvents() {
+        document.querySelectorAll('.co-tab').forEach(function(tab) {
             tab.addEventListener('click', function() {
-                coTab = this.dataset.tab;
-                renderTab();
+                showTab(this.dataset.tab);
+            });
+        });
+        document.querySelectorAll('.co-filter').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                setFilter(this.dataset.filter);
             });
         });
     }
@@ -144,9 +203,11 @@
     window.initConsignorOverview = function() {
         console.log('💿 Consignor overview init');
         console.log('🔧 API Base:', API_BASE);
-        coTab = 'active';
         coData = null;
-        wireTabs();
+        coFilter = 'all';
+        showTab('overview');
+        setFilter('all');
+        wireEvents();
         loadOverview();
     };
 })();
