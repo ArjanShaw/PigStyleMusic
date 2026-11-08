@@ -4194,7 +4194,7 @@ def update_record(record_id):
         'condition_sleeve_id', 'condition_disc_id', 'store_price',
         'consignor_id', 'commission_rate', 'status_id', 'notes',
         'discogs_genre_raw', 'date_sold', 'last_seen',
-        'format_id', 'location_id', 'location_index'
+        'format_id', 'location_id', 'location_index', 'missing'
     ]
     
     for key, value in data.items():

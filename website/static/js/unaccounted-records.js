@@ -1,21 +1,26 @@
 // Unaccounted Records tile
 //
-// Three views scoped to a tracked location subtree (default: N-2, id 241):
+// Views scoped to a tracked location subtree (default: N-2, id 241):
 //   All              — every active (status 2) record currently in the subtree
 //   Unaccounted      — was in the subtree at the last scan (last_seen <= scanDate)
 //                      but was NOT seen in the newest scan (last_seen < scanDate)
 //                      and has not been sold
 //   Sold since scan  — sold (status 3/4/5) with date_sold > scanDate
+//   Missing          — active records with records.missing = 1
 //
 // "Scan date" = MAX(last_seen) among active (status 2) records currently in
 // the tracked subtree. Assumes bulk scanning writes the same last_seen date
 // to every record picked up in a pass. Moves between sublocations within the
 // subtree do not affect last_seen, so they never create false positives.
 //
+// Every row has a "Missing" toggle that flips records.missing between 0 and 1
+// via PUT /records/:id. Toggling refreshes the current view in place.
+//
 // Backend endpoints used:
-//   GET /api/locations                        (resolve subtree ids)
-//   GET /records?status_ids=2&location_ids=…  (active records)
-//   GET /records?status_ids=3,4,5&location_ids=…
+//   GET  /api/locations                        (resolve subtree ids)
+//   GET  /records?status_ids=2&location_ids=…  (active records)
+//   GET  /records?status_ids=3,4,5&location_ids=…
+//   PUT  /records/:id                          (toggle missing flag)
 //
 (function() {
     'use strict';
@@ -36,6 +41,7 @@
     let soldRecords = [];
     let scanDate = null;
     let currentView = 'unaccounted';
+    let busyRecords = new Set();   // record ids with an in-flight missing toggle
 
     function getHeaders() {
         const headers = { 'Content-Type': 'application/json' };
@@ -69,6 +75,11 @@
         now.setHours(0, 0, 0, 0);
         const diff = Math.floor((now - then) / (1000 * 60 * 60 * 24));
         return diff >= 0 ? diff : 0;
+    }
+
+    function isMissing(rec) {
+        // The API returns sqlite integer 0/1; treat anything truthy as missing.
+        return rec && (rec.missing === 1 || rec.missing === true || rec.missing === '1');
     }
 
     // ---------- Subtree resolution ----------
@@ -194,6 +205,9 @@
         if (currentView === 'sold') {
             return soldRecords.filter(isSoldSinceScan);
         }
+        if (currentView === 'missing') {
+            return activeRecords.filter(isMissing);
+        }
         return activeRecords.slice();
     }
 
@@ -204,14 +218,91 @@
         const unacEl = document.getElementById('ur-total-unaccounted');
         const soldEl = document.getElementById('ur-total-sold');
         const scanEl = document.getElementById('ur-scan-date');
+        const missingEl = document.getElementById('ur-total-missing');
 
         if (totalEl) totalEl.textContent = activeRecords.length;
         if (unacEl) unacEl.textContent = activeRecords.filter(isUnaccounted).length;
         if (soldEl) soldEl.textContent = soldRecords.filter(isSoldSinceScan).length;
         if (scanEl) scanEl.textContent = scanDate || '—';
+        if (missingEl) missingEl.textContent = activeRecords.filter(isMissing).length;
+    }
+
+    // ---------- Missing toggle ----------
+
+    async function toggleMissing(recordId) {
+        if (busyRecords.has(recordId)) return;
+
+        const rec =
+            activeRecords.find(r => r.id === recordId) ||
+            soldRecords.find(r => r.id === recordId);
+        if (!rec) return;
+
+        const next = isMissing(rec) ? 0 : 1;
+
+        busyRecords.add(recordId);
+        renderTable();
+
+        try {
+            const resp = await fetch(`${API_BASE}/records/${recordId}`, {
+                method: 'PUT',
+                credentials: 'include',
+                headers: getHeaders(),
+                body: JSON.stringify({ missing: next })
+            });
+
+            if (!resp.ok) {
+                const text = await resp.text().catch(() => '');
+                throw new Error(`HTTP ${resp.status}${text ? ': ' + text.slice(0, 200) : ''}`);
+            }
+
+            const data = await resp.json().catch(() => ({}));
+            if (data.status && data.status !== 'success') {
+                throw new Error(data.error || 'update failed');
+            }
+
+            // Update local state so the UI reflects the change immediately.
+            rec.missing = next;
+            updateStats();
+        } catch (err) {
+            console.error(`Missing toggle failed for record #${recordId}:`, err);
+            alert(`Could not update missing flag for record #${recordId}:\n${err.message}`);
+        } finally {
+            busyRecords.delete(recordId);
+            renderTable();
+        }
     }
 
     // ---------- Render ----------
+
+    function missingToggleHtml(rec) {
+        const on = isMissing(rec);
+        const busy = busyRecords.has(rec.id);
+
+        if (busy) {
+            return `<button disabled
+                        style="padding: 4px 10px; border-radius: 12px; border: 1px solid #ddd;
+                               background: #f8f9fa; color: #999; font-size: 11px; font-weight: 600;
+                               cursor: wait;">
+                        <i class="fas fa-spinner fa-spin"></i>
+                    </button>`;
+        }
+
+        if (on) {
+            return `<button onclick="urToggleMissing(${rec.id})" title="Unflag missing"
+                        style="padding: 4px 10px; border-radius: 12px; border: 1px solid #fd7e14;
+                               background: #fd7e14; color: white; font-size: 11px; font-weight: 700;
+                               cursor: pointer;">
+                        Missing
+                    </button>`;
+        }
+
+        return `<button onclick="urToggleMissing(${rec.id})" title="Flag as missing"
+                    style="padding: 4px 10px; border-radius: 12px; border: 1px solid #ddd;
+                           background: white; color: #888; font-size: 11px; font-weight: 600;
+                           cursor: pointer;">
+                    Missing
+                </button>`;
+    }
 
     function renderTable() {
         const list = document.getElementById('ur-list');
@@ -233,7 +324,8 @@
             return;
         }
 
-        // Sort: for "all"/"unaccounted", oldest created first; for "sold", newest sold first
+        // Sort: for "all"/"unaccounted"/"missing", oldest created first;
+        // for "sold", newest sold first
         rows.sort((a, b) => {
             if (currentView === 'sold') {
                 const da = dateOnly(a.date_sold) || '';
@@ -259,6 +351,7 @@
                     <th style="padding: 6px 8px; text-align: right; color: #333;">Days Old</th>
                     <th style="padding: 6px 8px; text-align: left; color: #333;">Last Seen</th>
                     ${showSoldCols ? '<th style="padding: 6px 8px; text-align: left; color: #333;">Sold</th>' : ''}
+                    <th style="padding: 6px 8px; text-align: center; color: #333;">Missing</th>
                 </tr>
             </thead>
             <tbody>`;
@@ -274,7 +367,11 @@
             const soldTxt = showSoldCols ? (dateOnly(r.date_sold) || '—') : '';
             const locTxt = r.location_display || r.location_name || '—';
 
-            html += `<tr>
+            // Highlight the row when the record is flagged missing so it's
+            // obvious at a glance even in the All and Unaccounted views.
+            const rowBg = isMissing(r) ? '#fff4e6' : 'transparent';
+
+            html += `<tr style="background: ${rowBg};">
                 <td style="padding: 6px 8px; border-bottom: 1px solid #eee; color: #333; font-family: monospace;">#${escapeHtml(r.id)}</td>
                 <td style="padding: 6px 8px; border-bottom: 1px solid #eee; color: #333; font-weight: 600;">${escapeHtml(r.artist || '—')}</td>
                 <td style="padding: 6px 8px; border-bottom: 1px solid #eee; color: #333;">${escapeHtml(r.title || '—')}</td>
@@ -283,6 +380,7 @@
                 <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: right; color: ${ageColor}; font-weight: 600;">${age == null ? '—' : age}</td>
                 <td style="padding: 6px 8px; border-bottom: 1px solid #eee; color: #666; font-size: 12px;">${lastSeenCell}</td>
                 ${showSoldCols ? `<td style="padding: 6px 8px; border-bottom: 1px solid #eee; color: #6f42c1; font-weight: 600; font-size: 12px;">${escapeHtml(soldTxt)}</td>` : ''}
+                <td style="padding: 6px 8px; border-bottom: 1px solid #eee; text-align: center;">${missingToggleHtml(r)}</td>
             </tr>`;
         });
 
@@ -297,13 +395,16 @@
         if (currentView === 'sold') {
             return '<div style="text-align: center; padding: 20px; color: #999;">No records sold since the last scan.</div>';
         }
+        if (currentView === 'missing') {
+            return '<div style="text-align: center; padding: 20px; color: #999;">No records are flagged as missing in this scope.</div>';
+        }
         return '<div style="text-align: center; padding: 20px; color: #999;">No active records in this scope.</div>';
     }
 
     // ---------- View switching ----------
 
     function styleTabs() {
-        const tabs = ['all', 'unaccounted', 'sold'];
+        const tabs = ['all', 'unaccounted', 'sold', 'missing'];
         tabs.forEach(t => {
             const btn = document.getElementById(`ur-tab-${t}`);
             if (!btn) return;
@@ -314,7 +415,7 @@
     }
 
     window.urSetView = function(view) {
-        if (!['all', 'unaccounted', 'sold'].includes(view)) return;
+        if (!['all', 'unaccounted', 'sold', 'missing'].includes(view)) return;
         currentView = view;
         styleTabs();
         renderTable();
@@ -332,6 +433,10 @@
         const input = document.getElementById('ur-search');
         if (input) input.value = '';
         renderTable();
+    };
+
+    window.urToggleMissing = function(recordId) {
+        toggleMissing(recordId);
     };
 
     window.initUnaccountedRecords = function() {
