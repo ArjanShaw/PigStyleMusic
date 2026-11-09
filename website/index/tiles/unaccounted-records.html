@@ -24,16 +24,16 @@
             <div style="font-size: 10px; color: #666;">Unaccounted</div>
         </div>
         <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
-            <div style="font-size: 20px; color: #6f42c1;" id="ur-total-sold">0</div>
-            <div style="font-size: 10px; color: #666;">Sold since scan</div>
+            <div style="font-size: 20px; color: #fd7e14;" id="ur-total-missing">0</div>
+            <div style="font-size: 10px; color: #666;">Flagged missing</div>
+        </div>
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
+            <div style="font-size: 20px; color: #6f42c1;" id="ur-total-reorder">0</div>
+            <div style="font-size: 10px; color: #666;">To reorder</div>
         </div>
         <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
             <div style="font-size: 20px; color: #007bff;" id="ur-scan-date">—</div>
             <div style="font-size: 10px; color: #666;">Scan date</div>
-        </div>
-        <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #eee;">
-            <div style="font-size: 20px; color: #fd7e14;" id="ur-total-missing">0</div>
-            <div style="font-size: 10px; color: #666;">Flagged missing</div>
         </div>
     </div>
 
@@ -47,13 +47,13 @@
                     style="padding: 8px 16px; border: none; background: white; color: #333; cursor: pointer; font-size: 13px; font-weight: 600; border-left: 1px solid #ddd;">
                 Unaccounted
             </button>
-            <button id="ur-tab-sold" onclick="urSetView('sold')"
-                    style="padding: 8px 16px; border: none; background: white; color: #333; cursor: pointer; font-size: 13px; font-weight: 600; border-left: 1px solid #ddd;">
-                Sold since scan
-            </button>
             <button id="ur-tab-missing" onclick="urSetView('missing')"
                     style="padding: 8px 16px; border: none; background: white; color: #333; cursor: pointer; font-size: 13px; font-weight: 600; border-left: 1px solid #ddd;">
                 Missing
+            </button>
+            <button id="ur-tab-reorder" onclick="urSetView('reorder')"
+                    style="padding: 8px 16px; border: none; background: white; color: #333; cursor: pointer; font-size: 13px; font-weight: 600; border-left: 1px solid #ddd;">
+                Reorder
             </button>
         </div>
         <input type="text" id="ur-search" placeholder="Search by artist, title, or ID..."
