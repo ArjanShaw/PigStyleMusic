@@ -10,7 +10,6 @@
         { page: 'accounting', icon: 'fa-calculator', label: 'Accounting', description: 'View and manage financial records', color: 'success', notification: null },
         { page: 'purchases', icon: 'fa-boxes', label: 'Purchases', description: 'Manage purchase orders and inventory', color: 'warning', notification: null },
         { page: 'scan', icon: 'fa-qrcode', label: 'Scan', description: 'Scan barcodes and QR codes', color: 'info', notification: null },
-        { page: 'post-discogs', icon: 'fa-share-alt', label: 'Post to Discogs', description: 'Post inventory to Discogs marketplace', color: 'purple', notification: null },
         { page: 'discogs-orders', icon: 'fa-shopping-bag', label: 'Discogs Orders', description: 'Manage orders from Discogs', color: 'pink', notification: null },
         { page: 'edit-records', icon: 'fa-edit', label: 'Edit Records', description: 'Edit existing record information', color: 'primary', notification: null },
         { page: 'locations-admin', icon: 'fa-map-marker-alt', label: 'Locations', description: 'Manage location hierarchy, pricing, and post subtrees to eBay/Discogs', color: 'info', notification: null },
