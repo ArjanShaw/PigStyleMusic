@@ -12,6 +12,7 @@
     const STORAGE_KEY = 'pigstyle_recent_scans';
     const URGENCY_KEY = 'pigstyle_scan_urgency_mode';
     const IGNORE_EMPTY_KEY = 'pigstyle_scan_ignore_empty';
+    const SEARCH_KEY = 'pigstyle_scan_location_search';
 
     // Preferred leaf order within a bin. Anything not listed sorts after,
     // alphabetically. Compared case-insensitively on the leaf name.
@@ -127,6 +128,20 @@
 
     function setIgnoreEmpty(on) {
         localStorage.setItem(IGNORE_EMPTY_KEY, on ? '1' : '0');
+    }
+
+    // ===== LOCATION SEARCH STATE =====
+    function getSearchTerm() {
+        return (localStorage.getItem(SEARCH_KEY) || '').trim();
+    }
+
+    function setSearchTerm(term) {
+        const v = (term || '').trim();
+        if (v) {
+            localStorage.setItem(SEARCH_KEY, v);
+        } else {
+            localStorage.removeItem(SEARCH_KEY);
+        }
     }
 
     // ===== LOAD LAST RECORDS BY LAST_SEEN =====
@@ -277,6 +292,16 @@
         return leafLocations.filter(loc => (loc.record_count || 0) > 0);
     }
 
+    // ===== SEARCH FILTER =====
+    // Matches if the search term appears anywhere in the composed
+    // display name (parent/child), case-insensitively.
+    function matchesSearch(loc, term) {
+        if (!term) return true;
+        const needle = term.toLowerCase();
+        const hay = (getLocationDisplay(loc) || '').toLowerCase();
+        return hay.indexOf(needle) !== -1;
+    }
+
     // ===== GET LOCATION ORDER (leaves only) =====
     //   Normal  - by composed display_name (numeric bin order), with leaf
     //             sub-order LT, RT, LB, RB inside each bin.
@@ -285,8 +310,14 @@
     //
     // Parents are never navigable — only the deepest generation (leaves).
     // When "ignore empty" is on, empty bins are excluded from both modes.
+    // When a search term is active, only matching locations are included.
     function getLocationOrder() {
-        const base = [...getNavigableLocations()];
+        const term = getSearchTerm();
+        let base = [...getNavigableLocations()];
+
+        if (term) {
+            base = base.filter(loc => matchesSearch(loc, term));
+        }
 
         if (!isUrgencyMode()) {
             return base.sort(normalCmp);
@@ -310,7 +341,8 @@
     // ===== REBUILD DROPDOWN =====
     // Re-sorts and repopulates. Preserves the current selection if possible;
     // if the current selection is no longer available (e.g. its bin became
-    // empty and "ignore empty" is on), picks the first available location.
+    // empty and "ignore empty" is on, or a search no longer matches it),
+    // picks the first available location.
     function rebuildLocationSelect() {
         const select = document.getElementById('scan-location-select');
         if (!select) return;
@@ -334,6 +366,8 @@
         } else if (sorted.length > 0) {
             // Current selection is no longer navigable: fall back to first.
             select.value = String(sorted[0].id);
+        } else {
+            select.value = '';
         }
 
         updateLocationPreview();
@@ -444,7 +478,7 @@
                     locationLastSeen[loc.id] = loc.latest_last_seen || null;
                 });
                 
-                // Populate the dropdown (sorted per current mode).
+                // Populate the dropdown (sorted per current mode + search).
                 rebuildLocationSelect();
                 
                 if (isUrgencyMode()) {
@@ -455,7 +489,7 @@
                     // Normal mode: restore the saved location if it still
                     // exists AND is navigable under current filters.
                     const savedLocation = localStorage.getItem('pigstyle_scan_location');
-                    const navigable = getNavigableLocations();
+                    const navigable = getLocationOrder();
                     if (savedLocation && navigable.some(l => l.id == savedLocation)) {
                         select.value = savedLocation;
                     }
@@ -682,6 +716,12 @@
         const nextBtn = document.getElementById('scan-next-btn');
         const urgencyToggle = document.getElementById('scan-urgency-toggle');
         const ignoreEmptyToggle = document.getElementById('scan-ignore-empty-toggle');
+        const searchInput = document.getElementById('scan-location-search');
+
+        // Restore persisted search term into the input
+        if (searchInput) {
+            searchInput.value = getSearchTerm();
+        }
 
         if (urgencyToggle) {
             urgencyToggle.checked = isUrgencyMode();
@@ -706,6 +746,44 @@
                 rebuildLocationSelect();
                 selectTopOfOrder();
                 if (scanInput && !scanInput.disabled) scanInput.focus();
+            });
+        }
+
+        // ===== LOCATION SEARCH BOX =====
+        // Filters the dropdown live. Selection is preserved if it still
+        // matches; otherwise the first matching location is selected.
+        if (searchInput) {
+            searchInput.addEventListener('input', function() {
+                setSearchTerm(this.value);
+                rebuildLocationSelect();
+
+                // If nothing matches, don't auto-select. If exactly one
+                // matches, jump straight to it so Enter → scan works.
+                const sorted = getLocationOrder();
+                if (sorted.length === 1) {
+                    locationSelect.value = String(sorted[0].id);
+                    updateLocationPreview();
+                }
+            });
+
+            searchInput.addEventListener('keydown', function(e) {
+                // Enter from the search box jumps to the scan input
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const sorted = getLocationOrder();
+                    if (sorted.length === 1) {
+                        locationSelect.value = String(sorted[0].id);
+                        updateLocationPreview();
+                    }
+                    if (scanInput && !scanInput.disabled) scanInput.focus();
+                }
+                // Escape clears the search
+                if (e.key === 'Escape') {
+                    this.value = '';
+                    setSearchTerm('');
+                    rebuildLocationSelect();
+                    if (scanInput && !scanInput.disabled) scanInput.focus();
+                }
             });
         }
 
@@ -776,6 +854,7 @@
             if (t === prevBtn || t === nextBtn) return;
             if (t === urgencyToggle) return;
             if (t === ignoreEmptyToggle) return;
+            if (t === searchInput) return;
             if (e.key.length === 1 || e.key === 'Enter') {
                 if (scanInput && !scanInput.disabled) scanInput.focus();
             }
