@@ -395,25 +395,69 @@
 
         showDiscogsOrdersStatus('⏳ Marking paid orders as sold...', 'info');
 
+        let httpStatus = null;
+        let rawBody = null;
+
         try {
             const resp = await fetch(`${API_BASE}/api/discogs/bulk-mark-paid-orders-sold`, {
                 method: 'POST',
                 credentials: 'include',
                 headers: getHeaders()
             });
-            const data = await resp.json();
+            httpStatus = resp.status;
 
-            if (!resp.ok || data.status !== 'success') {
-                throw new Error(data.error || `HTTP ${resp.status}`);
+            // Read raw text first — never lose the server's actual response
+            rawBody = await resp.text();
+
+            if (!resp.ok) {
+                throw new Error(`HTTP ${httpStatus} — body: ${rawBody || '<empty>'}`);
             }
 
-            const msg = `✅ Marked ${data.marked || 0} record(s) as sold. Skipped ${data.skipped || 0}, not found ${data.not_found || 0}.`;
+            let data;
+            try {
+                data = JSON.parse(rawBody);
+            } catch (parseErr) {
+                throw new Error(`Non-JSON response (HTTP ${httpStatus}) — body: ${rawBody || '<empty>'}`);
+            }
+
+            if (data.status !== 'success') {
+                throw new Error(
+                    `API returned status="${data.status}" — body: ${rawBody}`
+                );
+            }
+
+            // No || 0 fallbacks — if these are missing or non-numeric, fail loudly
+            if (typeof data.marked !== 'number') {
+                throw new Error(`API response missing numeric "marked" field — body: ${rawBody}`);
+            }
+
+            if (data.marked === 0) {
+                throw new Error(`API returned success but marked=0 — body: ${rawBody}`);
+            }
+
+            const skipped = data.skipped !== undefined ? data.skipped : null;
+            const notFound = data.not_found !== undefined ? data.not_found : null;
+
+            let msg = `✅ Marked ${data.marked} record(s) as sold.`;
+            if (skipped !== null) msg += ` Skipped ${skipped}.`;
+            if (notFound !== null) msg += ` Not found ${notFound}.`;
             showDiscogsOrdersStatus(msg, 'success');
+
             window.discogsCloseMarkSoldModal();
             window.discogsLoadOrders();
         } catch (err) {
-            console.error('Bulk mark sold failed:', err);
-            showDiscogsOrdersStatus(`❌ ${escapeHtml(err.message)}`, 'error');
+            console.error('❌ Bulk mark sold FAILED:', err);
+            console.error('   HTTP status:', httpStatus);
+            console.error('   Raw body:', rawBody);
+
+            showDiscogsOrdersStatus(
+                `❌ ${escapeHtml(err.message)}<br><small style="opacity:0.8;">See browser console for full details.</small>`,
+                'error'
+            );
+
+            // Re-throw so it appears as an unhandled exception in devtools
+            setTimeout(() => { throw err; }, 0);
+
             if (confirmBtn) {
                 confirmBtn.disabled = false;
                 confirmBtn.textContent = 'Confirm & Mark Sold';
