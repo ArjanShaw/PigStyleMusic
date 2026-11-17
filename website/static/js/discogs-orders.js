@@ -328,40 +328,70 @@
     };
 
     // ----------------------------------------------------------------
-    // BULK MARK PAID ORDERS SOLD — with alert preview
+    // BULK MARK PAID ORDERS SOLD — scrollable confirmation modal
     // ----------------------------------------------------------------
 
-    window.discogsBulkMarkPaidOrdersSold = async function() {
-        // Collect items from Payment Received orders
-        const items = [];
+    let discogsMarkSoldItems = [];
+
+    window.discogsBulkMarkPaidOrdersSold = function() {
+        discogsMarkSoldItems = [];
         discogsOrders.forEach(order => {
             if ((order.status || '') === 'Payment Received') {
                 (order.items || []).forEach(item => {
-                    items.push({
-                        orderId: order.id,
+                    discogsMarkSoldItems.push({
                         buyer: order.buyer?.username || order.buyer?.name || '—',
                         release: item.release?.description || item.title || '—',
+                        condition: item.condition || '—',
                         pigstyle_id: item.pigstyle_id,
                     });
                 });
             }
         });
 
-        if (items.length === 0) {
-            alert('No items found in Payment Received orders.');
+        const modal = document.getElementById('discogs-marksold-modal');
+        const summaryEl = document.getElementById('discogs-marksold-summary');
+        const listEl = document.getElementById('discogs-marksold-list');
+
+        if (!modal || !summaryEl || !listEl) {
+            // Fallback if modal HTML not present
+            alert(`Found ${discogsMarkSoldItems.length} item(s) to mark as sold.`);
             return;
         }
 
-        // Build the alert message
-        let msg = `The following ${items.length} item(s) will be marked as SOLD:\n\n`;
-        items.forEach((it, i) => {
-            msg += `${i + 1}. Order #${it.orderId} — ${it.buyer}\n`;
-            msg += `   ${it.release}\n`;
-            msg += `   PigStyle ID: ${it.pigstyle_id ?? '—'}\n\n`;
-        });
-        msg += 'Proceed?';
+        if (discogsMarkSoldItems.length === 0) {
+            showDiscogsOrdersStatus('⚠️ No items found in Payment Received orders.', 'warning');
+            return;
+        }
 
-        if (!confirm(msg)) return;
+        summaryEl.innerHTML = `<strong>${discogsMarkSoldItems.length}</strong> item(s) will be marked as <strong>Sold</strong> on Discogs.`;
+
+        let html = '';
+        discogsMarkSoldItems.forEach(it => {
+            html += `
+                <div style="padding:6px 4px; border-bottom:1px solid #f0f0f0;">
+                    <div style="font-weight:600; color:#333;">${escapeHtml(it.release)}</div>
+                    <div style="color:#666; font-size:12px;">
+                        ${escapeHtml(it.buyer)} · ${escapeHtml(it.condition)} · PigStyle ID: ${escapeHtml(String(it.pigstyle_id ?? '—'))}
+                    </div>
+                </div>
+            `;
+        });
+        listEl.innerHTML = html;
+
+        modal.style.display = 'flex';
+    };
+
+    window.discogsCloseMarkSoldModal = function() {
+        const modal = document.getElementById('discogs-marksold-modal');
+        if (modal) modal.style.display = 'none';
+    };
+
+    window.discogsConfirmMarkSold = async function() {
+        const confirmBtn = document.getElementById('discogs-marksold-confirm');
+        if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = '⏳ Marking...';
+        }
 
         showDiscogsOrdersStatus('⏳ Marking paid orders as sold...', 'info');
 
@@ -377,12 +407,17 @@
                 throw new Error(data.error || `HTTP ${resp.status}`);
             }
 
-            const okMsg = `✅ Marked ${data.marked || 0} record(s) as sold. Skipped ${data.skipped || 0}, not found ${data.not_found || 0}.`;
-            showDiscogsOrdersStatus(okMsg, 'success');
+            const msg = `✅ Marked ${data.marked || 0} record(s) as sold. Skipped ${data.skipped || 0}, not found ${data.not_found || 0}.`;
+            showDiscogsOrdersStatus(msg, 'success');
+            window.discogsCloseMarkSoldModal();
             window.discogsLoadOrders();
         } catch (err) {
             console.error('Bulk mark sold failed:', err);
             showDiscogsOrdersStatus(`❌ ${escapeHtml(err.message)}`, 'error');
+            if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = 'Confirm & Mark Sold';
+            }
         }
     };
 
@@ -473,22 +508,32 @@
             }
 
             // Shipping modal backdrop
-            const modal = document.getElementById('discogs-shipping-modal');
-            if (modal && e.target === modal) {
+            const shipModal = document.getElementById('discogs-shipping-modal');
+            if (shipModal && e.target === shipModal) {
                 window.discogsCloseShippingModal();
+            }
+
+            // Mark Sold modal backdrop
+            const markModal = document.getElementById('discogs-marksold-modal');
+            if (markModal && e.target === markModal) {
+                window.discogsCloseMarkSoldModal();
             }
         });
 
-        // Enter key in search box applies filters; Escape closes modal
+        // Enter key in search box applies filters; Escape closes modals
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && e.target && e.target.id === 'discogs-orders-search') {
                 e.preventDefault();
                 window.discogsOrdersApplyFilters();
             }
             if (e.key === 'Escape') {
-                const modal = document.getElementById('discogs-shipping-modal');
-                if (modal && modal.style.display === 'flex') {
+                const shipModal = document.getElementById('discogs-shipping-modal');
+                if (shipModal && shipModal.style.display === 'flex') {
                     window.discogsCloseShippingModal();
+                }
+                const markModal = document.getElementById('discogs-marksold-modal');
+                if (markModal && markModal.style.display === 'flex') {
+                    window.discogsCloseMarkSoldModal();
                 }
             }
         });
