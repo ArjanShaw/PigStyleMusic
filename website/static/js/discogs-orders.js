@@ -338,6 +338,12 @@
         discogsOrders.forEach(order => {
             if ((order.status || '') === 'Payment Received') {
                 (order.items || []).forEach(item => {
+                    // Only include records that are still Active (status_id 2).
+                    // The backend skips anything already sold (3/4) and reports
+                    // anything missing as not_found, so filtering here keeps the
+                    // preview honest about what will actually be marked.
+                    if (item.record_status_id !== 2) return;
+
                     discogsMarkSoldItems.push({
                         buyer: order.buyer?.username || order.buyer?.name || '—',
                         release: item.release?.description || item.title || '—',
@@ -353,13 +359,15 @@
         const listEl = document.getElementById('discogs-marksold-list');
 
         if (!modal || !summaryEl || !listEl) {
-            // Fallback if modal HTML not present
             alert(`Found ${discogsMarkSoldItems.length} item(s) to mark as sold.`);
             return;
         }
 
         if (discogsMarkSoldItems.length === 0) {
-            showDiscogsOrdersStatus('⚠️ No items found in Payment Received orders.', 'warning');
+            showDiscogsOrdersStatus(
+                '⚠️ No Active records found in Payment Received orders — everything is already sold or missing.',
+                'warning'
+            );
             return;
         }
 
