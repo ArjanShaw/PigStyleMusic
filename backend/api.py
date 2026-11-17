@@ -2856,37 +2856,9 @@ def create_record():
 def get_records():
     """Get records with filtering, pagination, and a generic search.
 
-    Query params:
-        status_ids         Comma-separated. Defaults to 2 (Active).
-        artist             Partial match on artist.
-        title              Partial match on title.
-        catalog_number     Partial match on catalog_number.
-        barcode            Exact match on barcode.
-        id, ids            Exact match on id.
-        search             LIKE across id/barcode/artist/title/catalog_number.
-        location_ids       Comma-separated location ids.
-        format_ids         Comma-separated format ids (matches records.format_id).
-        genre_ids          Comma-separated genre ids (matches effective genre,
-                           resolved through the location chain).
-        genres             Legacy string filter on discogs_genre_raw.
-        max_price          Upper bound on store_price.
-        require_image      true/false.
-        created_after      YYYY-MM-DD.
-        last_seen_after    YYYY-MM-DD. Deprecated.
-        last_seen_before   YYYY-MM-DD.
-        batch_id           Integer, or -1 for NULL.
-        consignor_id       Integer. Exact match on records.consignor_id.
-        visible_only       true/false. When true, apply Feature 1 bin-max rule.
-        hide_consigned     true/false. When true, exclude consignor_id NOT NULL.
-        order_by           Column name (whitelisted).
-        order_dir          ASC/DESC.
-        limit, offset      Pagination.
-
-    Response rows include:
-        location_name         Leaf name only (e.g. "RT")
-        location_parent_name  Parent name or None (e.g. "Bin 20")
-        location_display      Composed display string (e.g. "Bin 20/RT")
-        consignor_username    Username of the consignor, or NULL (store record)
+    Search behavior:
+      - Pure-digit query (e.g. "696") -> exact match on id OR barcode.
+      - Non-numeric query -> LIKE across barcode/artist/title/catalog_number.
     """
     try:
         conn = get_db()
@@ -2894,7 +2866,7 @@ def get_records():
         cursor = conn.cursor()
 
         base_query = """
-            SELECT 
+            SELECT
                 r.*,
                 f.name AS format_name,
                 s.status_name AS status_name,
@@ -2911,10 +2883,10 @@ def get_records():
                 cd.display_name AS disc_display,
                 cs.display_name AS sleeve_display,
                 u.username AS consignor_username,
-                CASE 
-                    WHEN cd.quality_index IS NOT NULL AND cs.quality_index IS NOT NULL 
-                    THEN (cd.quality_index + cs.quality_index) / 2.0 
-                    ELSE NULL 
+                CASE
+                    WHEN cd.quality_index IS NOT NULL AND cs.quality_index IS NOT NULL
+                    THEN (cd.quality_index + cs.quality_index) / 2.0
+                    ELSE NULL
                 END AS combined_quality
             FROM records r
             LEFT JOIN formats f ON r.format_id = f.id
@@ -2931,7 +2903,6 @@ def get_records():
         where_clauses = []
         params = []
 
-        # --- Status filter ---
         status_ids = request.args.get('status_ids')
         if status_ids:
             ids = [int(x.strip()) for x in status_ids.split(',') if x.strip()]
@@ -2943,7 +2914,6 @@ def get_records():
             where_clauses.append("r.status_id = ?")
             params.append(2)
 
-        # --- Simple column filters ---
         artist = request.args.get('artist')
         if artist:
             where_clauses.append("r.artist LIKE ?")
@@ -2972,13 +2942,19 @@ def get_records():
                 where_clauses.append(f"r.id IN ({placeholders})")
                 params.extend(ids)
 
+        # --- Search: numeric = exact id/barcode; otherwise LIKE ---
         search = request.args.get('search')
         if search:
-            search_like = f'%{search}%'
-            where_clauses.append(
-                "(CAST(r.id AS TEXT) LIKE ? OR r.barcode LIKE ? OR r.artist LIKE ? OR r.title LIKE ? OR r.catalog_number LIKE ?)"
-            )
-            params.extend([search_like, search_like, search_like, search_like, search_like])
+            search_stripped = search.strip()
+            if search_stripped.isdigit():
+                where_clauses.append("(r.id = ? OR r.barcode = ?)")
+                params.extend([int(search_stripped), search_stripped])
+            else:
+                search_like = f'%{search_stripped}%'
+                where_clauses.append(
+                    "(r.barcode LIKE ? OR r.artist LIKE ? OR r.title LIKE ? OR r.catalog_number LIKE ?)"
+                )
+                params.extend([search_like, search_like, search_like, search_like])
 
         location_ids = request.args.get('location_ids')
         if location_ids:
@@ -2998,7 +2974,6 @@ def get_records():
                 where_clauses.append(f"r.format_id IN ({placeholders})")
                 params.extend(ids)
 
-        # --- genre_ids: match against effective genre through location chain ---
         genre_ids_param = request.args.get('genre_ids')
         if genre_ids_param:
             ids = [int(x.strip()) for x in genre_ids_param.split(',') if x.strip()]
@@ -3055,7 +3030,6 @@ def get_records():
                 where_clauses.append("r.batch_id = ?")
                 params.append(batch_id_int)
 
-        # --- consignor_id: exact match on records.consignor_id ---
         consignor_id = request.args.get('consignor_id')
         if consignor_id:
             try:
@@ -3064,7 +3038,6 @@ def get_records():
             except ValueError:
                 pass
 
-        # --- Feature 1: per-bin last_seen visibility ---
         visible_only = request.args.get('visible_only', 'false').lower() == 'true'
         if visible_only:
             where_clauses.append("""
@@ -3079,14 +3052,12 @@ def get_records():
                 )
             """)
 
-        # --- Feature 3: hide consigned records ---
         hide_consigned = request.args.get('hide_consigned', 'false').lower() == 'true'
         if hide_consigned:
             where_clauses.append("r.consignor_id IS NULL")
 
         where_sql = (" AND " + " AND ".join(where_clauses)) if where_clauses else ""
 
-        # --- Count query ---
         count_query = f"""
             WITH RECURSIVE {effective_genre_cte()}
             SELECT COUNT(*) AS total
@@ -3099,7 +3070,6 @@ def get_records():
         cursor.execute(count_query, params)
         total = cursor.fetchone()['total']
 
-        # --- Ordering ---
         order_by = request.args.get('order_by', 'created_at')
         allowed_order_columns = ['id', 'created_at', 'last_seen', 'artist', 'title', 'store_price', 'status_id', 'format_id']
         if order_by not in allowed_order_columns:
@@ -3109,7 +3079,6 @@ def get_records():
             order_dir = 'DESC'
         order_sql = f" ORDER BY r.{order_by} {order_dir}"
 
-        # --- Pagination ---
         limit = request.args.get('limit')
         offset = request.args.get('offset')
         pagination_sql = ""
@@ -3150,6 +3119,400 @@ def get_records():
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+@app.route('/api/returns/process', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def process_return():
+    """Validate a return/mixed transaction. Does NOT commit."""
+    try:
+        data = request.json or {}
+        transaction_type = (data.get('transaction_type') or 'return').lower()
+        if transaction_type not in ('return', 'mixed'):
+            return jsonify({'status': 'error', 'error': 'transaction_type must be return or mixed'}), 400
+
+        sale_items = data.get('sale_items') or []
+        return_items = data.get('return_items') or []
+
+        if transaction_type == 'mixed' and not sale_items:
+            return jsonify({'status': 'error', 'error': 'mixed transaction requires sale_items'}), 400
+        if not return_items:
+            return jsonify({'status': 'error', 'error': 'return_items is required'}), 400
+
+        refund_method = (data.get('refund_method') or 'cash').lower()
+        if refund_method != 'cash':
+            return jsonify({'status': 'error', 'error': 'Only cash refunds supported at this time'}), 400
+
+        sale_subtotal = sum(float(i.get('price') or 0) * float(i.get('quantity') or 1) for i in sale_items)
+        return_subtotal = sum(float(i.get('price') or 0) * float(i.get('quantity') or 1) for i in return_items)
+
+        try:
+            sale_tax = float(data.get('sale_tax') or 0)
+        except (TypeError, ValueError):
+            sale_tax = 0.0
+        try:
+            return_tax = float(data.get('return_tax') or 0)
+        except (TypeError, ValueError):
+            return_tax = 0.0
+        if sale_tax < 0 or return_tax < 0:
+            return jsonify({'status': 'error', 'error': 'tax values cannot be negative'}), 400
+
+        disc_pct = float(data.get('discount_percent') or 0)
+        disc_amt = float(data.get('discount_amount') or 0)
+        if disc_pct > 0:
+            disc_total = round((sale_subtotal + sale_tax) * (disc_pct / 100.0), 2)
+        elif disc_amt > 0:
+            disc_total = round(min(disc_amt, sale_subtotal + sale_tax), 2)
+        else:
+            disc_total = 0.0
+
+        sale_total = round(sale_subtotal + sale_tax - disc_total, 2)
+        return_total = round(return_subtotal + return_tax, 2)
+        net_total = round(sale_total - return_total, 2)
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        record_status_updates = []
+        for item in return_items:
+            if item.get('type') != 'record':
+                continue
+            rec_id = item.get('original_id') or item.get('id')
+            if not rec_id:
+                conn.close()
+                return jsonify({'status': 'error', 'error': 'record return item missing original_id'}), 400
+            cursor.execute('SELECT id, status_id FROM records WHERE id = ?', (rec_id,))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return jsonify({'status': 'error', 'error': f'Record {rec_id} not found'}), 404
+            if row['status_id'] not in (3, 4, 5):
+                conn.close()
+                return jsonify({
+                    'status': 'error',
+                    'error': f'Record {rec_id} is not in a sold state (status_id={row["status_id"]})'
+                }), 400
+            return_to_stock = bool(item.get('return_to_stock', True))
+            record_status_updates.append({
+                'record_id': rec_id,
+                'from_status': row['status_id'],
+                'to_status': 2 if return_to_stock else row['status_id'],
+                'return_to_stock': return_to_stock,
+            })
+
+        conn.close()
+
+        return_id = str(uuid.uuid4())
+        order_id = str(uuid.uuid4()) if sale_items else None
+
+        date_str = datetime.now().strftime('%Y%m%d')
+        rand4 = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+        order_number = f"PS-{date_str}-{rand4}"
+        return_number = f"RT-{date_str}-{rand4}"
+
+        return jsonify({
+            'status': 'success',
+            'return_id': return_id,
+            'order_id': order_id,
+            'order_number': order_number,
+            'return_number': return_number,
+            'transaction_type': transaction_type,
+            'sale_subtotal': round(sale_subtotal, 2),
+            'sale_tax': round(sale_tax, 2),
+            'sale_discount': round(disc_total, 2),
+            'sale_total': sale_total,
+            'return_subtotal': round(return_subtotal, 2),
+            'return_tax': round(return_tax, 2),
+            'return_total': return_total,
+            'net_total': net_total,
+            'refund_method': refund_method,
+            'record_status_updates': record_status_updates,
+        }), 200
+
+    except Exception as e:
+        app.logger.error(f"process_return error: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
+@app.route('/api/returns/complete', methods=['POST'])
+@login_required
+@role_required(['admin'])
+def complete_return():
+    """Commit a return/mixed transaction using journal_entries_simple.
+
+    Account codes:
+      1015  Cash - Register (Sales)
+      1050  Inventory
+      4001  Sales Revenue - Cash
+      4090  Sales Returns (contra-revenue)
+      2020  Sales Tax Payable
+      5000  Cost of Goods Sold
+
+    journal_entries_simple shape:
+      post_from = credit side (money leaves)
+      post_to   = debit side  (money arrives)
+      amount    = cents
+    """
+    try:
+        data = request.json or {}
+        transaction_type = (data.get('transaction_type') or 'return').lower()
+        return_id = data.get('return_id')
+        order_id = data.get('order_id')
+        order_number = data.get('order_number') or f"PS-{datetime.now().strftime('%Y%m%d')}-MIX"
+        return_number = data.get('return_number') or f"RT-{datetime.now().strftime('%Y%m%d')}-MIX"
+        sale_items = data.get('sale_items') or []
+        return_items = data.get('return_items') or []
+        refund_method = (data.get('refund_method') or 'cash').lower()
+
+        if not return_id:
+            return jsonify({'status': 'error', 'error': 'return_id required'}), 400
+        if not return_items and not sale_items:
+            return jsonify({'status': 'error', 'error': 'transaction has no items'}), 400
+        if refund_method != 'cash':
+            return jsonify({'status': 'error', 'error': 'Only cash refunds supported'}), 400
+
+        sale_subtotal = sum(float(i.get('price') or 0) * float(i.get('quantity') or 1) for i in sale_items)
+        return_subtotal = sum(float(i.get('price') or 0) * float(i.get('quantity') or 1) for i in return_items)
+
+        try:
+            sale_tax = float(data.get('sale_tax') or 0)
+        except (TypeError, ValueError):
+            sale_tax = 0.0
+        try:
+            return_tax = float(data.get('return_tax') or 0)
+        except (TypeError, ValueError):
+            return_tax = 0.0
+        if sale_tax < 0 or return_tax < 0:
+            return jsonify({'status': 'error', 'error': 'tax values cannot be negative'}), 400
+
+        disc_pct = float(data.get('discount_percent') or 0)
+        disc_amt = float(data.get('discount_amount') or 0)
+        if disc_pct > 0:
+            disc_total = round((sale_subtotal + sale_tax) * (disc_pct / 100.0), 2)
+        elif disc_amt > 0:
+            disc_total = round(min(disc_amt, sale_subtotal + sale_tax), 2)
+        else:
+            disc_total = 0.0
+
+        sale_total = round(sale_subtotal + sale_tax - disc_total, 2)
+        return_total = round(return_subtotal + return_tax, 2)
+        net_total = round(sale_total - return_total, 2)
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("BEGIN TRANSACTION")
+
+            # --- 1) Sale side ---
+            if sale_items:
+                if not order_id:
+                    conn.rollback()
+                    return jsonify({'status': 'error', 'error': 'order_id required for mixed transaction'}), 400
+                cursor.execute('''
+                    INSERT INTO orders (
+                        id, order_number, customer_name, customer_email, shipping_method,
+                        subtotal, tax, total, payment_status, order_status,
+                        notes, created_at, updated_at, notified, channel
+                    ) VALUES (?, ?, ?, ?, 'pickup', ?, ?, ?, 'paid', 'completed',
+                              ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, 'admin_checkout')
+                ''', (
+                    order_id, order_number,
+                    data.get('customer_name') or 'Walk-in Customer',
+                    '',
+                    round(sale_subtotal, 2), sale_tax, sale_total,
+                    f"Admin checkout - {session.get('username','admin')} - Cash: ${sale_total:.2f}",
+                ))
+                for it in sale_items:
+                    cursor.execute('''
+                        INSERT INTO order_items (order_id, record_id, record_title, record_artist,
+                                                 record_condition, price_at_time, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ''', (
+                        order_id,
+                        it.get('original_id') or it.get('id'),
+                        it.get('title'),
+                        it.get('artist'),
+                        it.get('condition'),
+                        float(it.get('price') or 0),
+                    ))
+                    if it.get('type') == 'record' and (it.get('original_id') or it.get('id')):
+                        cursor.execute('''
+                            UPDATE records SET status_id = 3, date_sold = ?
+                            WHERE id = ? AND status_id = 2
+                        ''', (datetime.now().strftime('%Y-%m-%d'), it.get('original_id') or it.get('id')))
+
+            # --- 2) Return side — flip status for return_to_stock ---
+            record_status_updates = []
+            for item in return_items:
+                if item.get('type') != 'record':
+                    continue
+                rec_id = item.get('original_id') or item.get('id')
+                if not rec_id:
+                    continue
+                return_to_stock = bool(item.get('return_to_stock', True))
+                cursor.execute('SELECT id, status_id FROM records WHERE id = ?', (rec_id,))
+                row = cursor.fetchone()
+                if not row:
+                    conn.rollback()
+                    return jsonify({'status': 'error', 'error': f'Record {rec_id} not found'}), 404
+                if return_to_stock:
+                    cursor.execute('''
+                        UPDATE records
+                        SET status_id = 2, date_sold = NULL, last_seen = ?
+                        WHERE id = ?
+                    ''', (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), rec_id))
+                    record_status_updates.append({
+                        'record_id': rec_id,
+                        'from_status': row['status_id'],
+                        'to_status': 2,
+                    })
+
+            # --- 3) Account lookups ---
+            def acct(code):
+                cursor.execute("SELECT id FROM accounts WHERE code = ?", (code,))
+                r = cursor.fetchone()
+                return r['id'] if r else None
+
+            cash_id      = acct('1015')
+            inventory_id = acct('1050')
+            revenue_id   = acct('4001')
+            returns_id   = acct('4090')
+            tax_liab_id  = acct('2020')
+            cogs_id      = acct('5000')
+
+            if not cash_id:
+                conn.rollback()
+                return jsonify({'status': 'error', 'error': 'Cash account 1015 not found'}), 500
+            if not revenue_id:
+                conn.rollback()
+                return jsonify({'status': 'error', 'error': 'Revenue account 4001 not found'}), 500
+
+            today = datetime.now().strftime('%Y-%m-%d')
+
+            # --- 3a) Sale journal (Revenue + Tax -> Cash) ---
+            if sale_items:
+                rev_credit = round(sale_total - sale_tax, 2)
+                if rev_credit > 0:
+                    cursor.execute('''
+                        INSERT INTO journal_entries_simple (
+                            transaction_date, description, source_type, source_id,
+                            post_from, post_to, amount
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        today,
+                        f"Admin sale {order_number} | cash ${sale_total:.2f} | revenue ${rev_credit:.2f}",
+                        'sale',
+                        str(order_id),
+                        revenue_id,
+                        cash_id,
+                        int(round(rev_credit * 100)),
+                    ))
+                if tax_liab_id and sale_tax > 0:
+                    cursor.execute('''
+                        INSERT INTO journal_entries_simple (
+                            transaction_date, description, source_type, source_id,
+                            post_from, post_to, amount
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        today,
+                        f"Admin sale {order_number} | sales tax ${sale_tax:.2f}",
+                        'sale_tax',
+                        str(order_id),
+                        tax_liab_id,
+                        cash_id,
+                        int(round(sale_tax * 100)),
+                    ))
+
+            # --- 3b) Return journal (Cash -> Sales Returns, Cash -> Tax) ---
+            rev_debit = round(return_total - return_tax, 2)
+            if rev_debit > 0:
+                cursor.execute('''
+                    INSERT INTO journal_entries_simple (
+                        transaction_date, description, source_type, source_id,
+                        post_from, post_to, amount
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    today,
+                    f"Return {return_number} | refund ${return_total:.2f} | revenue ${rev_debit:.2f}",
+                    'return',
+                    str(return_id),
+                    cash_id,
+                    returns_id,
+                    int(round(rev_debit * 100)),
+                ))
+            if tax_liab_id and return_tax > 0:
+                cursor.execute('''
+                    INSERT INTO journal_entries_simple (
+                        transaction_date, description, source_type, source_id,
+                        post_from, post_to, amount
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    today,
+                    f"Return {return_number} | sales tax refund ${return_tax:.2f}",
+                    'return_tax',
+                    str(return_id),
+                    cash_id,
+                    tax_liab_id,
+                    int(round(return_tax * 100)),
+                ))
+
+            # --- 3c) Inventory restoration (COGS -> Inventory) ---
+            restored_cost = 0.0
+            try:
+                new_rate, used_rate = get_cogs_rates()
+            except Exception:
+                new_rate, used_rate = 0.0, 0.0
+            for item in return_items:
+                if item.get('type') != 'record' or not item.get('return_to_stock', True):
+                    continue
+                rec_id = item.get('original_id') or item.get('id')
+                if not rec_id:
+                    continue
+                cursor.execute('SELECT store_price FROM records WHERE id = ?', (rec_id,))
+                r = cursor.fetchone()
+                if r:
+                    restored_cost += float(r['store_price'] or 0) * used_rate
+            restored_cost = round(restored_cost, 2)
+
+            if inventory_id and cogs_id and restored_cost > 0:
+                cursor.execute('''
+                    INSERT INTO journal_entries_simple (
+                        transaction_date, description, source_type, source_id,
+                        post_from, post_to, amount
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    today,
+                    f"Inventory restored from return {return_number}",
+                    'return_inventory',
+                    str(return_id),
+                    cogs_id,
+                    inventory_id,
+                    int(round(restored_cost * 100)),
+                ))
+
+            conn.commit()
+
+            return jsonify({
+                'status': 'success',
+                'return_id': return_id,
+                'order_id': order_id,
+                'transaction_type': transaction_type,
+                'net_total': net_total,
+                'refunded': net_total < 0,
+                'refunded_amount': round(abs(net_total), 2) if net_total < 0 else 0.0,
+                'record_status_updates': record_status_updates,
+            }), 200
+
+        except Exception as e:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    except Exception as e:
+        app.logger.error(f"complete_return error: {e}")
+        app.logger.error(traceback.format_exc())
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 @app.route('/api/genres-with-records', methods=['GET'])
 def get_genres_with_records():
