@@ -8,6 +8,7 @@
     let locationIndexCache = {}; // Track next index per location
     let locationLastSeen = {};   // location_id -> latest_last_seen (ISO string or null)
     let parentIds = new Set();   // ids that are referenced as parent_id by someone
+    let scanInFlight = false;    // guard against double-submit / freeze
     const MAX_RECENT = 100;
     const STORAGE_KEY = 'pigstyle_recent_scans';
     const URGENCY_KEY = 'pigstyle_scan_urgency_mode';
@@ -152,7 +153,7 @@
         list.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading records...</div>';
 
         try {
-            const response = await fetch(`${API_BASE}/records?status_ids=2&limit=100&order_by=last_seen&order_dir=DESC`, {
+            const response = await fetch(`${API_BASE}/records?status_ids=2,3,4&limit=100&order_by=last_seen&order_dir=DESC`, {
                 credentials: 'include',
                 headers: getHeaders()
             });
@@ -285,16 +286,12 @@
     }
 
     // ===== NAVIGABLE LEAF SET (respects ignore-empty) =====
-    // Returns the list of leaf locations eligible for selection/navigation
-    // under the current settings.
     function getNavigableLocations() {
         if (!isIgnoreEmpty()) return leafLocations;
         return leafLocations.filter(loc => (loc.record_count || 0) > 0);
     }
 
     // ===== SEARCH FILTER =====
-    // Matches if the search term appears anywhere in the composed
-    // display name (parent/child), case-insensitively.
     function matchesSearch(loc, term) {
         if (!term) return true;
         const needle = term.toLowerCase();
@@ -303,14 +300,6 @@
     }
 
     // ===== GET LOCATION ORDER (leaves only) =====
-    //   Normal  - by composed display_name (numeric bin order), with leaf
-    //             sub-order LT, RT, LB, RB inside each bin.
-    //   Urgent  - purely by latest_last_seen ascending (oldest first). NULL
-    //             (never scanned) sorts first. Ties fall back to normal order.
-    //
-    // Parents are never navigable — only the deepest generation (leaves).
-    // When "ignore empty" is on, empty bins are excluded from both modes.
-    // When a search term is active, only matching locations are included.
     function getLocationOrder() {
         const term = getSearchTerm();
         let base = [...getNavigableLocations()];
@@ -339,10 +328,6 @@
     }
 
     // ===== REBUILD DROPDOWN =====
-    // Re-sorts and repopulates. Preserves the current selection if possible;
-    // if the current selection is no longer available (e.g. its bin became
-    // empty and "ignore empty" is on, or a search no longer matches it),
-    // picks the first available location.
     function rebuildLocationSelect() {
         const select = document.getElementById('scan-location-select');
         if (!select) return;
@@ -364,7 +349,6 @@
         if (stillPresent) {
             select.value = currentValue;
         } else if (sorted.length > 0) {
-            // Current selection is no longer navigable: fall back to first.
             select.value = String(sorted[0].id);
         } else {
             select.value = '';
@@ -375,10 +359,6 @@
     }
 
     // ===== JUMP TO TOP OF CURRENT ORDER =====
-    // Forces the selection to the first location in the current mode's
-    // order (normal → LT/RT/LB/RB; urgent → most urgent). Used when a
-    // toggle changes the navigable set so the user lands somewhere
-    // deterministic in the new ordering.
     function selectTopOfOrder() {
         const select = document.getElementById('scan-location-select');
         if (!select) return;
@@ -462,8 +442,6 @@
             if (data.status === 'success') {
                 locations = data.locations || [];
 
-                // Build parent id set. A location is a leaf iff no other
-                // location references it as parent_id.
                 parentIds = new Set();
                 locations.forEach(loc => {
                     if (loc.parent_id !== null && loc.parent_id !== undefined) {
@@ -478,16 +456,11 @@
                     locationLastSeen[loc.id] = loc.latest_last_seen || null;
                 });
                 
-                // Populate the dropdown (sorted per current mode + search).
                 rebuildLocationSelect();
                 
                 if (isUrgencyMode()) {
-                    // In urgency mode the current location IS the most urgent.
-                    // Ignore any previously saved selection.
                     selectTopOfOrder();
                 } else {
-                    // Normal mode: restore the saved location if it still
-                    // exists AND is navigable under current filters.
                     const savedLocation = localStorage.getItem('pigstyle_scan_location');
                     const navigable = getLocationOrder();
                     if (savedLocation && navigable.some(l => l.id == savedLocation)) {
@@ -503,8 +476,6 @@
     }
 
     // ===== UPDATE LOCATION PREVIEW =====
-    // Shows "📍 Bin 24/RB · never · 42 rec" in the display span.
-    // Falls back to "No location selected" when nothing is chosen.
     function updateLocationPreview() {
         const select = document.getElementById('scan-location-select');
         const display = document.getElementById('scan-location-display');
@@ -523,7 +494,6 @@
             const count = loc.record_count || 0;
 
             display.textContent = `📍 ${name} · ${rel} · ${count} rec`;
-
             display.title = seenRaw
                 ? `Last scanned: ${formatTimestamp(seenRaw)} · ${count} record(s)`
                 : `Never scanned · ${count} record(s)`;
@@ -550,7 +520,16 @@
     }
 
     // ===== PERFORM SCAN - SINGLE API CALL =====
+    // Searches BOTH active and sold records. If the matched record is sold
+    // (status 3/4), it is set back to active (status 2). The freeze guard
+    // (`scanInFlight`) prevents double-submits and the index cache is only
+    // advanced after a successful server response.
     async function performScan(term) {
+        if (scanInFlight) {
+            console.warn('Scan already in progress — ignoring duplicate submit');
+            return;
+        }
+
         const select = document.getElementById('scan-location-select');
         if (!select) return;
 
@@ -560,6 +539,11 @@
             return;
         }
 
+        scanInFlight = true;
+        const input = document.getElementById('scan-input');
+        const submitBtn = document.getElementById('scan-submit-btn');
+        if (submitBtn) submitBtn.disabled = true;
+
         const statusDiv = document.getElementById('scan-status');
         if (statusDiv) {
             statusDiv.style.display = 'block';
@@ -567,12 +551,11 @@
             statusDiv.className = 'status-message status-info';
         }
 
-        const input = document.getElementById('scan-input');
         if (input) input.value = '';
 
+        const locationIndex = getNextLocationIndex(locationId);
+
         try {
-            const locationIndex = getNextLocationIndex(locationId);
-            
             const response = await fetch(`${API_BASE}/api/records/scan-update`, {
                 method: 'POST',
                 credentials: 'include',
@@ -580,19 +563,32 @@
                 body: JSON.stringify({
                     barcode: term,
                     location_id: locationId,
-                    location_index: locationIndex
+                    location_index: locationIndex,
+                    // Tell the backend to search all statuses and
+                    // reactivate sold items on match.
+                    search_all_statuses: true,
+                    reactivate_if_sold: true
                 })
             });
 
-            const data = await response.json();
+            let data;
+            const rawBody = await response.text();
+            try {
+                data = JSON.parse(rawBody);
+            } catch (parseErr) {
+                throw new Error(`Non-JSON response (HTTP ${response.status}) — body: ${rawBody.slice(0, 500)}`);
+            }
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status} — ${data.error || rawBody.slice(0, 500)}`);
+            }
 
             if (data.status === 'success' && data.record) {
+                // Only advance the cache AFTER a confirmed success so a
+                // failed scan doesn't burn an index and desync the counter.
                 locationIndexCache[locationId] = locationIndex;
-
-                // Just scanned this location: bump its last-seen so urgency
-                // order stays live without a full reload.
                 locationLastSeen[locationId] = data.record.last_seen || new Date().toISOString();
-                
+
                 const composedLocation = data.record.location_display
                     || data.record.location_name
                     || 'Unknown';
@@ -616,13 +612,9 @@
                 renderRecords();
                 updateCounter();
 
-                // If urgency mode is on, re-sort so the just-scanned location
-                // sinks to the bottom (least urgent). Selection stays put.
                 if (isUrgencyMode()) {
                     rebuildLocationSelect();
                 } else {
-                    // Even in normal mode, the displayed "X ago" should
-                    // refresh to "just now" for the current bin.
                     updateLocationPreview();
                 }
 
@@ -631,14 +623,21 @@
                     minute: '2-digit'
                 });
 
+                const wasReactivated = data.record.reactivated === true ||
+                    data.record.was_sold === true ||
+                    data.record.previous_status_id === 3 ||
+                    data.record.previous_status_id === 4;
+
+                const prefix = wasReactivated ? '🔄 Reactivated' : '✅';
+
                 if (statusDiv) {
-                    statusDiv.textContent = `✅ #${data.record.id}: ${data.record.artist} - ${data.record.title} → ${composedLocation} (Index: ${locationIndex}) at ${timeStr}`;
+                    statusDiv.textContent = `${prefix} #${data.record.id}: ${data.record.artist} - ${data.record.title} → ${composedLocation} (Index: ${locationIndex}) at ${timeStr}`;
                     statusDiv.className = 'status-message status-success';
                 }
                 playSound('success');
             } else {
                 if (statusDiv) {
-                    statusDiv.textContent = `❌ ${data.error || 'No active record found'}`;
+                    statusDiv.textContent = `❌ ${data.error || 'No record found (searched active + sold)'}`;
                     statusDiv.className = 'status-message status-error';
                 }
                 playSound('error');
@@ -650,9 +649,13 @@
                 statusDiv.className = 'status-message status-error';
             }
             playSound('error');
+        } finally {
+            // Always release the guard so the next scan can proceed,
+            // even if the request errored.
+            scanInFlight = false;
+            if (submitBtn) submitBtn.disabled = false;
+            if (input) setTimeout(() => input.focus(), 100);
         }
-
-        if (input) setTimeout(() => input.focus(), 100);
     }
 
     // ===== SHOW STATUS =====
@@ -718,7 +721,6 @@
         const ignoreEmptyToggle = document.getElementById('scan-ignore-empty-toggle');
         const searchInput = document.getElementById('scan-location-search');
 
-        // Restore persisted search term into the input
         if (searchInput) {
             searchInput.value = getSearchTerm();
         }
@@ -727,9 +729,6 @@
             urgencyToggle.checked = isUrgencyMode();
             urgencyToggle.addEventListener('change', function() {
                 setUrgencyMode(this.checked);
-                // Toggling urgency changes the top-of-order, so jump there
-                // in both directions. This keeps the selection deterministic
-                // and matches the "Ignore empty" toggle behavior.
                 rebuildLocationSelect();
                 selectTopOfOrder();
                 if (scanInput) scanInput.focus();
@@ -740,25 +739,17 @@
             ignoreEmptyToggle.checked = isIgnoreEmpty();
             ignoreEmptyToggle.addEventListener('change', function() {
                 setIgnoreEmpty(this.checked);
-                // Toggling the navigable set changes the top-of-order in
-                // both directions. Jump to the first location in the new
-                // order (which includes empty bins when unchecked).
                 rebuildLocationSelect();
                 selectTopOfOrder();
                 if (scanInput && !scanInput.disabled) scanInput.focus();
             });
         }
 
-        // ===== LOCATION SEARCH BOX =====
-        // Filters the dropdown live. Selection is preserved if it still
-        // matches; otherwise the first matching location is selected.
         if (searchInput) {
             searchInput.addEventListener('input', function() {
                 setSearchTerm(this.value);
                 rebuildLocationSelect();
 
-                // If nothing matches, don't auto-select. If exactly one
-                // matches, jump straight to it so Enter → scan works.
                 const sorted = getLocationOrder();
                 if (sorted.length === 1) {
                     locationSelect.value = String(sorted[0].id);
@@ -767,7 +758,6 @@
             });
 
             searchInput.addEventListener('keydown', function(e) {
-                // Enter from the search box jumps to the scan input
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     const sorted = getLocationOrder();
@@ -777,7 +767,6 @@
                     }
                     if (scanInput && !scanInput.disabled) scanInput.focus();
                 }
-                // Escape clears the search
                 if (e.key === 'Escape') {
                     this.value = '';
                     setSearchTerm('');
