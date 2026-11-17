@@ -328,11 +328,40 @@
     };
 
     // ----------------------------------------------------------------
-    // BULK MARK PAID ORDERS SOLD
+    // BULK MARK PAID ORDERS SOLD — with alert preview
     // ----------------------------------------------------------------
 
     window.discogsBulkMarkPaidOrdersSold = async function() {
-        if (!confirm('Mark all records in Payment Received orders as sold on Discogs?')) return;
+        // Collect items from Payment Received orders
+        const items = [];
+        discogsOrders.forEach(order => {
+            if ((order.status || '') === 'Payment Received') {
+                (order.items || []).forEach(item => {
+                    items.push({
+                        orderId: order.id,
+                        buyer: order.buyer?.username || order.buyer?.name || '—',
+                        release: item.release?.description || item.title || '—',
+                        pigstyle_id: item.pigstyle_id,
+                    });
+                });
+            }
+        });
+
+        if (items.length === 0) {
+            alert('No items found in Payment Received orders.');
+            return;
+        }
+
+        // Build the alert message
+        let msg = `The following ${items.length} item(s) will be marked as SOLD:\n\n`;
+        items.forEach((it, i) => {
+            msg += `${i + 1}. Order #${it.orderId} — ${it.buyer}\n`;
+            msg += `   ${it.release}\n`;
+            msg += `   PigStyle ID: ${it.pigstyle_id ?? '—'}\n\n`;
+        });
+        msg += 'Proceed?';
+
+        if (!confirm(msg)) return;
 
         showDiscogsOrdersStatus('⏳ Marking paid orders as sold...', 'info');
 
@@ -348,8 +377,8 @@
                 throw new Error(data.error || `HTTP ${resp.status}`);
             }
 
-            const msg = `✅ Marked ${data.marked || 0} record(s) as sold. Skipped ${data.skipped || 0}, not found ${data.not_found || 0}.`;
-            showDiscogsOrdersStatus(msg, 'success');
+            const okMsg = `✅ Marked ${data.marked || 0} record(s) as sold. Skipped ${data.skipped || 0}, not found ${data.not_found || 0}.`;
+            showDiscogsOrdersStatus(okMsg, 'success');
             window.discogsLoadOrders();
         } catch (err) {
             console.error('Bulk mark sold failed:', err);
