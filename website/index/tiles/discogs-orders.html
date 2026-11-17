@@ -1,893 +1,130 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Discogs Orders · Review & Mark Sold</title>
-    <!-- Font Awesome for icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-        body {
-            background: #f0f2f5;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            min-height: 100vh;
-            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-            padding: 20px;
-        }
-        .tile-wrapper {
-            max-width: 1100px;
-            width: 100%;
-            margin: 0 auto;
-        }
-        #discogs-orders-status-msg {
-            display: none;
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 13px;
-        }
-        /* Review modal table styles */
-        .review-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-        .review-table th {
-            background: #f1f3f5;
-            padding: 8px;
-            text-align: left;
-            color: #495057;
-            border-bottom: 2px solid #dee2e6;
-            position: sticky;
-            top: 0;
-            z-index: 2;
-        }
-        .review-table td {
-            padding: 8px;
-            border-bottom: 1px solid #f0f0f0;
-            vertical-align: middle;
-        }
-        .review-table tbody tr:hover {
-            background: #f8f9fa;
-        }
-        .review-table input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-            accent-color: #28a745;
-        }
-        .badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .badge-active { background: #e3f2fd; color: #0d47a1; }
-        .badge-sold { background: #e8f5e9; color: #1b5e20; }
-        .badge-other { background: #eee; color: #333; }
-        .badge-skip { background: #fff8e1; color: #7a4f01; }
-    </style>
-</head>
-<body>
-<div class="tile-wrapper">
-    <!-- ================================================================ -->
-    <!-- Discogs Orders tile                                              -->
-    <!-- ================================================================ -->
-    <div style="display: flex; flex-direction: column; height: 100%; width: 100%; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+<!-- ================================================================ -->
+<!-- FILE: /tiles/discogs.html                                        -->
+<!-- Discogs Orders tile                                              -->
+<!-- ================================================================ -->
 
-        <div id="discogs-panel-orders" style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
-            <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
-                <h2 style="color: #333; margin: 0 0 5px 0;">📦 Discogs Orders</h2>
+<div style="display: flex; flex-direction: column; height: 100%; width: 100%; background: white; border-radius: 16px; overflow: hidden;">
 
-                <!-- Load Orders row -->
-                <div style="width: 100%; display: flex; gap: 12px; align-items: center; background: #fff8e1; padding: 10px 15px; border-radius: 8px; border: 1px solid #ffe082;">
-                    <button id="discogs-load-orders-btn"
-                            style="padding: 8px 24px; background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 700; box-shadow: 0 2px 6px rgba(245,124,0,0.3);">
-                        📥 Load Orders
-                    </button>
-                    <span id="discogs-load-orders-info" style="font-size: 13px; color: #666;">
-                        Click to fetch orders from Discogs.
-                    </span>
-                </div>
+    <div id="discogs-panel-orders" style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; height: 100%; background: white; border-radius: 16px; padding: 20px; gap: 10px; overflow: hidden; width: 100%;">
+            <h2 style="color: #333; margin: 0 0 5px 0;">📦 Discogs Orders</h2>
 
-                <!-- Filters -->
-                <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap; align-items: center;">
-                    <select id="discogs-orders-status" style="padding: 8px; border: 2px solid #ddd; border-radius: 8px; min-width: 150px;">
-                        <option value="">All Statuses</option>
-                        <option value="Payment Received">Payment Received</option>
-                        <option value="Shipped">Shipped</option>
-                        <option value="Delivered">Delivered</option>
-                        <option value="Cancelled">Cancelled</option>
-                        <option value="Refunded">Refunded</option>
-                    </select>
-                    <input type="date" id="discogs-orders-date-from" style="padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
-                    <input type="date" id="discogs-orders-date-to" style="padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
-                    <input type="text" id="discogs-orders-search" placeholder="Search buyer..." style="flex: 1; min-width: 150px; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
-                    <button onclick="discogsOrdersApplyFilters()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;">
-                        <i class="fas fa-filter"></i> Apply
-                    </button>
-                    <button onclick="discogsOpenReviewMarkSold()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer;" title="Review items from Payment Received orders before marking as sold">
-                        <i class="fas fa-tags"></i> Mark Paid Orders Sold
-                    </button>
-                </div>
-
-                <!-- Status -->
-                <div id="discogs-orders-status-msg" style="width: 100%; display: none; padding: 8px 12px; border-radius: 8px; font-size: 13px;"></div>
-
-                <!-- Orders Table Container -->
-                <div id="discogs-orders-container" style="width: 100%; flex: 2; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px; transition: all 0.3s ease;">
-                    <div id="discogs-orders-table" style="width: 100%;">
-                        <div style="text-align: center; padding: 20px; color: #999;">Click <strong>📥 Load Orders</strong> above to fetch orders.</div>
-                    </div>
-                </div>
-
-                <!-- Order Items Section -->
-                <div id="discogs-order-items-section" style="width: 100%; display: none; border: 1px solid #eee; border-radius: 8px; padding: 5px; margin-top: 5px; max-height: 60vh; overflow-y: auto;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #f8f9fa; border-bottom: 2px solid #ddd; position: sticky; top: 0; z-index: 10;">
-                        <div>
-                            <span style="font-weight: 600; color: #333;">📦 Order Items</span>
-                            <span id="discogs-order-summary" style="margin-left: 10px; color: #666; font-size: 13px;"></span>
-                        </div>
-                        <div>
-                            <button onclick="discogsShowAllOrders()" style="padding: 4px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 5px;">
-                                <i class="fas fa-arrow-left"></i> Back
-                            </button>
-                            <button onclick="discogsPrintShippingLabel()" style="padding: 4px 12px; background: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 5px;">
-                                <i class="fas fa-truck"></i> Shipping Label
-                            </button>
-                        </div>
-                    </div>
-                    <div id="discogs-order-items" style="width: 100%; padding: 5px;">
-                        <div style="text-align: center; padding: 20px; color: #999;">Select an order to view items</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- ===================== Shipping Label Modal ===================== -->
-    <div id="discogs-shipping-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
-        <div style="background: white; border-radius: 12px; padding: 24px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 style="margin: 0; color: #333;"><i class="fas fa-truck"></i> Shipping Label</h3>
-                <button onclick="discogsCloseShippingModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999;">&times;</button>
-            </div>
-
-            <div style="margin-bottom: 20px;">
-                <label style="display: block; font-weight: 600; color: #555; margin-bottom: 5px;">Upload PDF Label:</label>
-                <input type="file" id="discogs-label-pdf" accept=".pdf" style="width: 100%; padding: 8px; border: 2px dashed #ddd; border-radius: 8px; cursor: pointer;">
-                <div style="font-size: 12px; color: #999; margin-top: 5px;">Upload a PDF with Avery 5168 label format (2x2 labels per page)</div>
-            </div>
-
-            <div style="margin-bottom: 20px;">
-                <label style="display: block; font-weight: 600; color: #555; margin-bottom: 5px;">Label Position on Sheet:</label>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                    <button onclick="discogsSelectLabelPosition('LT')" id="discogs-pos-LT" style="padding: 12px; border: 2px solid #007bff; border-radius: 8px; background: #e7f3ff; cursor: pointer; font-weight: 500; transition: all 0.2s;">
-                        <i class="fas fa-arrow-up"></i> Top Left
-                    </button>
-                    <button onclick="discogsSelectLabelPosition('RT')" id="discogs-pos-RT" style="padding: 12px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer; font-weight: 500; transition: all 0.2s;">
-                        <i class="fas fa-arrow-up"></i> Top Right
-                    </button>
-                    <button onclick="discogsSelectLabelPosition('LB')" id="discogs-pos-LB" style="padding: 12px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer; font-weight: 500; transition: all 0.2s;">
-                        <i class="fas fa-arrow-down"></i> Bottom Left
-                    </button>
-                    <button onclick="discogsSelectLabelPosition('RB')" id="discogs-pos-RB" style="padding: 12px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer; font-weight: 500; transition: all 0.2s;">
-                        <i class="fas fa-arrow-down"></i> Bottom Right
-                    </button>
-                </div>
-                <div style="font-size: 12px; color: #999; margin-top: 5px;">Select where the label appears on the Avery 5168 sheet</div>
-            </div>
-
-            <div style="margin-bottom: 20px;">
-                <label style="display: block; font-weight: 600; color: #555; margin-bottom: 5px;">Order Details:</label>
-                <div style="background: #f8f9fa; padding: 12px; border-radius: 8px; font-size: 14px;">
-                    <div><strong>Order:</strong> <span id="discogs-label-order-id">—</span></div>
-                    <div><strong>Buyer:</strong> <span id="discogs-label-buyer">—</span></div>
-                    <div><strong>Items:</strong> <span id="discogs-label-items">—</span></div>
-                </div>
-            </div>
-
-            <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                <button onclick="discogsCloseShippingModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer;">
-                    Cancel
+            <!-- Load Orders row -->
+            <div style="width: 100%; display: flex; gap: 12px; align-items: center; background: #fff8e1; padding: 10px 15px; border-radius: 8px; border: 1px solid #ffe082;">
+                <button id="discogs-load-orders-btn"
+                        style="padding: 8px 24px; background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 700; box-shadow: 0 2px 6px rgba(245,124,0,0.3);">
+                    📥 Load Orders
                 </button>
-                <button onclick="discogsPrintLabel()" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer;">
-                    <i class="fas fa-print"></i> Generate & Print Label
+                <span id="discogs-load-orders-info" style="font-size: 13px; color: #666;">
+                    Click to fetch orders from Discogs.
+                </span>
+            </div>
+
+            <!-- Filters -->
+            <div style="display: flex; gap: 8px; width: 100%; flex-wrap: wrap; align-items: center;">
+                <select id="discogs-orders-status" style="padding: 8px; border: 2px solid #ddd; border-radius: 8px; min-width: 150px;">
+                    <option value="">All Statuses</option>
+                    <option value="Payment Received">Payment Received</option>
+                    <option value="Shipped">Shipped</option>
+                    <option value="Delivered">Delivered</option>
+                    <option value="Cancelled">Cancelled</option>
+                    <option value="Refunded">Refunded</option>
+                </select>
+                <input type="date" id="discogs-orders-date-from" style="padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+                <input type="date" id="discogs-orders-date-to" style="padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+                <input type="text" id="discogs-orders-search" placeholder="Search buyer..." style="flex: 1; min-width: 150px; padding: 8px; border: 2px solid #ddd; border-radius: 8px;">
+                <button onclick="discogsOrdersApplyFilters()" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                    <i class="fas fa-filter"></i> Apply
                 </button>
+                <button onclick="discogsBulkMarkPaidOrdersSold()" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer;" title="Mark all records in Payment Received orders as sold on Discogs">
+                    <i class="fas fa-tags"></i> Mark Paid Orders Sold
+                </button>
+            </div>
+
+            <!-- Status -->
+            <div id="discogs-orders-status-msg" style="width: 100%; display: none; padding: 8px 12px; border-radius: 8px; font-size: 13px;"></div>
+
+            <!-- Orders Table Container -->
+            <div id="discogs-orders-container" style="width: 100%; flex: 2; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; padding: 5px; transition: all 0.3s ease;">
+                <div id="discogs-orders-table" style="width: 100%;">
+                    <div style="text-align: center; padding: 20px; color: #999;">Click <strong>📥 Load Orders</strong> above to fetch orders.</div>
+                </div>
+            </div>
+
+            <!-- Order Items Section -->
+            <div id="discogs-order-items-section" style="width: 100%; display: none; border: 1px solid #eee; border-radius: 8px; padding: 5px; margin-top: 5px; max-height: 60vh; overflow-y: auto;">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #f8f9fa; border-bottom: 2px solid #ddd; position: sticky; top: 0; z-index: 10;">
+                    <div>
+                        <span style="font-weight: 600; color: #333;">📦 Order Items</span>
+                        <span id="discogs-order-summary" style="margin-left: 10px; color: #666; font-size: 13px;"></span>
+                    </div>
+                    <div>
+                        <button onclick="discogsShowAllOrders()" style="padding: 4px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 5px;">
+                            <i class="fas fa-arrow-left"></i> Back
+                        </button>
+                        <button onclick="discogsPrintShippingLabel()" style="padding: 4px 12px; background: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; margin-right: 5px;">
+                            <i class="fas fa-truck"></i> Shipping Label
+                        </button>
+                    </div>
+                </div>
+                <div id="discogs-order-items" style="width: 100%; padding: 5px;">
+                    <div style="text-align: center; padding: 20px; color: #999;">Select an order to view items</div>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- ===================== REVIEW MARK SOLD MODAL ===================== -->
-    <div id="discogs-review-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1001; justify-content: center; align-items: center;">
-        <div style="background: white; border-radius: 12px; padding: 0; max-width: 900px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0,0,0,0.3); overflow: hidden;">
+</div>
 
-            <!-- Modal Header -->
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #eee; background: #f8f9fa;">
-                <div>
-                    <h3 style="margin: 0; color: #333; font-size: 18px;"><i class="fas fa-tags" style="color: #28a745;"></i> Review Items to Mark as Sold</h3>
-                    <p style="margin: 4px 0 0 0; color: #666; font-size: 13px;">Items from <strong>Payment Received</strong> orders. Uncheck any item you don't want to mark as sold.</p>
-                </div>
-                <button onclick="discogsCloseReviewModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999; line-height: 1;">&times;</button>
-            </div>
+<!-- ===================== Shipping Label Modal (outside panels) ===================== -->
+<div id="discogs-shipping-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: white; border-radius: 12px; padding: 24px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="margin: 0; color: #333;"><i class="fas fa-truck"></i> Shipping Label</h3>
+            <button onclick="discogsCloseShippingModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999;">&times;</button>
+        </div>
 
-            <!-- Modal Body -->
-            <div style="flex: 1; overflow-y: auto; padding: 16px 20px;">
-                <div id="discogs-review-summary" style="margin-bottom: 12px; font-size: 13px; color: #555;"></div>
-                <div id="discogs-review-table-container">
-                    <div style="text-align: center; padding: 30px; color: #999;">Loading items...</div>
-                </div>
-            </div>
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; color: #555; margin-bottom: 5px;">Upload PDF Label:</label>
+            <input type="file" id="discogs-label-pdf" accept=".pdf" style="width: 100%; padding: 8px; border: 2px dashed #ddd; border-radius: 8px; cursor: pointer;">
+            <div style="font-size: 12px; color: #999; margin-top: 5px;">Upload a PDF with Avery 5168 label format (2x2 labels per page)</div>
+        </div>
 
-            <!-- Modal Footer -->
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-top: 1px solid #eee; background: #f8f9fa;">
-                <div style="display: flex; gap: 8px;">
-                    <button onclick="discogsReviewSelectAll(true)" style="padding: 6px 14px; background: #e9ecef; color: #333; border: 1px solid #ccc; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;">
-                        <i class="fas fa-check-square"></i> Select All
-                    </button>
-                    <button onclick="discogsReviewSelectAll(false)" style="padding: 6px 14px; background: #e9ecef; color: #333; border: 1px solid #ccc; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;">
-                        <i class="fas fa-square"></i> Select None
-                    </button>
-                </div>
-                <div style="display: flex; gap: 10px;">
-                    <button onclick="discogsCloseReviewModal()" style="padding: 8px 18px; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">
-                        Cancel
-                    </button>
-                    <button id="discogs-review-confirm-btn" onclick="discogsConfirmMarkSold()" style="padding: 8px 18px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;">
-                        <i class="fas fa-check"></i> Mark Selected as Sold
-                    </button>
-                </div>
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; color: #555; margin-bottom: 5px;">Label Position on Sheet:</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <button onclick="discogsSelectLabelPosition('LT')" id="discogs-pos-LT" style="padding: 12px; border: 2px solid #007bff; border-radius: 8px; background: #e7f3ff; cursor: pointer; font-weight: 500; transition: all 0.2s;">
+                    <i class="fas fa-arrow-up"></i> Top Left
+                </button>
+                <button onclick="discogsSelectLabelPosition('RT')" id="discogs-pos-RT" style="padding: 12px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer; font-weight: 500; transition: all 0.2s;">
+                    <i class="fas fa-arrow-up"></i> Top Right
+                </button>
+                <button onclick="discogsSelectLabelPosition('LB')" id="discogs-pos-LB" style="padding: 12px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer; font-weight: 500; transition: all 0.2s;">
+                    <i class="fas fa-arrow-down"></i> Bottom Left
+                </button>
+                <button onclick="discogsSelectLabelPosition('RB')" id="discogs-pos-RB" style="padding: 12px; border: 2px solid #ddd; border-radius: 8px; background: white; cursor: pointer; font-weight: 500; transition: all 0.2s;">
+                    <i class="fas fa-arrow-down"></i> Bottom Right
+                </button>
             </div>
+            <div style="font-size: 12px; color: #999; margin-top: 5px;">Select where the label appears on the Avery 5168 sheet</div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 600; color: #555; margin-bottom: 5px;">Order Details:</label>
+            <div style="background: #f8f9fa; padding: 12px; border-radius: 8px; font-size: 14px;">
+                <div><strong>Order:</strong> <span id="discogs-label-order-id">—</span></div>
+                <div><strong>Buyer:</strong> <span id="discogs-label-buyer">—</span></div>
+                <div><strong>Items:</strong> <span id="discogs-label-items">—</span></div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button onclick="discogsCloseShippingModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                Cancel
+            </button>
+            <button onclick="discogsPrintLabel()" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                <i class="fas fa-print"></i> Generate & Print Label
+            </button>
         </div>
     </div>
 </div>
-
-<!-- ================================================================ -->
-<!-- MOCK API + DISCogs ORDERS LOGIC                                 -->
-<!-- ================================================================ -->
-<script>
-    (function() {
-        'use strict';
-
-        // -------- MOCK DATA (for standalone demo) --------
-        const MOCK_ORDERS = [
-            {
-                id: 1001,
-                created: '2024-06-01T10:30:00Z',
-                status: 'Payment Received',
-                buyer: { username: 'vinyl_junkie', name: 'Alex Rivera' },
-                total: { value: 45.99 },
-                items: [
-                    { release: { description: 'Pink Floyd - The Dark Side of the Moon' }, condition: 'Near Mint', price: 32.99, pigstyle_id: 'PS-101', record_status_id: 2 },
-                    { release: { description: 'Miles Davis - Kind of Blue' }, condition: 'Very Good+', price: 13.00, pigstyle_id: 'PS-102', record_status_id: 3 }
-                ]
-            },
-            {
-                id: 1002,
-                created: '2024-06-02T14:15:00Z',
-                status: 'Shipped',
-                buyer: { username: 'jazzcat', name: 'Jordan Lee' },
-                total: { value: 28.50 },
-                items: [
-                    { release: { description: 'John Coltrane - A Love Supreme' }, condition: 'Near Mint', price: 28.50, pigstyle_id: 'PS-103', record_status_id: 4 }
-                ]
-            },
-            {
-                id: 1003,
-                created: '2024-06-03T09:00:00Z',
-                status: 'Payment Received',
-                buyer: { username: 'rocknrolla', name: 'Sam Carter' },
-                total: { value: 62.00 },
-                items: [
-                    { release: { description: 'Led Zeppelin - IV' }, condition: 'Very Good', price: 22.00, pigstyle_id: 'PS-104', record_status_id: 2 },
-                    { release: { description: 'The Rolling Stones - Exile on Main St.' }, condition: 'Good+', price: 18.00, pigstyle_id: 'PS-105', record_status_id: 2 },
-                    { release: { description: 'David Bowie - Ziggy Stardust' }, condition: 'Near Mint', price: 22.00, pigstyle_id: 'PS-106', record_status_id: 3 }
-                ]
-            },
-            {
-                id: 1004,
-                created: '2024-06-04T16:45:00Z',
-                status: 'Delivered',
-                buyer: { username: 'soulful_sounds', name: 'Chris Taylor' },
-                total: { value: 19.99 },
-                items: [
-                    { release: { description: 'Aretha Franklin - I Never Loved a Man' }, condition: 'Very Good+', price: 19.99, pigstyle_id: 'PS-107', record_status_id: 4 }
-                ]
-            }
-        ];
-
-        // State
-        let discogsOrders = [];
-        let discogsCurrentOrderId = null;
-        let discogsSelectedLabelPosition = 'LT';
-        let discogsPendingLabelOrder = null;
-
-        // Review state: array of { orderId, itemIndex, checked }
-        let discogsReviewItems = [];
-
-        // -------- UTILITIES --------
-        function escapeHtml(s) {
-            if (s === null || s === undefined) return '';
-            return String(s)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
-        }
-
-        function formatMoney(v) {
-            const n = Number(v);
-            if (!isFinite(n)) return '—';
-            return '$' + n.toFixed(2);
-        }
-
-        function formatDate(s) {
-            if (!s) return '—';
-            try {
-                const d = new Date(s);
-                if (isNaN(d.getTime())) return s;
-                return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-            } catch (_) {
-                return s;
-            }
-        }
-
-        function statusBadge(recordStatusId) {
-            if (recordStatusId === 3 || recordStatusId === 4) {
-                return '<span class="badge badge-sold">Sold</span>';
-            } else if (recordStatusId === 2) {
-                return '<span class="badge badge-active">Active</span>';
-            } else if (recordStatusId != null) {
-                return `<span class="badge badge-other">${escapeHtml(String(recordStatusId))}</span>`;
-            }
-            return '<span style="color:#999;">—</span>';
-        }
-
-        // -------- STATUS MESSAGE --------
-        function showDiscogsOrdersStatus(message, type) {
-            const el = document.getElementById('discogs-orders-status-msg');
-            if (!el) return;
-            const colors = {
-                info:    { bg: '#e7f3ff', color: '#0d47a1', border: '#b3d9ff' },
-                success: { bg: '#e8f5e9', color: '#1b5e20', border: '#a5d6a7' },
-                warning: { bg: '#fff8e1', color: '#7a4f01', border: '#ffe082' },
-                error:   { bg: '#ffebee', color: '#b71c1c', border: '#ef9a9a' },
-            };
-            const c = colors[type] || colors.info;
-            el.style.display = 'block';
-            el.style.background = c.bg;
-            el.style.color = c.color;
-            el.style.border = `1px solid ${c.border}`;
-            el.innerHTML = message;
-            if (type === 'success' || type === 'info') {
-                setTimeout(() => { el.style.display = 'none'; }, 6000);
-            }
-        }
-
-        function setLoadInfo(text) {
-            const el = document.getElementById('discogs-load-orders-info');
-            if (el) el.textContent = text;
-        }
-
-        // -------- LOAD ORDERS (MOCK) --------
-        window.discogsLoadOrders = async function() {
-            console.log('📥 discogsLoadOrders() called (mock)');
-
-            const table = document.getElementById('discogs-orders-table');
-            const btn = document.getElementById('discogs-load-orders-btn');
-
-            if (!table) return;
-
-            table.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">Loading orders...</div>';
-            if (btn) {
-                btn.disabled = true;
-                btn.textContent = '⏳ Loading...';
-            }
-            setLoadInfo('Fetching orders from Discogs...');
-
-            await new Promise(resolve => setTimeout(resolve, 600));
-
-            discogsOrders = JSON.parse(JSON.stringify(MOCK_ORDERS));
-            renderDiscogsOrders();
-
-            setLoadInfo(`✅ Loaded ${discogsOrders.length} order(s).`);
-            showDiscogsOrdersStatus(`✅ Loaded ${discogsOrders.length} order(s).`, 'success');
-
-            if (btn) {
-                btn.disabled = false;
-                btn.textContent = '📥 Load Orders';
-            }
-        };
-
-        // -------- RENDER ORDERS TABLE --------
-        function renderDiscogsOrders() {
-            const table = document.getElementById('discogs-orders-table');
-            if (!table) return;
-
-            const statusFilter = (document.getElementById('discogs-orders-status')?.value || '').trim();
-            const dateFrom = document.getElementById('discogs-orders-date-from')?.value || '';
-            const dateTo = document.getElementById('discogs-orders-date-to')?.value || '';
-            const search = (document.getElementById('discogs-orders-search')?.value || '').trim().toLowerCase();
-
-            let filtered = discogsOrders.slice();
-
-            if (statusFilter) {
-                filtered = filtered.filter(o => (o.status || '') === statusFilter);
-            }
-            if (dateFrom) {
-                filtered = filtered.filter(o => (o.created || '').slice(0, 10) >= dateFrom);
-            }
-            if (dateTo) {
-                filtered = filtered.filter(o => (o.created || '').slice(0, 10) <= dateTo);
-            }
-            if (search) {
-                filtered = filtered.filter(o => {
-                    const buyer = (o.buyer?.username || '').toLowerCase();
-                    const name = (o.buyer?.name || '').toLowerCase();
-                    return buyer.includes(search) || name.includes(search);
-                });
-            }
-
-            if (filtered.length === 0) {
-                table.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">No orders match the current filters.</div>';
-                return;
-            }
-
-            let html = `
-                <table style="width:100%; border-collapse: collapse; font-size: 13px;">
-                    <thead>
-                        <tr style="background:#f1f3f5; border-bottom:2px solid #dee2e6;">
-                            <th style="padding:8px; text-align:left; color:#495057;">Order</th>
-                            <th style="padding:8px; text-align:left; color:#495057;">Buyer</th>
-                            <th style="padding:8px; text-align:left; color:#495057;">Date</th>
-                            <th style="padding:8px; text-align:left; color:#495057;">Status</th>
-                            <th style="padding:8px; text-align:right; color:#495057;">Total</th>
-                            <th style="padding:8px; text-align:center; color:#495057;">Items</th>
-                            <th style="padding:8px; text-align:center; color:#495057;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-
-            for (const o of filtered) {
-                const buyer = o.buyer?.username || o.buyer?.name || '—';
-                const orderId = o.id || o.order_id || '';
-                const status = o.status || '—';
-                const total = o.total?.value != null ? formatMoney(o.total.value) : '—';
-                const items = (o.items || []).length;
-                const created = formatDate(o.created);
-
-                html += `
-                    <tr style="border-bottom:1px solid #f0f0f0;">
-                        <td style="padding:8px; color:#333; font-weight:600;">#${escapeHtml(String(orderId))}</td>
-                        <td style="padding:8px; color:#333;">${escapeHtml(buyer)}</td>
-                        <td style="padding:8px; color:#666;">${escapeHtml(created)}</td>
-                        <td style="padding:8px; color:#333;">${escapeHtml(status)}</td>
-                        <td style="padding:8px; text-align:right; color:#0064d2; font-weight:600;">${total}</td>
-                        <td style="padding:8px; text-align:center; color:#666;">${items}</td>
-                        <td style="padding:8px; text-align:center;">
-                            <button data-discogs-view="${escapeHtml(String(orderId))}"
-                                    style="padding:4px 12px; background:#667eea; color:white; border:none; border-radius:14px; cursor:pointer; font-size:12px; font-weight:600;">
-                                View
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            }
-
-            html += '</tbody></table>';
-            table.innerHTML = html;
-        }
-
-        // -------- VIEW ORDER --------
-        window.discogsViewOrder = async function(orderId) {
-            const section = document.getElementById('discogs-order-items-section');
-            const itemsEl = document.getElementById('discogs-order-items');
-            const summaryEl = document.getElementById('discogs-order-summary');
-
-            if (!section || !itemsEl) return;
-
-            section.style.display = 'block';
-            itemsEl.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">Loading order items...</div>';
-            if (summaryEl) summaryEl.textContent = '';
-
-            await new Promise(resolve => setTimeout(resolve, 400));
-
-            const order = discogsOrders.find(o => String(o.id) === String(orderId));
-            if (!order) {
-                itemsEl.innerHTML = `<div style="text-align:center;padding:20px;color:#dc3545;">Order not found.</div>`;
-                return;
-            }
-
-            discogsCurrentOrderId = orderId;
-            discogsPendingLabelOrder = order;
-            renderDiscogsOrderItems(order);
-        };
-
-        function renderDiscogsOrderItems(order) {
-            const itemsEl = document.getElementById('discogs-order-items');
-            const summaryEl = document.getElementById('discogs-order-summary');
-            if (!itemsEl) return;
-
-            const items = order.items || [];
-            const buyer = order.buyer?.username || order.buyer?.name || '—';
-            const total = order.total?.value != null ? formatMoney(order.total.value) : '—';
-
-            if (summaryEl) {
-                summaryEl.textContent = `${buyer} · ${items.length} item(s) · ${total}`;
-            }
-
-            if (items.length === 0) {
-                itemsEl.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">No items on this order.</div>';
-                return;
-            }
-
-            let html = `
-                <table style="width:100%; border-collapse:collapse; font-size:13px;">
-                    <thead>
-                        <tr style="background:#f1f3f5; border-bottom:2px solid #dee2e6;">
-                            <th style="padding:6px; text-align:left; color:#495057;">Release</th>
-                            <th style="padding:6px; text-align:left; color:#495057;">Condition</th>
-                            <th style="padding:6px; text-align:right; color:#495057;">Price</th>
-                            <th style="padding:6px; text-align:center; color:#495057;">PigStyle ID</th>
-                            <th style="padding:6px; text-align:center; color:#495057;">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-
-            for (const item of items) {
-                const release = item.release?.description || item.title || '—';
-                const condition = item.condition || '—';
-                const price = item.price != null ? formatMoney(item.price) : '—';
-                const pigId = item.pigstyle_id != null ? item.pigstyle_id : '—';
-
-                html += `
-                    <tr style="border-bottom:1px solid #f0f0f0;">
-                        <td style="padding:6px; color:#333;">${escapeHtml(release)}</td>
-                        <td style="padding:6px; color:#666;">${escapeHtml(condition)}</td>
-                        <td style="padding:6px; text-align:right; color:#0064d2; font-weight:600;">${price}</td>
-                        <td style="padding:6px; text-align:center; color:#666;">${escapeHtml(String(pigId))}</td>
-                        <td style="padding:6px; text-align:center;">${statusBadge(item.record_status_id)}</td>
-                    </tr>
-                `;
-            }
-
-            html += '</tbody></table>';
-            itemsEl.innerHTML = html;
-        }
-
-        window.discogsShowAllOrders = function() {
-            const section = document.getElementById('discogs-order-items-section');
-            if (section) section.style.display = 'none';
-            discogsCurrentOrderId = null;
-        };
-
-        window.discogsOrdersApplyFilters = function() {
-            renderDiscogsOrders();
-        };
-
-        // ================= REVIEW MARK SOLD =================
-
-        window.discogsOpenReviewMarkSold = function() {
-            console.log('📋 Opening review modal for paid orders');
-
-            // Collect all items from Payment Received orders
-            discogsReviewItems = [];
-            discogsOrders.forEach(order => {
-                if ((order.status || '') === 'Payment Received') {
-                    (order.items || []).forEach((item, idx) => {
-                        discogsReviewItems.push({
-                            orderId: order.id,
-                            orderBuyer: order.buyer?.username || order.buyer?.name || '—',
-                            itemIndex: idx,
-                            item: item,
-                            checked: item.record_status_id === 2, // Default: only check Active items
-                        });
-                    });
-                }
-            });
-
-            if (discogsReviewItems.length === 0) {
-                showDiscogsOrdersStatus('⚠️ No items found in Payment Received orders to mark as sold.', 'warning');
-                return;
-            }
-
-            const modal = document.getElementById('discogs-review-modal');
-            if (!modal) return;
-
-            renderReviewTable();
-            modal.style.display = 'flex';
-        };
-
-        function renderReviewTable() {
-            const container = document.getElementById('discogs-review-table-container');
-            const summaryEl = document.getElementById('discogs-review-summary');
-            const confirmBtn = document.getElementById('discogs-review-confirm-btn');
-            if (!container) return;
-
-            const checkedCount = discogsReviewItems.filter(x => x.checked).length;
-            const totalCount = discogsReviewItems.length;
-
-            if (summaryEl) {
-                summaryEl.innerHTML = `<strong>${checkedCount}</strong> of <strong>${totalCount}</strong> item(s) selected for marking as sold.`;
-            }
-            if (confirmBtn) {
-                confirmBtn.disabled = checkedCount === 0;
-                confirmBtn.style.opacity = checkedCount === 0 ? '0.5' : '1';
-            }
-
-            let html = `
-                <table class="review-table">
-                    <thead>
-                        <tr>
-                            <th style="width:36px; text-align:center;">✓</th>
-                            <th>Order</th>
-                            <th>Buyer</th>
-                            <th>Release</th>
-                            <th>Condition</th>
-                            <th>PigStyle ID</th>
-                            <th style="text-align:center;">Current Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-
-            discogsReviewItems.forEach((ri, idx) => {
-                const item = ri.item;
-                const release = item.release?.description || item.title || '—';
-                const condition = item.condition || '—';
-                const pigId = item.pigstyle_id != null ? item.pigstyle_id : '—';
-                const recStatus = item.record_status_id;
-
-                // Items already sold (3/4) should be pre-unchecked and shown with a skip badge
-                const isAlreadySold = recStatus === 3 || recStatus === 4;
-                const isActive = recStatus === 2;
-                const isOther = recStatus != null && !isActive && !isAlreadySold;
-
-                let rowBg = '';
-                if (isAlreadySold) rowBg = 'background: #fafafa;';
-
-                html += `
-                    <tr style="${rowBg}">
-                        <td style="text-align:center;">
-                            <input type="checkbox" data-review-idx="${idx}" ${ri.checked ? 'checked' : ''}
-                                   ${isAlreadySold ? 'disabled' : ''}
-                                   onchange="discogsReviewToggleItem(${idx}, this.checked)">
-                        </td>
-                        <td style="font-weight:600; color:#333;">#${escapeHtml(String(ri.orderId))}</td>
-                        <td style="color:#333;">${escapeHtml(ri.orderBuyer)}</td>
-                        <td style="color:#333;">${escapeHtml(release)}</td>
-                        <td style="color:#666;">${escapeHtml(condition)}</td>
-                        <td style="color:#666; text-align:center;">${escapeHtml(String(pigId))}</td>
-                        <td style="text-align:center;">
-                            ${statusBadge(recStatus)}
-                            ${isAlreadySold ? ' <span class="badge badge-skip">skip</span>' : ''}
-                        </td>
-                    </tr>
-                `;
-            });
-
-            html += '</tbody></table>';
-            container.innerHTML = html;
-        }
-
-        window.discogsReviewToggleItem = function(idx, checked) {
-            if (idx < 0 || idx >= discogsReviewItems.length) return;
-            discogsReviewItems[idx].checked = checked;
-            renderReviewTable(); // re-render to update summary + button state
-        };
-
-        window.discogsReviewSelectAll = function(checked) {
-            discogsReviewItems.forEach(ri => {
-                const recStatus = ri.item.record_status_id;
-                // Do not re-check items that are already sold
-                if (recStatus === 3 || recStatus === 4) return;
-                ri.checked = checked;
-            });
-            renderReviewTable();
-        };
-
-        window.discogsCloseReviewModal = function() {
-            const modal = document.getElementById('discogs-review-modal');
-            if (modal) modal.style.display = 'none';
-            // Clear review state
-            discogsReviewItems = [];
-        };
-
-        window.discogsConfirmMarkSold = async function() {
-            const selected = discogsReviewItems.filter(x => x.checked);
-            if (selected.length === 0) {
-                alert('No items selected.');
-                return;
-            }
-
-            // Disable confirm button to prevent double-click
-            const confirmBtn = document.getElementById('discogs-review-confirm-btn');
-            if (confirmBtn) {
-                confirmBtn.disabled = true;
-                confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Marking...';
-            }
-
-            showDiscogsOrdersStatus(`⏳ Marking ${selected.length} item(s) as sold...`, 'info');
-
-            // Simulate API call
-            await new Promise(resolve => setTimeout(resolve, 900));
-
-            let marked = 0;
-            selected.forEach(ri => {
-                const order = discogsOrders.find(o => String(o.id) === String(ri.orderId));
-                if (order && order.items && order.items[ri.itemIndex]) {
-                    const item = order.items[ri.itemIndex];
-                    if (item.record_status_id === 2) {
-                        item.record_status_id = 3;
-                        marked++;
-                    }
-                }
-            });
-
-            const msg = `✅ Marked ${marked} item(s) as sold. (${selected.length - marked} skipped — already sold or not active.)`;
-            showDiscogsOrdersStatus(msg, 'success');
-
-            // Close modal and refresh
-            window.discogsCloseReviewModal();
-            renderDiscogsOrders();
-
-            // Refresh open order detail if any
-            if (discogsCurrentOrderId) {
-                const order = discogsOrders.find(o => String(o.id) === String(discogsCurrentOrderId));
-                if (order) renderDiscogsOrderItems(order);
-            }
-        };
-
-        // ================= SHIPPING LABEL MODAL =================
-
-        window.discogsPrintShippingLabel = function() {
-            const modal = document.getElementById('discogs-shipping-modal');
-            if (!modal) return;
-
-            const order = discogsPendingLabelOrder;
-            if (!order) {
-                showDiscogsOrdersStatus('⚠️ Open an order before generating a shipping label.', 'warning');
-                return;
-            }
-
-            const orderIdEl = document.getElementById('discogs-label-order-id');
-            const buyerEl   = document.getElementById('discogs-label-buyer');
-            const itemsEl   = document.getElementById('discogs-label-items');
-
-            const orderId = order.id || order.order_id || discogsCurrentOrderId || '—';
-            const buyer = order.buyer?.username || order.buyer?.name || '—';
-            const items = (order.items || []).length;
-
-            if (orderIdEl) orderIdEl.textContent = orderId;
-            if (buyerEl) buyerEl.textContent = buyer;
-            if (itemsEl) itemsEl.textContent = `${items} item(s)`;
-
-            modal.style.display = 'flex';
-        };
-
-        window.discogsCloseShippingModal = function() {
-            const modal = document.getElementById('discogs-shipping-modal');
-            if (modal) modal.style.display = 'none';
-        };
-
-        window.discogsSelectLabelPosition = function(pos) {
-            discogsSelectedLabelPosition = pos;
-            ['LT', 'RT', 'LB', 'RB'].forEach(p => {
-                const btn = document.getElementById(`discogs-pos-${p}`);
-                if (!btn) return;
-                if (p === pos) {
-                    btn.style.border = '2px solid #007bff';
-                    btn.style.background = '#e7f3ff';
-                } else {
-                    btn.style.border = '2px solid #ddd';
-                    btn.style.background = 'white';
-                }
-            });
-        };
-
-        window.discogsPrintLabel = function() {
-            const fileInput = document.getElementById('discogs-label-pdf');
-            if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-                alert('Please upload a PDF label first.');
-                return;
-            }
-
-            alert(`Label position: ${discogsSelectedLabelPosition}\nFile: ${fileInput.files[0].name}\n\n(Print pipeline to be wired up server-side.)`);
-        };
-
-        // -------- WIRING --------
-        function wireTile() {
-            if (document._discogsTileWired) return;
-            document._discogsTileWired = true;
-
-            document.addEventListener('click', function(e) {
-                // Load Orders
-                const loadBtn = e.target.closest('#discogs-load-orders-btn');
-                if (loadBtn) {
-                    e.preventDefault();
-                    console.log('📥 Load Orders button clicked');
-                    window.discogsLoadOrders();
-                    return;
-                }
-
-                // View order row button
-                const viewBtn = e.target.closest('[data-discogs-view]');
-                if (viewBtn) {
-                    e.preventDefault();
-                    const id = viewBtn.getAttribute('data-discogs-view');
-                    if (id) window.discogsViewOrder(id);
-                    return;
-                }
-
-                // Backdrop clicks for modals
-                const shippingModal = document.getElementById('discogs-shipping-modal');
-                if (shippingModal && e.target === shippingModal) {
-                    window.discogsCloseShippingModal();
-                }
-
-                const reviewModal = document.getElementById('discogs-review-modal');
-                if (reviewModal && e.target === reviewModal) {
-                    window.discogsCloseReviewModal();
-                }
-            });
-
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' && e.target && e.target.id === 'discogs-orders-search') {
-                    e.preventDefault();
-                    window.discogsOrdersApplyFilters();
-                }
-                if (e.key === 'Escape') {
-                    const shippingModal = document.getElementById('discogs-shipping-modal');
-                    if (shippingModal && shippingModal.style.display === 'flex') {
-                        window.discogsCloseShippingModal();
-                    }
-                    const reviewModal = document.getElementById('discogs-review-modal');
-                    if (reviewModal && reviewModal.style.display === 'flex') {
-                        window.discogsCloseReviewModal();
-                    }
-                }
-            });
-        }
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', wireTile);
-        } else {
-            wireTile();
-        }
-
-        window.initDiscogsHub = function() {
-            console.log('📦 Discogs tile init');
-            wireTile();
-        };
-
-        window.initDiscogsOrders = function() {
-            console.log('📦 Discogs Orders tile initialized (auto-load)');
-            wireTile();
-            window.discogsLoadOrders();
-        };
-
-        console.log('✅ discogs-orders.js loaded (mock mode)');
-    })();
-</script>
-
-<script>
-    window.addEventListener('load', function() {
-        // Auto-initialize after page load
-        if (window.initDiscogsOrders) {
-            window.initDiscogsOrders();
-        }
-    });
-</script>
-</body>
-</html>
