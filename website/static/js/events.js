@@ -1,37 +1,30 @@
-// Events page - loads calendar events with weekly repeat support
+// Events page - loads calendar events
 (function() {
     'use strict';
 
-    // Add API_BASE detection
     const API_BASE = window.location.hostname === 'localhost' 
         ? 'http://localhost:5000' 
         : 'https://www.pigstylemusic.com';
 
-    // Calculate the next occurrence of a weekly event
-    function getNextWeeklyDate(eventDateStr) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+    // Format string "2026-12-02" or "2026-12-02T..." directly to "Wed, Dec 2, 2026"
+    // without using timezone conversions.
+    function formatDateString(dateStr) {
+        if (!dateStr) return '';
         
-        const eventDate = new Date(eventDateStr);
-        eventDate.setHours(0, 0, 0, 0);
+        // Grab just the YYYY-MM-DD part
+        const datePart = dateStr.split('T')[0]; 
+        const parts = datePart.split('-');
         
-        // If the event is today or in the future, return the event date
-        if (eventDate >= today) {
-            return eventDate;
-        }
+        if (parts.length !== 3) return dateStr; // Fallback if formatting is weird
         
-        // Calculate days until next occurrence (7 days later)
-        const daysDiff = Math.ceil((today - eventDate) / (1000 * 60 * 60 * 24));
-        const weeksToAdd = Math.ceil(daysDiff / 7);
-        const nextDate = new Date(eventDate);
-        nextDate.setDate(nextDate.getDate() + (weeksToAdd * 7));
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1; // JS months are 0-indexed
+        const day = parseInt(parts[2], 10);
         
-        return nextDate;
-    }
-
-    // Format date for display
-    function formatEventDate(date) {
-        return date.toLocaleDateString('en-US', { 
+        // Create a date object using local time (year, month, day) so it doesn't roll back
+        const d = new Date(year, month, day);
+        
+        return d.toLocaleDateString('en-US', { 
             weekday: 'short', 
             month: 'short', 
             day: 'numeric',
@@ -41,56 +34,33 @@
 
     window.loadEvents = async function() {
         try {
-            console.log('📅 Loading events from:', `${API_BASE}/api/events`);
-            
-            const response = await fetch(`${API_BASE}/api/events`, {
+            // Added a timestamp to bust the cache so you always get fresh data
+            const response = await fetch(`${API_BASE}/api/events?t=${Date.now()}`, {
                 credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
+                headers: { 'Content-Type': 'application/json' }
             });
             
-            console.log('📅 Events response status:', response.status);
-            
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('📅 Error response:', errorText);
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
-            console.log('📅 Events data:', data);
-            
             let html = '<div style="padding:5px 0;">';
             
             if (data.status === 'success' && data.events && data.events.length > 0) {
                 data.events.forEach(function(event) {
-                    let eventDate = new Date(event.event_date);
-                    let isWeekly = false;
-                    let repeatText = '';
-                    let displayDate = eventDate;
+                    const formattedDate = formatDateString(event.event_date);
+                    const isWeekly = event.repeat_type === 'weekly';
                     
-                    // Check if event is weekly
-                    if (event.repeat_type === 'weekly') {
-                        isWeekly = true;
-                        displayDate = getNextWeeklyDate(event.event_date);
-                        const dayOfWeek = eventDate.toLocaleDateString('en-US', { weekday: 'long' });
-                        repeatText = `🔄 Weekly event - occurs every ${dayOfWeek}`;
-                    }
-                    
-                    const formattedDate = formatEventDate(displayDate);
-                    const isNextOccurrence = isWeekly && displayDate > eventDate;
+                    // Extract the day of the week for the "occurs every" text
+                    const dayOfWeek = formattedDate.split(',')[0];
                     
                     html += `
                         <div style="background:#f8f8f8;border-radius:8px;padding:18px;margin-bottom:15px;border:1px solid #eee;">
                             <div style="font-weight:bold;color:#333;font-size:20px;margin-bottom:8px;">${event.title || 'Untitled Event'}</div>
                             <div style="color:#666;font-size:15px;margin-bottom:6px;">
                                 📅 ${formattedDate}
-                                ${isNextOccurrence ? ` <span style="color:#17a2b8;font-size:14px;">(next occurrence)</span>` : ''}
                             </div>
-                            ${isWeekly ? `<div style="color:#17a2b8;font-size:14px;margin-bottom:10px;">${repeatText}</div>` : ''}
+                            ${isWeekly ? `<div style="color:#17a2b8;font-size:14px;margin-bottom:10px;">🔄 Weekly event - occurs every ${dayOfWeek}</div>` : ''}
                             
-                            <!-- Image + Description side by side -->
                             <div style="display:flex; gap:15px; align-items:flex-start; margin-top:6px;">
                                 ${event.image_url ? `
                                 <div style="flex-shrink:0;">
@@ -112,33 +82,24 @@
             html += '</div>';
             
             const container = document.getElementById('eventsResponse');
-            if (container) {
-                container.innerHTML = html;
-            }
+            if (container) container.innerHTML = html;
         } catch(err) {
             console.error('❌ Error loading events:', err);
             const container = document.getElementById('eventsResponse');
-            if (container) {
-                container.innerHTML = `<div style="color:#dc3545;padding:20px;text-align:center;font-size:15px;">❌ Error loading events: ${err.message}</div>`;
-            }
+            if (container) container.innerHTML = `<div style="color:#dc3545;padding:20px;text-align:center;">❌ Error loading events: ${err.message}</div>`;
         }
     };
 
     window.initEvents = function() {
-        console.log('📅 Events initialized with API_BASE:', API_BASE);
-        setTimeout(function() { 
-            window.loadEvents(); 
-        }, 200);
+        setTimeout(window.loadEvents, 200);
     };
 
     // Auto-initialize if page is already loaded
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
         const pageContent = document.getElementById('page-content');
         if (pageContent && pageContent.querySelector('#eventsResponse')) {
-            console.log('📅 Auto-initializing Events');
             window.initEvents();
         }
     }
 
-    console.log('📅 Events script loaded');
 })();

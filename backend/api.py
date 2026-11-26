@@ -14887,8 +14887,6 @@ def mark_all_orders_read():
     return jsonify({'status': 'success', 'updated': updated})
 
 
-
-
 @app.route('/api/events', methods=['GET'])
 def get_events():
     """Get all upcoming events - handles weekly recurring events"""
@@ -14937,7 +14935,7 @@ def get_events():
                     'id': row['id'],
                     'title': row['title'] or 'Untitled Event',
                     'description': row['description'] or '',
-                    'event_date': event_date.isoformat(),
+                    'event_date': event_date.strftime('%Y-%m-%d'),  # <-- CHANGED: Sends clean date string
                     'image_url': row['image_url'] or '',
                     'rsvp_count': row['rsvp_count'] or 0,
                     'repeat_type': repeat_type,
@@ -14956,7 +14954,9 @@ def get_events():
         app.logger.error(f"Error getting events: {str(e)}")
         app.logger.error(traceback.format_exc())
         return jsonify({'status': 'error', 'error': str(e)}), 500
- 
+
+
+
 @app.route('/api/events/<int:event_id>', methods=['GET'])
 def get_event(event_id):
     """Get a single event by ID"""
