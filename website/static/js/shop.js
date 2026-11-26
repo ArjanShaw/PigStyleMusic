@@ -1,8 +1,904 @@
-// Shop component
-function initShop() {
-    console.log('🛒 Shop initialized');
-    
-    if (typeof window.RecordsComponent !== 'undefined') {
+// ============================================================================
+// shop.js — merged Shop + New + New Arrivals (used) with RecordsComponent
+// folded in (formerly records.js). One page, three View filter options:
+//   All | New | New Arrivals (used)
+// ============================================================================
+
+(function () {
+    'use strict';
+
+    // ===== DETECT ENVIRONMENT =====
+    function getApiBase() {
+        const hostname = window.location.hostname;
+        const port = window.location.port;
+
+        if (hostname === 'www.pigstylemusic.com' || hostname === 'pigstylemusic.com') {
+            return '';
+        }
+
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            if (port === '8000') {
+                return 'http://localhost:5000';
+            }
+            if (port === '5000' || port === '5001') {
+                return '';
+            }
+            return 'http://localhost:5000';
+        }
+
+        return '';
+    }
+
+    const API_BASE = getApiBase();
+    console.log('🔧 Shop API_BASE:', API_BASE || '(same origin)');
+
+    // ===== TILE CONFIG (All / New / New Arrivals (used)) =====
+    const TILE_CONFIG = {
+        all: {
+            locationIds: null,
+            badgeText: null,
+            badgeColor: '#ff6b6b',
+            borderColor: '#ff6b6b',
+            buttonColor: '#ff6b6b',
+            buttonTextColor: 'white',
+            showEmptyCard: true,
+            title: 'Shop'
+        },
+        new: {
+            locationIds: '154,155,156,157',
+            badgeText: 'SEALED',
+            badgeColor: '#28a745',
+            borderColor: '#28a745',
+            buttonColor: '#28a745',
+            buttonTextColor: 'white',
+            showEmptyCard: true,
+            title: 'New Sealed Records'
+        },
+        'new-arrivals': {
+            locationIds: [150, 151, 152, 153],
+            badgeText: 'NEW',
+            badgeColor: '#ffd93d',
+            borderColor: '#ffd93d',
+            buttonColor: '#ffd93d',
+            buttonTextColor: '#333',
+            showEmptyCard: false,
+            title: 'New Arrivals (used)'
+        }
+    };
+
+    // ===== CONDITION DISPLAY =====
+    function getConditionDisplay(record) {
+        if (record.sleeve_condition_name) return record.sleeve_condition_name;
+        if (record.condition) return record.condition;
+        if (record.sleeve_display) return record.sleeve_display;
+        return 'Unknown';
+    }
+
+    // ===== LOCATION DISPLAY =====
+    function getLocationDisplay(record) {
+        if (record.location_display) return record.location_display;
+        if (record.location_name) return record.location_name;
+        return '';
+    }
+
+    // ===== FETCH GENRES WITH RECORDS =====
+    async function fetchGenresWithRecords(locationIds, statusId) {
+        try {
+            const params = new URLSearchParams();
+            if (locationIds) params.append('location_ids', locationIds);
+            if (statusId) params.append('status_ids', statusId);
+
+            const url = `${API_BASE}/api/genres-with-records?${params.toString()}`;
+            const response = await fetch(url, {
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (data.status === 'success') return data.genres || [];
+            return [];
+        } catch (err) {
+            console.error('Error fetching genres with records:', err);
+            return [];
+        }
+    }
+
+    // ===== FETCH FORMATS WITH RECORDS =====
+    async function fetchFormatsWithRecords(locationIds, statusId) {
+        try {
+            const params = new URLSearchParams();
+            if (locationIds) params.append('location_ids', locationIds);
+            if (statusId) params.append('status_ids', statusId);
+
+            const url = `${API_BASE}/api/formats-with-records?${params.toString()}`;
+            const response = await fetch(url, {
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            if (data.status === 'success') return data.formats || [];
+            return [];
+        } catch (err) {
+            console.error('Error fetching formats with records:', err);
+            return [];
+        }
+    }
+
+    // ===== POPULATE GENRE DROPDOWN =====
+    async function populateGenreDropdown(selectId, selectedGenreId, locationIds, statusId) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+
+        const genres = await fetchGenresWithRecords(locationIds, statusId);
+
+        select.innerHTML = '';
+
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'All Genres';
+        select.appendChild(defaultOption);
+
+        genres.forEach(genre => {
+            const option = document.createElement('option');
+            option.value = genre.id;
+            option.textContent = `${genre.name} (${genre.record_count})`;
+            if (selectedGenreId && parseInt(selectedGenreId) === genre.id) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+
+        console.log(`📀 Populated genre dropdown with ${genres.length} genres`);
+    }
+
+    // ===== POPULATE FORMAT MULTI-SELECT =====
+    async function populateFormatDropdown(containerId, selectedFormatIds, locationIds, statusId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        const wrapper = container.parentElement;
+
+        const formats = await fetchFormatsWithRecords(locationIds, statusId);
+
+        if (!formats || formats.length <= 1) {
+            if (wrapper) wrapper.style.display = 'none';
+            console.log(`🎚️ Format filter hidden (only ${formats ? formats.length : 0} format(s) available)`);
+            return;
+        }
+
+        if (wrapper) wrapper.style.display = 'flex';
+
+        const selectedSet = new Set(
+            (Array.isArray(selectedFormatIds) ? selectedFormatIds : [])
+                .map(x => parseInt(x))
+        );
+
+        const labelId = `${containerId}Label`;
+        const menuId = `${containerId}Menu`;
+
+        container.innerHTML = `
+            <button type="button" id="${containerId}Btn" 
+                    style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; background: white; color: #000; cursor: pointer; display: flex; align-items: center; gap: 6px; min-width: 120px; justify-content: space-between;">
+                <span id="${labelId}" style="color: #000;">All Formats</span>
+                <i class="fas fa-caret-down" style="font-size: 10px; color: #000;"></i>
+            </button>
+            <div id="${menuId}" 
+                 style="display: none; position: absolute; z-index: 50; background: white; color: #000; border: 1px solid #ddd; border-radius: 6px; padding: 8px; margin-top: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); min-width: 180px; max-height: 260px; overflow-y: auto;">
+            </div>
+        `;
+
+        const btn = document.getElementById(`${containerId}Btn`);
+        const menu = document.getElementById(`${menuId}`);
+        const label = document.getElementById(labelId);
+
+        container.style.position = 'relative';
+
+        formats.forEach(fmt => {
+            const row = document.createElement('label');
+            row.style.cssText = 'display: flex; align-items: center; gap: 8px; padding: 4px 6px; font-size: 13px; cursor: pointer; border-radius: 4px; white-space: nowrap; color: #000;';
+            row.innerHTML = `
+                <input type="checkbox" value="${fmt.id}" ${selectedSet.has(fmt.id) ? 'checked' : ''}
+                       style="cursor: pointer;">
+                <span style="color: #000;">${fmt.name} (${fmt.record_count})</span>
+            `;
+            const cb = row.querySelector('input');
+            cb.addEventListener('change', () => {
+                const current = Array.from(menu.querySelectorAll('input:checked'))
+                    .map(x => parseInt(x.value));
+                updateFormatLabel(label, formats, current);
+                container.dispatchEvent(new CustomEvent('format-change', { detail: { formatIds: current } }));
+            });
+            menu.appendChild(row);
+        });
+
+        updateFormatLabel(label, formats, Array.from(selectedSet));
+
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = menu.style.display === 'block';
+            menu.style.display = isOpen ? 'none' : 'block';
+        });
+
+        const outsideHandler = (e) => {
+            if (!container.contains(e.target)) {
+                menu.style.display = 'none';
+            }
+        };
+        document.addEventListener('click', outsideHandler);
+
+        container._formatCleanup = () => {
+            document.removeEventListener('click', outsideHandler);
+        };
+
+        container._formatRefresh = (newSelectedIds) => {
+            const set = new Set((newSelectedIds || []).map(x => parseInt(x)));
+            menu.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.checked = set.has(parseInt(cb.value));
+            });
+            updateFormatLabel(label, formats, Array.from(set));
+        };
+
+        console.log(`🎚️ Populated format dropdown with ${formats.length} formats`);
+    }
+
+    function updateFormatLabel(labelEl, formats, selectedIds) {
+        if (!labelEl) return;
+        if (!selectedIds || selectedIds.length === 0) {
+            labelEl.textContent = 'All Formats';
+            return;
+        }
+        if (selectedIds.length === 1) {
+            const fmt = formats.find(f => f.id === selectedIds[0]);
+            labelEl.textContent = fmt ? fmt.name : '1 Format';
+            return;
+        }
+        labelEl.textContent = `${selectedIds.length} Formats`;
+    }
+
+    // ===== MODAL =====
+    window.openRecordModal = function (record) {
+        const price = parseFloat(record.store_price) || 0;
+        const inStock = record.status_id === 2 || record.status_id === 1;
+        const imageUrl = record.image_url || '';
+        const condition = getConditionDisplay(record);
+        const locationDisplay = getLocationDisplay(record);
+        const locationIndex = record.location_index || '';
+        const lastSeen = record.last_seen ? new Date(record.last_seen).toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        }) : 'Never';
+
+        const modal = document.createElement('div');
+        modal.id = 'recordModal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease;
+        `;
+
+        const recordData = JSON.stringify(record).replace(/"/g, '&quot;');
+
+        let locationLine = '';
+        if (locationDisplay) {
+            locationLine = locationIndex ? `📍 ${locationDisplay} (#${locationIndex})` : `📍 ${locationDisplay}`;
+        }
+
+        modal.innerHTML = `
+            <div style="background: white; border-radius: 16px; max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto; padding: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+                    <h2 style="margin: 0; color: #333; font-size: 24px;">${record.artist || 'Unknown Artist'}</h2>
+                    <button onclick="closeRecordModal()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: #999; padding: 0 8px;">&times;</button>
+                </div>
+
+                <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+                    <div style="flex: 0 0 120px; height: 120px; background: #f5f5f5; border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                        ${imageUrl ?
+                `<img src="${imageUrl}" style="width: 100%; height: 100%; object-fit: cover;">` :
+                `<span style="font-size: 40px; color: #ddd;">🎵</span>`
+            }
+                    </div>
+                    <div style="flex: 1;">
+                        <div style="font-size: 18px; font-weight: bold; color: #333;">${record.title || 'Untitled'}</div>
+                        <div style="color: #666; margin: 4px 0;">${condition}</div>
+                        <div style="color: #666; font-size: 14px;">${record.format_name || 'Unknown Format'}</div>
+                        ${locationLine ? `<div style="color: #888; font-size: 12px; margin-top: 4px;">${locationLine}</div>` : ''}
+                        ${record.last_seen ? `<div style="color: #888; font-size: 11px; margin-top: 2px;">Last seen: ${lastSeen}</div>` : ''}
+                    </div>
+                </div>
+
+                <div style="border-top: 1px solid #eee; padding-top: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <span style="font-size: 18px; color: #666;">Price</span>
+                        <span style="font-size: 28px; font-weight: bold; color: #ff6b6b;">$${price.toFixed(2)}</span>
+                    </div>
+
+                    ${inStock ? `
+                        <button onclick="window.addRecordToCartDirect(${recordData})" 
+                                style="width: 100%; padding: 14px; background: #ff6b6b; color: white; border: none; border-radius: 30px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+                            <i class="fas fa-shopping-cart"></i> Add to Cart
+                        </button>
+                    ` : `
+                        <button disabled style="width: 100%; padding: 14px; background: #ccc; color: #666; border: none; border-radius: 30px; font-size: 16px; font-weight: 600; cursor: not-allowed;">
+                            Out of Stock
+                        </button>
+                    `}
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        modal.addEventListener('click', function (e) {
+            if (e.target === modal) closeRecordModal();
+        });
+
+        const escHandler = function (e) {
+            if (e.key === 'Escape') {
+                closeRecordModal();
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+    };
+
+    window.closeRecordModal = function () {
+        const modal = document.getElementById('recordModal');
+        if (modal) modal.remove();
+    };
+
+    // ===== ADD TO CART =====
+    window.addRecordToCartDirect = function (record) {
+        console.log('🛒 addRecordToCartDirect called with record:', record);
+
+        if (!window.cart) {
+            console.error('Cart not initialized');
+            if (typeof window.showToast === 'function') {
+                window.showToast('❌ Cart not initialized. Please refresh the page.', 'error');
+            } else {
+                alert('Cart not initialized. Please refresh the page.');
+            }
+            return;
+        }
+
+        const price = parseFloat(record.store_price) || 0;
+        if (price <= 0) {
+            if (typeof window.showToast === 'function') {
+                window.showToast('⚠️ This record has no price set.', 'warning');
+            }
+            return;
+        }
+
+        const items = window.cart.getItems();
+        const exists = items.some(item =>
+            item.type === 'record' &&
+            (item.original_id === record.id ||
+                (item.barcode && record.barcode && item.barcode === record.barcode))
+        );
+
+        if (exists) {
+            if (typeof window.showToast === 'function') {
+                window.showToast(`⚠️ "${record.artist} - ${record.title}" is already in your cart.`, 'warning');
+            }
+            closeRecordModal();
+            return;
+        }
+
+        const item = {
+            id: 'record_' + record.id + '_' + Date.now(),
+            type: 'record',
+            title: record.title || 'Unknown Title',
+            artist: record.artist || 'Unknown Artist',
+            price: price,
+            quantity: 1,
+            condition: record.sleeve_condition_name || record.condition || 'Unknown',
+            barcode: record.barcode || '',
+            catalog_number: record.catalog_number || '',
+            original_id: record.id,
+            image_url: record.image_url || ''
+        };
+
+        window.cart.addItem(item);
+        console.log('✅ Added to cart:', item);
+
+        if (typeof window.renderCart === 'function') window.renderCart();
+        if (typeof window.updateCartBadge === 'function') window.updateCartBadge();
+
+        closeRecordModal();
+
+        if (typeof window.showToast === 'function') {
+            window.showToast(`✅ Added "${record.artist} - ${record.title}" to cart!`, 'success');
+        } else {
+            alert(`Added "${record.artist} - ${record.title}" to cart!`);
+        }
+    };
+
+    window.addRecordToCart = function (record) {
+        console.warn('⚠️ addRecordToCart is deprecated. Use addRecordToCartDirect instead.');
+        window.addRecordToCartDirect(record);
+    };
+
+    // ===== RANDOM / EMPTY CARD MODAL =====
+    window.showRandomModal = function () {
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 10001;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease;
+        `;
+
+        modal.innerHTML = `
+            <div style="background: white; border-radius: 16px; max-width: 400px; width: 90%; padding: 30px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+                <div style="font-size: 48px; margin-bottom: 10px;">🐷</div>
+                <h2 style="color: #333; margin: 0 0 10px 0;">Coming Soon!</h2>
+                <p style="color: #666; margin: 0 0 20px 0;">This feature is under development.</p>
+                <button onclick="this.closest('div[style]').remove()" style="padding: 10px 30px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">
+                    Close
+                </button>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        modal.addEventListener('click', function (e) {
+            if (e.target === modal) modal.remove();
+        });
+    };
+
+    // ===== TOAST =====
+    function showToast(message, type) {
+        const existing = document.querySelector('.shop-toast');
+        if (existing) existing.remove();
+
+        const colors = {
+            success: '#28a745',
+            warning: '#ffc107',
+            error: '#dc3545'
+        };
+        const bg = colors[type] || colors.success;
+
+        const toast = document.createElement('div');
+        toast.className = 'shop-toast';
+        toast.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            background: ${bg};
+            color: white;
+            border-radius: 8px;
+            z-index: 10001;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            max-width: 400px;
+            animation: slideIn 0.3s ease;
+        `;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+    window.showToast = showToast;
+
+    // ============================================================================
+    // RECORDS COMPONENT (folded in from records.js)
+    // ============================================================================
+    window.RecordsComponent = class RecordsComponent {
+        constructor(config) {
+            this.config = {
+                containerId: config.containerId || 'catalogContainer',
+                title: config.title || 'Records',
+                pageSize: config.pageSize || 24,
+                currentPage: 1,
+                totalRecords: 0,
+                totalPages: 0,
+                locationIds: config.locationIds || null,
+                statusId: config.statusId || 2,
+                genreIds: config.genreIds || null,
+                formatIds: config.formatIds || null,
+                maxPrice: config.maxPrice || null,
+                borderColor: config.borderColor || '#ff6b6b',
+                badgeText: config.badgeText || null,
+                badgeColor: config.badgeColor || '#ff6b6b',
+                buttonColor: config.buttonColor || '#ff6b6b',
+                buttonTextColor: config.buttonTextColor || 'white',
+                onAddToCart: config.onAddToCart || null,
+                idPrefix: config.idPrefix || 'records',
+                searchInputId: config.searchInputId || null,
+                showCondition: config.showCondition || false,
+                showLocation: config.showLocation || false,
+                showEmptyCard: config.showEmptyCard || false
+            };
+
+            this.isInitialized = false;
+            this.allData = [];
+            this.filteredData = [];
+            this.searchTerm = '';
+            this.selectedGenreId = config.genreIds || null;
+            this.selectedFormatIds = Array.isArray(config.formatIds) ? config.formatIds : (config.formatIds ? [config.formatIds] : []);
+            this.currentMaxPrice = config.maxPrice || null;
+        }
+
+        init() {
+            if (this.isInitialized) return;
+            this.isInitialized = true;
+
+            console.log(`📀 ${this.config.title} component initializing...`);
+            console.log(`📀 Genre filter: ${this.selectedGenreId || 'None'}`);
+            console.log(`📀 Format filter: ${this.selectedFormatIds.length ? this.selectedFormatIds.join(',') : 'None'}`);
+            console.log(`📀 Max price: ${this.currentMaxPrice || 'None'}`);
+            console.log(`📀 Status: ${this.config.statusId}`);
+
+            const genreSelectId = `${this.config.idPrefix}GenreSelect`;
+            const genreSelect = document.getElementById(genreSelectId);
+            if (genreSelect) {
+                populateGenreDropdown(genreSelectId, this.selectedGenreId, this.config.locationIds, this.config.statusId);
+
+                genreSelect.addEventListener('change', (e) => {
+                    this.selectedGenreId = e.target.value || null;
+                    this.applyFilters();
+                });
+            }
+
+            const formatContainerId = `${this.config.idPrefix}FormatSelect`;
+            const formatContainer = document.getElementById(formatContainerId);
+            if (formatContainer) {
+                populateFormatDropdown(formatContainerId, this.selectedFormatIds, this.config.locationIds, this.config.statusId);
+
+                formatContainer.addEventListener('format-change', (e) => {
+                    this.selectedFormatIds = e.detail.formatIds || [];
+                    this.applyFilters();
+                });
+            }
+
+            const maxPriceInput = document.getElementById(`${this.config.idPrefix}MaxPrice`);
+            if (maxPriceInput) {
+                if (this.currentMaxPrice) maxPriceInput.value = this.currentMaxPrice;
+                maxPriceInput.addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    this.currentMaxPrice = (val > 0) ? val : null;
+                    this.applyFilters();
+                });
+            }
+
+            this.loadRecords();
+
+            this.bindEvents();
+            this.bindSearchEvents();
+        }
+
+        bindEvents() {
+            const firstPage = document.getElementById(`${this.config.idPrefix}FirstPage`);
+            if (firstPage) firstPage.addEventListener('click', () => this.goToPage(1));
+
+            const prevPage = document.getElementById(`${this.config.idPrefix}PrevPage`);
+            if (prevPage) prevPage.addEventListener('click', () => this.prevPage());
+
+            const nextPage = document.getElementById(`${this.config.idPrefix}NextPage`);
+            if (nextPage) nextPage.addEventListener('click', () => this.nextPage());
+
+            const lastPage = document.getElementById(`${this.config.idPrefix}LastPage`);
+            if (lastPage) lastPage.addEventListener('click', () => this.goToPage(this.totalPages));
+        }
+
+        bindSearchEvents() {
+            const searchInput = document.getElementById(this.config.searchInputId);
+            if (searchInput) {
+                searchInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') this.performSearch();
+                });
+            }
+        }
+
+        performSearch() {
+            const searchInput = document.getElementById(this.config.searchInputId);
+            if (searchInput) {
+                this.searchTerm = searchInput.value.trim();
+                this.applySearch();
+            }
+        }
+
+        clearSearch() {
+            const searchInput = document.getElementById(this.config.searchInputId);
+            if (searchInput) {
+                searchInput.value = '';
+                this.searchTerm = '';
+                this.applySearch();
+            }
+        }
+
+        applySearch() {
+            this.currentPage = 1;
+            this.loadRecords();
+        }
+
+        applyFilters() {
+            this.currentPage = 1;
+            this.loadRecords();
+        }
+
+        setGenre(genreId) {
+            this.selectedGenreId = genreId;
+            const genreSelect = document.getElementById(`${this.config.idPrefix}GenreSelect`);
+            if (genreSelect) genreSelect.value = genreId || '';
+            this.applyFilters();
+        }
+
+        setFormats(formatIds) {
+            this.selectedFormatIds = Array.isArray(formatIds)
+                ? formatIds.map(x => parseInt(x)).filter(x => !isNaN(x))
+                : [];
+            const containerId = `${this.config.idPrefix}FormatSelect`;
+            const container = document.getElementById(containerId);
+            if (container && container._formatRefresh) {
+                container._formatRefresh(this.selectedFormatIds);
+            } else {
+                populateFormatDropdown(containerId, this.selectedFormatIds, this.config.locationIds, this.config.statusId);
+            }
+            this.applyFilters();
+        }
+
+        setMaxPrice(price) {
+            this.currentMaxPrice = (price > 0) ? price : null;
+            const maxPriceInput = document.getElementById(`${this.config.idPrefix}MaxPrice`);
+            if (maxPriceInput) maxPriceInput.value = price > 0 ? price : '';
+            this.applyFilters();
+        }
+
+        // ===== TILE SWITCHING (All / New / New Arrivals (used)) =====
+        setTile(tileKey) {
+            const cfg = TILE_CONFIG[tileKey];
+            if (!cfg) return;
+
+            this.config.locationIds = cfg.locationIds;
+            this.config.badgeText = cfg.badgeText;
+            this.config.badgeColor = cfg.badgeColor;
+            this.config.borderColor = cfg.borderColor;
+            this.config.buttonColor = cfg.buttonColor;
+            this.config.buttonTextColor = cfg.buttonTextColor;
+            this.config.showEmptyCard = cfg.showEmptyCard;
+            this.config.title = cfg.title;
+
+            // Rebuild genre + format dropdowns for the new location scope
+            const genreSelectId = `${this.config.idPrefix}GenreSelect`;
+            if (document.getElementById(genreSelectId)) {
+                populateGenreDropdown(genreSelectId, this.selectedGenreId, this.config.locationIds, this.config.statusId);
+            }
+            const formatContainerId = `${this.config.idPrefix}FormatSelect`;
+            if (document.getElementById(formatContainerId)) {
+                populateFormatDropdown(formatContainerId, this.selectedFormatIds, this.config.locationIds, this.config.statusId);
+            }
+
+            this.currentPage = 1;
+            this.loadRecords();
+        }
+
+        async loadRecords() {
+            const container = document.getElementById(this.config.containerId);
+            if (!container) {
+                console.error('❌ Container not found:', this.config.containerId);
+                return;
+            }
+
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: #888;">
+                    <div style="margin-bottom: 10px;">⏳</div>
+                    <p>Loading ${this.config.title}...</p>
+                </div>
+            `;
+
+            try {
+                const params = new URLSearchParams();
+
+                const statusToSend = this.config.statusId || 2;
+                params.append('status_ids', statusToSend);
+
+                params.append('visible_only', 'true');
+
+                if (this.config.locationIds) params.append('location_ids', this.config.locationIds);
+                if (this.selectedGenreId) params.append('genre_ids', this.selectedGenreId);
+                if (this.selectedFormatIds && this.selectedFormatIds.length > 0) {
+                    params.append('format_ids', this.selectedFormatIds.join(','));
+                }
+                if (this.currentMaxPrice && this.currentMaxPrice > 0) {
+                    params.append('max_price', this.currentMaxPrice);
+                }
+                if (this.searchTerm) {
+                    params.append('search', this.searchTerm);
+                }
+
+                const url = `${API_BASE}/records?${params.toString()}`;
+                console.log('📡 FETCHING RECORDS FROM:', url);
+
+                const response = await fetch(url, {
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+
+                if (data.status === 'success' && data.records) {
+                    this.allData = data.records;
+                    this.filteredData = [...this.allData];
+                    this.totalRecords = this.filteredData.length;
+                    this.totalPages = Math.ceil(this.totalRecords / this.config.pageSize) || 1;
+                    this.currentPage = 1;
+
+                    this.renderPage();
+                    this.updatePagination();
+                } else {
+                    container.innerHTML = `
+                        <div style="text-align: center; padding: 40px; color: #888;">
+                            <div style="margin-bottom: 10px;">📀</div>
+                            <p>No ${this.config.title.toLowerCase()} found</p>
+                        </div>
+                    `;
+                }
+            } catch (err) {
+                console.error('❌ Failed to load records:', err);
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #dc3545;">
+                        <div style="margin-bottom: 10px;">❌</div>
+                        <p>Failed to load: ${err.message}</p>
+                        <button onclick="window.shopComponent && window.shopComponent.reload()" style="margin-top: 10px; padding: 8px 20px; border: none; border-radius: 4px; background: ${this.config.borderColor}; color: ${this.config.buttonTextColor}; cursor: pointer;">
+                            Retry
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        renderPage() {
+            const container = document.getElementById(this.config.containerId);
+            if (!container) return;
+
+            const start = (this.currentPage - 1) * this.config.pageSize;
+            const end = Math.min(start + this.config.pageSize, this.filteredData.length);
+            const pageData = this.filteredData.slice(start, end);
+
+            let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; padding: 10px 0;">';
+
+            if (!pageData || pageData.length === 0) {
+                html += `<div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #888;">No ${this.config.title.toLowerCase()} found</div>`;
+            } else {
+                pageData.forEach(record => {
+                    const price = parseFloat(record.store_price) || 0;
+                    const imageUrl = record.image_url || '';
+                    const recordData = JSON.stringify(record).replace(/"/g, '&quot;');
+                    const condition = getConditionDisplay(record);
+                    const locationDisplay = getLocationDisplay(record);
+                    const locationIndex = record.location_index || '';
+                    let locationLine = '';
+                    if (locationDisplay && this.config.showLocation) {
+                        locationLine = locationIndex ? `📍 ${locationDisplay} (#${locationIndex})` : `📍 ${locationDisplay}`;
+                    }
+
+                    html += `
+                        <div style="background: #f8f8f8; border-radius: 8px; overflow: hidden; border: 2px solid ${this.config.borderColor}; padding: 12px; cursor: pointer; transition: all 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.08);" 
+                             onclick="openRecordModal(${recordData})">
+                            <div style="height: 120px; display: flex; align-items: center; justify-content: center; background: #e0e0e0; border-radius: 4px; margin-bottom: 8px; position: relative; overflow: hidden;">
+                                ${imageUrl ?
+                        `<img src="${imageUrl}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\\'font-size: 40px; color: #bbb;\\'>🎵</span>';">` :
+                        `<span style="font-size: 40px; color: #bbb;">🎵</span>`
+                    }
+                                ${this.config.badgeText ? `
+                                    <div style="position: absolute; top: 8px; right: 8px; background: ${this.config.badgeColor}; color: #333; padding: 2px 10px; border-radius: 12px; font-size: 10px; font-weight: bold;">
+                                        ${this.config.badgeText}
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div style="font-weight: bold; color: #333; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${record.artist || 'Unknown Artist'}</div>
+                            <div style="color: #666; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${record.title || 'Untitled'}</div>
+                            ${this.config.showCondition ? `<div style="color: #555; font-size: 10px; margin-top: 2px;">📦 ${condition}</div>` : ''}
+                            ${this.config.showLocation && locationLine ? `<div style="color: #888; font-size: 10px; margin-top: 1px;">${locationLine}</div>` : ''}
+                            <div style="color: #ff6b6b; font-size: 16px; font-weight: bold; margin-top: 4px;">$${price.toFixed(2)}</div>
+                            ${record.barcode ? `<div style="font-size: 8px; color: #999; margin-top: 2px; font-family: monospace;">${record.barcode}</div>` : ''}
+                        </div>
+                    `;
+                });
+            }
+
+            if (this.config.showEmptyCard) {
+                html += `
+                    <div onclick="showRandomModal()" style="background: #f8f8f8; border-radius: 8px; overflow: hidden; border: 2px solid ${this.config.borderColor}; padding: 12px; cursor: pointer; transition: all 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 200px;">
+                        <img src="/images/pig_delivering_order.png" alt="Request a Record" style="width: 100%; height: 100%; object-fit: contain;" onerror="this.style.display='none'">
+                    </div>
+                `;
+            }
+
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        updatePagination() {
+            const total = this.totalRecords;
+            const start = (this.currentPage - 1) * this.config.pageSize + 1;
+            const end = Math.min(this.currentPage * this.config.pageSize, total);
+
+            const showingRange = document.getElementById(`${this.config.idPrefix}ShowingRange`);
+            if (showingRange) showingRange.textContent = total > 0 ? `${start}-${end}` : '0-0';
+
+            const totalRecords = document.getElementById(`${this.config.idPrefix}TotalRecords`);
+            if (totalRecords) totalRecords.textContent = total;
+
+            const pageInfo = document.getElementById(`${this.config.idPrefix}PageInfo`);
+            if (pageInfo) pageInfo.textContent = `${this.currentPage} / ${this.totalPages || 1}`;
+
+            const firstPage = document.getElementById(`${this.config.idPrefix}FirstPage`);
+            if (firstPage) firstPage.disabled = this.currentPage <= 1;
+
+            const prevPage = document.getElementById(`${this.config.idPrefix}PrevPage`);
+            if (prevPage) prevPage.disabled = this.currentPage <= 1;
+
+            const nextPage = document.getElementById(`${this.config.idPrefix}NextPage`);
+            if (nextPage) nextPage.disabled = this.currentPage >= this.totalPages;
+
+            const lastPage = document.getElementById(`${this.config.idPrefix}LastPage`);
+            if (lastPage) lastPage.disabled = this.currentPage >= this.totalPages;
+        }
+
+        goToPage(page) {
+            if (page < 1 || page > this.totalPages) return;
+            this.currentPage = page;
+            this.renderPage();
+            this.updatePagination();
+        }
+
+        nextPage() {
+            if (this.currentPage < this.totalPages) {
+                this.currentPage++;
+                this.renderPage();
+                this.updatePagination();
+            }
+        }
+
+        prevPage() {
+            if (this.currentPage > 1) {
+                this.currentPage--;
+                this.renderPage();
+                this.updatePagination();
+            }
+        }
+
+        reload() {
+            this.loadRecords();
+        }
+    };
+
+    // ============================================================================
+    // SHOP PAGE INIT — single unified component with View filter
+    // ============================================================================
+    function initShop() {
+        console.log('🛒 Shop (merged) initialized');
+
+        if (typeof window.RecordsComponent === 'undefined') {
+            console.error('RecordsComponent not loaded');
+            return;
+        }
+
         window.shopComponent = new window.RecordsComponent({
             containerId: 'shopCatalogContainer',
             title: 'Shop',
@@ -17,7 +913,8 @@ function initShop() {
             maxPrice: null,
             showCondition: true,
             showLocation: true,
-            onAddToCart: function(record) {
+            showEmptyCard: true, // matches "All" view default
+            onAddToCart: function (record) {
                 if (window.cart) {
                     const price = parseFloat(record.store_price) || 0;
                     const item = {
@@ -33,7 +930,7 @@ function initShop() {
                         original_id: record.id
                     };
                     window.cart.addItem(item);
-                    
+
                     if (typeof updateCartUI === 'function') updateCartUI();
                     if (typeof closeRecordModal === 'function') closeRecordModal();
                     showToast('✅ Added to cart: ' + record.artist + ' - ' + record.title);
@@ -41,70 +938,97 @@ function initShop() {
             }
         });
         window.shopComponent.init();
-    } else {
-        console.error('RecordsComponent not loaded');
+
+        // Wire up View tile buttons
+        const tileContainer = document.getElementById('shopTileFilter');
+        if (tileContainer) {
+            const buttons = tileContainer.querySelectorAll('.shop-tile-btn');
+
+            const applyActiveStyles = (activeKey) => {
+                buttons.forEach(btn => {
+                    const key = btn.getAttribute('data-tile');
+                    const cfg = TILE_CONFIG[key] || TILE_CONFIG.all;
+                    const isActive = key === activeKey;
+                    btn.style.background = isActive ? cfg.borderColor : 'white';
+                    btn.style.color = isActive
+                        ? (key === 'new-arrivals' ? '#333' : 'white')
+                        : (key === 'new-arrivals' ? '#b8860b' : cfg.borderColor);
+                });
+            };
+
+            buttons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const key = btn.getAttribute('data-tile');
+                    applyActiveStyles(key);
+                    window.shopComponent.setTile(key);
+                });
+            });
+
+            applyActiveStyles('all');
+        }
     }
-}
 
-function showToast(message) {
-    const existing = document.querySelector('.shop-toast');
-    if (existing) existing.remove();
-    
-    const toast = document.createElement('div');
-    toast.className = 'shop-toast';
-    toast.style.cssText = `
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        padding: 12px 24px;
-        background: #28a745;
-        color: white;
-        border-radius: 8px;
-        z-index: 10001;
-        font-weight: 600;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        max-width: 400px;
-        animation: slideIn 0.3s ease;
-    `;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transition = 'opacity 0.3s';
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
-}
+    // ===== GLOBAL SHOP HELPERS =====
+    window.shopSetGenre = function (genreId) {
+        if (window.shopComponent) window.shopComponent.setGenre(genreId);
+    };
 
-// ===== SHOP GENRE FILTER FUNCTIONS =====
-window.shopSetGenre = function(genreId) {
-    if (window.shopComponent) window.shopComponent.setGenre(genreId);
-};
+    window.shopSetFormats = function (formatIds) {
+        if (window.shopComponent) window.shopComponent.setFormats(formatIds);
+    };
 
-// ===== SHOP FORMAT FILTER FUNCTIONS =====
-window.shopSetFormats = function(formatIds) {
-    if (window.shopComponent) window.shopComponent.setFormats(formatIds);
-};
+    window.shopSetMaxPrice = function (price) {
+        if (window.shopComponent) window.shopComponent.setMaxPrice(price);
+    };
 
-// ===== SHOP PRICE FILTER FUNCTIONS =====
-window.shopSetMaxPrice = function(price) {
-    if (window.shopComponent) window.shopComponent.setMaxPrice(price);
-};
+    window.shopSetTile = function (tileKey) {
+        if (window.shopComponent) window.shopComponent.setTile(tileKey);
+    };
 
-// ===== SHOP CLEAR ALL FILTERS =====
-window.shopClearFilters = function() {
-    if (window.shopComponent) {
-        const genreSelect = document.getElementById('shopGenreSelect');
-        if (genreSelect) genreSelect.value = '';
-        
-        const maxPriceInput = document.getElementById('shopMaxPrice');
-        if (maxPriceInput) maxPriceInput.value = '';
-        
-        window.shopComponent.setGenre(null);
-        window.shopComponent.setFormats([]);
-        window.shopComponent.setMaxPrice(null);
-    }
-};
+    window.shopClearFilters = function () {
+        if (window.shopComponent) {
+            const genreSelect = document.getElementById('shopGenreSelect');
+            if (genreSelect) genreSelect.value = '';
 
-window.initShop = initShop;
-window.showToast = showToast;
+            const maxPriceInput = document.getElementById('shopMaxPrice');
+            if (maxPriceInput) maxPriceInput.value = '';
+
+            const searchInput = document.getElementById('shopSearchInput');
+            if (searchInput) searchInput.value = '';
+
+            window.shopComponent.searchTerm = '';
+            window.shopComponent.setGenre(null);
+            window.shopComponent.setFormats([]);
+            window.shopComponent.setMaxPrice(null);
+
+            // Reset View to All
+            const tileContainer = document.getElementById('shopTileFilter');
+            if (tileContainer) {
+                const allBtn = tileContainer.querySelector('[data-tile="all"]');
+                if (allBtn) allBtn.click();
+            }
+        }
+    };
+
+    window.shopSearch = function () { if (window.shopComponent) window.shopComponent.performSearch(); };
+    window.shopClearSearch = function () { if (window.shopComponent) window.shopComponent.clearSearch(); };
+
+    // ===== LEGACY ALIASES (safe to remove once nothing else references them) =====
+    window.newSearch = function () { if (window.shopComponent) window.shopComponent.performSearch(); };
+    window.newClearSearch = function () { if (window.shopComponent) window.shopComponent.clearSearch(); };
+    window.newArrivalsSearch = function () { if (window.shopComponent) window.shopComponent.performSearch(); };
+    window.newArrivalsClearSearch = function () { if (window.shopComponent) window.shopComponent.clearSearch(); };
+    window.newSetGenre = function (g) { if (window.shopComponent) window.shopComponent.setGenre(g); };
+    window.newSetFormats = function (f) { if (window.shopComponent) window.shopComponent.setFormats(f); };
+    window.newArrivalsSetGenre = function (g) { if (window.shopComponent) window.shopComponent.setGenre(g); };
+    window.newArrivalsSetFormats = function (f) { if (window.shopComponent) window.shopComponent.setFormats(f); };
+    window.newArrivalsSetMaxPrice = function (p) { if (window.shopComponent) window.shopComponent.setMaxPrice(p); };
+    window.newClearFilters = function () { window.shopClearFilters(); };
+    window.newClearGenreFilter = function () { window.shopClearFilters(); };
+    window.newArrivalsClearFilters = function () { window.shopClearFilters(); };
+
+    window.initShop = initShop;
+
+    console.log('📀 shop.js (merged) loaded with API_BASE:', API_BASE || '(same origin)');
+
+})();

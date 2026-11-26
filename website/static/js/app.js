@@ -15,10 +15,17 @@ const MENU_ROTATE_INTERVAL = 3000;
 let menuRotateTimer   = null;
 let menuRotateStopped = false;
 
+// Merged: 'new' and 'new-arrivals' are now filter options inside 'shop'
 const CUSTOMER_TILES = [
-    'home', 'shop', 'new', 'new-arrivals', 'merch',
+    'home', 'shop', 'merch',
     'events', 'connect', 'alerts', 'order', 'email'
 ];
+
+// Legacy page names that should redirect to the merged shop page
+const LEGACY_REDIRECTS = {
+    'new': 'shop',
+    'new-arrivals': 'shop'
+};
 
 const ADMIN_TILES = [
     'admin-dashboard',
@@ -125,10 +132,9 @@ function updateMenu() {
 }
 
 // ==================== INIT MAP ====================
+// 'new' and 'new-arrivals' removed — now handled by 'initShop' via tile filter
 const INIT_MAP = {
     'shop': 'initShop',
-    'new': 'initNew',
-    'new-arrivals': 'initNewArrivals',
     'merch': 'initMerch',
     'events': 'initEvents',
     'connect': 'initConnect',
@@ -571,6 +577,12 @@ async function renderAdminPage(page, btnElement) {
 
 // ==================== SHOW PAGE (dispatcher) ====================
 async function showPage(page, btnElement) {
+    // Legacy redirect: 'new' / 'new-arrivals' now live inside 'shop'
+    if (LEGACY_REDIRECTS[page]) {
+        console.log(`↪️ Redirecting legacy page "${page}" -> "${LEGACY_REDIRECTS[page]}"`);
+        page = LEGACY_REDIRECTS[page];
+    }
+
     const adminOnly = ADMIN_TILES.filter(p =>
         p !== 'dashboard' && p !== 'login' && p !== 'consignor-overview'
     );
