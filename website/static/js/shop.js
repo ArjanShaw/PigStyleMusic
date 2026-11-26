@@ -1,7 +1,8 @@
 // ============================================================================
-// shop.js — merged Shop + New + New Arrivals (used) with RecordsComponent
-// folded in (formerly records.js). One page, three View filter options:
-//   All | New | New Arrivals (used)
+// shop.js — merged Shop + New + New Arrivals (used) + Order + Alerts
+// RecordsComponent folded in (formerly records.js). One page, three View
+// options (All | New | New Arrivals (used)) plus two action modes
+// (Order | Subscribe) that swap the records grid for an in-tile form.
 // ============================================================================
 
 (function () {
@@ -502,6 +503,137 @@
     window.showToast = showToast;
 
     // ============================================================================
+    // ORDER FORM (folded in from order.js)
+    // ============================================================================
+    window.createOrder = async function () {
+        const contactEl = document.getElementById('orderContact');
+        const artistEl = document.getElementById('orderArtist');
+        const titleEl = document.getElementById('orderTitle');
+        const formatEl = document.getElementById('orderFormat');
+        const statusDiv = document.getElementById('orderStatus');
+
+        if (!contactEl || !statusDiv) return;
+
+        const contact = contactEl.value.trim();
+        const artist = artistEl.value.trim();
+        const title = titleEl.value.trim();
+        const format = formatEl ? formatEl.value : '';
+
+        if (!contact) {
+            statusDiv.innerHTML = '<span style="color:#dc3545;">⚠️ Please enter your email or phone number</span>';
+            return;
+        }
+
+        const isEmail = contact.includes('@') && contact.includes('.');
+        const isPhone = /^[\d\s\-\(\)\+\.]{7,}$/.test(contact);
+
+        if (!isEmail && !isPhone) {
+            statusDiv.innerHTML = '<span style="color:#dc3545;">⚠️ Please enter a valid email or phone number</span>';
+            return;
+        }
+
+        if (!artist) {
+            statusDiv.innerHTML = '<span style="color:#dc3545;">⚠️ Please enter an artist name</span>';
+            return;
+        }
+        if (!title) {
+            statusDiv.innerHTML = '<span style="color:#dc3545;">⚠️ Please enter an album title</span>';
+            return;
+        }
+
+        statusDiv.innerHTML = '<span style="color:#666;">⏳ Submitting request...</span>';
+
+        try {
+            const response = await fetch(`${API_BASE}/api/record-orders`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contact: contact,
+                    artist: artist,
+                    title: title,
+                    format: format || null
+                })
+            });
+
+            const data = await response.json();
+            console.log('Order response:', data);
+
+            if (data.status === 'success') {
+                statusDiv.innerHTML = '<span style="color:#28a745;">✅ Order request placed! We\'ll notify you when it arrives.</span>';
+                contactEl.value = '';
+                artistEl.value = '';
+                titleEl.value = '';
+                if (formatEl) formatEl.value = '';
+            } else {
+                statusDiv.innerHTML = '<span style="color:#dc3545;">❌ Error: ' + (data.error || 'Failed to place order') + '</span>';
+            }
+        } catch (err) {
+            console.error('Error creating order:', err);
+            statusDiv.innerHTML = '<span style="color:#dc3545;">❌ Network error. Please try again.</span>';
+        }
+    };
+
+    // ============================================================================
+    // ALERTS FORM (folded in from alerts.js)
+    // ============================================================================
+    window.createAlert = async function () {
+        const emailEl = document.getElementById('alertEmail');
+        const artistEl = document.getElementById('alertArtist');
+        const titleEl = document.getElementById('alertTitle');
+        const statusDiv = document.getElementById('alertStatus');
+
+        if (!emailEl || !statusDiv) return;
+
+        const email = emailEl.value.trim();
+        const artist = artistEl.value.trim();
+        const title = titleEl.value.trim();
+
+        if (!email) {
+            statusDiv.innerHTML = '<span style="color:#dc3545;">⚠️ Please enter your email</span>';
+            return;
+        }
+        if (!email.includes('@') || !email.includes('.')) {
+            statusDiv.innerHTML = '<span style="color:#dc3545;">⚠️ Please enter a valid email</span>';
+            return;
+        }
+        if (!artist) {
+            statusDiv.innerHTML = '<span style="color:#dc3545;">⚠️ Please enter an artist name</span>';
+            return;
+        }
+
+        statusDiv.innerHTML = '<span style="color:#666;">⏳ Subscribing...</span>';
+
+        try {
+            const response = await fetch(`${API_BASE}/api/subscribe`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: email,
+                    artist: artist,
+                    title: title || undefined
+                })
+            });
+
+            const data = await response.json();
+            console.log('Alert response:', data);
+
+            if (data.status === 'success') {
+                statusDiv.innerHTML = '<span style="color:#28a745;">✅ Subscribed! You\'ll be notified when records arrive.</span>';
+                emailEl.value = '';
+                artistEl.value = '';
+                titleEl.value = '';
+            } else {
+                statusDiv.innerHTML = '<span style="color:#dc3545;">❌ Error: ' + (data.error || 'Failed to subscribe') + '</span>';
+            }
+        } catch (err) {
+            console.error('Error creating alert:', err);
+            statusDiv.innerHTML = '<span style="color:#dc3545;">❌ Network error. Please try again.</span>';
+        }
+    };
+
+    // ============================================================================
     // RECORDS COMPONENT (folded in from records.js)
     // ============================================================================
     window.RecordsComponent = class RecordsComponent {
@@ -889,10 +1021,56 @@
     };
 
     // ============================================================================
-    // SHOP PAGE INIT — single unified component with View filter
+    // MODE SWITCHING: records <-> order / alerts panels
+    // ============================================================================
+    let currentMode = 'records';
+
+    window.shopSetMode = function (mode) {
+        const validModes = ['records', 'order', 'alerts'];
+        if (!validModes.includes(mode)) mode = 'records';
+        currentMode = mode;
+
+        const catalogEl = document.getElementById('shopCatalogContainer');
+        const filterRowEl = document.getElementById('shopFilterRow');
+        const orderPanel = document.getElementById('shopOrderPanel');
+        const alertsPanel = document.getElementById('shopAlertsPanel');
+
+        if (!catalogEl || !orderPanel || !alertsPanel) return;
+
+        // Hide all
+        catalogEl.style.display = 'none';
+        orderPanel.style.display = 'none';
+        alertsPanel.style.display = 'none';
+
+        // Filter row visible only in records mode
+        if (filterRowEl) filterRowEl.style.display = (mode === 'records') ? 'flex' : 'none';
+
+        if (mode === 'records') {
+            catalogEl.style.display = 'block';
+        } else if (mode === 'order') {
+            orderPanel.style.display = 'block';
+        } else if (mode === 'alerts') {
+            alertsPanel.style.display = 'block';
+        }
+
+        // Highlight the active mode button
+        const modeBtns = document.querySelectorAll('.shop-mode-btn');
+        modeBtns.forEach(btn => {
+            const key = btn.getAttribute('data-mode');
+            const isActive = key === mode;
+            const color = (key === 'order') ? '#ff6b6b' : '#667eea';
+            btn.style.background = isActive ? color : 'white';
+            btn.style.color = isActive ? 'white' : color;
+        });
+
+        console.log('🎛️ Shop mode set to:', mode);
+    };
+
+    // ============================================================================
+    // SHOP PAGE INIT
     // ============================================================================
     function initShop() {
-        console.log('🛒 Shop (merged) initialized');
+        console.log('🛒 Shop (merged + order/alerts) initialized');
 
         if (typeof window.RecordsComponent === 'undefined') {
             console.error('RecordsComponent not loaded');
@@ -966,6 +1144,19 @@
 
             applyActiveStyles('all');
         }
+
+        // Wire up Order / Subscribe action buttons
+        const modeBtns = document.querySelectorAll('.shop-mode-btn');
+        modeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const mode = btn.getAttribute('data-mode');
+                // Toggle: clicking active mode returns to records
+                window.shopSetMode(currentMode === mode ? 'records' : mode);
+            });
+        });
+
+        // Start in records mode
+        window.shopSetMode('records');
     }
 
     // ===== GLOBAL SHOP HELPERS =====
@@ -1013,7 +1204,7 @@
     window.shopSearch = function () { if (window.shopComponent) window.shopComponent.performSearch(); };
     window.shopClearSearch = function () { if (window.shopComponent) window.shopComponent.clearSearch(); };
 
-    // ===== LEGACY ALIASES (safe to remove once nothing else references them) =====
+    // ===== LEGACY ALIASES (kept safe for older references) =====
     window.newSearch = function () { if (window.shopComponent) window.shopComponent.performSearch(); };
     window.newClearSearch = function () { if (window.shopComponent) window.shopComponent.clearSearch(); };
     window.newArrivalsSearch = function () { if (window.shopComponent) window.shopComponent.performSearch(); };
@@ -1027,8 +1218,12 @@
     window.newClearGenreFilter = function () { window.shopClearFilters(); };
     window.newArrivalsClearFilters = function () { window.shopClearFilters(); };
 
+    // No-op init aliases so app.js INIT_MAP entries don't error if still present
+    window.initOrder = function () { console.log('Order (merged into shop) init no-op'); };
+    window.initAlerts = function () { console.log('Alerts (merged into shop) init no-op'); };
+
     window.initShop = initShop;
 
-    console.log('📀 shop.js (merged) loaded with API_BASE:', API_BASE || '(same origin)');
+    console.log('📀 shop.js (merged + order/alerts) loaded with API_BASE:', API_BASE || '(same origin)');
 
 })();

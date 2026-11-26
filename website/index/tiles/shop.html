@@ -17,7 +17,7 @@
                 </button>
             </div>
 
-            <!-- View Filter Row: All / New / New Arrivals (used) -->
+            <!-- View + Action Row -->
             <div style="display: flex; gap: 8px; margin-bottom: 8px; flex-shrink: 0; flex-wrap: wrap; align-items: center; background: #fff5f5; padding: 8px 10px; border-radius: 8px; border: 1px solid #ffd6d6;">
                 <label style="font-size: 13px; font-weight: 600; color: #555; white-space: nowrap;">🏷️ View:</label>
                 <div id="shopTileFilter" style="display: flex; gap: 6px; flex-wrap: wrap;">
@@ -31,10 +31,19 @@
                         New Arrivals (used)
                     </button>
                 </div>
+                <div style="width: 1px; height: 22px; background: #ffd6d6; margin: 0 4px;"></div>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <button type="button" data-mode="order" class="shop-mode-btn" style="padding: 6px 14px; border: 2px solid #ff6b6b; border-radius: 20px; background: white; color: #ff6b6b; font-size: 12px; font-weight: 600; cursor: pointer;">
+                        <i class="fas fa-box"></i> Order
+                    </button>
+                    <button type="button" data-mode="alerts" class="shop-mode-btn" style="padding: 6px 14px; border: 2px solid #667eea; border-radius: 20px; background: white; color: #667eea; font-size: 12px; font-weight: 600; cursor: pointer;">
+                        <i class="fas fa-bell"></i> Subscribe
+                    </button>
+                </div>
             </div>
 
             <!-- Filter Row - Genre + Format + Price -->
-            <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-shrink: 0; flex-wrap: wrap; align-items: center; background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
+            <div id="shopFilterRow" style="display: flex; gap: 10px; margin-bottom: 10px; flex-shrink: 0; flex-wrap: wrap; align-items: center; background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
                 <!-- Genre Filter -->
                 <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 150px;">
                     <label style="font-size: 13px; font-weight: 600; color: #555; white-space: nowrap;">🎵 Genre:</label>
@@ -64,10 +73,63 @@
                 </button>
             </div>
 
+            <!-- Records grid (default mode) -->
             <div id="shopCatalogContainer" style="flex: 1; overflow-y: auto; padding: 5px 0; min-height: 0;">
                 <div style="text-align: center; padding: 40px; color: #888;">
                     <div style="margin-bottom: 10px;">⏳</div>
                     <p>Loading records...</p>
+                </div>
+            </div>
+
+            <!-- Order form panel (hidden by default) -->
+            <div id="shopOrderPanel" style="display: none; flex: 1; overflow-y: auto; padding: 5px 0; min-height: 0;">
+                <div style="position: relative; width: 100%; min-height: 100%; background: #f8f8f8; border: 2px solid #ff6b6b; border-radius: 12px; overflow: hidden;">
+                    <img src="/images/pig_new_car.png" alt="Order a Record" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'">
+                    <div style="position: absolute; right: 16px; bottom: 16px; z-index: 2; width: 100%; max-width: 340px; padding: 20px; display: flex; flex-direction: column; gap: 10px; background: rgba(255,255,255,0.95); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.25); backdrop-filter: blur(2px);">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h3 style="margin: 0; color: #333; font-size: 18px;">📦 Request a Record</h3>
+                            <button type="button" onclick="shopSetMode('records')" style="background: none; border: none; font-size: 22px; cursor: pointer; color: #999; padding: 0 6px;" title="Back to records">&times;</button>
+                        </div>
+                        <p style="margin: 0 0 4px 0; color: #666; font-size: 13px;">Don't see what you're looking for? Request it and we'll try to get it for you.</p>
+                        <input type="text" id="orderContact" placeholder="Email or Phone Number" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+                        <input type="text" id="orderArtist" placeholder="Artist Name" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+                        <input type="text" id="orderTitle" placeholder="Album Title" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+                        <select id="orderFormat" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; background: white; color: #333;">
+                            <option value="">Any Format</option>
+                            <option value="Vinyl">Vinyl</option>
+                            <option value="CD">CD</option>
+                            <option value="Cassette">Cassette</option>
+                            <option value="8-Track Cartridge">8-Track Cartridge</option>
+                            <option value="Shellac">Shellac</option>
+                            <option value="Flexi-disc">Flexi-disc</option>
+                            <option value="Box Set">Box Set</option>
+                        </select>
+                        <button onclick="createOrder()" style="padding: 12px; background: #28a745; color: white; border: none; border-radius: 30px; font-size: 16px; font-weight: 600; cursor: pointer;">
+                            <i class="fas fa-box"></i> Place Order Request
+                        </button>
+                        <div id="orderStatus" style="font-size: 14px; text-align: center; min-height: 18px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Subscribe form panel (hidden by default) -->
+            <div id="shopAlertsPanel" style="display: none; flex: 1; overflow-y: auto; padding: 5px 0; min-height: 0;">
+                <div style="position: relative; width: 100%; min-height: 100%; background: #f8f8f8; border: 2px solid #667eea; border-radius: 12px; overflow: hidden;">
+                    <img src="/images/pig_as_a_new_arrival.png" alt="Subscribe for Alerts" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display='none'">
+                    <div style="position: absolute; right: 16px; bottom: 16px; z-index: 2; width: 100%; max-width: 340px; padding: 20px; display: flex; flex-direction: column; gap: 10px; background: rgba(255,255,255,0.95); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.25); backdrop-filter: blur(2px);">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h3 style="margin: 0; color: #333; font-size: 18px;">🔔 Get Notified</h3>
+                            <button type="button" onclick="shopSetMode('records')" style="background: none; border: none; font-size: 22px; cursor: pointer; color: #999; padding: 0 6px;" title="Back to records">&times;</button>
+                        </div>
+                        <p style="margin: 0 0 4px 0; color: #666; font-size: 13px;">Enter your email and the artist you're looking for. We'll alert you when new records arrive!</p>
+                        <input type="email" id="alertEmail" placeholder="Your Email" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+                        <input type="text" id="alertArtist" placeholder="Artist Name" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+                        <input type="text" id="alertTitle" placeholder="Album Title (optional)" style="padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;">
+                        <button onclick="createAlert()" style="padding: 12px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; border-radius: 30px; font-size: 16px; font-weight: 600; cursor: pointer;">
+                            <i class="fas fa-bell"></i> Subscribe
+                        </button>
+                        <div id="alertStatus" style="font-size: 14px; text-align: center; min-height: 18px;"></div>
+                    </div>
                 </div>
             </div>
 

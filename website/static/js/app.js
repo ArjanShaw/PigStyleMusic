@@ -15,16 +15,18 @@ const MENU_ROTATE_INTERVAL = 3000;
 let menuRotateTimer   = null;
 let menuRotateStopped = false;
 
-// Merged: 'new' and 'new-arrivals' are now filter options inside 'shop'
+// Merged: 'new', 'new-arrivals', 'order', 'alerts' all now live inside 'shop'
 const CUSTOMER_TILES = [
     'home', 'shop', 'merch',
-    'events', 'connect', 'alerts', 'order', 'email'
+    'events', 'connect', 'email'
 ];
 
 // Legacy page names that should redirect to the merged shop page
 const LEGACY_REDIRECTS = {
     'new': 'shop',
-    'new-arrivals': 'shop'
+    'new-arrivals': 'shop',
+    'order': 'shop',
+    'alerts': 'shop'
 };
 
 const ADMIN_TILES = [
@@ -132,14 +134,12 @@ function updateMenu() {
 }
 
 // ==================== INIT MAP ====================
-// 'new' and 'new-arrivals' removed — now handled by 'initShop' via tile filter
+// 'new', 'new-arrivals', 'order', 'alerts' removed — handled inside initShop
 const INIT_MAP = {
     'shop': 'initShop',
     'merch': 'initMerch',
     'events': 'initEvents',
     'connect': 'initConnect',
-    'alerts': 'initAlerts',
-    'order': 'initOrder',
     'cart': 'initCart',
     'email': 'initEmail',
     'login': 'initLogin',
@@ -577,7 +577,7 @@ async function renderAdminPage(page, btnElement) {
 
 // ==================== SHOW PAGE (dispatcher) ====================
 async function showPage(page, btnElement) {
-    // Legacy redirect: 'new' / 'new-arrivals' now live inside 'shop'
+    // Legacy redirect: 'new' / 'new-arrivals' / 'order' / 'alerts' now live inside 'shop'
     if (LEGACY_REDIRECTS[page]) {
         console.log(`↪️ Redirecting legacy page "${page}" -> "${LEGACY_REDIRECTS[page]}"`);
         page = LEGACY_REDIRECTS[page];
