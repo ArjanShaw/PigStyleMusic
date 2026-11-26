@@ -94,7 +94,7 @@
                             <div style="display:flex; gap:15px; align-items:flex-start; margin-top:6px;">
                                 ${event.image_url ? `
                                 <div style="flex-shrink:0;">
-                                    <img src="${event.image_url}" alt="Event image" style="max-width:150px; max-height:150px; border-radius:6px; object-fit:cover; width:150px; border:1px solid #eee;">
+                                    <img src="${event.image_url}" alt="Event image" style="max-width:200px; max-height:300px; border-radius:6px; object-fit:contain; width:100%; border:1px solid #eee;">
                                 </div>
                                 ` : ''}
                                 ${event.description ? `
