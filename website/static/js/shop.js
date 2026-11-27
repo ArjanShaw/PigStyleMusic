@@ -1137,6 +1137,11 @@
             buttons.forEach(btn => {
                 btn.addEventListener('click', () => {
                     const key = btn.getAttribute('data-tile');
+
+                    // Selecting All / New / New Arrivals exits Order or
+                    // Subscribe and restores the records view.
+                    window.shopSetMode('records');
+
                     applyActiveStyles(key);
                     window.shopComponent.setTile(key);
                 });
