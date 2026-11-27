@@ -42,7 +42,6 @@
             borderColor: '#ff6b6b',
             buttonColor: '#ff6b6b',
             buttonTextColor: 'white',
-            showEmptyCard: true,
             title: 'Shop'
         },
         new: {
@@ -52,7 +51,6 @@
             borderColor: '#28a745',
             buttonColor: '#28a745',
             buttonTextColor: 'white',
-            showEmptyCard: true,
             title: 'New Sealed Records'
         },
         'new-arrivals': {
@@ -62,7 +60,6 @@
             borderColor: '#ffd93d',
             buttonColor: '#ffd93d',
             buttonTextColor: '#333',
-            showEmptyCard: false,
             title: 'New Arrivals (used)'
         }
     };
@@ -428,41 +425,6 @@
         window.addRecordToCartDirect(record);
     };
 
-    // ===== RANDOM / EMPTY CARD MODAL =====
-    window.showRandomModal = function () {
-        const modal = document.createElement('div');
-        modal.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.8);
-            z-index: 10001;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            animation: fadeIn 0.3s ease;
-        `;
-
-        modal.innerHTML = `
-            <div style="background: white; border-radius: 16px; max-width: 400px; width: 90%; padding: 30px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
-                <div style="font-size: 48px; margin-bottom: 10px;">🐷</div>
-                <h2 style="color: #333; margin: 0 0 10px 0;">Coming Soon!</h2>
-                <p style="color: #666; margin: 0 0 20px 0;">This feature is under development.</p>
-                <button onclick="this.closest('div[style]').remove()" style="padding: 10px 30px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">
-                    Close
-                </button>
-            </div>
-        `;
-
-        document.body.appendChild(modal);
-
-        modal.addEventListener('click', function (e) {
-            if (e.target === modal) modal.remove();
-        });
-    };
-
     // ===== TOAST =====
     function showToast(message, type) {
         const existing = document.querySelector('.shop-toast');
@@ -659,8 +621,7 @@
                 idPrefix: config.idPrefix || 'records',
                 searchInputId: config.searchInputId || null,
                 showCondition: config.showCondition || false,
-                showLocation: config.showLocation || false,
-                showEmptyCard: config.showEmptyCard || false
+                showLocation: config.showLocation || false
             };
 
             this.isInitialized = false;
@@ -809,7 +770,6 @@
             this.config.borderColor = cfg.borderColor;
             this.config.buttonColor = cfg.buttonColor;
             this.config.buttonTextColor = cfg.buttonTextColor;
-            this.config.showEmptyCard = cfg.showEmptyCard;
             this.config.title = cfg.title;
 
             // Rebuild genre + format dropdowns for the new location scope
@@ -953,14 +913,6 @@
                 });
             }
 
-            if (this.config.showEmptyCard) {
-                html += `
-                    <div onclick="showRandomModal()" style="background: #f8f8f8; border-radius: 8px; overflow: hidden; border: 2px solid ${this.config.borderColor}; padding: 12px; cursor: pointer; transition: all 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 200px;">
-                        <img src="/images/pig_delivering_order.png" alt="Request a Record" style="width: 100%; height: 100%; object-fit: contain;" onerror="this.style.display='none'">
-                    </div>
-                `;
-            }
-
             html += '</div>';
             container.innerHTML = html;
         }
@@ -1091,7 +1043,6 @@
             maxPrice: null,
             showCondition: true,
             showLocation: true,
-            showEmptyCard: true, // matches "All" view default
             onAddToCart: function (record) {
                 if (window.cart) {
                     const price = parseFloat(record.store_price) || 0;
@@ -1137,11 +1088,6 @@
             buttons.forEach(btn => {
                 btn.addEventListener('click', () => {
                     const key = btn.getAttribute('data-tile');
-
-                    // Selecting All / New / New Arrivals exits Order or
-                    // Subscribe and restores the records view.
-                    window.shopSetMode('records');
-
                     applyActiveStyles(key);
                     window.shopComponent.setTile(key);
                 });
