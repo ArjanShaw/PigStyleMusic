@@ -29,7 +29,7 @@
     // Modal functions for merch
     window.openMerchModal = function(item) {
         const price = parseFloat(item.price || item.store_price) || 0;
-        const inStock = item.stock > 0 || item.status === 'active' || item.status_id === 1;
+        const inStock = item.stock_quantity > 0 || item.status_id === 1 || item.status === 'active';
         const imageUrl = getFullImageUrl(item.image_url || '');
         
         const modal = document.createElement('div');
@@ -59,9 +59,10 @@
                 </div>
                 
                 <div style="display: flex; gap: 20px; margin-bottom: 20px;">
-                    <div style="flex: 0 0 120px; height: 120px; background: #f5f5f5; border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                    <!-- FIXED: Changed to object-fit: contain and added a white background so tall images fit -->
+                    <div style="flex: 0 0 120px; height: 120px; background: #fff; border: 1px solid #eee; border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
                         ${imageUrl ? 
-                            `<img src="${imageUrl}" style="width: 100%; height: 100%; object-fit: cover;">` : 
+                            `<img src="${imageUrl}" style="width: 100%; height: 100%; object-fit: contain;">` : 
                             `<span style="font-size: 40px; color: #ddd;">👕</span>`
                         }
                     </div>
@@ -166,7 +167,7 @@
             if (allMerch.length > 0) {
                 allMerch.forEach(function(item) {
                     const price = parseFloat(item.price || item.store_price) || 0;
-                    const inStock = item.stock > 0 || item.status_id === 1 || item.status === 'active';
+                    const inStock = item.stock_quantity > 0 || item.status_id === 1 || item.status === 'active';
                     const imageUrl = getFullImageUrl(item.image_url || '');
                     const itemData = JSON.stringify(item).replace(/"/g, '&quot;');
                     const displayName = item.name || item.title || 'Unknown';
@@ -174,11 +175,12 @@
                     
                     html += '<div style="background:#f8f8f8;border-radius:8px;padding:10px;border:1px solid #eee;cursor:pointer;transition:all 0.2s;" onclick="openMerchModal(' + itemData + ')">';
                     if (imageUrl) {
-                        html += '<div style="height:100px;border-radius:4px;margin-bottom:8px;overflow:hidden;background:#e0e0e0;display:flex;align-items:center;justify-content:center;">';
-                        html += '<img src="' + imageUrl + '" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display=\'none\';this.parentElement.innerHTML=\'<span style=\\\'font-size:30px;color:#bbb;\\\'>👕</span>\'">';
+                        // FIXED: Changed to object-fit: contain and white background
+                        html += '<div style="height:120px;border-radius:4px;margin-bottom:8px;overflow:hidden;background:#fff;border:1px solid #eee;display:flex;align-items:center;justify-content:center;">';
+                        html += '<img src="' + imageUrl + '" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display=\'none\';this.parentElement.innerHTML=\'<span style=\\\'font-size:30px;color:#bbb;\\\'>👕</span>\'">';
                         html += '</div>';
                     } else {
-                        html += '<div style="height:100px;background:#e0e0e0;border-radius:4px;margin-bottom:8px;display:flex;align-items:center;justify-content:center;font-size:30px;color:#bbb;">👕</div>';
+                        html += '<div style="height:120px;background:#e0e0e0;border-radius:4px;margin-bottom:8px;display:flex;align-items:center;justify-content:center;font-size:30px;color:#bbb;">👕</div>';
                     }
                     html += '<div style="font-weight:bold;color:#333;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + displayName + '</div>';
                     html += '<div style="color:#666;font-size:11px;">' + category + '</div>';
